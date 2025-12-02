@@ -33,7 +33,12 @@ interface ProjectStore {
   // Project Actions
   loadProject: (project: Project) => void;
   saveProject: () => Promise<void>;
-  createNewProject: (title: string, description: string) => void;
+  createNewProject: (
+    title: string,
+    description: string,
+    artStyle?: string,
+    aspectRatio?: string
+  ) => void;
 
   // Scene Actions
   addScene: (scene: Scene) => void;
@@ -118,14 +123,26 @@ export const useProjectStore = create<ProjectStore>()(
       await saveProjectToDB(updatedProject);
     },
 
-    createNewProject: (title, description) =>
+    createNewProject: (title, description, artStyle = '', aspectRatio = '9:16') => {
+      // 根据画面比例设置分辨率
+      const resolutionMap: Record<string, { width: number; height: number }> = {
+        '16:9': { width: 1920, height: 1080 },
+        '9:16': { width: 1080, height: 1920 },
+        '1:1': { width: 1080, height: 1080 },
+        '4:3': { width: 1440, height: 1080 },
+        '3:4': { width: 1080, height: 1440 },
+        '21:9': { width: 2560, height: 1080 },
+      };
+
+      const resolution = resolutionMap[aspectRatio] || { width: 1080, height: 1920 };
+
       set({
         project: {
           id: `project_${Date.now()}`,
           metadata: {
             title,
             description,
-            artStyle: '',
+            artStyle,
             created: new Date(),
             modified: new Date(),
           },
@@ -140,13 +157,15 @@ export const useProjectStore = create<ProjectStore>()(
             { id: 'audio-track', type: 'audio', clips: [] },
           ],
           settings: {
-            videoResolution: { width: 1920, height: 1080 },
+            videoResolution: resolution,
+            aspectRatio: aspectRatio as any,
             fps: 30,
             audioSampleRate: 48000,
             defaultShotDuration: 5,
           },
         },
-      }),
+      });
+    },
 
     // Scene Actions
     addScene: (scene) =>

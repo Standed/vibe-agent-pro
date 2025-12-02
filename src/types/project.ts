@@ -179,6 +179,7 @@ export interface TimelineTrack {
 
 export interface ProjectSettings {
   videoResolution: { width: number; height: number };
+  aspectRatio: AspectRatio; // 全局画面比例
   fps: number;
   audioSampleRate: number;
   defaultShotDuration: number;

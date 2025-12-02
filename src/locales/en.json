@@ -1,0 +1,80 @@
+{
+  "common": {
+    "appName": "Vibe Agent Pro",
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "close": "Close",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "search": "Search",
+    "upload": "Upload",
+    "download": "Download",
+    "settings": "Settings"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System",
+    "languageZh": "简体中文",
+    "languageEn": "English"
+  },
+  "home": {
+    "title": "My Projects",
+    "createProject": "Create New Project",
+    "noProjects": "No Projects",
+    "noProjectsDescription": "Start creating your first AI video project"
+  },
+  "project": {
+    "title": "Project",
+    "newProject": "New Project",
+    "script": "Script",
+    "characters": "Characters",
+    "locations": "Locations",
+    "audio": "Audio",
+    "scene": "Scene",
+    "shot": "Shot",
+    "timeline": "Timeline",
+    "agent": "Agent Mode",
+    "pro": "Pro Mode"
+  },
+  "agent": {
+    "placeholder": "Share your creative ideas...",
+    "send": "Send",
+    "thinking": "Thinking...",
+    "quickActions": "Quick Actions",
+    "generateStoryboard": "Generate Storyboard",
+    "createCharacter": "Create Character",
+    "addScene": "Add Scene"
+  },
+  "pro": {
+    "generateGrid": "Generate Grid",
+    "generateSingle": "Generate Single",
+    "generateVideo": "Generate Video",
+    "selectScene": "Select Scene",
+    "prompt": "Prompt",
+    "referenceImage": "Reference Image",
+    "gridHistory": "Grid History"
+  },
+  "timeline": {
+    "video": "Video Track",
+    "audio": "Audio Track",
+    "play": "Play",
+    "pause": "Pause",
+    "stop": "Stop"
+  },
+  "canvas": {
+    "zoom": "Zoom",
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "resetZoom": "Reset Zoom"
+  }
+}

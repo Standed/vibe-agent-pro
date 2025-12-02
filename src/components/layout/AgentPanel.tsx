@@ -27,7 +27,7 @@ export default function AgentPanel() {
       addChatMessage({
         id: `msg_${Date.now()}`,
         role: 'assistant',
-        content: '你好！我是 Vibe Agent，你的 AI 影视创作助手。你只管描述创意，我来帮你操作参数和生成内容。',
+        content: '你好！我是 西羊石 AI 视频 Agent，你的 AI 影视创作助手。你只管描述创意，我来帮你操作参数和生成内容。',
         timestamp: new Date(),
       });
     }
@@ -336,14 +336,14 @@ export default function AgentPanel() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="p-4 border-b border-cine-border">
+      <div className="p-4 border-b border-light-border dark:border-cine-border">
         <div className="flex items-center gap-2 mb-2">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
-            <Sparkles size={16} className="text-white" />
+            <Sparkles size={16} className="text-light-text dark:text-white" />
           </div>
           <div>
             <div className="text-sm font-bold">Agent 模式</div>
-            <div className="text-xs text-cine-text-muted">AI 帮你操作参数</div>
+            <div className="text-xs text-light-text-muted dark:text-cine-text-muted">AI 帮你操作参数</div>
           </div>
         </div>
       </div>
@@ -356,21 +356,21 @@ export default function AgentPanel() {
             className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {msg.role === 'assistant' && (
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-xs text-white font-bold flex-shrink-0">
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-xs text-light-text dark:text-white font-bold flex-shrink-0">
                 AI
               </div>
             )}
             <div
               className={`rounded-lg p-3 text-sm max-w-[80%] ${
                 msg.role === 'user'
-                  ? 'bg-cine-accent text-white'
-                  : 'bg-cine-panel text-cine-text-muted'
+                  ? 'bg-light-accent dark:bg-cine-accent text-light-text dark:text-white'
+                  : 'bg-light-bg dark:bg-cine-panel text-light-text-muted dark:text-cine-text-muted'
               }`}
             >
               <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
             </div>
             {msg.role === 'user' && (
-              <div className="w-7 h-7 rounded-full bg-cine-border flex items-center justify-center text-xs text-white font-bold flex-shrink-0">
+              <div className="w-7 h-7 rounded-full bg-cine-border flex items-center justify-center text-xs text-light-text dark:text-white font-bold flex-shrink-0">
                 U
               </div>
             )}
@@ -380,13 +380,13 @@ export default function AgentPanel() {
         {/* Streaming message */}
         {streamingMessage && (
           <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-xs text-white font-bold flex-shrink-0">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-xs text-light-text dark:text-white font-bold flex-shrink-0">
               AI
             </div>
-            <div className="bg-cine-panel rounded-lg p-3 text-sm max-w-[80%]">
-              <p className="leading-relaxed whitespace-pre-wrap text-cine-text-muted">
+            <div className="bg-light-bg dark:bg-cine-panel rounded-lg p-3 text-sm max-w-[80%]">
+              <p className="leading-relaxed whitespace-pre-wrap text-light-text-muted dark:text-cine-text-muted">
                 {streamingMessage}
-                <span className="inline-block w-1 h-4 bg-cine-accent ml-1 animate-pulse"></span>
+                <span className="inline-block w-1 h-4 bg-light-accent dark:bg-cine-accent ml-1 animate-pulse"></span>
               </p>
             </div>
           </div>
@@ -395,12 +395,12 @@ export default function AgentPanel() {
         {/* Processing indicator */}
         {isProcessing && !streamingMessage && (
           <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-xs text-white font-bold flex-shrink-0">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-xs text-light-text dark:text-white font-bold flex-shrink-0">
               AI
             </div>
-            <div className="bg-cine-panel rounded-lg p-3 flex items-center gap-2">
-              <Loader2 size={16} className="animate-spin text-cine-accent" />
-              <span className="text-sm text-cine-text-muted">正在思考...</span>
+            <div className="bg-light-bg dark:bg-cine-panel rounded-lg p-3 flex items-center gap-2">
+              <Loader2 size={16} className="animate-spin text-light-accent dark:text-cine-accent" />
+              <span className="text-sm text-light-text-muted dark:text-cine-text-muted">正在思考...</span>
             </div>
           </div>
         )}
@@ -410,14 +410,14 @@ export default function AgentPanel() {
       </div>
 
       {/* Quick Actions */}
-      <div className="px-4 py-2 border-t border-cine-border">
-        <div className="text-xs text-cine-text-muted mb-2">快捷指令</div>
+      <div className="px-4 py-2 border-t border-light-border dark:border-cine-border">
+        <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-2">快捷指令</div>
         <div className="flex flex-wrap gap-2">
           {generateQuickActions(getAgentContext()).map((action) => (
             <button
               key={action}
               onClick={() => setMessage(action)}
-              className="text-xs bg-cine-panel hover:bg-cine-border border border-cine-border rounded px-2 py-1 transition-colors"
+              className="text-xs bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded px-2 py-1 transition-colors"
             >
               {action}
             </button>
@@ -426,7 +426,7 @@ export default function AgentPanel() {
       </div>
 
       {/* Input */}
-      <div className="p-4 border-t border-cine-border">
+      <div className="p-4 border-t border-light-border dark:border-cine-border">
         <div className="flex gap-2">
           <input
             type="text"
@@ -435,12 +435,12 @@ export default function AgentPanel() {
             onKeyPress={handleKeyPress}
             placeholder="输入指令或问题... (Enter 发送)"
             disabled={isProcessing}
-            className="flex-1 bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cine-accent disabled:opacity-50"
+            className="flex-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:border-cine-accent disabled:opacity-50"
           />
           <button
             onClick={handleSend}
             disabled={isProcessing || !message.trim()}
-            className="bg-cine-accent text-white p-2 rounded-lg hover:bg-cine-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-light-accent dark:bg-cine-accent text-light-text dark:text-white p-2 rounded-lg hover:bg-light-accent-hover dark:bg-cine-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send size={18} />
           </button>

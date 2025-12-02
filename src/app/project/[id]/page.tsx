@@ -4,14 +4,16 @@ import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
 import { loadProject } from '@/lib/db';
-import LeftSidebar from '@/components/layout/LeftSidebar';
+import LeftSidebarNew from '@/components/layout/LeftSidebarNew';
 import InfiniteCanvas from '@/components/canvas/InfiniteCanvas';
 import RightPanel from '@/components/layout/RightPanel';
 import Timeline from '@/components/layout/Timeline';
+import { useI18n } from '@/components/providers/I18nProvider';
 
 export default function ProjectEditorPage() {
   const params = useParams();
   const router = useRouter();
+  const { t } = useI18n();
   const { project, loadProject: loadProjectToStore, createNewProject } = useProjectStore();
 
   useEffect(() => {
@@ -19,8 +21,11 @@ export default function ProjectEditorPage() {
       const projectId = params.id as string;
 
       if (projectId === 'new') {
-        // 创建新项目
-        createNewProject('新项目', '');
+        // 新项目：从 store 中获取刚创建的项目
+        // 如果 store 中没有项目，重定向回首页
+        if (!project) {
+          router.push('/');
+        }
       } else {
         // 加载现有项目
         const loadedProject = await loadProject(projectId);
@@ -34,22 +39,24 @@ export default function ProjectEditorPage() {
     };
 
     loadOrCreateProject();
-  }, [params.id, createNewProject, loadProjectToStore, router]);
+  }, [params.id, project, loadProjectToStore, router]);
 
   if (!project) {
     return (
-      <div className="min-h-screen bg-cine-black flex items-center justify-center">
-        <div className="text-cine-text-muted">加载项目中...</div>
+      <div className="min-h-screen bg-light-bg dark:bg-cine-black flex items-center justify-center">
+        <div className="text-light-text-muted dark:text-cine-text-muted">
+          {t('common.loading')}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen bg-cine-black flex flex-col overflow-hidden">
+    <div className="h-screen bg-light-bg dark:bg-cine-black flex flex-col overflow-hidden">
       {/* Main Layout */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
-        <LeftSidebar />
+        <LeftSidebarNew />
 
         {/* Canvas */}
         <div className="flex-1 relative overflow-hidden">

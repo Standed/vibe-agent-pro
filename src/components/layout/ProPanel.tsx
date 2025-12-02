@@ -387,16 +387,16 @@ export default function ProPanel() {
       <div>
         <h3 className="text-sm font-bold mb-3">
           生成类型
-          {isSceneSelected && <span className="text-xs text-cine-text-muted ml-2">(场景级)</span>}
-          {isShotSelected && <span className="text-xs text-cine-text-muted ml-2">(镜头级)</span>}
+          {isSceneSelected && <span className="text-xs text-light-text-muted dark:text-cine-text-muted ml-2">(场景级)</span>}
+          {isShotSelected && <span className="text-xs text-light-text-muted dark:text-cine-text-muted ml-2">(镜头级)</span>}
         </h3>
         <div className={`grid gap-2 ${isShotSelected ? 'grid-cols-2' : 'grid-cols-3'}`}>
           <button
             onClick={() => setGenerationType('single')}
             className={`border rounded-lg p-3 transition-colors ${
               generationType === 'single'
-                ? 'bg-cine-accent border-cine-accent text-white'
-                : 'bg-cine-panel hover:bg-cine-border border-cine-border'
+                ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
             }`}
           >
             <ImageIcon size={20} className="mx-auto mb-1" />
@@ -409,8 +409,8 @@ export default function ProPanel() {
               onClick={() => setGenerationType('grid')}
               className={`border rounded-lg p-3 transition-colors ${
                 generationType === 'grid'
-                  ? 'bg-cine-accent border-cine-accent text-white'
-                  : 'bg-cine-panel hover:bg-cine-border border-cine-border'
+                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                  : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
               }`}
             >
               <Grid3x3 size={20} className="mx-auto mb-1" />
@@ -422,8 +422,8 @@ export default function ProPanel() {
             onClick={() => setGenerationType('video')}
             className={`border rounded-lg p-3 transition-colors ${
               generationType === 'video'
-                ? 'bg-cine-accent border-cine-accent text-white'
-                : 'bg-cine-panel hover:bg-cine-border border-cine-border'
+                ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
             }`}
           >
             <Video size={20} className="mx-auto mb-1" />
@@ -440,7 +440,7 @@ export default function ProPanel() {
             <select
               value={selectedSceneId}
               onChange={(e) => setSelectedSceneId(e.target.value)}
-              className="w-full bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cine-accent"
+              className="w-full bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:border-cine-accent"
             >
               <option value="">-- 请选择场景 --</option>
               {scenes.map((scene) => {
@@ -454,7 +454,7 @@ export default function ProPanel() {
             </select>
             {selectedSceneId && (
               <div className="mt-2 space-y-2">
-                <div className="text-xs text-cine-text-muted">
+                <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
                   提示：Grid 大小建议与镜头数量匹配（4个镜头→2x2，9个镜头→3x3）
                 </div>
 
@@ -466,14 +466,14 @@ export default function ProPanel() {
                   if (hasHistory) {
                     const latestGrid = selectedScene.gridHistory[0];
                     return (
-                      <div className="bg-cine-black/30 border border-cine-border rounded-lg p-3">
+                      <div className="bg-light-bg dark:bg-cine-black/30 border border-light-border dark:border-cine-border rounded-lg p-3">
                         <div className="flex items-center justify-between mb-2">
-                          <div className="text-xs font-medium text-cine-accent">
+                          <div className="text-xs font-medium text-light-accent dark:text-cine-accent">
                             历史记录 ({selectedScene.gridHistory.length} 条)
                           </div>
                           <button
                             onClick={() => setShowGridHistory(true)}
-                            className="text-xs text-cine-accent hover:text-cine-accent-hover transition-colors"
+                            className="text-xs text-light-accent dark:text-cine-accent hover:text-light-accent dark:text-cine-accent-hover transition-colors"
                           >
                             查看全部 →
                           </button>
@@ -482,11 +482,11 @@ export default function ProPanel() {
                           <img
                             src={latestGrid.fullGridUrl}
                             alt="Latest Grid"
-                            className="w-20 h-20 rounded border border-cine-border object-cover cursor-pointer hover:border-cine-accent transition-colors"
+                            className="w-20 h-20 rounded border border-light-border dark:border-cine-border object-cover cursor-pointer hover:border-light-accent dark:border-cine-accent transition-colors"
                             onClick={() => handleSelectGridHistory(latestGrid)}
                             title="点击重新使用此 Grid"
                           />
-                          <div className="flex-1 text-xs text-cine-text-muted">
+                          <div className="flex-1 text-xs text-light-text-muted dark:text-cine-text-muted">
                             <div className="line-clamp-2 mb-1">{latestGrid.prompt}</div>
                             <div className="text-[10px]">
                               {latestGrid.gridSize} · {latestGrid.aspectRatio}
@@ -512,8 +512,8 @@ export default function ProPanel() {
                   onClick={() => setGridSize(size)}
                   className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${
                     gridSize === size
-                      ? 'bg-cine-accent border-cine-accent text-white'
-                      : 'bg-cine-panel hover:bg-cine-border border-cine-border'
+                      ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                      : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
                   }`}
                 >
                   {size} ({size === '2x2' ? '4视图' : '9视图'})
@@ -528,7 +528,7 @@ export default function ProPanel() {
             <select
               value={aspectRatio}
               onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
-              className="w-full bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cine-accent"
+              className="w-full bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:border-cine-accent"
             >
               <option value={AspectRatio.WIDE}>16:9 (宽屏)</option>
               <option value={AspectRatio.STANDARD}>4:3 (标准)</option>
@@ -550,15 +550,15 @@ export default function ProPanel() {
                 onChange={handleFileUpload}
                 className="hidden"
               />
-              <div className="w-full bg-cine-panel hover:bg-cine-border border border-cine-border border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors">
-                <Upload size={24} className="mx-auto mb-2 text-cine-text-muted" />
-                <div className="text-xs text-cine-text-muted">
+              <div className="w-full bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors">
+                <Upload size={24} className="mx-auto mb-2 text-light-text-muted dark:text-cine-text-muted" />
+                <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
                   点击上传参考图片（可选）
                 </div>
               </div>
             </label>
             {referenceImages.length > 0 && (
-              <div className="mt-2 text-xs text-cine-text-muted">
+              <div className="mt-2 text-xs text-light-text-muted dark:text-cine-text-muted">
                 已选择 {referenceImages.length} 张图片
               </div>
             )}
@@ -577,7 +577,7 @@ export default function ProPanel() {
               ? '描述角色或场景...\n例如：一位穿着黑色西装的赛博朋克侦探，背景是霓虹灯闪烁的街道'
               : '描述你想要生成的画面...'
           }
-          className="w-full h-32 bg-cine-panel border border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-cine-accent"
+          className="w-full h-32 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:border-cine-accent"
         />
       </div>
 
@@ -589,7 +589,7 @@ export default function ProPanel() {
             <button
               key={style}
               onClick={() => setPrompt((prev) => `${prev}, ${style}风格`)}
-              className="bg-cine-panel hover:bg-cine-border border border-cine-border rounded-lg px-3 py-2 text-xs transition-colors"
+              className="bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-xs transition-colors"
             >
               {style}
             </button>
@@ -609,7 +609,7 @@ export default function ProPanel() {
           }
         }}
         disabled={isGenerating || !generationType}
-        className="w-full bg-cine-accent text-white py-3 px-4 rounded-lg font-bold hover:bg-cine-accent-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full bg-light-accent dark:bg-cine-accent text-white py-3 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:bg-cine-accent-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isGenerating ? (
           <>
@@ -632,27 +632,27 @@ export default function ProPanel() {
 
       {/* Shot Details */}
       {selectedShot && (
-        <div className="pt-4 border-t border-cine-border">
+        <div className="pt-4 border-t border-light-border dark:border-cine-border">
           <h3 className="text-sm font-bold mb-3">当前镜头详情</h3>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-cine-text-muted">编号:</span>
+              <span className="text-light-text-muted dark:text-cine-text-muted">编号:</span>
               <span className="font-mono text-xs">{selectedShot.id.split('_')[2] || '01'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-cine-text-muted">景别:</span>
+              <span className="text-light-text-muted dark:text-cine-text-muted">景别:</span>
               <span>{selectedShot.shotSize}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-cine-text-muted">运镜:</span>
+              <span className="text-light-text-muted dark:text-cine-text-muted">运镜:</span>
               <span>{selectedShot.cameraMovement}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-cine-text-muted">时长:</span>
+              <span className="text-light-text-muted dark:text-cine-text-muted">时长:</span>
               <span>{selectedShot.duration}s</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-cine-text-muted">状态:</span>
+              <span className="text-light-text-muted dark:text-cine-text-muted">状态:</span>
               <span
                 className={`text-xs px-2 py-1 rounded ${
                   selectedShot.status === 'done'
@@ -668,9 +668,9 @@ export default function ProPanel() {
               </span>
             </div>
             {selectedShot.description && (
-              <div className="mt-3 pt-3 border-t border-cine-border">
-                <div className="text-xs text-cine-text-muted mb-1">视觉描述:</div>
-                <div className="text-xs text-cine-text-muted leading-relaxed">
+              <div className="mt-3 pt-3 border-t border-light-border dark:border-cine-border">
+                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-1">视觉描述:</div>
+                <div className="text-xs text-light-text-muted dark:text-cine-text-muted leading-relaxed">
                   {selectedShot.description}
                 </div>
               </div>
@@ -678,9 +678,9 @@ export default function ProPanel() {
 
             {/* Dialogue */}
             {selectedShot.dialogue && (
-              <div className="mt-3 pt-3 border-t border-cine-border">
-                <div className="text-xs text-cine-text-muted mb-1">对话:</div>
-                <div className="text-xs text-white bg-cine-black/50 p-2 rounded leading-relaxed">
+              <div className="mt-3 pt-3 border-t border-light-border dark:border-cine-border">
+                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-1">对话:</div>
+                <div className="text-xs text-light-text dark:text-white bg-light-bg dark:bg-cine-black/50 p-2 rounded leading-relaxed">
                   "{selectedShot.dialogue}"
                 </div>
               </div>
@@ -688,8 +688,8 @@ export default function ProPanel() {
 
             {/* Narration */}
             {selectedShot.narration && (
-              <div className="mt-3 pt-3 border-t border-cine-border">
-                <div className="text-xs text-cine-text-muted mb-1">旁白:</div>
+              <div className="mt-3 pt-3 border-t border-light-border dark:border-cine-border">
+                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-1">旁白:</div>
                 <div className="text-xs text-purple-200 bg-purple-900/20 p-2 rounded leading-relaxed italic">
                   {selectedShot.narration}
                 </div>
@@ -698,34 +698,34 @@ export default function ProPanel() {
 
             {/* Grid Source Info */}
             {selectedShot.fullGridUrl && (
-              <div className="mt-3 pt-3 border-t border-cine-border">
-                <div className="text-xs text-cine-text-muted mb-2">图片来源:</div>
-                <div className="bg-cine-black/50 p-2 rounded space-y-2">
+              <div className="mt-3 pt-3 border-t border-light-border dark:border-cine-border">
+                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-2">图片来源:</div>
+                <div className="bg-light-bg dark:bg-cine-black/50 p-2 rounded space-y-2">
                   <div className="flex items-center gap-2">
-                    <Grid3x3 size={14} className="text-cine-accent" />
-                    <span className="text-xs text-cine-accent">来自 Grid 多视图切片</span>
+                    <Grid3x3 size={14} className="text-light-accent dark:text-cine-accent" />
+                    <span className="text-xs text-light-accent dark:text-cine-accent">来自 Grid 多视图切片</span>
                   </div>
                   {selectedShot.fullGridUrl && (
                     <div className="relative group">
                       <img
                         src={selectedShot.fullGridUrl}
                         alt="Grid Source"
-                        className="w-full rounded border border-cine-border"
+                        className="w-full rounded border border-light-border dark:border-cine-border"
                       />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors rounded flex items-center justify-center">
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-white">
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-light-text dark:text-white">
                           完整 Grid 图
                         </div>
                       </div>
                     </div>
                   )}
                   {selectedShot.referenceImage && (
-                    <div className="text-xs text-cine-text-muted">
+                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
                       <div className="mb-1">当前镜头使用的切片:</div>
                       <img
                         src={selectedShot.referenceImage}
                         alt="Current Slice"
-                        className="w-full rounded border border-cine-accent"
+                        className="w-full rounded border border-light-accent dark:border-cine-accent"
                       />
                     </div>
                   )}
@@ -735,7 +735,7 @@ export default function ProPanel() {
 
             {/* Generation History */}
             {selectedShot.generationHistory && selectedShot.generationHistory.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-cine-border">
+              <div className="mt-3 pt-3 border-t border-light-border dark:border-cine-border">
                 <ShotGenerationHistory
                   history={selectedShot.generationHistory}
                   onRegenerate={handleRegenerate}
