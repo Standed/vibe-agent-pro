@@ -6,9 +6,9 @@
 
 ## 📋 项目概述
 
-**项目名称**: Vibe Agent Pro  
-**版本**: v0.2.0  
-**技术栈**: Next.js 15.5.6 + React 19 + TypeScript 5.8.2 + Zustand + Tailwind CSS  
+**项目名称**: Vibe Agent Pro
+**版本**: v0.3.0
+**技术栈**: Next.js 15.5.6 + React 19 + TypeScript 5.8.2 + Zustand + Tailwind CSS
 **AI 服务**: Google Gemini 2.0 Flash + Volcano Engine (SeeDream, SeeDance, Doubao)
 
 ### 项目定位
@@ -84,6 +84,8 @@ Project (项目)
 
 ### 核心功能
 - [x] 项目创建与管理（IndexedDB 持久化）
+- [x] **新建项目对话框**（项目名称、概要、画风、画面比例选择）
+- [x] **全局画面比例设置**（16:9, 9:16, 1:1, 4:3, 21:9）
 - [x] AI 分镜生成（剧本 → 场景 + 镜头）
 - [x] 角色管理 + AI 三视图生成（1/3 面部特写 + 2/3 正侧背视图）
 - [x] 场景/位置管理 + 参考图上传
@@ -96,12 +98,23 @@ Project (项目)
 - [x] 无限画布（缩放、平移、场景卡片）
 - [x] Timeline 时间轴界面（3种状态，视频/音频轨道）
 - [x] Agent 对话模式（Doubao Pro 流式输出）
+- [x] **分镜详情面板**（参考 oiioii 风格，大图预览 + 编辑 + 历史）
 
 ### UI/UX
-- [x] Cinema Dark 主题（紫色强调色）
-- [x] 左侧栏（剧本/角色/场景/音频 标签页）
+- [x] Cinema Dark 主题（紫色强调色）+ Light 主题
+- [x] **新版左侧栏**（剧本/分镜脚本/资源 三标签页）
+  - [x] 剧本标签页：项目概要 + 剧本编辑 + AI 自动分镜
+  - [x] 分镜脚本标签页：场景分组 + 分镜卡片列表 + 缩略图预览
+  - [x] 资源标签页：角色/场景地点/音频管理
+- [x] **右侧分镜详情面板**（点击分镜显示，oiioii 风格）
+  - [x] 大图/视频预览区
+  - [x] 快速操作按钮（重生成、编辑、下载）
+  - [x] 基本信息编辑（景别、运镜、时长、描述）
+  - [x] 高级选项（对话、旁白）
+  - [x] 生成历史记录
 - [x] 右侧面板（Agent/Pro 模式切换）
 - [x] 模态框工作流（角色、场景、音频、Grid 预览）
+- [x] **国际化支持**（中/英文切换）
 
 ---
 
@@ -263,6 +276,68 @@ NEXT_PUBLIC_DOUBAO_MODEL_ID=ep-xxxxxx-xxxxx    # AI 对话
 
 ## 📝 最近变更日志
 
+### 2025-12-03 v0.3.0 - UI/UX 大升级 ⭐️
+**三栏布局重构 + oiioii 风格分镜详情面板**
+
+#### 新增功能
+- ✅ **新建项目对话框**
+  - 项目名称、概要、画风输入
+  - 画面比例选择器（16:9, 9:16, 1:1, 4:3, 21:9）
+  - 根据比例自动设置分辨率
+  - 精美的 UI 设计，支持亮色/暗色主题
+
+- ✅ **全局画面比例设置**
+  - 在 ProjectSettings 中添加 aspectRatio 字段
+  - 统一应用于整个项目的所有分镜
+  - 自动匹配分辨率配置
+
+- ✅ **新版左侧边栏**（三标签页设计）
+  - **剧本标签页**：
+    - 项目概要信息（名称、画面比例、画风）
+    - 剧本文本编辑区
+    - AI 自动分镜按钮
+  - **分镜脚本标签页** ⭐️ 最常用：
+    - 显示总镜头数统计
+    - 按场景分组显示（可折叠）
+    - 分镜卡片：缩略图 + 编号 + 景别 + 时长 + 描述
+    - 点击分镜 → 右侧显示详情面板
+    - 当前选中的分镜紫色高亮
+  - **资源标签页**：
+    - 角色列表（可添加）
+    - 场景地点列表（可添加）
+    - 音频管理（标注"后期功能"）
+
+- ✅ **右侧分镜详情面板**（参考 oiioii 风格）
+  - **大图/视频预览区**（占据主要空间）
+  - **快速操作按钮**：
+    - 重新生成、编辑、下载
+  - **基本信息编辑**：
+    - 景别、运镜、时长、视觉描述
+    - 支持编辑/查看两种模式
+  - **高级选项**（可折叠）：
+    - 对话、旁白
+  - **生成历史**（可折叠）：
+    - 显示历史版本缩略图
+    - 点击切换使用不同版本
+
+#### 交互优化
+- 点击画布中的分镜节点 → 右侧自动切换到详情面板
+- 点击左侧分镜卡片 → 右侧自动切换到详情面板 + 画布同步选中
+- 返回按钮 → 关闭详情面板，回到 Agent/Pro 模式
+
+#### 文件改动
+**新增文件**：
+- `src/components/project/NewProjectDialog.tsx` - 新建项目对话框
+- `src/components/shot/ShotDetailPanel.tsx` - 分镜详情面板
+- `src/components/layout/LeftSidebarNew.tsx` - 新版左侧边栏
+
+**修改文件**：
+- `src/types/project.ts` - 添加全局 aspectRatio
+- `src/store/useProjectStore.ts` - 更新创建项目逻辑
+- `src/app/page.tsx` - 集成新建项目对话框
+- `src/app/project/[id]/page.tsx` - 使用新左侧边栏
+- `src/components/layout/RightPanel.tsx` - 集成分镜详情面板
+
 ### 2025-01-03 v0.2.0
 - ✅ 添加场景选择器（Pro 模式 Grid 生成前）
 - ✅ Grid 生成改为基于场景而非镜头
@@ -324,10 +399,15 @@ if (currentScene && selectedSceneId !== currentScene.id) {
 ### 组件
 - `src/components/layout/ProPanel.tsx` - Pro 模式控制面板（Grid/单图/视频生成）
 - `src/components/layout/AgentPanel.tsx` - Agent 对话面板
-- `src/components/layout/LeftSidebar.tsx` - 左侧栏（剧本/角色/场景/音频）
+- `src/components/layout/LeftSidebar.tsx` - 旧版左侧栏（已废弃）
+- `src/components/layout/LeftSidebarNew.tsx` - **新版左侧栏**（剧本/分镜脚本/资源 三标签页）
+- `src/components/layout/RightPanel.tsx` - 右侧面板（Agent/Pro 模式 + 分镜详情）
+- `src/components/project/NewProjectDialog.tsx` - **新建项目对话框**
+- `src/components/shot/ShotDetailPanel.tsx` - **分镜详情面板**（oiioii 风格）
 - `src/components/grid/GridPreviewModal.tsx` - Grid 切片预览与分配
 - `src/components/canvas/InfiniteCanvas.tsx` - 无限画布
 - `src/components/layout/Timeline.tsx` - 时间轴编辑器
+- `src/components/settings/SettingsPanel.tsx` - 设置面板（主题切换、语言切换）
 
 ### 服务
 - `src/services/geminiService.ts` - Gemini API（Grid 生成）
@@ -340,6 +420,11 @@ if (currentScene && selectedSceneId !== currentScene.id) {
 
 ### 类型定义
 - `src/types/project.ts` - 所有类型定义
+
+### 国际化
+- `src/locales/zh.ts` - 中文翻译
+- `src/locales/en.ts` - 英文翻译
+- `src/components/providers/I18nProvider.tsx` - 国际化 Provider
 
 ---
 
@@ -376,5 +461,5 @@ types:
 
 ---
 
-**最后更新**: 2025-01-03  
+**最后更新**: 2025-12-03
 **维护者**: Claude Code + 西羊石团队

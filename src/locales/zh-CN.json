@@ -1,0 +1,80 @@
+{
+  "common": {
+    "appName": "Vibe Agent Pro",
+    "loading": "加载中...",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "edit": "编辑",
+    "add": "添加",
+    "close": "关闭",
+    "confirm": "确认",
+    "back": "返回",
+    "next": "下一步",
+    "previous": "上一步",
+    "search": "搜索",
+    "upload": "上传",
+    "download": "下载",
+    "settings": "设置"
+  },
+  "settings": {
+    "title": "设置",
+    "language": "语言",
+    "theme": "主题",
+    "themeLight": "浅色模式",
+    "themeDark": "深色模式",
+    "themeSystem": "跟随系统",
+    "languageZh": "简体中文",
+    "languageEn": "English"
+  },
+  "home": {
+    "title": "我的项目",
+    "createProject": "创建新项目",
+    "noProjects": "暂无项目",
+    "noProjectsDescription": "开始创建你的第一个 AI 视频项目"
+  },
+  "project": {
+    "title": "项目",
+    "newProject": "新项目",
+    "script": "剧本",
+    "characters": "角色",
+    "locations": "场景",
+    "audio": "音频",
+    "scene": "场景",
+    "shot": "镜头",
+    "timeline": "时间轴",
+    "agent": "Agent 模式",
+    "pro": "Pro 模式"
+  },
+  "agent": {
+    "placeholder": "输入你的创作想法...",
+    "send": "发送",
+    "thinking": "思考中...",
+    "quickActions": "快速操作",
+    "generateStoryboard": "生成分镜",
+    "createCharacter": "创建角色",
+    "addScene": "添加场景"
+  },
+  "pro": {
+    "generateGrid": "生成 Grid",
+    "generateSingle": "生成单图",
+    "generateVideo": "生成视频",
+    "selectScene": "选择场景",
+    "prompt": "提示词",
+    "referenceImage": "参考图片",
+    "gridHistory": "Grid 历史"
+  },
+  "timeline": {
+    "video": "视频轨道",
+    "audio": "音频轨道",
+    "play": "播放",
+    "pause": "暂停",
+    "stop": "停止"
+  },
+  "canvas": {
+    "zoom": "缩放",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "resetZoom": "重置缩放"
+  }
+}

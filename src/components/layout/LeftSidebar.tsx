@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { FileText, Users, MapPin, Volume2, X, Upload, Trash2, Loader2, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FileText, Users, MapPin, Volume2, X, Upload, Trash2, Loader2, Sparkles, ChevronLeft, ChevronRight, Home } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
 import { generateStoryboardFromScript, analyzeScript, groupShotsIntoScenes } from '@/services/storyboardService';
 import type { Character, Location, LocationType } from '@/types/project';
@@ -9,6 +10,7 @@ import type { Character, Location, LocationType } from '@/types/project';
 type Tab = 'script' | 'characters' | 'locations' | 'audio';
 
 export default function LeftSidebar() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('script');
   const [isGenerating, setIsGenerating] = useState(false);
   const {
@@ -284,23 +286,35 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
   };
 
   return (
-    <div className={`bg-cine-dark border-r border-cine-border flex flex-col transition-all duration-300 ${leftSidebarCollapsed ? 'w-12' : 'w-80'}`}>
+    <div className={`bg-light-panel dark:bg-cine-dark border-r border-light-border dark:border-cine-border flex flex-col transition-all duration-300 ${leftSidebarCollapsed ? 'w-12' : 'w-80'}`}>
       {leftSidebarCollapsed ? (
         /* Collapsed State */
         <div className="flex flex-col items-center h-full">
           <button
             onClick={toggleLeftSidebar}
-            className="p-3 hover:bg-cine-panel transition-colors mt-4"
+            className="p-3 hover:bg-light-bg dark:hover:bg-cine-panel transition-colors mt-4"
             title="展开侧边栏"
           >
-            <ChevronRight size={20} className="text-cine-text-muted" />
+            <ChevronRight size={20} className="text-light-text-muted dark:text-cine-text-muted" />
           </button>
         </div>
       ) : (
         /* Expanded State */
         <>
+          {/* Home Button */}
+          <div className="p-3 border-b border-light-border dark:border-cine-border">
+            <button
+              onClick={() => router.push('/')}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-light-panel dark:bg-cine-panel hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 text-light-text-muted dark:text-cine-text-muted hover:text-light-accent dark:hover:text-cine-accent transition-colors"
+              title="返回首页"
+            >
+              <Home size={18} />
+              <span className="text-sm font-medium">返回首页</span>
+            </button>
+          </div>
+
           {/* Tabs */}
-          <div className="flex border-b border-cine-border relative">
+          <div className="flex border-b border-light-border dark:border-cine-border relative">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -309,8 +323,8 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 transition-colors ${
                 activeTab === tab.id
-                  ? 'bg-cine-panel text-cine-accent border-b-2 border-cine-accent'
-                  : 'text-cine-text-muted hover:text-white hover:bg-cine-panel/50'
+                  ? 'bg-light-panel dark:bg-cine-panel text-light-accent dark:text-cine-accent border-b-2 border-light-accent dark:border-cine-accent'
+                  : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-bg/50 dark:hover:bg-cine-panel/50'
               }`}
             >
               <Icon size={18} />
@@ -321,10 +335,10 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
         {/* Collapse Button */}
         <button
           onClick={toggleLeftSidebar}
-          className="absolute right-2 top-3 p-1 hover:bg-cine-panel rounded transition-colors"
+          className="absolute right-2 top-3 p-1 hover:bg-light-bg dark:hover:bg-cine-panel rounded transition-colors"
           title="收起侧边栏"
         >
-          <ChevronLeft size={16} className="text-cine-text-muted" />
+          <ChevronLeft size={16} className="text-light-text-muted dark:text-cine-text-muted" />
         </button>
       </div>
 
@@ -332,17 +346,17 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'script' && (
           <div>
-            <h3 className="text-sm font-bold mb-3">剧本</h3>
+            <h3 className="text-sm font-bold mb-3 text-light-text dark:text-white">剧本</h3>
             <textarea
               value={scriptContent}
               onChange={(e) => setScriptContent(e.target.value)}
               placeholder="在这里输入你的剧本...&#10;&#10;示例：&#10;场景1: 清晨的咖啡馆&#10;阳光透过玻璃窗洒进来，一位年轻女性独自坐在角落..."
-              className="w-full h-64 bg-cine-panel border border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-cine-accent"
+              className="w-full h-64 bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm text-light-text dark:text-white resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
             />
             <button
               onClick={handleAIStoryboard}
               disabled={isGenerating}
-              className="mt-3 w-full bg-cine-accent text-white py-2 px-4 rounded-lg font-bold hover:bg-cine-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-3 w-full bg-light-accent dark:bg-cine-accent text-white py-2 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isGenerating ? 'AI 分镜生成中...' : 'AI 自动分镜'}
             </button>
@@ -352,10 +366,10 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
         {activeTab === 'characters' && (
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold">角色列表</h3>
+              <h3 className="text-sm font-bold text-light-text dark:text-white">角色列表</h3>
               <button
                 onClick={() => setShowCharacterModal(true)}
-                className="text-xs bg-cine-panel px-3 py-1 rounded hover:bg-cine-border"
+                className="text-xs bg-light-panel dark:bg-cine-panel px-3 py-1 rounded hover:bg-light-border dark:hover:bg-cine-border text-light-text dark:text-white"
               >
                 + 添加
               </button>
@@ -363,9 +377,9 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
             {project?.characters && project.characters.length > 0 ? (
               <div className="space-y-2">
                 {project.characters.map((char) => (
-                  <div key={char.id} className="bg-cine-panel p-3 rounded border border-cine-border">
+                  <div key={char.id} className="bg-light-panel dark:bg-cine-panel p-3 rounded border border-light-border dark:border-cine-border">
                     <div className="flex items-start justify-between mb-2">
-                      <div className="font-medium text-sm">{char.name}</div>
+                      <div className="font-medium text-sm text-light-text dark:text-white">{char.name}</div>
                       <button
                         onClick={() => deleteCharacter(char.id)}
                         className="text-red-400 hover:text-red-300"
@@ -373,7 +387,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
                         <Trash2 size={14} />
                       </button>
                     </div>
-                    <div className="text-xs text-cine-text-muted mb-2">{char.description}</div>
+                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-2">{char.description}</div>
                     {char.referenceImages && char.referenceImages.length > 0 && (
                       <div className="flex gap-1 flex-wrap">
                         {char.referenceImages.map((img, idx) => (
@@ -390,7 +404,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
                 ))}
               </div>
             ) : (
-              <div className="text-sm text-cine-text-muted text-center py-8">
+              <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8">
                 暂无角色
               </div>
             )}
@@ -400,10 +414,10 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
         {activeTab === 'locations' && (
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold">场景列表</h3>
+              <h3 className="text-sm font-bold text-light-text dark:text-white">场景列表</h3>
               <button
                 onClick={() => setShowLocationModal(true)}
-                className="text-xs bg-cine-panel px-3 py-1 rounded hover:bg-cine-border"
+                className="text-xs bg-light-panel dark:bg-cine-panel px-3 py-1 rounded hover:bg-light-border dark:hover:bg-cine-border text-light-text dark:text-white"
               >
                 + 添加
               </button>
@@ -411,11 +425,11 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
             {project?.locations && project.locations.length > 0 ? (
               <div className="space-y-2">
                 {project.locations.map((loc) => (
-                  <div key={loc.id} className="bg-cine-panel p-3 rounded border border-cine-border">
+                  <div key={loc.id} className="bg-light-panel dark:bg-cine-panel p-3 rounded border border-light-border dark:border-cine-border">
                     <div className="flex items-start justify-between mb-2">
                       <div>
-                        <div className="font-medium text-sm">{loc.name}</div>
-                        <div className="text-xs text-cine-accent">{loc.type === 'interior' ? '室内' : '室外'}</div>
+                        <div className="font-medium text-sm text-light-text dark:text-white">{loc.name}</div>
+                        <div className="text-xs text-light-accent dark:text-cine-accent">{loc.type === 'interior' ? '室内' : '室外'}</div>
                       </div>
                       <button
                         onClick={() => deleteLocation(loc.id)}
@@ -424,7 +438,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
                         <Trash2 size={14} />
                       </button>
                     </div>
-                    <div className="text-xs text-cine-text-muted mb-2">{loc.description}</div>
+                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-2">{loc.description}</div>
                     {loc.referenceImages && loc.referenceImages.length > 0 && (
                       <div className="flex gap-1 flex-wrap">
                         {loc.referenceImages.map((img, idx) => (
@@ -441,7 +455,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
                 ))}
               </div>
             ) : (
-              <div className="text-sm text-cine-text-muted text-center py-8">
+              <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8">
                 暂无场景
               </div>
             )}
@@ -451,10 +465,10 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
         {activeTab === 'audio' && (
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold">音频素材</h3>
+              <h3 className="text-sm font-bold text-light-text dark:text-white">音频素材</h3>
               <button
                 onClick={() => setShowAudioModal(true)}
-                className="text-xs bg-cine-panel px-3 py-1 rounded hover:bg-cine-border"
+                className="text-xs bg-light-panel dark:bg-cine-panel px-3 py-1 rounded hover:bg-light-border dark:hover:bg-cine-border text-light-text dark:text-white"
               >
                 + 上传
               </button>
@@ -462,9 +476,9 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
             {project?.audioAssets && project.audioAssets.length > 0 ? (
               <div className="space-y-2">
                 {project.audioAssets.map((audio) => (
-                  <div key={audio.id} className="bg-cine-panel p-3 rounded border border-cine-border">
+                  <div key={audio.id} className="bg-light-panel dark:bg-cine-panel p-3 rounded border border-light-border dark:border-cine-border">
                     <div className="flex items-start justify-between mb-2">
-                      <div className="font-medium text-sm">{audio.name}</div>
+                      <div className="font-medium text-sm text-light-text dark:text-white">{audio.name}</div>
                       <button
                         onClick={() => {
                           const { deleteAudioAsset } = useProjectStore.getState();
@@ -475,14 +489,14 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
                         <Trash2 size={14} />
                       </button>
                     </div>
-                    <div className="text-xs text-cine-text-muted">
+                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
                       类型: {audio.type === 'music' ? '音乐' : audio.type === 'voice' ? '语音' : '音效'}
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-sm text-cine-text-muted text-center py-8">
+              <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8">
                 暂无音频
               </div>
             )}
@@ -495,63 +509,63 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
       {/* Character Modal */}
       {showCharacterModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-cine-dark border border-cine-border rounded-lg p-6 w-96 max-h-[80vh] overflow-y-auto">
+          <div className="bg-light-panel dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-lg p-6 w-96 max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold">添加角色</h3>
-              <button onClick={() => setShowCharacterModal(false)}>
+              <h3 className="text-lg font-bold text-light-text dark:text-white">添加角色</h3>
+              <button onClick={() => setShowCharacterModal(false)} className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white">
                 <X size={20} />
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">角色名称</label>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">角色名称</label>
                 <input
                   type="text"
                   value={characterForm.name}
                   onChange={(e) =>
                     setCharacterForm((prev) => ({ ...prev, name: e.target.value }))
                   }
-                  className="w-full bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cine-accent"
+                  className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm text-light-text dark:text-white focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                   placeholder="例如：李明"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">角色描述</label>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">角色描述</label>
                 <textarea
                   value={characterForm.description}
                   onChange={(e) =>
                     setCharacterForm((prev) => ({ ...prev, description: e.target.value }))
                   }
-                  className="w-full bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-cine-accent"
+                  className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm text-light-text dark:text-white resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                   placeholder="例如：30岁，侦探"
                   rows={3}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">外观特征</label>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">外观特征</label>
                 <textarea
                   value={characterForm.appearance}
                   onChange={(e) =>
                     setCharacterForm((prev) => ({ ...prev, appearance: e.target.value }))
                   }
-                  className="w-full bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-cine-accent"
+                  className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm text-light-text dark:text-white resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                   placeholder="例如：黑色短发，深色风衣，红色眼睛"
                   rows={3}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">画风</label>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">画风</label>
                 <input
                   type="text"
                   value={characterForm.artStyle}
                   onChange={(e) =>
                     setCharacterForm((prev) => ({ ...prev, artStyle: e.target.value }))
                   }
-                  className="w-full bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cine-accent"
+                  className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm text-light-text dark:text-white focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                   placeholder="例如：赛博朋克、动画、写实"
                 />
               </div>
@@ -575,12 +589,12 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
                 )}
               </button>
 
-              <div className="text-xs text-cine-text-muted text-center">
+              <div className="text-xs text-light-text-muted dark:text-cine-text-muted text-center">
                 或手动上传参考图片 ↓
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">参考图片</label>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">参考图片</label>
                 <label className="block">
                   <input
                     type="file"
@@ -589,9 +603,9 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
                     onChange={(e) => handleImageUpload(e, 'character')}
                     className="hidden"
                   />
-                  <div className="w-full bg-cine-panel hover:bg-cine-border border border-cine-border border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors">
-                    <Upload size={24} className="mx-auto mb-2 text-cine-text-muted" />
-                    <div className="text-xs text-cine-text-muted">点击上传参考图片</div>
+                  <div className="w-full bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors">
+                    <Upload size={24} className="mx-auto mb-2 text-light-text-muted dark:text-cine-text-muted" />
+                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted">点击上传参考图片</div>
                   </div>
                 </label>
                 {characterForm.referenceImages.length > 0 && (
@@ -624,7 +638,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
 
               <button
                 onClick={handleAddCharacter}
-                className="w-full bg-cine-accent text-white py-2 px-4 rounded-lg font-bold hover:bg-cine-accent-hover transition-colors"
+                className="w-full bg-light-accent dark:bg-cine-accent text-white py-2 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors"
               >
                 添加角色
               </button>
@@ -636,30 +650,30 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
       {/* Location Modal */}
       {showLocationModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-cine-dark border border-cine-border rounded-lg p-6 w-96 max-h-[80vh] overflow-y-auto">
+          <div className="bg-light-panel dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-lg p-6 w-96 max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold">添加场景</h3>
-              <button onClick={() => setShowLocationModal(false)}>
+              <h3 className="text-lg font-bold text-light-text dark:text-white">添加场景</h3>
+              <button onClick={() => setShowLocationModal(false)} className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white">
                 <X size={20} />
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">场景名称</label>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">场景名称</label>
                 <input
                   type="text"
                   value={locationForm.name}
                   onChange={(e) =>
                     setLocationForm((prev) => ({ ...prev, name: e.target.value }))
                   }
-                  className="w-full bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cine-accent"
+                  className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm text-light-text dark:text-white focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                   placeholder="例如：咖啡馆"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">场景类型</label>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">场景类型</label>
                 <select
                   value={locationForm.type}
                   onChange={(e) =>
@@ -668,7 +682,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
                       type: e.target.value as LocationType,
                     }))
                   }
-                  className="w-full bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cine-accent"
+                  className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm text-light-text dark:text-white focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                 >
                   <option value="interior">室内</option>
                   <option value="exterior">室外</option>
@@ -676,20 +690,20 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">场景描述</label>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">场景描述</label>
                 <textarea
                   value={locationForm.description}
                   onChange={(e) =>
                     setLocationForm((prev) => ({ ...prev, description: e.target.value }))
                   }
-                  className="w-full bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-cine-accent"
+                  className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm text-light-text dark:text-white resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                   placeholder="例如：温馨的日式咖啡馆，阳光透过玻璃窗洒进来"
                   rows={3}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">参考图片</label>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">参考图片</label>
                 <label className="block">
                   <input
                     type="file"
@@ -698,9 +712,9 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
                     onChange={(e) => handleImageUpload(e, 'location')}
                     className="hidden"
                   />
-                  <div className="w-full bg-cine-panel hover:bg-cine-border border border-cine-border border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors">
-                    <Upload size={24} className="mx-auto mb-2 text-cine-text-muted" />
-                    <div className="text-xs text-cine-text-muted">点击上传参考图片</div>
+                  <div className="w-full bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors">
+                    <Upload size={24} className="mx-auto mb-2 text-light-text-muted dark:text-cine-text-muted" />
+                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted">点击上传参考图片</div>
                   </div>
                 </label>
                 {locationForm.referenceImages.length > 0 && (
@@ -733,7 +747,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
 
               <button
                 onClick={handleAddLocation}
-                className="w-full bg-cine-accent text-white py-2 px-4 rounded-lg font-bold hover:bg-cine-accent-hover transition-colors"
+                className="w-full bg-light-accent dark:bg-cine-accent text-white py-2 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors"
               >
                 添加场景
               </button>
@@ -745,30 +759,30 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
       {/* Audio Upload Modal */}
       {showAudioModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-cine-dark border border-cine-border rounded-lg p-6 w-96">
+          <div className="bg-light-panel dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-lg p-6 w-96">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold">上传音频</h3>
-              <button onClick={() => setShowAudioModal(false)}>
+              <h3 className="text-lg font-bold text-light-text dark:text-white">上传音频</h3>
+              <button onClick={() => setShowAudioModal(false)} className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white">
                 <X size={20} />
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">音频名称</label>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">音频名称</label>
                 <input
                   type="text"
                   value={audioForm.name}
                   onChange={(e) =>
                     setAudioForm((prev) => ({ ...prev, name: e.target.value }))
                   }
-                  className="w-full bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cine-accent"
+                  className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm text-light-text dark:text-white focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                   placeholder="例如：背景音乐1"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">音频类型</label>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">音频类型</label>
                 <select
                   value={audioForm.type}
                   onChange={(e) =>
@@ -777,7 +791,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
                       type: e.target.value as 'music' | 'voice' | 'sfx',
                     }))
                   }
-                  className="w-full bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cine-accent"
+                  className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm text-light-text dark:text-white focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                 >
                   <option value="music">音乐</option>
                   <option value="voice">语音</option>
@@ -786,7 +800,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">选择文件</label>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">选择文件</label>
                 <label className="block">
                   <input
                     type="file"
@@ -794,9 +808,9 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
                     onChange={handleAudioFileSelect}
                     className="hidden"
                   />
-                  <div className="w-full bg-cine-panel hover:bg-cine-border border border-cine-border border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors">
-                    <Upload size={24} className="mx-auto mb-2 text-cine-text-muted" />
-                    <div className="text-xs text-cine-text-muted">
+                  <div className="w-full bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors">
+                    <Upload size={24} className="mx-auto mb-2 text-light-text-muted dark:text-cine-text-muted" />
+                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
                       {audioForm.file ? audioForm.file.name : '点击选择音频文件'}
                     </div>
                   </div>
@@ -806,7 +820,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
               <button
                 onClick={handleAddAudio}
                 disabled={!audioForm.file}
-                className="w-full bg-cine-accent text-white py-2 px-4 rounded-lg font-bold hover:bg-cine-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-light-accent dark:bg-cine-accent text-white py-2 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 上传音频
               </button>

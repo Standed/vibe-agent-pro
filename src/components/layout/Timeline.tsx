@@ -45,10 +45,10 @@ export default function Timeline() {
 
   if (timelineMode === 'collapsed') {
     return (
-      <div className="h-12 bg-cine-dark border-t border-cine-border flex items-center justify-between px-4">
+      <div className="h-12 bg-light-panel dark:bg-cine-dark border-t border-light-border dark:border-cine-border flex items-center justify-between px-4">
         <button
           onClick={toggleTimeline}
-          className="flex items-center gap-2 text-sm text-cine-text-muted hover:text-white transition-colors"
+          className="flex items-center gap-2 text-sm text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-colors"
         >
           <ChevronUp size={16} />
           <span className="font-bold">TIMELINE</span>
@@ -56,15 +56,15 @@ export default function Timeline() {
         <div className="flex items-center gap-3">
           <button
             onClick={togglePlayPause}
-            className="p-1.5 rounded hover:bg-cine-panel transition-colors"
+            className="p-1.5 rounded hover:bg-light-bg dark:bg-cine-panel transition-colors"
           >
             {isPlaying ? (
-              <Pause size={16} className="text-cine-accent" />
+              <Pause size={16} className="text-light-accent dark:text-cine-accent" />
             ) : (
-              <Play size={16} className="text-cine-accent" />
+              <Play size={16} className="text-light-accent dark:text-cine-accent" />
             )}
           </button>
-          <span className="text-xs text-cine-text-muted font-mono">
+          <span className="text-xs text-light-text-muted dark:text-cine-text-muted font-mono">
             {formatTime(currentTime)} / {formatTime(totalDuration)}
           </span>
         </div>
@@ -75,38 +75,38 @@ export default function Timeline() {
   const height = timelineMode === 'default' ? 'h-56' : 'h-96';
 
   return (
-    <div className={`${height} bg-cine-dark border-t border-cine-border flex flex-col transition-all duration-300`}>
+    <div className={`${height} bg-light-panel dark:bg-cine-dark border-t border-light-border dark:border-cine-border flex flex-col transition-all duration-300`}>
       {/* Timeline Header */}
-      <div className="h-14 flex items-center justify-between px-4 border-b border-cine-border bg-cine-black/30">
+      <div className="h-14 flex items-center justify-between px-4 border-b border-light-border dark:border-cine-border bg-light-bg dark:bg-cine-black/30">
         <div className="flex items-center gap-4">
           <button
             onClick={toggleTimeline}
-            className="flex items-center gap-2 text-xs font-bold text-cine-text-muted hover:text-white transition-colors uppercase tracking-wider"
+            className="flex items-center gap-2 text-xs font-bold text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-colors uppercase tracking-wider"
           >
             <ChevronDown size={16} />
             <span>Timeline</span>
           </button>
 
           {/* Playback Controls */}
-          <div className="flex items-center gap-1 border-l border-cine-border pl-4">
-            <button className="p-1.5 rounded hover:bg-cine-panel transition-colors" title="回到开始">
-              <SkipBack size={14} className="text-cine-text-muted hover:text-white" />
+          <div className="flex items-center gap-1 border-l border-light-border dark:border-cine-border pl-4">
+            <button className="p-1.5 rounded hover:bg-light-bg dark:bg-cine-panel transition-colors" title="回到开始">
+              <SkipBack size={14} className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white" />
             </button>
             <button
               onClick={togglePlayPause}
-              className="p-1.5 rounded hover:bg-cine-panel transition-colors"
+              className="p-1.5 rounded hover:bg-light-bg dark:bg-cine-panel transition-colors"
               title={isPlaying ? '暂停' : '播放'}
             >
               {isPlaying ? (
-                <Pause size={16} className="text-cine-accent" fill="currentColor" />
+                <Pause size={16} className="text-light-accent dark:text-cine-accent" fill="currentColor" />
               ) : (
-                <Play size={16} className="text-cine-accent" fill="currentColor" />
+                <Play size={16} className="text-light-accent dark:text-cine-accent" fill="currentColor" />
               )}
             </button>
-            <button className="p-1.5 rounded hover:bg-cine-panel transition-colors" title="跳到结尾">
-              <SkipForward size={14} className="text-cine-text-muted hover:text-white" />
+            <button className="p-1.5 rounded hover:bg-light-bg dark:bg-cine-panel transition-colors" title="跳到结尾">
+              <SkipForward size={14} className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white" />
             </button>
-            <span className="text-xs text-cine-text-muted font-mono ml-2">
+            <span className="text-xs text-light-text-muted dark:text-cine-text-muted font-mono ml-2">
               {formatTime(currentTime)} / {formatTime(totalDuration)}
             </span>
           </div>
@@ -114,13 +114,13 @@ export default function Timeline() {
 
         <div className="flex items-center gap-3">
           {/* Preview Button */}
-          <button className="flex items-center gap-1.5 text-xs bg-cine-panel hover:bg-cine-border border border-cine-border text-cine-text-muted hover:text-white px-3 py-1.5 rounded transition-colors">
+          <button className="flex items-center gap-1.5 text-xs bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:text-white px-3 py-1.5 rounded transition-colors">
             <Film size={14} />
             <span>预览</span>
           </button>
 
           {/* Export Button */}
-          <button className="flex items-center gap-1.5 text-xs bg-cine-accent text-white px-4 py-1.5 rounded font-bold hover:bg-cine-accent-hover transition-colors">
+          <button className="flex items-center gap-1.5 text-xs bg-light-accent dark:bg-cine-accent text-light-text dark:text-white px-4 py-1.5 rounded font-bold hover:bg-light-accent-hover dark:bg-cine-accent-hover transition-colors">
             <Download size={14} />
             <span>导出视频</span>
           </button>
@@ -130,12 +130,12 @@ export default function Timeline() {
       {/* Timeline Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Track Labels */}
-        <div className="w-20 bg-cine-black/30 border-r border-cine-border flex flex-col">
-          <div className="flex-1 flex items-center justify-center border-b border-cine-border">
-            <span className="text-[10px] font-bold text-cine-text-muted uppercase tracking-wider">Video</span>
+        <div className="w-20 bg-light-bg dark:bg-cine-black/30 border-r border-light-border dark:border-cine-border flex flex-col">
+          <div className="flex-1 flex items-center justify-center border-b border-light-border dark:border-cine-border">
+            <span className="text-[10px] font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider">Video</span>
           </div>
           <div className="flex-1 flex items-center justify-center">
-            <span className="text-[10px] font-bold text-cine-text-muted uppercase tracking-wider">Audio</span>
+            <span className="text-[10px] font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider">Audio</span>
           </div>
         </div>
 
@@ -143,7 +143,7 @@ export default function Timeline() {
         <div className="flex-1 overflow-x-auto overflow-y-hidden">
           <div className="relative" style={{ minWidth: `${totalDuration * 10}px` }}>
             {/* Time Ruler */}
-            <div className="h-8 bg-cine-black/50 border-b border-cine-border relative">
+            <div className="h-8 bg-light-bg dark:bg-cine-black/50 border-b border-light-border dark:border-cine-border relative">
               {timeMarkers.map((time) => (
                 <div
                   key={time}
@@ -151,7 +151,7 @@ export default function Timeline() {
                   style={{ left: `${(time / totalDuration) * 100}%` }}
                 >
                   <div className="h-2 w-px bg-cine-border"></div>
-                  <span className="text-[9px] text-cine-text-muted font-mono mt-0.5">
+                  <span className="text-[9px] text-light-text-muted dark:text-cine-text-muted font-mono mt-0.5">
                     {formatTime(time)}
                   </span>
                 </div>
@@ -159,15 +159,15 @@ export default function Timeline() {
 
               {/* Playhead */}
               <div
-                className="absolute top-0 bottom-0 w-0.5 bg-cine-accent z-10"
+                className="absolute top-0 bottom-0 w-0.5 bg-light-accent dark:bg-cine-accent z-10"
                 style={{ left: `${(currentTime / totalDuration) * 100}%` }}
               >
-                <div className="w-3 h-3 bg-cine-accent rounded-sm -ml-1.5 -mt-0.5"></div>
+                <div className="w-3 h-3 bg-light-accent dark:bg-cine-accent rounded-sm -ml-1.5 -mt-0.5"></div>
               </div>
             </div>
 
             {/* Video Track */}
-            <div className="h-24 bg-cine-panel border-b border-cine-border relative p-2">
+            <div className="h-24 bg-light-bg dark:bg-cine-panel border-b border-light-border dark:border-cine-border relative p-2">
               {videoTrack?.clips.map((clip) => {
                 const shot = project?.shots.find((s) => s.id === clip.shotId);
                 return (
@@ -194,7 +194,7 @@ export default function Timeline() {
 
                     {/* Clip info */}
                     <div className="relative z-10 p-2 flex flex-col justify-between h-full">
-                      <div className="text-[10px] font-bold text-white truncate">
+                      <div className="text-[10px] font-bold text-light-text dark:text-white truncate">
                         {shot?.id.split('_').pop() || 'Shot'}
                       </div>
                       <div className="text-[9px] text-purple-200 font-mono">
@@ -212,7 +212,7 @@ export default function Timeline() {
               {/* Drop zone hint */}
               {!videoTrack?.clips.length && (
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-xs text-cine-text-muted">
+                  <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
                     从画布拖拽镜头到此处
                   </span>
                 </div>
@@ -220,10 +220,10 @@ export default function Timeline() {
             </div>
 
             {/* Audio Track */}
-            <div className="h-24 bg-cine-panel relative p-2">
+            <div className="h-24 bg-light-bg dark:bg-cine-panel relative p-2">
               {/* Empty state */}
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-xs text-cine-text-muted">
+                <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
                   暂无音频轨道
                 </span>
               </div>
