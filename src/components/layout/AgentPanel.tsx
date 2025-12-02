@@ -6,33 +6,37 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { sendAgentMessage, processUserCommand, generateQuickActions, type AgentMessage } from '@/services/agentService';
 import { generateMultiViewGrid } from '@/services/geminiService';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
-import { AspectRatio, ImageSize } from '@/types/project';
-
-interface Message {
-  role: 'user' | 'agent';
-  content: string;
-}
+import { AspectRatio, ImageSize, ChatMessage } from '@/types/project';
 
 export default function AgentPanel() {
   const [message, setMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [chatHistory, setChatHistory] = useState<Message[]>([
-    {
-      role: 'agent',
-      content: '你好！我是 Vibe Agent，你的 AI 影视创作助手。你只管描述创意，我来帮你操作参数和生成内容。',
-    },
-  ]);
   const [streamingMessage, setStreamingMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { project, selectedShotId, updateShot } = useProjectStore();
+  const { project, selectedShotId, updateShot, addChatMessage } = useProjectStore();
   const shots = project?.shots || [];
   const scenes = project?.scenes || [];
+
+  // Get chat history from project, or initialize with welcome message
+  const chatHistory = project?.chatHistory || [];
+
+  // Initialize chat history with welcome message if empty
+  useEffect(() => {
+    if (project && (!project.chatHistory || project.chatHistory.length === 0)) {
+      addChatMessage({
+        id: `msg_${Date.now()}`,
+        role: 'assistant',
+        content: '你好！我是 Vibe Agent，你的 AI 影视创作助手。你只管描述创意，我来帮你操作参数和生成内容。',
+        timestamp: new Date(),
+      });
+    }
+  }, [project?.id]); // Only run when project changes
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatHistory, streamingMessage]);
+  }, [chatHistory.length, streamingMessage]);
 
   // Generate context for AI
   const getAgentContext = () => {
@@ -57,7 +61,12 @@ export default function AgentPanel() {
     setMessage('');
 
     // Add user message
-    setChatHistory((prev) => [...prev, { role: 'user', content: userMessage }]);
+    addChatMessage({
+      id: `msg_${Date.now()}`,
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date(),
+    });
     setIsProcessing(true);
     setStreamingMessage('');
 
@@ -69,10 +78,12 @@ export default function AgentPanel() {
 
       if (action.type !== 'none' && action.message) {
         // Add action acknowledgment
-        setChatHistory((prev) => [
-          ...prev,
-          { role: 'agent', content: action.message },
-        ]);
+        addChatMessage({
+          id: `msg_${Date.now()}_ack`,
+          role: 'assistant',
+          content: action.message,
+          timestamp: new Date(),
+        });
 
         // Execute the actual action
         try {
@@ -105,10 +116,12 @@ export default function AgentPanel() {
               status: 'done',
             });
 
-            setChatHistory((prev) => [
-              ...prev,
-              { role: 'agent', content: `Grid 生成成功！已生成 ${result.slices.length} 个视图。` },
-            ]);
+            addChatMessage({
+              id: `msg_${Date.now()}_grid_success`,
+              role: 'assistant',
+              content: `Grid 生成成功！已生成 ${result.slices.length} 个视图。`,
+              timestamp: new Date(),
+            });
           } else if (action.type === 'generate_video') {
             // 生成视频
             if (!selectedShotId) {
@@ -137,10 +150,12 @@ export default function AgentPanel() {
               status: 'done',
             });
 
-            setChatHistory((prev) => [
-              ...prev,
-              { role: 'agent', content: `视频生成成功！已保存到镜头中。` },
-            ]);
+            addChatMessage({
+              id: `msg_${Date.now()}_video_success`,
+              role: 'assistant',
+              content: `视频生成成功！已保存到镜头中。`,
+              timestamp: new Date(),
+            });
           } else if (action.type === 'batch_generate_scene') {
             // 批量生成场景下的所有镜头
             const selectedShot = shots.find((s) => s.id === selectedShotId);
@@ -156,13 +171,12 @@ export default function AgentPanel() {
             const sceneShotIds = currentScene.shotIds;
             const sceneShots = shots.filter((s) => sceneShotIds.includes(s.id));
 
-            setChatHistory((prev) => [
-              ...prev,
-              {
-                role: 'agent',
-                content: `开始为场景"${currentScene.name}"批量生成 ${sceneShots.length} 个镜头的 Grid 图片...`,
-              },
-            ]);
+            addChatMessage({
+              id: `msg_${Date.now()}_batch_start`,
+              role: 'assistant',
+              content: `开始为场景"${currentScene.name}"批量生成 ${sceneShots.length} 个镜头的 Grid 图片...`,
+              timestamp: new Date(),
+            });
 
             let successCount = 0;
             let failCount = 0;
@@ -187,28 +201,18 @@ export default function AgentPanel() {
                 });
 
                 successCount++;
-
-                // Update progress
-                setChatHistory((prev) => [
-                  ...prev.slice(0, -1),
-                  {
-                    role: 'agent',
-                    content: `正在生成: ${successCount}/${sceneShots.length} 个镜头已完成...`,
-                  },
-                ]);
               } catch (error) {
                 console.error(`Failed to generate grid for shot ${shot.id}:`, error);
                 failCount++;
               }
             }
 
-            setChatHistory((prev) => [
-              ...prev.slice(0, -1),
-              {
-                role: 'agent',
-                content: `批量生成完成！成功: ${successCount} 个，失败: ${failCount} 个。`,
-              },
-            ]);
+            addChatMessage({
+              id: `msg_${Date.now()}_batch_complete`,
+              role: 'assistant',
+              content: `批量生成完成！成功: ${successCount} 个，失败: ${failCount} 个。`,
+              timestamp: new Date(),
+            });
           } else if (action.type === 'batch_generate_videos') {
             // 批量生成所有有图片的镜头的视频
             const shotsWithImages = shots.filter(
@@ -220,13 +224,12 @@ export default function AgentPanel() {
               throw new Error('没有可用于生成视频的图片，请先生成 Grid 图片');
             }
 
-            setChatHistory((prev) => [
-              ...prev,
-              {
-                role: 'agent',
-                content: `开始批量生成 ${shotsWithImages.length} 个镜头的视频...这可能需要较长时间，请耐心等待。`,
-              },
-            ]);
+            addChatMessage({
+              id: `msg_${Date.now()}_batch_video_start`,
+              role: 'assistant',
+              content: `开始批量生成 ${shotsWithImages.length} 个镜头的视频...这可能需要较长时间，请耐心等待。`,
+              timestamp: new Date(),
+            });
 
             const volcanoService = new VolcanoEngineService();
             let successCount = 0;
@@ -253,15 +256,6 @@ export default function AgentPanel() {
                 });
 
                 successCount++;
-
-                // Update progress
-                setChatHistory((prev) => [
-                  ...prev.slice(0, -1),
-                  {
-                    role: 'agent',
-                    content: `正在生成: ${successCount}/${shotsWithImages.length} 个视频已完成...`,
-                  },
-                ]);
               } catch (error) {
                 console.error(`Failed to generate video for shot ${shot.id}:`, error);
                 updateShot(shot.id, { status: 'error' });
@@ -269,37 +263,30 @@ export default function AgentPanel() {
               }
             }
 
-            setChatHistory((prev) => [
-              ...prev.slice(0, -1),
-              {
-                role: 'agent',
-                content: `批量视频生成完成！成功: ${successCount} 个，失败: ${failCount} 个。`,
-              },
-            ]);
+            addChatMessage({
+              id: `msg_${Date.now()}_batch_video_complete`,
+              role: 'assistant',
+              content: `批量视频生成完成！成功: ${successCount} 个，失败: ${failCount} 个。`,
+              timestamp: new Date(),
+            });
           }
         } catch (execError) {
           console.error('Action execution error:', execError);
           const execErrorMessage = execError instanceof Error ? execError.message : '操作执行失败';
-          setChatHistory((prev) => [
-            ...prev,
-            { role: 'agent', content: `操作失败：${execErrorMessage}` },
-          ]);
+          addChatMessage({
+            id: `msg_${Date.now()}_exec_error`,
+            role: 'assistant',
+            content: `操作失败：${execErrorMessage}`,
+            timestamp: new Date(),
+          });
         }
       }
 
       // Convert chat history to agent message format
-      const agentMessages: AgentMessage[] = chatHistory
-        .filter((msg) => msg.role !== 'agent' || !msg.content.startsWith('正在'))
-        .map((msg) => ({
-          role: msg.role === 'user' ? 'user' : 'assistant',
-          content: msg.content,
-        }));
-
-      // Add current user message
-      agentMessages.push({
-        role: 'user',
-        content: userMessage,
-      });
+      const agentMessages: AgentMessage[] = chatHistory.map((msg) => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content,
+      }));
 
       // Get AI response with streaming
       let fullResponse = '';
@@ -313,10 +300,12 @@ export default function AgentPanel() {
       );
 
       // Add complete response to chat history
-      setChatHistory((prev) => [
-        ...prev,
-        { role: 'agent', content: fullResponse },
-      ]);
+      addChatMessage({
+        id: `msg_${Date.now()}_ai_response`,
+        role: 'assistant',
+        content: fullResponse,
+        timestamp: new Date(),
+      });
       setStreamingMessage('');
     } catch (error) {
       console.error('Agent processing error:', error);
@@ -325,13 +314,12 @@ export default function AgentPanel() {
           ? `处理请求时出错：${error.message}`
           : '抱歉，处理你的请求时出现了问题。请检查 API 配置或稍后重试。';
 
-      setChatHistory((prev) => [
-        ...prev,
-        {
-          role: 'agent',
-          content: errorMessage,
-        },
-      ]);
+      addChatMessage({
+        id: `msg_${Date.now()}_error`,
+        role: 'assistant',
+        content: errorMessage,
+        timestamp: new Date(),
+      });
       setStreamingMessage('');
     } finally {
       setIsProcessing(false);
@@ -364,10 +352,10 @@ export default function AgentPanel() {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {chatHistory.map((msg, idx) => (
           <div
-            key={idx}
+            key={msg.id || idx}
             className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
-            {msg.role === 'agent' && (
+            {msg.role === 'assistant' && (
               <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-xs text-white font-bold flex-shrink-0">
                 AI
               </div>

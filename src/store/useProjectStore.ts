@@ -10,6 +10,9 @@ import type {
   Character,
   Location,
   AudioAsset,
+  GridHistoryItem,
+  ChatMessage,
+  GenerationHistoryItem,
 } from '@/types/project';
 import { db, saveProject as saveProjectToDB } from '@/lib/db';
 
@@ -24,6 +27,8 @@ interface ProjectStore {
   canvasPosition: { x: number; y: number };
   timelineMode: TimelineMode;
   controlMode: ControlMode;
+  leftSidebarCollapsed: boolean;
+  rightSidebarCollapsed: boolean;
 
   // Project Actions
   loadProject: (project: Project) => void;
@@ -35,12 +40,15 @@ interface ProjectStore {
   updateScene: (id: string, updates: Partial<Scene>) => void;
   deleteScene: (id: string) => void;
   selectScene: (id: string) => void;
+  addGridHistory: (sceneId: string, gridHistory: GridHistoryItem) => void;
+  saveFavoriteSlices: (sceneId: string, slices: string[]) => void;
 
   // Shot Actions
   addShot: (shot: Shot) => void;
   updateShot: (id: string, updates: Partial<Shot>) => void;
   deleteShot: (id: string) => void;
   selectShot: (id: string) => void;
+  addGenerationHistory: (shotId: string, historyItem: GenerationHistoryItem) => void;
 
   // Character Actions
   addCharacter: (character: Character) => void;
@@ -56,6 +64,10 @@ interface ProjectStore {
   addAudioAsset: (audio: AudioAsset) => void;
   deleteAudioAsset: (id: string) => void;
 
+  // Chat Actions
+  addChatMessage: (message: ChatMessage) => void;
+  clearChatHistory: () => void;
+
   // Timeline Actions
   addToTimeline: (clip: TimelineClip, trackIndex: number) => void;
   updateTimelineClip: (
@@ -70,6 +82,8 @@ interface ProjectStore {
   setCanvasPosition: (position: { x: number; y: number }) => void;
   setTimelineMode: (mode: TimelineMode) => void;
   setControlMode: (mode: ControlMode) => void;
+  toggleLeftSidebar: () => void;
+  toggleRightSidebar: () => void;
 }
 
 export const useProjectStore = create<ProjectStore>()(
@@ -82,6 +96,8 @@ export const useProjectStore = create<ProjectStore>()(
     canvasPosition: { x: 0, y: 0 },
     timelineMode: 'default',
     controlMode: 'agent',
+    leftSidebarCollapsed: false,
+    rightSidebarCollapsed: false,
 
     // Project Actions
     loadProject: (project) => set({ project }),
@@ -156,7 +172,33 @@ export const useProjectStore = create<ProjectStore>()(
         );
       }),
 
-    selectScene: (id) => set({ currentSceneId: id }),
+    selectScene: (id) => set({ currentSceneId: id, selectedShotId: null }),
+
+    addGridHistory: (sceneId, gridHistory) =>
+      set((state) => {
+        const scene = state.project?.scenes.find((s) => s.id === sceneId);
+        if (scene) {
+          if (!scene.gridHistory) {
+            scene.gridHistory = [];
+          }
+          scene.gridHistory.unshift(gridHistory); // Add to beginning
+          // Keep only last 10 history items
+          if (scene.gridHistory.length > 10) {
+            scene.gridHistory = scene.gridHistory.slice(0, 10);
+          }
+        }
+      }),
+
+    saveFavoriteSlices: (sceneId, slices) =>
+      set((state) => {
+        const scene = state.project?.scenes.find((s) => s.id === sceneId);
+        if (scene) {
+          if (!scene.savedGridSlices) {
+            scene.savedGridSlices = [];
+          }
+          scene.savedGridSlices.push(...slices);
+        }
+      }),
 
     // Shot Actions
     addShot: (shot) =>
@@ -182,7 +224,32 @@ export const useProjectStore = create<ProjectStore>()(
         });
       }),
 
-    selectShot: (id) => set({ selectedShotId: id }),
+    selectShot: (id) =>
+      set((state) => {
+        const shot = state.project?.shots.find((s) => s.id === id);
+        const scene = state.project?.scenes.find((scene) =>
+          scene.shotIds.includes(id)
+        );
+        return {
+          selectedShotId: id,
+          currentSceneId: scene?.id || null,
+        };
+      }),
+
+    addGenerationHistory: (shotId, historyItem) =>
+      set((state) => {
+        const shot = state.project?.shots.find((s) => s.id === shotId);
+        if (shot) {
+          if (!shot.generationHistory) {
+            shot.generationHistory = [];
+          }
+          shot.generationHistory.unshift(historyItem); // Add to beginning
+          // Keep only last 20 history items
+          if (shot.generationHistory.length > 20) {
+            shot.generationHistory = shot.generationHistory.slice(0, 20);
+          }
+        }
+      }),
 
     // Character Actions
     addCharacter: (character) =>
@@ -242,6 +309,22 @@ export const useProjectStore = create<ProjectStore>()(
         );
       }),
 
+    // Chat Actions
+    addChatMessage: (message) =>
+      set((state) => {
+        if (!state.project) return;
+        if (!state.project.chatHistory) {
+          state.project.chatHistory = [];
+        }
+        state.project.chatHistory.push(message);
+      }),
+
+    clearChatHistory: () =>
+      set((state) => {
+        if (!state.project) return;
+        state.project.chatHistory = [];
+      }),
+
     // Timeline Actions
     addToTimeline: (clip, trackIndex) =>
       set((state) => {
@@ -277,5 +360,7 @@ export const useProjectStore = create<ProjectStore>()(
     setCanvasPosition: (position) => set({ canvasPosition: position }),
     setTimelineMode: (mode) => set({ timelineMode: mode }),
     setControlMode: (mode) => set({ controlMode: mode }),
+    toggleLeftSidebar: () => set((state) => ({ leftSidebarCollapsed: !state.leftSidebarCollapsed })),
+    toggleRightSidebar: () => set((state) => ({ rightSidebarCollapsed: !state.rightSidebarCollapsed })),
   }))
 );

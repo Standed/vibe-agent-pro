@@ -5,7 +5,7 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid } from 'lucide-react';
 
 export default function InfiniteCanvas() {
-  const { project, selectScene, selectShot } = useProjectStore();
+  const { project, selectScene, selectShot, currentSceneId, selectedShotId } = useProjectStore();
   const [zoom, setZoom] = useState(100);
 
   const handleZoomIn = () => {
@@ -131,17 +131,27 @@ export default function InfiniteCanvas() {
             minHeight: `${100 * (100 / zoom)}%`,
           }}
         >
-        {sceneGroups.map(({ scene, shots: sceneShots }) => (
+        {sceneGroups.map(({ scene, shots: sceneShots }) => {
+          const isSceneSelected = currentSceneId === scene.id && !selectedShotId;
+
+          return (
           <div
             key={scene.id}
-            className="bg-cine-dark border border-cine-border rounded-lg p-4 min-w-[600px] max-w-4xl"
+            className={`bg-cine-dark rounded-lg p-4 min-w-[600px] max-w-4xl transition-all ${
+              isSceneSelected
+                ? 'border-2 border-cine-accent shadow-lg shadow-cine-accent/20'
+                : 'border border-cine-border'
+            }`}
             style={{
               marginLeft: scene.position.x,
               marginTop: scene.position.y,
             }}
           >
             {/* Scene Header */}
-            <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => selectScene(scene.id)}
+              className="w-full flex items-center justify-between mb-4 hover:bg-cine-panel/50 rounded p-2 -m-2 transition-colors text-left"
+            >
               <div>
                 <h3 className="font-bold text-white">{scene.name}</h3>
                 <p className="text-xs text-cine-text-muted">{scene.location}</p>
@@ -149,16 +159,23 @@ export default function InfiniteCanvas() {
               <div className="text-xs text-cine-text-muted">
                 {sceneShots.length} 个镜头
               </div>
-            </div>
+            </button>
 
             {/* Shots Grid */}
             {sceneShots.length > 0 ? (
               <div className="grid grid-cols-4 gap-3">
-                {sceneShots.map((shot) => (
+                {sceneShots.map((shot) => {
+                  const isShotSelected = selectedShotId === shot.id;
+
+                  return (
                   <button
                     key={shot.id}
                     onClick={() => selectShot(shot.id)}
-                    className="group bg-cine-panel border border-cine-border rounded overflow-hidden hover:border-cine-accent transition-all"
+                    className={`group bg-cine-panel rounded overflow-hidden hover:border-cine-accent transition-all ${
+                      isShotSelected
+                        ? 'border-2 border-cine-accent shadow-md shadow-cine-accent/30'
+                        : 'border border-cine-border'
+                    }`}
                   >
                     {/* Shot Thumbnail */}
                     <div className="aspect-video bg-cine-black flex items-center justify-center relative">
@@ -212,7 +229,8 @@ export default function InfiniteCanvas() {
                       </div>
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-sm text-cine-text-muted text-center py-8">
@@ -220,7 +238,8 @@ export default function InfiniteCanvas() {
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
         </div>
       </div>
     </div>

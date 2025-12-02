@@ -1,12 +1,14 @@
 'use client';
 
-import { Sparkles, Image as ImageIcon, Video, Upload, Loader2, Grid3x3 } from 'lucide-react';
+import { Sparkles, Image as ImageIcon, Video, Upload, Loader2, Grid3x3, History } from 'lucide-react';
 import { useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { generateMultiViewGrid, fileToBase64 } from '@/services/geminiService';
-import { AspectRatio, ImageSize } from '@/types/project';
+import { AspectRatio, ImageSize, GridHistoryItem, GenerationHistoryItem } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
+import GridHistoryModal from '@/components/grid/GridHistoryModal';
+import ShotGenerationHistory from '@/components/shot/ShotGenerationHistory';
 
 type GenerationType = 'grid' | 'single' | 'video' | null;
 
@@ -17,7 +19,7 @@ interface GridGenerationResult {
 }
 
 export default function ProPanel() {
-  const { project, selectedShotId, updateShot } = useProjectStore();
+  const { project, currentSceneId, selectedShotId, updateShot, addGridHistory, saveFavoriteSlices, addGenerationHistory } = useProjectStore();
   const [generationType, setGenerationType] = useState<GenerationType>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [prompt, setPrompt] = useState('');
@@ -25,9 +27,31 @@ export default function ProPanel() {
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(AspectRatio.WIDE);
   const [referenceImages, setReferenceImages] = useState<File[]>([]);
   const [gridResult, setGridResult] = useState<GridGenerationResult | null>(null);
+  const [selectedSceneId, setSelectedSceneId] = useState<string>('');
+  const [showGridHistory, setShowGridHistory] = useState(false);
 
   const shots = project?.shots || [];
+  const scenes = project?.scenes || [];
   const selectedShot = shots.find((s) => s.id === selectedShotId);
+
+  // Determine selection mode
+  const isSceneSelected = currentSceneId && !selectedShotId;
+  const isShotSelected = !!selectedShotId;
+
+  // Auto-select scene when a shot is selected
+  const currentScene = scenes.find((scene) =>
+    scene.shotIds.includes(selectedShotId || '')
+  );
+
+  // Set selected scene ID when shot changes
+  if (currentScene && selectedSceneId !== currentScene.id) {
+    setSelectedSceneId(currentScene.id);
+  }
+
+  // Also set selectedSceneId from currentSceneId if scene is selected
+  if (isSceneSelected && selectedSceneId !== currentSceneId) {
+    setSelectedSceneId(currentSceneId);
+  }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -51,6 +75,21 @@ export default function ProPanel() {
           referenceImage: imageUrl,
           status: 'done',
         });
+
+        // Add to generation history
+        const historyItem: GenerationHistoryItem = {
+          id: `gen_${Date.now()}`,
+          type: 'image',
+          timestamp: new Date(),
+          result: imageUrl,
+          prompt: prompt,
+          parameters: {
+            model: 'SeeDream',
+            aspectRatio: aspectRatio,
+          },
+          status: 'success',
+        };
+        addGenerationHistory(selectedShotId, historyItem);
       }
 
       alert('单图生成成功！');
@@ -64,22 +103,74 @@ export default function ProPanel() {
   };
 
   const handleGenerateGrid = async () => {
-    if (!prompt.trim() && !selectedShot) {
-      alert('请输入提示词或选择一个镜头');
+    if (!prompt.trim()) {
+      alert('请输入提示词');
+      return;
+    }
+
+    if (!selectedSceneId) {
+      alert('请先选择一个场景');
       return;
     }
 
     setIsGenerating(true);
     try {
-      // Find the scene containing the selected shot
-      const currentScene = project?.scenes.find((scene) =>
-        scene.shotIds.includes(selectedShotId || '')
-      );
+      // Find the selected scene
+      const targetScene = scenes.find((scene) => scene.id === selectedSceneId);
 
-      // Build enhanced prompt combining scene description and user input
-      let enhancedPrompt = prompt;
-      if (currentScene) {
-        enhancedPrompt = `场景：${currentScene.description}\n角色设定：${project?.metadata.artStyle || ''}\n具体要求：${prompt}`;
+      if (!targetScene) {
+        alert('未找到选中的场景');
+        return;
+      }
+
+      // Get shots for this scene
+      const sceneShots = shots.filter((s) => s.sceneId === targetScene.id);
+      const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
+      const totalSlices = rows * cols;
+
+      // Take first N shots to match grid size
+      const targetShots = sceneShots.slice(0, totalSlices);
+
+      // Build enhanced prompt combining scene, shots descriptions, and user input
+      let enhancedPrompt = '';
+
+      // Add scene context
+      if (targetScene.description) {
+        enhancedPrompt += `场景：${targetScene.description}\n`;
+      }
+      if (project?.metadata.artStyle) {
+        enhancedPrompt += `画风：${project.metadata.artStyle}\n`;
+      }
+
+      // Add shot descriptions
+      if (targetShots.length > 0) {
+        enhancedPrompt += `\n分镜要求（${targetShots.length} 个镜头）：\n`;
+        targetShots.forEach((shot, idx) => {
+          // For 3x3, simplify shot descriptions to avoid too much detail
+          if (gridSize === '3x3') {
+            // Simplified: only shot size, camera movement, and brief description
+            enhancedPrompt += `${idx + 1}. ${shot.shotSize} - ${shot.cameraMovement}`;
+            if (shot.description) {
+              // Truncate description to ~50 chars for 3x3
+              const briefDesc = shot.description.length > 50
+                ? shot.description.substring(0, 50) + '...'
+                : shot.description;
+              enhancedPrompt += ` - ${briefDesc}`;
+            }
+            enhancedPrompt += '\n';
+          } else {
+            // Full description for 2x2
+            enhancedPrompt += `${idx + 1}. ${shot.shotSize} - ${shot.cameraMovement}\n`;
+            if (shot.description) {
+              enhancedPrompt += `   ${shot.description}\n`;
+            }
+          }
+        });
+      }
+
+      // Add user's specific requirements
+      if (prompt.trim()) {
+        enhancedPrompt += `\n额外要求：${prompt}`;
       }
 
       // Convert reference images to base64
@@ -93,9 +184,6 @@ export default function ProPanel() {
         })
       );
 
-      const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
-      const totalSlices = rows * cols;
-
       const result = await generateMultiViewGrid(
         enhancedPrompt,
         rows,
@@ -105,26 +193,12 @@ export default function ProPanel() {
         refImages
       );
 
-      // Distribute slices to shots in the scene
-      if (currentScene && selectedShotId) {
-        // Show Grid preview modal instead of auto-assigning
-        setGridResult({
-          fullImage: result.fullImage,
-          slices: result.slices,
-          sceneId: currentScene.id,
-        });
-      } else {
-        // Fallback: Update only the selected shot if no scene found
-        if (selectedShotId) {
-          updateShot(selectedShotId, {
-            gridImages: result.slices,
-            fullGridUrl: result.fullImage,
-            referenceImage: result.slices[0],
-            status: 'done',
-          });
-        }
-        alert(`Grid 生成成功！已生成 ${result.slices.length} 个视图`);
-      }
+      // Show Grid preview modal for manual assignment
+      setGridResult({
+        fullImage: result.fullImage,
+        slices: result.slices,
+        sceneId: targetScene.id,
+      });
     } catch (error) {
       console.error('Grid generation error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Grid 生成失败';
@@ -135,18 +209,55 @@ export default function ProPanel() {
   };
 
   // Handle Grid assignment from modal
-  const handleGridAssignment = (assignments: Record<string, string>) => {
+  const handleGridAssignment = (assignments: Record<string, string>, favoriteSlices?: string[]) => {
+    if (!gridResult) return;
+
+    // Update shots with assigned images
     Object.entries(assignments).forEach(([shotId, imageUrl]) => {
       updateShot(shotId, {
         referenceImage: imageUrl,
-        fullGridUrl: gridResult?.fullImage,
+        fullGridUrl: gridResult.fullImage,
         status: 'done',
       });
     });
 
+    // Save Grid to scene history
+    const gridHistory: GridHistoryItem = {
+      id: `grid_${Date.now()}`,
+      timestamp: new Date(),
+      fullGridUrl: gridResult.fullImage,
+      slices: gridResult.slices,
+      gridSize,
+      prompt,
+      aspectRatio,
+      assignments,
+    };
+    addGridHistory(gridResult.sceneId, gridHistory);
+
+    // Save favorited slices if any
+    if (favoriteSlices && favoriteSlices.length > 0) {
+      saveFavoriteSlices(gridResult.sceneId, favoriteSlices);
+    }
+
     const assignedCount = Object.keys(assignments).length;
-    alert(`Grid 分配成功！已为 ${assignedCount} 个镜头分配图片`);
+    const favoriteCount = favoriteSlices?.length || 0;
+
+    let message = `Grid 分配成功！已为 ${assignedCount} 个镜头分配图片`;
+    if (favoriteCount > 0) {
+      message += `，${favoriteCount} 个切片已收藏`;
+    }
+
+    alert(message);
     setGridResult(null);
+  };
+
+  // Handle selecting a Grid from history
+  const handleSelectGridHistory = (historyItem: GridHistoryItem) => {
+    setGridResult({
+      fullImage: historyItem.fullGridUrl,
+      slices: historyItem.slices,
+      sceneId: selectedSceneId,
+    });
   };
 
   const handleGenerateVideo = async () => {
@@ -202,6 +313,21 @@ export default function ProPanel() {
         status: 'done',
       });
 
+      // Add to generation history
+      const historyItem: GenerationHistoryItem = {
+        id: `gen_${Date.now()}`,
+        type: 'video',
+        timestamp: new Date(),
+        result: videoUrl,
+        prompt: videoPrompt,
+        parameters: {
+          model: 'VolcanoEngine I2V',
+          referenceImages: [imageUrl],
+        },
+        status: 'success',
+      };
+      addGenerationHistory(selectedShotId!, historyItem);
+
       alert(`视频生成成功！\n视频 URL: ${videoUrl}`);
     } catch (error) {
       console.error('Video generation error:', error);
@@ -214,12 +340,57 @@ export default function ProPanel() {
     }
   };
 
+  // History action handlers
+  const handleRegenerate = async (item: GenerationHistoryItem) => {
+    if (!selectedShotId) return;
+
+    // Set prompt and reference images from history
+    setPrompt(item.prompt);
+
+    // Set generation type based on history item type
+    if (item.type === 'image') {
+      setGenerationType('single');
+
+      // Set parameters from history
+      if (item.parameters.aspectRatio) {
+        setAspectRatio(item.parameters.aspectRatio as AspectRatio);
+      }
+
+      alert('已加载历史参数，请点击"生成单图"按钮重新生成');
+    } else if (item.type === 'video') {
+      setGenerationType('video');
+      alert('已加载历史参数，请点击"生成视频"按钮重新生成');
+    }
+  };
+
+  const handleDownload = (item: GenerationHistoryItem) => {
+    // Download the image or video
+    const link = document.createElement('a');
+    link.href = item.result;
+    link.download = `${item.type}_${item.id}.${item.type === 'image' ? 'png' : 'mp4'}`;
+    link.click();
+  };
+
+  const handleFavorite = (item: GenerationHistoryItem) => {
+    // TODO: Implement favorite functionality (could save to a favorites list)
+    alert('收藏功能即将上线！');
+  };
+
+  const handleDubbing = (item: GenerationHistoryItem) => {
+    // TODO: Implement dubbing functionality
+    alert('配音功能即将上线！');
+  };
+
   return (
     <div className="h-full overflow-y-auto p-4 space-y-6">
       {/* Generation Type */}
       <div>
-        <h3 className="text-sm font-bold mb-3">生成类型</h3>
-        <div className="grid grid-cols-3 gap-2">
+        <h3 className="text-sm font-bold mb-3">
+          生成类型
+          {isSceneSelected && <span className="text-xs text-cine-text-muted ml-2">(场景级)</span>}
+          {isShotSelected && <span className="text-xs text-cine-text-muted ml-2">(镜头级)</span>}
+        </h3>
+        <div className={`grid gap-2 ${isShotSelected ? 'grid-cols-2' : 'grid-cols-3'}`}>
           <button
             onClick={() => setGenerationType('single')}
             className={`border rounded-lg p-3 transition-colors ${
@@ -231,17 +402,22 @@ export default function ProPanel() {
             <ImageIcon size={20} className="mx-auto mb-1" />
             <div className="text-xs">单图生成</div>
           </button>
-          <button
-            onClick={() => setGenerationType('grid')}
-            className={`border rounded-lg p-3 transition-colors ${
-              generationType === 'grid'
-                ? 'bg-cine-accent border-cine-accent text-white'
-                : 'bg-cine-panel hover:bg-cine-border border-cine-border'
-            }`}
-          >
-            <Grid3x3 size={20} className="mx-auto mb-1" />
-            <div className="text-xs">Grid 多视图</div>
-          </button>
+
+          {/* Grid button - Only show for scene-level */}
+          {isSceneSelected && (
+            <button
+              onClick={() => setGenerationType('grid')}
+              className={`border rounded-lg p-3 transition-colors ${
+                generationType === 'grid'
+                  ? 'bg-cine-accent border-cine-accent text-white'
+                  : 'bg-cine-panel hover:bg-cine-border border-cine-border'
+              }`}
+            >
+              <Grid3x3 size={20} className="mx-auto mb-1" />
+              <div className="text-xs">Grid 多视图</div>
+            </button>
+          )}
+
           <button
             onClick={() => setGenerationType('video')}
             className={`border rounded-lg p-3 transition-colors ${
@@ -258,6 +434,74 @@ export default function ProPanel() {
 
       {generationType === 'grid' && (
         <>
+          {/* Scene Selector */}
+          <div>
+            <h3 className="text-sm font-bold mb-3">选择场景</h3>
+            <select
+              value={selectedSceneId}
+              onChange={(e) => setSelectedSceneId(e.target.value)}
+              className="w-full bg-cine-panel border border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cine-accent"
+            >
+              <option value="">-- 请选择场景 --</option>
+              {scenes.map((scene) => {
+                const shotCount = shots.filter((s) => s.sceneId === scene.id).length;
+                return (
+                  <option key={scene.id} value={scene.id}>
+                    {scene.name} ({shotCount} 个镜头)
+                  </option>
+                );
+              })}
+            </select>
+            {selectedSceneId && (
+              <div className="mt-2 space-y-2">
+                <div className="text-xs text-cine-text-muted">
+                  提示：Grid 大小建议与镜头数量匹配（4个镜头→2x2，9个镜头→3x3）
+                </div>
+
+                {/* Grid History Preview */}
+                {(() => {
+                  const selectedScene = scenes.find((s) => s.id === selectedSceneId);
+                  const hasHistory = selectedScene?.gridHistory && selectedScene.gridHistory.length > 0;
+
+                  if (hasHistory) {
+                    const latestGrid = selectedScene.gridHistory[0];
+                    return (
+                      <div className="bg-cine-black/30 border border-cine-border rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-xs font-medium text-cine-accent">
+                            历史记录 ({selectedScene.gridHistory.length} 条)
+                          </div>
+                          <button
+                            onClick={() => setShowGridHistory(true)}
+                            className="text-xs text-cine-accent hover:text-cine-accent-hover transition-colors"
+                          >
+                            查看全部 →
+                          </button>
+                        </div>
+                        <div className="flex gap-2">
+                          <img
+                            src={latestGrid.fullGridUrl}
+                            alt="Latest Grid"
+                            className="w-20 h-20 rounded border border-cine-border object-cover cursor-pointer hover:border-cine-accent transition-colors"
+                            onClick={() => handleSelectGridHistory(latestGrid)}
+                            title="点击重新使用此 Grid"
+                          />
+                          <div className="flex-1 text-xs text-cine-text-muted">
+                            <div className="line-clamp-2 mb-1">{latestGrid.prompt}</div>
+                            <div className="text-[10px]">
+                              {latestGrid.gridSize} · {latestGrid.aspectRatio}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+            )}
+          </div>
+
           {/* Grid Size */}
           <div>
             <h3 className="text-sm font-bold mb-3">Grid 大小</h3>
@@ -451,6 +695,56 @@ export default function ProPanel() {
                 </div>
               </div>
             )}
+
+            {/* Grid Source Info */}
+            {selectedShot.fullGridUrl && (
+              <div className="mt-3 pt-3 border-t border-cine-border">
+                <div className="text-xs text-cine-text-muted mb-2">图片来源:</div>
+                <div className="bg-cine-black/50 p-2 rounded space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Grid3x3 size={14} className="text-cine-accent" />
+                    <span className="text-xs text-cine-accent">来自 Grid 多视图切片</span>
+                  </div>
+                  {selectedShot.fullGridUrl && (
+                    <div className="relative group">
+                      <img
+                        src={selectedShot.fullGridUrl}
+                        alt="Grid Source"
+                        className="w-full rounded border border-cine-border"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors rounded flex items-center justify-center">
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-white">
+                          完整 Grid 图
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {selectedShot.referenceImage && (
+                    <div className="text-xs text-cine-text-muted">
+                      <div className="mb-1">当前镜头使用的切片:</div>
+                      <img
+                        src={selectedShot.referenceImage}
+                        alt="Current Slice"
+                        className="w-full rounded border border-cine-accent"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Generation History */}
+            {selectedShot.generationHistory && selectedShot.generationHistory.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-cine-border">
+                <ShotGenerationHistory
+                  history={selectedShot.generationHistory}
+                  onRegenerate={handleRegenerate}
+                  onDownload={handleDownload}
+                  onFavorite={handleFavorite}
+                  onDubbing={handleDubbing}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -464,6 +758,18 @@ export default function ProPanel() {
           sceneId={gridResult.sceneId}
           onAssign={handleGridAssignment}
           onClose={() => setGridResult(null)}
+        />
+      )}
+
+      {/* Grid History Modal */}
+      {showGridHistory && selectedSceneId && (
+        <GridHistoryModal
+          sceneId={selectedSceneId}
+          sceneName={scenes.find((s) => s.id === selectedSceneId)?.name || ''}
+          gridHistory={scenes.find((s) => s.id === selectedSceneId)?.gridHistory || []}
+          shots={shots}
+          onSelectHistory={handleSelectGridHistory}
+          onClose={() => setShowGridHistory(false)}
         />
       )}
     </div>
