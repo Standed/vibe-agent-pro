@@ -39,6 +39,7 @@ interface ProjectStore {
     artStyle?: string,
     aspectRatio?: string
   ) => void;
+  updateScript: (script: string) => void;
 
   // Scene Actions
   addScene: (scene: Scene) => void;
@@ -167,21 +168,37 @@ export const useProjectStore = create<ProjectStore>()(
       });
     },
 
+    updateScript: (script) => {
+      set((state) => {
+        if (state.project) {
+          state.project.script = script;
+        }
+      });
+      // 自动保存
+      get().saveProject();
+    },
+
     // Scene Actions
-    addScene: (scene) =>
+    addScene: (scene) => {
       set((state) => {
         state.project?.scenes.push(scene);
-      }),
+      });
+      // 自动保存
+      get().saveProject();
+    },
 
-    updateScene: (id, updates) =>
+    updateScene: (id, updates) => {
       set((state) => {
         const scene = state.project?.scenes.find((s) => s.id === id);
         if (scene) {
           Object.assign(scene, updates);
         }
-      }),
+      });
+      // 自动保存
+      get().saveProject();
+    },
 
-    deleteScene: (id) =>
+    deleteScene: (id) => {
       set((state) => {
         if (!state.project) return;
         state.project.scenes = state.project.scenes.filter((s) => s.id !== id);
@@ -189,7 +206,10 @@ export const useProjectStore = create<ProjectStore>()(
         state.project.shots = state.project.shots.filter(
           (shot) => shot.sceneId !== id
         );
-      }),
+      });
+      // 自动保存
+      get().saveProject();
+    },
 
     selectScene: (id) => set({ currentSceneId: id, selectedShotId: null }),
 
@@ -220,20 +240,26 @@ export const useProjectStore = create<ProjectStore>()(
       }),
 
     // Shot Actions
-    addShot: (shot) =>
+    addShot: (shot) => {
       set((state) => {
         state.project?.shots.push(shot);
-      }),
+      });
+      // 自动保存
+      get().saveProject();
+    },
 
-    updateShot: (id, updates) =>
+    updateShot: (id, updates) => {
       set((state) => {
         const shot = state.project?.shots.find((s) => s.id === id);
         if (shot) {
           Object.assign(shot, updates);
         }
-      }),
+      });
+      // 自动保存
+      get().saveProject();
+    },
 
-    deleteShot: (id) =>
+    deleteShot: (id) => {
       set((state) => {
         if (!state.project) return;
         state.project.shots = state.project.shots.filter((s) => s.id !== id);
@@ -241,7 +267,10 @@ export const useProjectStore = create<ProjectStore>()(
         state.project.timeline.forEach((track) => {
           track.clips = track.clips.filter((clip) => clip.shotId !== id);
         });
-      }),
+      });
+      // 自动保存
+      get().saveProject();
+    },
 
     selectShot: (id) =>
       set((state) => {

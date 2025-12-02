@@ -12,17 +12,20 @@ import {
   Home,
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
+  Loader2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
+import { generateStoryboardFromScript, analyzeScript, groupShotsIntoScenes } from '@/services/storyboardService';
 
 type Tab = 'script' | 'storyboard' | 'assets';
 
 export default function LeftSidebarNew() {
   const router = useRouter();
-  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene } = useProjectStore();
+  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot } = useProjectStore();
   const [activeTab, setActiveTab] = useState<Tab>('storyboard');
   const [collapsedScenes, setCollapsedScenes] = useState<Set<string>>(new Set());
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const scenes = project?.scenes || [];
   const shots = project?.shots || [];
@@ -41,6 +44,56 @@ export default function LeftSidebarNew() {
 
   const handleShotClick = (shotId: string) => {
     selectShot(shotId);
+  };
+
+  const handleAIStoryboard = async () => {
+    if (!project?.script || !project.script.trim()) {
+      alert('请先输入剧本内容');
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      // 1. Analyze script for metadata
+      const analysis = await analyzeScript(project.script);
+
+      // 2. Generate storyboard shots
+      const generatedShots = await generateStoryboardFromScript(project.script);
+
+      // 3. Group shots into scenes
+      const sceneGroups = await groupShotsIntoScenes(generatedShots);
+
+      // 4. Add scenes and shots to store
+      sceneGroups.forEach((sceneGroup, idx) => {
+        const scene = {
+          id: `scene_${Date.now()}_${idx}`,
+          name: sceneGroup.name,
+          location: sceneGroup.location,
+          description: '',
+          shotIds: [],
+          position: { x: idx * 300, y: 100 },
+        };
+
+        addScene(scene);
+
+        // Add shots for this scene
+        sceneGroup.shotIds.forEach((shotId) => {
+          const shot = generatedShots.find(s => s.id === shotId);
+          if (shot) {
+            addShot({ ...shot, sceneId: scene.id });
+          }
+        });
+      });
+
+      alert(`成功生成 ${sceneGroups.length} 个场景，${generatedShots.length} 个镜头！`);
+      // 自动切换到分镜脚本标签页
+      setActiveTab('storyboard');
+    } catch (error) {
+      console.error('AI分镜失败:', error);
+      alert('AI分镜生成失败，请检查API配置或网络连接');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   if (leftSidebarCollapsed) {
@@ -162,18 +215,29 @@ export default function LeftSidebarNew() {
               </h3>
               <textarea
                 value={project?.script || ''}
-                onChange={(e) => {
-                  // TODO: Update script in store
-                }}
+                onChange={(e) => updateScript(e.target.value)}
                 placeholder="在此输入剧本内容..."
                 className="w-full h-64 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted"
               />
             </div>
 
             {/* AI Storyboard Button */}
-            <button className="w-full bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white py-3 px-4 rounded-lg font-bold transition-colors flex items-center justify-center gap-2">
-              <Sparkles size={18} />
-              <span>AI 自动分镜</span>
+            <button
+              onClick={handleAIStoryboard}
+              disabled={isGenerating || !project?.script?.trim()}
+              className="w-full bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white py-3 px-4 rounded-lg font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  <span>AI 分镜生成中...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={18} />
+                  <span>AI 自动分镜</span>
+                </>
+              )}
             </button>
           </div>
         )}

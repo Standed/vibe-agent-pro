@@ -13,6 +13,7 @@ export default function AgentPanel() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const welcomeAddedRef = useRef<string | null>(null); // 跟踪是否已添加欢迎消息
 
   const { project, selectedShotId, updateShot, addChatMessage } = useProjectStore();
   const shots = project?.shots || [];
@@ -23,15 +24,17 @@ export default function AgentPanel() {
 
   // Initialize chat history with welcome message if empty
   useEffect(() => {
-    if (project && (!project.chatHistory || project.chatHistory.length === 0)) {
+    // 只在项目 ID 改变且该项目尚未添加过欢迎消息时执行
+    if (project && project.id !== welcomeAddedRef.current && (!project.chatHistory || project.chatHistory.length === 0)) {
       addChatMessage({
         id: `msg_${Date.now()}`,
         role: 'assistant',
         content: '你好！我是 西羊石 AI 视频 Agent，你的 AI 影视创作助手。你只管描述创意，我来帮你操作参数和生成内容。',
         timestamp: new Date(),
       });
+      welcomeAddedRef.current = project.id; // 标记已添加
     }
-  }, [project?.id]); // Only run when project changes
+  }, [project?.id, addChatMessage]); // 添加完整依赖
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

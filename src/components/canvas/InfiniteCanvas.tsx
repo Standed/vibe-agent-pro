@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid } from 'lucide-react';
 
 export default function InfiniteCanvas() {
   const { project, selectScene, selectShot, currentSceneId, selectedShotId } = useProjectStore();
   const [zoom, setZoom] = useState(100);
+  const canvasRef = useRef<HTMLDivElement>(null);
 
   const handleZoomIn = () => {
     setZoom((prev) => Math.min(prev + 10, 200));
@@ -20,6 +21,24 @@ export default function InfiniteCanvas() {
     setZoom(100);
   };
 
+  // 处理滚轮缩放（Ctrl + 滚轮 或 触控板捏合）
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    // 检测是否按住 Ctrl/Cmd 键（触控板捏合也会触发 ctrlKey）
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+
+      // deltaY > 0 表示向下滚动（缩小），< 0 表示向上滚动（放大）
+      const delta = -e.deltaY;
+      const zoomSpeed = 0.5; // 缩放速度
+
+      setZoom((prevZoom) => {
+        const newZoom = prevZoom + delta * zoomSpeed;
+        // 限制缩放范围在 50% - 200% 之间，并四舍五入为整数
+        return Math.round(Math.min(Math.max(newZoom, 50), 200));
+      });
+    }
+  };
+
   const sceneGroups = project?.scenes.map((scene) => {
     const sceneShots = project.shots.filter((shot) => shot.sceneId === scene.id);
     return {
@@ -30,7 +49,11 @@ export default function InfiniteCanvas() {
 
   if (!sceneGroups || sceneGroups.length === 0) {
     return (
-      <div className="w-full h-full bg-light-bg dark:bg-cine-black relative">
+      <div
+        ref={canvasRef}
+        onWheel={handleWheel}
+        className="w-full h-full bg-light-bg dark:bg-cine-black relative"
+      >
         {/* Floating Toolbar */}
         <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
           <div className="flex gap-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border p-1 rounded-lg shadow-xl backdrop-blur-sm">
@@ -91,7 +114,11 @@ export default function InfiniteCanvas() {
   }
 
   return (
-    <div className="w-full h-full bg-light-bg dark:bg-cine-black relative flex flex-col overflow-hidden">
+    <div
+      ref={canvasRef}
+      onWheel={handleWheel}
+      className="w-full h-full bg-light-bg dark:bg-cine-black relative flex flex-col overflow-hidden"
+    >
       {/* Floating Toolbar */}
       <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
         <div className="flex gap-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border p-1 rounded-lg shadow-xl backdrop-blur-sm">
