@@ -20,26 +20,20 @@ export default function ProjectEditorPage() {
     const loadOrCreateProject = async () => {
       const projectId = params.id as string;
 
-      if (projectId === 'new') {
-        // 新项目：从 store 中获取刚创建的项目
-        // 如果 store 中没有项目，重定向回首页
-        if (!project) {
-          router.push('/');
-        }
+      // 直接从 IndexedDB 加载项目
+      const loadedProject = await loadProject(projectId);
+      if (loadedProject) {
+        loadProjectToStore(loadedProject);
+        console.log('✅ 项目已从 IndexedDB 加载:', projectId);
       } else {
-        // 加载现有项目
-        const loadedProject = await loadProject(projectId);
-        if (loadedProject) {
-          loadProjectToStore(loadedProject);
-        } else {
-          // 项目不存在，返回首页
-          router.push('/');
-        }
+        // 项目不存在，返回首页
+        console.warn('⚠️ 项目不存在，返回首页');
+        router.push('/');
       }
     };
 
     loadOrCreateProject();
-  }, [params.id, project, loadProjectToStore, router]);
+  }, [params.id, loadProjectToStore, router]);
 
   if (!project) {
     return (
