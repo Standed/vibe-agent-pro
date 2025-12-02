@@ -85,6 +85,29 @@ export interface GenerationConfig {
   videoPrompt?: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+}
+
+export interface GenerationHistoryItem {
+  id: string;
+  type: 'image' | 'video';
+  timestamp: Date;
+  result: string; // Image URL or Video URL
+  prompt: string;
+  parameters: {
+    model?: string;
+    aspectRatio?: AspectRatio;
+    gridSize?: '2x2' | '3x3';
+    referenceImages?: string[];
+    [key: string]: unknown;
+  };
+  status: 'success' | 'failed';
+}
+
 export interface Shot {
   id: string;
   sceneId: string;
@@ -108,9 +131,23 @@ export interface Shot {
   // 生成配置
   generationConfig?: GenerationConfig;
 
+  // 生成历史记录
+  generationHistory?: GenerationHistoryItem[];
+
   // 状态
   status: ShotStatus;
   error?: string;
+}
+
+export interface GridHistoryItem {
+  id: string;
+  timestamp: Date;
+  fullGridUrl: string;
+  slices: string[];
+  gridSize: '2x2' | '3x3';
+  prompt: string;
+  aspectRatio: AspectRatio;
+  assignments?: Record<string, string>; // shotId -> sliceUrl mapping
 }
 
 export interface Scene {
@@ -120,6 +157,8 @@ export interface Scene {
   description: string;
   shotIds: string[];
   position: { x: number; y: number };
+  gridHistory?: GridHistoryItem[]; // Grid generation history
+  savedGridSlices?: string[]; // Favorited/unused Grid slices
 }
 
 export interface TimelineClip {
@@ -164,6 +203,9 @@ export interface Project {
 
   // 设置
   settings: ProjectSettings;
+
+  // AI Agent 对话历史（项目级别）
+  chatHistory?: ChatMessage[];
 }
 
 // 用于 IndexedDB 存储的资产类型

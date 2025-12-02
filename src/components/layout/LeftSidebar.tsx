@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FileText, Users, MapPin, Volume2, X, Upload, Trash2, Loader2, Sparkles } from 'lucide-react';
+import { FileText, Users, MapPin, Volume2, X, Upload, Trash2, Loader2, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { generateStoryboardFromScript, analyzeScript, groupShotsIntoScenes } from '@/services/storyboardService';
 import type { Character, Location, LocationType } from '@/types/project';
@@ -11,7 +11,17 @@ type Tab = 'script' | 'characters' | 'locations' | 'audio';
 export default function LeftSidebar() {
   const [activeTab, setActiveTab] = useState<Tab>('script');
   const [isGenerating, setIsGenerating] = useState(false);
-  const { project, addScene, addShot, addCharacter, addLocation, deleteCharacter, deleteLocation } = useProjectStore();
+  const {
+    project,
+    addScene,
+    addShot,
+    addCharacter,
+    addLocation,
+    deleteCharacter,
+    deleteLocation,
+    leftSidebarCollapsed,
+    toggleLeftSidebar
+  } = useProjectStore();
   const [scriptContent, setScriptContent] = useState(project?.script || '');
 
   // Character modal state
@@ -274,9 +284,23 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
   };
 
   return (
-    <div className="w-80 bg-cine-dark border-r border-cine-border flex flex-col">
-      {/* Tabs */}
-      <div className="flex border-b border-cine-border">
+    <div className={`bg-cine-dark border-r border-cine-border flex flex-col transition-all duration-300 ${leftSidebarCollapsed ? 'w-12' : 'w-80'}`}>
+      {leftSidebarCollapsed ? (
+        /* Collapsed State */
+        <div className="flex flex-col items-center h-full">
+          <button
+            onClick={toggleLeftSidebar}
+            className="p-3 hover:bg-cine-panel transition-colors mt-4"
+            title="展开侧边栏"
+          >
+            <ChevronRight size={20} className="text-cine-text-muted" />
+          </button>
+        </div>
+      ) : (
+        /* Expanded State */
+        <>
+          {/* Tabs */}
+          <div className="flex border-b border-cine-border relative">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -294,6 +318,14 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
             </button>
           );
         })}
+        {/* Collapse Button */}
+        <button
+          onClick={toggleLeftSidebar}
+          className="absolute right-2 top-3 p-1 hover:bg-cine-panel rounded transition-colors"
+          title="收起侧边栏"
+        >
+          <ChevronLeft size={16} className="text-cine-text-muted" />
+        </button>
       </div>
 
       {/* Content */}
@@ -457,6 +489,8 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* Character Modal */}
       {showCharacterModal && (
