@@ -3,6 +3,7 @@
 
 import { GoogleGenAI } from '@google/genai';
 import type { Shot, Scene } from '@/types/project';
+import { securePromptExecution, filterAIOutput } from '@/utils/promptSecurity';
 
 const getGeminiClient = () => {
   const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
@@ -159,6 +160,21 @@ export const STORYBOARD_BREAKDOWN_PROMPT = `# 角色定义
 }
 \`\`\`
 
+## dialogue 字段重要说明
+
+**必须严格遵守以下规则**：
+
+1. **有台词必须提取**：剧本中任何角色说的话都必须提取到 dialogue 字段，不要遗漏
+2. **一镜一句**：每个分镜只包含一句台词，长对话拆分成多个分镜
+3. **只保留台词内容**：dialogue 字段只包含说话内容，不要加"XX说："前缀
+4. **空值处理**：如果该镜头没有对白，dialogue 字段留空字符串 ""
+
+**正确示例**：
+- ✅ 正确：提取台词内容 => dialogue: "你好吗？"
+- ✅ 正确：没有对白时留空 => dialogue: ""
+- ❌ 错误：不要加说话人前缀 => dialogue: "小明说：你好吗？"
+- ❌ 错误：不要把台词放在 visual_description 里
+
 # 质量检查清单
 
 输出前，必须自检以下项目：
@@ -167,6 +183,9 @@ export const STORYBOARD_BREAKDOWN_PROMPT = `# 角色定义
 - [ ] 每个情绪转折都有独立分镜
 - [ ] 重要动作拆分成3-5个步骤
 - [ ] 对话采用"说-反应"节奏
+- [ ] **剧本中的所有台词都已提取到 dialogue 字段**
+- [ ] **dialogue 字段只包含台词内容，没有"XX说："前缀**
+- [ ] **visual_description 中不包含台词内容**
 - [ ] 没有单个分镜超过10秒
 - [ ] visual_description包含所有8个要素
 - [ ] 景别有远→中→近的节奏变化
@@ -181,18 +200,38 @@ export const STORYBOARD_BREAKDOWN_PROMPT = `# 角色定义
  * Generate storyboard breakdown from script
  */
 export async function generateStoryboardFromScript(
-  script: string
+  script: string,
+  artStyle?: string
 ): Promise<Shot[]> {
   const ai = getGeminiClient();
   const model = 'gemini-2.5-flash';
 
   try {
+    // 构建用户输入，包含画风要求
+    let userInput = `## 用户剧本：\n\n${script}`;
+
+    if (artStyle && artStyle.trim()) {
+      userInput = `## 用户指定画风：\n\n**重要：所有分镜的 visual_description 必须使用以下画风**：${artStyle}\n\n` + userInput;
+    }
+
+    userInput += '\n\n请输出JSON数组格式的分镜列表。';
+
+    // 🔒 安全检查：验证用户输入
+    const securityCheck = securePromptExecution(STORYBOARD_BREAKDOWN_PROMPT, userInput);
+
+    if (!securityCheck.isValid) {
+      throw new Error(`安全验证失败：${securityCheck.error}`);
+    }
+
     const response = await ai.models.generateContent({
       model,
-      contents: `${STORYBOARD_BREAKDOWN_PROMPT}\n\n## 用户剧本：\n\n${script}\n\n请输出JSON数组格式的分镜列表。`,
+      contents: securityCheck.processedPrompt!, // 使用安全包装后的提示词
     });
 
-    const text = response.text || '';
+    const rawText = response.text || '';
+
+    // 🔒 输出过滤：移除可能泄露的系统信息
+    const text = filterAIOutput(rawText);
 
     // Extract JSON from markdown code blocks if present
     const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);

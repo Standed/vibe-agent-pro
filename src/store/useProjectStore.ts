@@ -213,7 +213,7 @@ export const useProjectStore = create<ProjectStore>()(
 
     selectScene: (id) => set({ currentSceneId: id, selectedShotId: null }),
 
-    addGridHistory: (sceneId, gridHistory) =>
+    addGridHistory: (sceneId, gridHistory) => {
       set((state) => {
         const scene = state.project?.scenes.find((s) => s.id === sceneId);
         if (scene) {
@@ -226,9 +226,12 @@ export const useProjectStore = create<ProjectStore>()(
             scene.gridHistory = scene.gridHistory.slice(0, 10);
           }
         }
-      }),
+      });
+      // 自动保存到 IndexedDB
+      get().saveProject();
+    },
 
-    saveFavoriteSlices: (sceneId, slices) =>
+    saveFavoriteSlices: (sceneId, slices) => {
       set((state) => {
         const scene = state.project?.scenes.find((s) => s.id === sceneId);
         if (scene) {
@@ -237,7 +240,10 @@ export const useProjectStore = create<ProjectStore>()(
           }
           scene.savedGridSlices.push(...slices);
         }
-      }),
+      });
+      // 自动保存到 IndexedDB
+      get().saveProject();
+    },
 
     // Shot Actions
     addShot: (shot) => {
@@ -284,7 +290,7 @@ export const useProjectStore = create<ProjectStore>()(
         };
       }),
 
-    addGenerationHistory: (shotId, historyItem) =>
+    addGenerationHistory: (shotId, historyItem) => {
       set((state) => {
         const shot = state.project?.shots.find((s) => s.id === shotId);
         if (shot) {
@@ -297,7 +303,10 @@ export const useProjectStore = create<ProjectStore>()(
             shot.generationHistory = shot.generationHistory.slice(0, 20);
           }
         }
-      }),
+      });
+      // 自动保存到 IndexedDB
+      get().saveProject();
+    },
 
     // Character Actions
     addCharacter: (character) =>
