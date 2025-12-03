@@ -1,13 +1,27 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Sparkles, User, Bot } from 'lucide-react';
+import { Send, Loader2, Sparkles, User, Bot, Terminal } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { ChatMessage } from '@/types/project';
 import { toast } from 'sonner';
+import { processUserCommand, AgentAction, AgentMessage } from '@/services/agentService';
+import { generateMultiViewGrid } from '@/services/geminiService';
+import { volcanoEngineService } from '@/services/volcanoEngineService';
+import { AspectRatio, ImageSize, GenerationHistoryItem, Shot } from '@/types/project';
 
 export default function AgentPanel() {
-  const { project, addChatMessage } = useProjectStore();
+  const {
+    project,
+    addChatMessage,
+    addScene,
+    addShot,
+    updateShot,
+    addGenerationHistory,
+    currentSceneId,
+    selectedShotId
+  } = useProjectStore();
+
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -22,10 +36,11 @@ export default function AgentPanel() {
   const handleSendMessage = async () => {
     if (!input.trim() || isProcessing) return;
 
+    const userContent = input.trim();
     const userMessage: ChatMessage = {
       id: `msg_${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: userContent,
       timestamp: new Date(),
     };
 
@@ -35,18 +50,42 @@ export default function AgentPanel() {
     setIsProcessing(true);
 
     try {
-      // TODO: 这里需要调用 AI API 来处理用户请求
-      // 目前只是一个占位响应
-      const assistantResponse = await processAgentCommand(userMessage.content);
+      // Prepare context
+      const currentScene = project?.scenes.find(s => s.id === currentSceneId);
+      const currentShot = project?.shots.find(s => s.id === selectedShotId);
 
+      const context = {
+        projectName: project?.metadata.title,
+        projectDescription: project?.metadata.description,
+        currentScene: currentScene?.name,
+        currentShot: currentShot ? `镜头 #${currentShot.order}` : undefined,
+        shotCount: project?.shots.length,
+        sceneCount: project?.scenes.length,
+      };
+
+      // Convert chat history for API
+      const apiHistory: AgentMessage[] = chatHistory.map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      }));
+
+      // Call Agent API
+      const action = await processUserCommand(userContent, apiHistory, context);
+
+      // Execute Action
+      await executeAgentAction(action);
+
+      // Add Assistant Message
       const assistantMessage: ChatMessage = {
         id: `msg_${Date.now()}_assistant`,
         role: 'assistant',
-        content: assistantResponse,
+        content: action.message,
         timestamp: new Date(),
+        thought: action.thought // Optional: display thought process
       };
 
       addChatMessage(assistantMessage);
+
     } catch (error) {
       console.error('Agent processing error:', error);
       const errorMessage: ChatMessage = {
@@ -61,87 +100,337 @@ export default function AgentPanel() {
     }
   };
 
-  // 简单的命令处理逻辑（后续可以接入真正的 AI）
-  const processAgentCommand = async (command: string): Promise<string> => {
-    const lowerCommand = command.toLowerCase();
+  const executeAgentAction = async (action: AgentAction) => {
+    console.log('Executing Agent Action:', action);
 
-    // 帮助命令
-    if (lowerCommand.includes('帮助') || lowerCommand.includes('help')) {
-      return `我是 Vibe Agent Pro 的智能助手，我可以帮助您：
+    switch (action.type) {
+      case 'create_scene':
+        if (action.parameters?.name) {
+          addScene({
+            id: `scene_${Date.now()}`,
+            name: action.parameters.name,
+            description: action.parameters.description || '',
+            location: 'Unknown', // Default location
+            position: { x: 0, y: 0 }, // Default position
+            shotIds: [],
+            order: (project?.scenes.length || 0) + 1,
+            status: 'draft',
+            created: new Date(),
+            modified: new Date(),
+          });
+          toast.success(`已创建场景: ${action.parameters.name}`);
+        }
+        break;
 
-**1. 创建分镜**
-   - "为场景 1 添加一个中景镜头"
-   - "创建一个 3 秒的特写镜头"
+      case 'add_shot':
+        if (action.parameters?.count) {
+          const count = action.parameters.count;
+          const targetSceneId = currentSceneId || project?.scenes[0]?.id;
 
-**2. 生成素材**
-   - "为镜头 1 生成图片"
-   - "生成 Grid 多视图"
-   - "生成视频"
+          if (!targetSceneId) {
+            toast.error('请先创建一个场景');
+            return;
+          }
 
-**3. 编辑内容**
-   - "修改镜头 2 的描述"
-   - "更新镜头时长为 5 秒"
+          for (let i = 0; i < count; i++) {
+            addShot({
+              id: `shot_${Date.now()}_${i}`,
+              sceneId: targetSceneId,
+              order: (project?.shots.length || 0) + 1 + i,
+              description: action.parameters.description || '新镜头',
+              shotSize: action.parameters.shotSize || 'Medium Shot',
+              cameraMovement: 'Static', // Default camera movement
+              duration: action.parameters.duration || 3,
+              status: 'draft',
+              created: new Date(),
+              modified: new Date(),
+            });
+          }
+          toast.success(`已添加 ${count} 个镜头`);
+        }
+        break;
 
-**4. 查询信息**
-   - "显示所有场景"
-   - "镜头 3 的状态是什么"
+      case 'update_shot':
+        if (action.parameters?.updates) {
+          const target = action.parameters.target;
+          if (target === 'current' && selectedShotId) {
+            updateShot(selectedShotId, action.parameters.updates);
+            toast.success('已更新当前镜头');
+          } else if (target === 'id' && action.parameters.id) {
+            updateShot(action.parameters.id, action.parameters.updates);
+            toast.success('已更新指定镜头');
+          }
+        }
+        break;
 
-**5. 导出和下载**
-   - "批量下载素材"
-   - "导出分镜脚本"
+      case 'generate_grid':
+        if (action.parameters) {
+          const target = action.parameters.target;
+          let targetShotId = selectedShotId;
 
-直接告诉我您想做什么，我会帮助您完成！`;
+          if (target === 'shot_id' && action.parameters.shot_id) {
+            targetShotId = action.parameters.shot_id;
+          }
+
+          if (!targetShotId) {
+            toast.error('请先选择一个镜头');
+            return;
+          }
+
+          const shot = project?.shots.find(s => s.id === targetShotId);
+          if (!shot) return;
+
+          toast.info('正在生成 Grid 多视图...');
+          try {
+            const result = await generateMultiViewGrid(
+              action.parameters.prompt || shot.description || 'Cinematic shot',
+              2, 2, // Default to 2x2
+              project?.settings.aspectRatio || AspectRatio.WIDE,
+              ImageSize.K4,
+              []
+            );
+
+            // Update shot
+            updateShot(targetShotId, {
+              referenceImage: result.slices[0], // Use first slice as reference
+              fullGridUrl: result.fullImage,
+              gridImages: result.slices,
+              status: 'done'
+            });
+
+            // Add history
+            addGenerationHistory(targetShotId, {
+              id: `gen_${Date.now()}`,
+              type: 'image',
+              timestamp: new Date(),
+              result: result.slices[0],
+              prompt: action.parameters.prompt || shot.description,
+              parameters: {
+                model: 'Gemini Grid',
+                gridSize: '2x2',
+                fullGridUrl: result.fullImage
+              },
+              status: 'success'
+            });
+
+            toast.success('Grid 生成完成');
+          } catch (error: any) {
+            console.error('Grid generation failed:', error);
+            toast.error('Grid 生成失败', {
+              description: error.message || '请检查API配置'
+            });
+          }
+        }
+        break;
+
+      case 'generate_video':
+        if (action.parameters) {
+          const target = action.parameters.target;
+          let targetShotId = selectedShotId;
+
+          if (target === 'shot_id' && action.parameters.shot_id) {
+            targetShotId = action.parameters.shot_id;
+          }
+
+          if (!targetShotId) {
+            toast.error('请先选择一个镜头');
+            return;
+          }
+
+          const shot = project?.shots.find(s => s.id === targetShotId);
+          if (!shot) return;
+
+          if (!shot.referenceImage) {
+            toast.error('该镜头没有参考图片，无法生成视频');
+            return;
+          }
+
+          toast.info('正在生成视频，请稍候...');
+          updateShot(targetShotId, { status: 'processing' });
+
+          try {
+            // Get base64 from reference image URL (assuming it's already base64 or needs fetching)
+            // For simplicity, if it's a data URL, extract base64. If http, fetch it.
+            let imageBase64 = '';
+            if (shot.referenceImage.startsWith('data:')) {
+              imageBase64 = shot.referenceImage.split(',')[1];
+            } else {
+              // Fetch logic here if needed, or assume data URL for now as per geminiService
+              // But wait, volcanoEngineService expects base64.
+              // Let's assume it's data URL for now as that's what gemini returns.
+              // If it's not, we might fail.
+              // TODO: Handle remote URLs
+              imageBase64 = shot.referenceImage;
+            }
+
+            const videoTask = await volcanoEngineService.generateSceneVideo(
+              action.parameters.prompt || shot.description || 'Cinematic movement',
+              imageBase64
+            );
+
+            const videoUrl = await volcanoEngineService.waitForVideoCompletion(videoTask.id);
+
+            updateShot(targetShotId, {
+              videoClip: videoUrl,
+              status: 'done'
+            });
+
+            addGenerationHistory(targetShotId, {
+              id: `gen_${Date.now()}`,
+              type: 'video',
+              timestamp: new Date(),
+              result: videoUrl,
+              prompt: action.parameters.prompt || shot.description,
+              parameters: {
+                model: 'Volcano I2V',
+                referenceImage: shot.referenceImage
+              },
+              status: 'success'
+            });
+
+            toast.success('视频生成完成');
+          } catch (error) {
+            console.error('Video generation failed:', error);
+            updateShot(targetShotId, { status: 'error' });
+            toast.error('视频生成失败');
+          }
+        }
+        break;
+
+        break;
+
+      case 'batch_generate_grid':
+        if (action.parameters) {
+          const scope = action.parameters.scope;
+          const targetSceneId = action.parameters.sceneId || currentSceneId;
+
+          let targetShots: Shot[] = [];
+          if (scope === 'scene' && targetSceneId) {
+            targetShots = project?.shots.filter(s => s.sceneId === targetSceneId && !s.referenceImage) || [];
+          } else if (scope === 'project') {
+            targetShots = project?.shots.filter(s => !s.referenceImage) || [];
+          }
+
+          if (targetShots.length === 0) {
+            toast.info('没有需要生成图片的镜头');
+            return;
+          }
+
+          toast.info(`开始批量生成 ${targetShots.length} 个镜头的 Grid...`);
+
+          // Process sequentially to avoid rate limits
+          for (const shot of targetShots) {
+            try {
+              toast.loading(`正在生成镜头 #${shot.order} 的 Grid...`);
+              const result = await generateMultiViewGrid(
+                shot.description || 'Cinematic shot',
+                2, 2,
+                project?.settings.aspectRatio || AspectRatio.WIDE,
+                ImageSize.K4,
+                []
+              );
+
+              updateShot(shot.id, {
+                referenceImage: result.slices[0],
+                fullGridUrl: result.fullImage,
+                gridImages: result.slices,
+                status: 'done'
+              });
+
+              addGenerationHistory(shot.id, {
+                id: `gen_${Date.now()}`,
+                type: 'image',
+                timestamp: new Date(),
+                result: result.slices[0],
+                prompt: shot.description || 'Batch generation',
+                parameters: {
+                  model: 'Gemini Grid',
+                  gridSize: '2x2',
+                  fullGridUrl: result.fullImage
+                },
+                status: 'success'
+              });
+            } catch (error: any) {
+              console.error(`Failed to generate grid for shot ${shot.id}:`, error);
+              toast.error(`镜头 #${shot.order} 生成失败`, {
+                description: error.message || '请检查API配置'
+              });
+              // Continue with next shot
+            }
+          }
+          toast.success('批量生成完成');
+        }
+        break;
+
+      case 'batch_generate_video':
+        if (action.parameters) {
+          const scope = action.parameters.scope;
+          const targetSceneId = action.parameters.sceneId || currentSceneId;
+
+          let targetShots: Shot[] = [];
+          if (scope === 'scene' && targetSceneId) {
+            targetShots = project?.shots.filter(s => s.sceneId === targetSceneId && s.referenceImage && !s.videoClip) || [];
+          } else if (scope === 'project') {
+            targetShots = project?.shots.filter(s => s.referenceImage && !s.videoClip) || [];
+          }
+
+          if (targetShots.length === 0) {
+            toast.info('没有需要生成视频的镜头（需先生成图片）');
+            return;
+          }
+
+          toast.info(`开始批量生成 ${targetShots.length} 个镜头的视频...`);
+
+          for (const shot of targetShots) {
+            try {
+              toast.loading(`正在生成镜头 #${shot.order} 的视频...`);
+              updateShot(shot.id, { status: 'processing' });
+
+              let imageBase64 = '';
+              if (shot.referenceImage!.startsWith('data:')) {
+                imageBase64 = shot.referenceImage!.split(',')[1];
+              } else {
+                imageBase64 = shot.referenceImage!;
+              }
+
+              const videoTask = await volcanoEngineService.generateSceneVideo(
+                shot.description || 'Cinematic movement',
+                imageBase64
+              );
+
+              const videoUrl = await volcanoEngineService.waitForVideoCompletion(videoTask.id);
+
+              updateShot(shot.id, {
+                videoClip: videoUrl,
+                status: 'done'
+              });
+
+              addGenerationHistory(shot.id, {
+                id: `gen_${Date.now()}`,
+                type: 'video',
+                timestamp: new Date(),
+                result: videoUrl,
+                prompt: shot.description || 'Batch generation',
+                parameters: {
+                  model: 'Volcano I2V',
+                  referenceImage: shot.referenceImage
+                },
+                status: 'success'
+              });
+            } catch (error) {
+              console.error(`Failed to generate video for shot ${shot.id}:`, error);
+              updateShot(shot.id, { status: 'error' });
+            }
+          }
+          toast.success('批量生成完成');
+        }
+        break;
+
+      case 'none':
+      default:
+        // No operation needed
+        break;
     }
-
-    // 查询场景
-    if (lowerCommand.includes('场景') && (lowerCommand.includes('显示') || lowerCommand.includes('查看') || lowerCommand.includes('列出'))) {
-      const scenes = project?.scenes || [];
-      if (scenes.length === 0) {
-        return '当前项目还没有场景。您可以使用 AI 自动分镜功能来生成场景和镜头。';
-      }
-
-      return `当前项目有 ${scenes.length} 个场景：\n\n${scenes.map((scene, idx) => {
-        const shotCount = project?.shots.filter(s => s.sceneId === scene.id).length || 0;
-        return `${idx + 1}. ${scene.name} (${shotCount} 个镜头)`;
-      }).join('\n')}`;
-    }
-
-    // 查询镜头
-    if (lowerCommand.includes('镜头') && (lowerCommand.includes('显示') || lowerCommand.includes('查看') || lowerCommand.includes('列出'))) {
-      const shots = project?.shots || [];
-      if (shots.length === 0) {
-        return '当前项目还没有镜头。您可以使用 AI 自动分镜功能来生成镜头，或手动添加镜头。';
-      }
-
-      const summary = shots.slice(0, 5).map((shot, idx) => {
-        return `${idx + 1}. 镜头 #${shot.order} - ${shot.shotSize} - ${shot.duration}s ${shot.status === 'done' ? '✓' : ''}`;
-      }).join('\n');
-
-      return `当前项目有 ${shots.length} 个镜头${shots.length > 5 ? '（显示前 5 个）' : ''}：\n\n${summary}`;
-    }
-
-    // 生成图片
-    if (lowerCommand.includes('生成') && (lowerCommand.includes('图片') || lowerCommand.includes('图像') || lowerCommand.includes('单图'))) {
-      return '要生成单图，请：\n1. 在左侧边栏选择一个镜头\n2. 切换到右侧 Pro 模式面板\n3. 选择"单图生成"类型\n4. 输入提示词\n5. 点击"生成单图"按钮\n\n提示：Pro 模式面板在右侧，如果看不到请点击右上角展开按钮。';
-    }
-
-    // Grid 生成
-    if (lowerCommand.includes('grid') || lowerCommand.includes('多视图')) {
-      return '要生成 Grid 多视图，请：\n1. 在左侧边栏选择一个场景（不要选择具体镜头）\n2. 切换到右侧 Pro 模式面板\n3. 选择"Grid 多视图"类型\n4. 选择场景和 Grid 大小（2x2 或 3x3）\n5. 输入提示词描述整体风格\n6. 点击"生成 Grid"按钮\n\nGrid 会自动为场景中的多个镜头生成统一风格的图片！';
-    }
-
-    // 视频生成
-    if (lowerCommand.includes('生成') && lowerCommand.includes('视频')) {
-      return '要生成视频，请：\n1. 确保镜头已经有参考图片（通过单图或 Grid 生成）\n2. 在左侧边栏选择该镜头\n3. 切换到右侧 Pro 模式面板\n4. 选择"视频生成"类型\n5. 输入运镜提示词（如"镜头缓慢推进"）\n6. 点击"生成视频"按钮\n\n视频生成需要 2-3 分钟，请耐心等待。';
-    }
-
-    // 下载素材
-    if (lowerCommand.includes('下载') || lowerCommand.includes('导出')) {
-      return '要批量下载素材，请点击左侧边栏顶部的"批量下载素材"按钮。\n\n系统会自动打包所有已生成的图片、视频和音频文件，并下载为 ZIP 压缩包。';
-    }
-
-    // 默认响应
-    return `收到您的消息："${command}"\n\n我正在学习如何更好地理解您的需求。目前您可以：\n\n- 输入"帮助"查看所有可用命令\n- 使用左侧边栏手动操作\n- 使用右侧 Pro 模式面板生成素材\n\n如果您需要具体帮助，请详细描述您想做什么，我会尽力协助！`;
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -162,7 +451,7 @@ export default function AgentPanel() {
           </h2>
         </div>
         <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
-          通过对话操作您的项目
+          通过对话操作您的项目 (Powered by Volcano Engine)
         </p>
       </div>
 
@@ -175,7 +464,8 @@ export default function AgentPanel() {
               开始对话
             </h3>
             <p className="text-xs text-light-text-muted dark:text-cine-text-muted max-w-md mx-auto">
-              我是您的 AI 助手，可以帮您操作项目、生成素材、查询信息等。输入"帮助"查看所有可用命令。
+              我是您的 AI 助手，可以帮您创建场景、添加镜头、生成素材等。
+              <br />试着说："帮我创建一个赛博朋克风格的场景"
             </p>
           </div>
         )}
@@ -191,15 +481,25 @@ export default function AgentPanel() {
               </div>
             )}
 
-            <div
-              className={`max-w-[80%] rounded-lg p-3 ${
-                message.role === 'user'
+            <div className="flex flex-col gap-1 max-w-[80%]">
+              <div
+                className={`rounded-lg p-3 ${message.role === 'user'
                   ? 'bg-light-accent dark:bg-cine-accent text-white'
                   : 'bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white'
-              }`}
-            >
-              <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-              <p className="text-xs opacity-60 mt-2">
+                  }`}
+              >
+                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              </div>
+
+              {/* Show thought process if available */}
+              {message.thought && (
+                <div className="flex items-center gap-1 text-xs text-light-text-muted dark:text-cine-text-muted px-1">
+                  <Terminal size={10} />
+                  <span>{message.thought}</span>
+                </div>
+              )}
+
+              <p className="text-xs opacity-60 px-1">
                 {new Date(message.timestamp).toLocaleTimeString('zh-CN', {
                   hour: '2-digit',
                   minute: '2-digit',
@@ -236,7 +536,7 @@ export default function AgentPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder="输入消息或帮助查看可用命令"
+            placeholder="输入指令，例如：'创建3个特写镜头'"
             className="flex-1 bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted"
             rows={2}
             disabled={isProcessing}

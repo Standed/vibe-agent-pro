@@ -168,11 +168,17 @@ export async function processUserCommand(
       };
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Agent API error:', error);
+
+    let message = '抱歉，AI 服务暂时不可用。';
+    if (error.message?.includes('401') || error.message?.includes('403')) {
+      message = 'Volcano Engine API Key 无效或已过期，请检查配置。';
+    }
+
     return {
       type: 'none',
-      message: '抱歉，AI 服务暂时不可用。',
+      message: message,
       thought: 'API Error'
     };
   }

@@ -90,6 +90,10 @@ export default function LeftSidebar() {
           description: '',
           shotIds: [],
           position: { x: idx * 300, y: 100 },
+          order: idx + 1,
+          status: 'draft' as const,
+          created: new Date(),
+          modified: new Date(),
         };
 
         addScene(scene);
@@ -104,9 +108,9 @@ export default function LeftSidebar() {
       });
 
       alert(`成功生成 ${sceneGroups.length} 个场景，${shots.length} 个镜头！`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI分镜失败:', error);
-      alert('AI分镜生成失败，请检查API配置');
+      alert(`AI分镜生成失败: ${error.message || '请检查API配置'}`);
     } finally {
       setIsGenerating(false);
     }
@@ -318,195 +322,194 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
 
           {/* Tabs */}
           <div className="flex border-b border-light-border dark:border-cine-border relative">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          return (
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 transition-colors ${activeTab === tab.id
+                    ? 'bg-light-panel dark:bg-cine-panel text-light-accent dark:text-cine-accent border-b-2 border-light-accent dark:border-cine-accent'
+                    : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-bg/50 dark:hover:bg-cine-panel/50'
+                    }`}
+                >
+                  <Icon size={18} />
+                  <span className="text-sm font-medium">{tab.label}</span>
+                </button>
+              );
+            })}
+            {/* Collapse Button */}
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-light-panel dark:bg-cine-panel text-light-accent dark:text-cine-accent border-b-2 border-light-accent dark:border-cine-accent'
-                  : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-bg/50 dark:hover:bg-cine-panel/50'
-              }`}
+              onClick={toggleLeftSidebar}
+              className="absolute right-2 top-3 p-1 hover:bg-light-bg dark:hover:bg-cine-panel rounded transition-colors"
+              title="收起侧边栏"
             >
-              <Icon size={18} />
-              <span className="text-sm font-medium">{tab.label}</span>
-            </button>
-          );
-        })}
-        {/* Collapse Button */}
-        <button
-          onClick={toggleLeftSidebar}
-          className="absolute right-2 top-3 p-1 hover:bg-light-bg dark:hover:bg-cine-panel rounded transition-colors"
-          title="收起侧边栏"
-        >
-          <ChevronLeft size={16} className="text-light-text-muted dark:text-cine-text-muted" />
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {activeTab === 'script' && (
-          <div>
-            <h3 className="text-sm font-bold mb-3 text-light-text dark:text-white">剧本</h3>
-            <textarea
-              value={scriptContent}
-              onChange={(e) => setScriptContent(e.target.value)}
-              placeholder="在这里输入你的剧本...&#10;&#10;示例：&#10;场景1: 清晨的咖啡馆&#10;阳光透过玻璃窗洒进来，一位年轻女性独自坐在角落..."
-              className="w-full h-64 bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm text-light-text dark:text-white resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
-            />
-            <button
-              onClick={handleAIStoryboard}
-              disabled={isGenerating}
-              className="mt-3 w-full bg-light-accent dark:bg-cine-accent text-white py-2 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isGenerating ? 'AI 分镜生成中...' : 'AI 自动分镜'}
+              <ChevronLeft size={16} className="text-light-text-muted dark:text-cine-text-muted" />
             </button>
           </div>
-        )}
 
-        {activeTab === 'characters' && (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-light-text dark:text-white">角色列表</h3>
-              <button
-                onClick={() => setShowCharacterModal(true)}
-                className="text-xs bg-light-panel dark:bg-cine-panel px-3 py-1 rounded hover:bg-light-border dark:hover:bg-cine-border text-light-text dark:text-white"
-              >
-                + 添加
-              </button>
-            </div>
-            {project?.characters && project.characters.length > 0 ? (
-              <div className="space-y-2">
-                {project.characters.map((char) => (
-                  <div key={char.id} className="bg-light-panel dark:bg-cine-panel p-3 rounded border border-light-border dark:border-cine-border">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="font-medium text-sm text-light-text dark:text-white">{char.name}</div>
-                      <button
-                        onClick={() => deleteCharacter(char.id)}
-                        className="text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-2">{char.description}</div>
-                    {char.referenceImages && char.referenceImages.length > 0 && (
-                      <div className="flex gap-1 flex-wrap">
-                        {char.referenceImages.map((img, idx) => (
-                          <img
-                            key={idx}
-                            src={img}
-                            alt={`${char.name} reference ${idx + 1}`}
-                            className="w-12 h-12 object-cover rounded"
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {activeTab === 'script' && (
+              <div>
+                <h3 className="text-sm font-bold mb-3 text-light-text dark:text-white">剧本</h3>
+                <textarea
+                  value={scriptContent}
+                  onChange={(e) => setScriptContent(e.target.value)}
+                  placeholder="在这里输入你的剧本...&#10;&#10;示例：&#10;场景1: 清晨的咖啡馆&#10;阳光透过玻璃窗洒进来，一位年轻女性独自坐在角落..."
+                  className="w-full h-64 bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm text-light-text dark:text-white resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
+                />
+                <button
+                  onClick={handleAIStoryboard}
+                  disabled={isGenerating}
+                  className="mt-3 w-full bg-light-accent dark:bg-cine-accent text-white py-2 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGenerating ? 'AI 分镜生成中...' : 'AI 自动分镜'}
+                </button>
               </div>
-            ) : (
-              <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8">
-                暂无角色
+            )}
+
+            {activeTab === 'characters' && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-light-text dark:text-white">角色列表</h3>
+                  <button
+                    onClick={() => setShowCharacterModal(true)}
+                    className="text-xs bg-light-panel dark:bg-cine-panel px-3 py-1 rounded hover:bg-light-border dark:hover:bg-cine-border text-light-text dark:text-white"
+                  >
+                    + 添加
+                  </button>
+                </div>
+                {project?.characters && project.characters.length > 0 ? (
+                  <div className="space-y-2">
+                    {project.characters.map((char) => (
+                      <div key={char.id} className="bg-light-panel dark:bg-cine-panel p-3 rounded border border-light-border dark:border-cine-border">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="font-medium text-sm text-light-text dark:text-white">{char.name}</div>
+                          <button
+                            onClick={() => deleteCharacter(char.id)}
+                            className="text-red-400 hover:text-red-300"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-2">{char.description}</div>
+                        {char.referenceImages && char.referenceImages.length > 0 && (
+                          <div className="flex gap-1 flex-wrap">
+                            {char.referenceImages.map((img, idx) => (
+                              <img
+                                key={idx}
+                                src={img}
+                                alt={`${char.name} reference ${idx + 1}`}
+                                className="w-12 h-12 object-cover rounded"
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8">
+                    暂无角色
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'locations' && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-light-text dark:text-white">场景列表</h3>
+                  <button
+                    onClick={() => setShowLocationModal(true)}
+                    className="text-xs bg-light-panel dark:bg-cine-panel px-3 py-1 rounded hover:bg-light-border dark:hover:bg-cine-border text-light-text dark:text-white"
+                  >
+                    + 添加
+                  </button>
+                </div>
+                {project?.locations && project.locations.length > 0 ? (
+                  <div className="space-y-2">
+                    {project.locations.map((loc) => (
+                      <div key={loc.id} className="bg-light-panel dark:bg-cine-panel p-3 rounded border border-light-border dark:border-cine-border">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <div className="font-medium text-sm text-light-text dark:text-white">{loc.name}</div>
+                            <div className="text-xs text-light-accent dark:text-cine-accent">{loc.type === 'interior' ? '室内' : '室外'}</div>
+                          </div>
+                          <button
+                            onClick={() => deleteLocation(loc.id)}
+                            className="text-red-400 hover:text-red-300"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-2">{loc.description}</div>
+                        {loc.referenceImages && loc.referenceImages.length > 0 && (
+                          <div className="flex gap-1 flex-wrap">
+                            {loc.referenceImages.map((img, idx) => (
+                              <img
+                                key={idx}
+                                src={img}
+                                alt={`${loc.name} reference ${idx + 1}`}
+                                className="w-12 h-12 object-cover rounded"
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8">
+                    暂无场景
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'audio' && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-light-text dark:text-white">音频素材</h3>
+                  <button
+                    onClick={() => setShowAudioModal(true)}
+                    className="text-xs bg-light-panel dark:bg-cine-panel px-3 py-1 rounded hover:bg-light-border dark:hover:bg-cine-border text-light-text dark:text-white"
+                  >
+                    + 上传
+                  </button>
+                </div>
+                {project?.audioAssets && project.audioAssets.length > 0 ? (
+                  <div className="space-y-2">
+                    {project.audioAssets.map((audio) => (
+                      <div key={audio.id} className="bg-light-panel dark:bg-cine-panel p-3 rounded border border-light-border dark:border-cine-border">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="font-medium text-sm text-light-text dark:text-white">{audio.name}</div>
+                          <button
+                            onClick={() => {
+                              const { deleteAudioAsset } = useProjectStore.getState();
+                              deleteAudioAsset(audio.id);
+                            }}
+                            className="text-red-400 hover:text-red-300"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                          类型: {audio.type === 'music' ? '音乐' : audio.type === 'voice' ? '语音' : '音效'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8">
+                    暂无音频
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
-
-        {activeTab === 'locations' && (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-light-text dark:text-white">场景列表</h3>
-              <button
-                onClick={() => setShowLocationModal(true)}
-                className="text-xs bg-light-panel dark:bg-cine-panel px-3 py-1 rounded hover:bg-light-border dark:hover:bg-cine-border text-light-text dark:text-white"
-              >
-                + 添加
-              </button>
-            </div>
-            {project?.locations && project.locations.length > 0 ? (
-              <div className="space-y-2">
-                {project.locations.map((loc) => (
-                  <div key={loc.id} className="bg-light-panel dark:bg-cine-panel p-3 rounded border border-light-border dark:border-cine-border">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <div className="font-medium text-sm text-light-text dark:text-white">{loc.name}</div>
-                        <div className="text-xs text-light-accent dark:text-cine-accent">{loc.type === 'interior' ? '室内' : '室外'}</div>
-                      </div>
-                      <button
-                        onClick={() => deleteLocation(loc.id)}
-                        className="text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-2">{loc.description}</div>
-                    {loc.referenceImages && loc.referenceImages.length > 0 && (
-                      <div className="flex gap-1 flex-wrap">
-                        {loc.referenceImages.map((img, idx) => (
-                          <img
-                            key={idx}
-                            src={img}
-                            alt={`${loc.name} reference ${idx + 1}`}
-                            className="w-12 h-12 object-cover rounded"
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8">
-                暂无场景
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'audio' && (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-light-text dark:text-white">音频素材</h3>
-              <button
-                onClick={() => setShowAudioModal(true)}
-                className="text-xs bg-light-panel dark:bg-cine-panel px-3 py-1 rounded hover:bg-light-border dark:hover:bg-cine-border text-light-text dark:text-white"
-              >
-                + 上传
-              </button>
-            </div>
-            {project?.audioAssets && project.audioAssets.length > 0 ? (
-              <div className="space-y-2">
-                {project.audioAssets.map((audio) => (
-                  <div key={audio.id} className="bg-light-panel dark:bg-cine-panel p-3 rounded border border-light-border dark:border-cine-border">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="font-medium text-sm text-light-text dark:text-white">{audio.name}</div>
-                      <button
-                        onClick={() => {
-                          const { deleteAudioAsset } = useProjectStore.getState();
-                          deleteAudioAsset(audio.id);
-                        }}
-                        className="text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                      类型: {audio.type === 'music' ? '音乐' : audio.type === 'voice' ? '语音' : '音效'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8">
-                暂无音频
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-      </>
+        </>
       )}
 
       {/* Character Modal */}

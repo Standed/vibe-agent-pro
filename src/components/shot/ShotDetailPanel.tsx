@@ -123,7 +123,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
         updateShot(shotId, { status: 'processing' });
 
         // 等待视频完成
-        const videoUrl = await volcanoService.waitForVideoCompletion(videoTask.taskId);
+        const videoUrl = await volcanoService.waitForVideoCompletion(videoTask.id);
 
         updateShot(shotId, {
           videoClip: videoUrl,
@@ -208,15 +208,14 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
             )}
           </div>
           <div
-            className={`text-xs px-2 py-1 rounded ${
-              shot.status === 'done'
+            className={`text-xs px-2 py-1 rounded ${shot.status === 'done'
                 ? 'bg-green-500/20 text-green-400'
                 : shot.status === 'processing'
-                ? 'bg-yellow-500/20 text-yellow-400'
-                : shot.status === 'error'
-                ? 'bg-red-500/20 text-red-400'
-                : 'bg-gray-500/20 text-gray-400'
-            }`}
+                  ? 'bg-yellow-500/20 text-yellow-400'
+                  : shot.status === 'error'
+                    ? 'bg-red-500/20 text-red-400'
+                    : 'bg-gray-500/20 text-gray-400'
+              }`}
           >
             {shot.status}
           </div>

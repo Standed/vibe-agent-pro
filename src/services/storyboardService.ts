@@ -235,9 +235,33 @@ export async function generateStoryboardFromScript(
 
     // Extract JSON from markdown code blocks if present
     const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
-    const jsonStr = jsonMatch ? jsonMatch[1] : text;
+    let jsonStr = jsonMatch ? jsonMatch[1] : text;
 
-    const shots = JSON.parse(jsonStr);
+    // 清理和修复常见的 JSON 格式问题
+    jsonStr = jsonStr
+      .replace(/,\s*}/g, '}')  // 移除对象末尾的多余逗号
+      .replace(/,\s*\]/g, ']')  // 移除数组末尾的多余逗号
+      .replace(/\/\/.*/g, '')   // 移除单行注释
+      .replace(/\/\*[\s\S]*?\*\//g, '') // 移除多行注释
+      .trim();
+
+    let shots;
+    try {
+      shots = JSON.parse(jsonStr);
+    } catch (parseError: any) {
+      // 如果解析失败，记录详细信息以便调试
+      console.error('JSON 解析失败:', parseError.message);
+      console.error('原始 AI 响应 (前 500 字符):', rawText.substring(0, 500));
+      console.error('提取的 JSON (前 500 字符):', jsonStr.substring(0, 500));
+
+      throw new Error(`AI 生成的内容格式无效，无法解析为 JSON。错误位置: ${parseError.message}。请重试或简化剧本内容。`);
+    }
+
+    // 验证返回的数据是否为数组
+    if (!Array.isArray(shots)) {
+      console.error('AI 返回的数据不是数组:', shots);
+      throw new Error('AI 生成的内容格式不正确，期望是镜头数组。请重试。');
+    }
 
     // Convert to Shot type
     return shots.map((shot: any, index: number) => ({
@@ -252,8 +276,14 @@ export async function generateStoryboardFromScript(
       dialogue: shot.dialogue,
       status: 'pending',
     }));
-  } catch (error) {
+  } catch (error: any) {
     console.error('Storyboard generation error:', error);
+
+    // Handle specific API errors
+    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
+      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
+    }
+
     throw error;
   }
 }
@@ -309,8 +339,11 @@ ${script}
       locations: data.locations || [],
       duration: data.estimated_duration || 0,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Script analysis error:', error);
+    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
+      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
+    }
     throw error;
   }
 }
@@ -335,8 +368,11 @@ export async function enhanceShotDescription(
     });
 
     return response.text || description;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Shot enhancement error:', error);
+    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
+      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
+    }
     return description;
   }
 }
@@ -389,8 +425,11 @@ ${shotsInfo}
       location: scene.location,
       shotIds: scene.shot_indices.map((i: number) => shots[i - 1]?.id || ''),
     }));
-  } catch (error) {
+  } catch (error: any) {
     console.error('Scene grouping error:', error);
+    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
+      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
+    }
     // Fallback: create one scene with all shots
     return [
       {

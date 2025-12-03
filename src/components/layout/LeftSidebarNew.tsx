@@ -114,6 +114,10 @@ export default function LeftSidebarNew() {
           description: '',
           shotIds: [],
           position: { x: idx * 300, y: 100 },
+          order: idx + 1,
+          status: 'draft' as const,
+          created: new Date(),
+          modified: new Date(),
         };
 
         addScene(scene);
@@ -130,10 +134,10 @@ export default function LeftSidebarNew() {
       toast.success(`成功生成 ${sceneGroups.length} 个场景，${generatedShots.length} 个镜头！`);
       // 自动切换到分镜脚本标签页
       setActiveTab('storyboard');
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI分镜失败:', error);
       toast.error('AI分镜生成失败', {
-        description: '请检查API配置或网络连接'
+        description: error.message || '请检查API配置或网络连接'
       });
     } finally {
       setIsGenerating(false);
@@ -246,33 +250,30 @@ export default function LeftSidebarNew() {
       <div className="flex border-b border-light-border dark:border-cine-border">
         <button
           onClick={() => setActiveTab('script')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 text-xs transition-colors ${
-            activeTab === 'script'
-              ? 'bg-light-bg dark:bg-cine-panel text-light-accent dark:text-cine-accent border-b-2 border-light-accent dark:border-cine-accent'
-              : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white'
-          }`}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 text-xs transition-colors ${activeTab === 'script'
+            ? 'bg-light-bg dark:bg-cine-panel text-light-accent dark:text-cine-accent border-b-2 border-light-accent dark:border-cine-accent'
+            : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white'
+            }`}
         >
           <FileText size={16} />
           <span>剧本</span>
         </button>
         <button
           onClick={() => setActiveTab('storyboard')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 text-xs transition-colors ${
-            activeTab === 'storyboard'
-              ? 'bg-light-bg dark:bg-cine-panel text-light-accent dark:text-cine-accent border-b-2 border-light-accent dark:border-cine-accent'
-              : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white'
-          }`}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 text-xs transition-colors ${activeTab === 'storyboard'
+            ? 'bg-light-bg dark:bg-cine-panel text-light-accent dark:text-cine-accent border-b-2 border-light-accent dark:border-cine-accent'
+            : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white'
+            }`}
         >
           <Film size={16} />
           <span>分镜脚本</span>
         </button>
         <button
           onClick={() => setActiveTab('assets')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 text-xs transition-colors ${
-            activeTab === 'assets'
-              ? 'bg-light-bg dark:bg-cine-panel text-light-accent dark:text-cine-accent border-b-2 border-light-accent dark:border-cine-accent'
-              : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white'
-          }`}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 text-xs transition-colors ${activeTab === 'assets'
+            ? 'bg-light-bg dark:bg-cine-panel text-light-accent dark:text-cine-accent border-b-2 border-light-accent dark:border-cine-accent'
+            : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white'
+            }`}
         >
           <FolderOpen size={16} />
           <span>资源</span>
@@ -403,11 +404,10 @@ export default function LeftSidebarNew() {
                         {sceneShots.map((shot) => (
                           <div
                             key={shot.id}
-                            className={`relative rounded-lg transition-all ${
-                              selectedShotId === shot.id
-                                ? 'bg-light-accent/10 dark:bg-cine-accent/10 border-2 border-light-accent dark:border-cine-accent'
-                                : 'bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border hover:border-light-accent/50 dark:hover:border-cine-accent/50'
-                            }`}
+                            className={`relative rounded-lg transition-all ${selectedShotId === shot.id
+                              ? 'bg-light-accent/10 dark:bg-cine-accent/10 border-2 border-light-accent dark:border-cine-accent'
+                              : 'bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border hover:border-light-accent/50 dark:hover:border-cine-accent/50'
+                              }`}
                           >
                             {/* Shot Content - Clickable */}
                             <button
