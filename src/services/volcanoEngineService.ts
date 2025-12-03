@@ -150,13 +150,29 @@ export class VolcanoEngineService {
   /**
    * Generate single image using SeeDream (简化版本用于Pro模式)
    */
+  /**
+   * Generate single image using SeeDream model
+   * 根据项目画面比例生成单图
+   */
   async generateSingleImage(
     prompt: string,
-    size: string = '1024x1024'
+    aspectRatio?: string // '16:9', '9:16', '1:1', '4:3', '3:4', '21:9'
   ): Promise<string> {
     if (!this.seedreamModelId) {
       throw new Error('SeeDream model ID 未配置，请在 .env.local 中设置 NEXT_PUBLIC_SEEDREAM_MODEL_ID');
     }
+
+    // 根据画面比例计算尺寸 - 使用 2K 分辨率
+    const sizeMap: Record<string, string> = {
+      '16:9': '2048x1152',   // 16:9 宽屏 2K
+      '9:16': '1152x2048',   // 9:16 竖屏 2K
+      '1:1': '2048x2048',    // 1:1 正方形 2K
+      '4:3': '2048x1536',    // 4:3 标准 2K
+      '3:4': '1536x2048',    // 3:4 竖版 2K
+      '21:9': '2560x1097',   // 21:9 超宽屏 2.5K
+    };
+
+    const size = aspectRatio && sizeMap[aspectRatio] ? sizeMap[aspectRatio] : '2048x2048';
 
     const response = await fetch(`${this.baseUrl}/images/generations`, {
       method: 'POST',

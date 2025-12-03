@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   Download,
@@ -14,9 +14,14 @@ import {
   Video as VideoIcon,
   ChevronDown,
   ChevronUp,
+  X,
+  Loader2,
+  Sparkles,
 } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
-import type { Shot, ShotSize, CameraMovement } from '@/types/project';
+import type { Shot, ShotSize, CameraMovement, GenerationHistoryItem } from '@/types/project';
+import { VolcanoEngineService } from '@/services/volcanoEngineService';
+import { toast } from 'sonner';
 
 interface ShotDetailPanelProps {
   shotId: string;
@@ -24,11 +29,18 @@ interface ShotDetailPanelProps {
 }
 
 export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProps) {
-  const { project, updateShot, selectedShotId } = useProjectStore();
+  const { project, updateShot, selectedShotId, addGenerationHistory } = useProjectStore();
   const [isEditing, setIsEditing] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [showRegenerateModal, setShowRegenerateModal] = useState(false);
+  const [regenerateType, setRegenerateType] = useState<'image' | 'video' | null>(null);
+  const [regeneratePrompt, setRegeneratePrompt] = useState('');
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [showFullscreen, setShowFullscreen] = useState(false);
+
+  // 添加历史记录区域的 ref，用于自动滚动
+  const historyRef = useRef<HTMLDivElement>(null);
 
   const shot = project?.shots.find((s) => s.id === shotId);
   const scene = project?.scenes.find((sc) => sc.shotIds.includes(shotId));
@@ -43,8 +55,117 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
   };
 
   const handleRegenerate = () => {
-    // TODO: Implement regenerate logic
-    alert('重新生成功能即将上线！');
+    // 获取最后一次生成的提示词
+    const lastGeneration = shot.generationHistory?.[0];
+    const lastPrompt = lastGeneration?.prompt || shot.description || '';
+
+    // 判断重生成类型：如果有视频则重生成视频，否则重生成图片
+    const type = hasVideo ? 'video' : 'image';
+
+    setRegenerateType(type);
+    setRegeneratePrompt(lastPrompt);
+    setShowRegenerateModal(true);
+  };
+
+  const handleConfirmRegenerate = async () => {
+    if (!regeneratePrompt.trim() || !regenerateType) return;
+
+    setIsRegenerating(true);
+    try {
+      if (regenerateType === 'image') {
+        // 重生成图片
+        const volcanoService = new VolcanoEngineService();
+        // 使用项目的画面比例
+        const projectAspectRatio = project?.settings.aspectRatio;
+        const imageUrl = await volcanoService.generateSingleImage(regeneratePrompt, projectAspectRatio);
+
+        updateShot(shotId, {
+          referenceImage: imageUrl,
+          status: 'done',
+        });
+
+        // 添加到生成历史
+        const historyItem: GenerationHistoryItem = {
+          id: `gen_${Date.now()}`,
+          type: 'image',
+          timestamp: new Date(),
+          result: imageUrl,
+          prompt: regeneratePrompt,
+          parameters: {
+            model: 'SeeDream',
+          },
+          status: 'success',
+        };
+        addGenerationHistory(shotId, historyItem);
+
+        toast.success('图片重生成成功！');
+
+        // 自动滚动到历史记录区域
+        setTimeout(() => {
+          historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 300);
+      } else if (regenerateType === 'video') {
+        // 重生成视频
+        if (!hasImage) {
+          toast.warning('重生成视频需要先有参考图片');
+          return;
+        }
+
+        const volcanoService = new VolcanoEngineService();
+        const imageUrl = shot.referenceImage || shot.gridImages?.[0] || '';
+
+        // 提交视频生成任务
+        const videoTask = await volcanoService.generateSceneVideo(
+          regeneratePrompt,
+          imageUrl
+        );
+
+        updateShot(shotId, { status: 'processing' });
+
+        // 等待视频完成
+        const videoUrl = await volcanoService.waitForVideoCompletion(videoTask.taskId);
+
+        updateShot(shotId, {
+          videoClip: videoUrl,
+          status: 'done',
+        });
+
+        // 添加到生成历史
+        const historyItem: GenerationHistoryItem = {
+          id: `gen_${Date.now()}`,
+          type: 'video',
+          timestamp: new Date(),
+          result: videoUrl,
+          prompt: regeneratePrompt,
+          parameters: {
+            model: 'VolcanoEngine I2V',
+            referenceImages: [imageUrl],
+          },
+          status: 'success',
+        };
+        addGenerationHistory(shotId, historyItem);
+
+        toast.success('视频重生成成功！');
+
+        // 自动滚动到历史记录区域
+        setTimeout(() => {
+          historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 300);
+      }
+
+      setShowRegenerateModal(false);
+      setRegeneratePrompt('');
+      setRegenerateType(null);
+    } catch (error) {
+      console.error('Regeneration error:', error);
+      const errorMessage = error instanceof Error ? error.message : '重生成失败';
+      toast.error('重生成失败', {
+        description: errorMessage
+      });
+      updateShot(shotId, { status: 'error' });
+    } finally {
+      setIsRegenerating(false);
+    }
   };
 
   const handleDownload = () => {
@@ -103,12 +224,12 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {/* Preview Area */}
-        <div className="bg-light-panel dark:bg-cine-panel rounded-lg overflow-hidden">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {/* Preview Area with Fullscreen Button */}
+        <div className="bg-light-panel dark:bg-cine-panel rounded-lg overflow-hidden relative group">
           {hasVideo ? (
             // Video Preview
-            <div className="aspect-video bg-black relative group">
+            <div className="w-full bg-black relative aspect-video">
               <video
                 src={shot.videoClip}
                 className="w-full h-full object-contain"
@@ -122,23 +243,43 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                 <VideoIcon size={12} />
                 <span>{shot.duration}s</span>
               </div>
+              {/* Fullscreen Button */}
+              <button
+                onClick={() => setShowFullscreen(true)}
+                className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white p-2 rounded transition-colors opacity-0 group-hover:opacity-100"
+                title="全屏预览"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                </svg>
+              </button>
             </div>
           ) : hasImage ? (
-            // Image Preview
-            <div className="relative group">
+            // Image Preview - 使用 aspect-video 代替固定高度
+            <div className="relative aspect-video">
               <img
                 src={shot.referenceImage || shot.gridImages?.[0]}
                 alt={`Shot ${shot.order}`}
-                className="w-full object-contain"
+                className="w-full h-full object-contain"
               />
               <div className="absolute bottom-4 left-4 bg-black/60 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
                 <ImageIcon size={12} />
                 <span>图片</span>
               </div>
+              {/* Fullscreen Button */}
+              <button
+                onClick={() => setShowFullscreen(true)}
+                className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white p-2 rounded transition-colors opacity-0 group-hover:opacity-100"
+                title="全屏预览"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                </svg>
+              </button>
             </div>
           ) : (
-            // Placeholder
-            <div className="aspect-video bg-light-bg dark:bg-cine-black flex flex-col items-center justify-center text-light-text-muted dark:text-cine-text-muted">
+            // Placeholder - 使用较小的高度
+            <div className="bg-light-bg dark:bg-cine-black flex flex-col items-center justify-center text-light-text-muted dark:text-cine-text-muted py-16">
               <ImageIcon size={48} className="mb-2 opacity-50" />
               <p className="text-sm">未生成</p>
               <p className="text-xs mt-1">点击下方生成图片</p>
@@ -149,18 +290,19 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
         {/* Action Buttons */}
         <div className="grid grid-cols-3 gap-2">
           <button
-            onClick={handleRegenerate}
-            className="flex items-center justify-center gap-2 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm transition-colors"
-          >
-            <RotateCcw size={16} />
-            <span>重生成</span>
-          </button>
-          <button
             onClick={() => setIsEditing(!isEditing)}
             className="flex items-center justify-center gap-2 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm transition-colors"
           >
             <Edit3 size={16} />
             <span>编辑</span>
+          </button>
+          <button
+            onClick={handleRegenerate}
+            disabled={!hasImage && !hasVideo}
+            className="flex items-center justify-center gap-2 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RotateCcw size={16} />
+            <span>重生成</span>
           </button>
           <button
             onClick={handleDownload}
@@ -172,9 +314,85 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
           </button>
         </div>
 
-        {/* Basic Info */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-bold text-light-text dark:text-white">基本信息</h3>
+        {/* 视觉描述 - 放在最前面 */}
+        <div>
+          <h3 className="text-sm font-bold text-light-text dark:text-white mb-2">视觉描述</h3>
+          {isEditing ? (
+            <textarea
+              value={shot.description}
+              onChange={(e) => handleFieldUpdate('description', e.target.value)}
+              rows={4}
+              className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent resize-none"
+            />
+          ) : (
+            <div className="text-sm text-light-text dark:text-white leading-relaxed bg-light-panel dark:bg-cine-panel p-3 rounded-lg">
+              {shot.description}
+            </div>
+          )}
+        </div>
+
+        {/* Advanced Options - 对话和旁白 */}
+        <div className="border-t border-light-border dark:border-cine-border pt-4">
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center justify-between w-full text-sm font-bold text-light-text dark:text-white mb-3"
+          >
+            <span>对话与旁白</span>
+            {showAdvanced ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+
+          {showAdvanced && (
+            <div className="space-y-4">
+              {/* Dialogue */}
+              {(isEditing || shot.dialogue) && (
+                <div>
+                  <label className="block text-xs text-light-text-muted dark:text-cine-text-muted mb-2">
+                    对话
+                  </label>
+                  {isEditing ? (
+                    <textarea
+                      value={shot.dialogue || ''}
+                      onChange={(e) => handleFieldUpdate('dialogue', e.target.value)}
+                      placeholder="角色对话..."
+                      rows={2}
+                      className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent resize-none"
+                    />
+                  ) : (
+                    <div className="text-sm text-light-text dark:text-white bg-light-panel dark:bg-cine-panel p-3 rounded-lg">
+                      "{shot.dialogue}"
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Narration */}
+              {(isEditing || shot.narration) && (
+                <div>
+                  <label className="block text-xs text-light-text-muted dark:text-cine-text-muted mb-2">
+                    旁白
+                  </label>
+                  {isEditing ? (
+                    <textarea
+                      value={shot.narration || ''}
+                      onChange={(e) => handleFieldUpdate('narration', e.target.value)}
+                      placeholder="旁白文本..."
+                      rows={2}
+                      className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent resize-none"
+                    />
+                  ) : (
+                    <div className="text-sm text-purple-200 bg-purple-900/20 p-3 rounded-lg italic">
+                      {shot.narration}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Basic Info - 景别、运镜、时长放在后面 */}
+        <div className="border-t border-light-border dark:border-cine-border pt-4 space-y-4">
+          <h3 className="text-sm font-bold text-light-text dark:text-white">镜头参数</h3>
 
           {/* Shot Size */}
           <div>
@@ -243,119 +461,96 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
               <div className="text-sm text-light-text dark:text-white">{shot.duration}s</div>
             )}
           </div>
-
-          {/* Description */}
-          <div>
-            <label className="block text-xs text-light-text-muted dark:text-cine-text-muted mb-2">
-              视觉描述
-            </label>
-            {isEditing ? (
-              <textarea
-                value={shot.description}
-                onChange={(e) => handleFieldUpdate('description', e.target.value)}
-                rows={4}
-                className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent resize-none"
-              />
-            ) : (
-              <div className="text-sm text-light-text dark:text-white leading-relaxed">
-                {shot.description}
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* Advanced Options */}
-        <div className="border-t border-light-border dark:border-cine-border pt-4">
-          <button
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center justify-between w-full text-sm font-bold text-light-text dark:text-white mb-3"
-          >
-            <span>高级选项</span>
-            {showAdvanced ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
-
-          {showAdvanced && (
-            <div className="space-y-4">
-              {/* Dialogue */}
-              {(isEditing || shot.dialogue) && (
-                <div>
-                  <label className="block text-xs text-light-text-muted dark:text-cine-text-muted mb-2">
-                    对话
-                  </label>
-                  {isEditing ? (
-                    <textarea
-                      value={shot.dialogue || ''}
-                      onChange={(e) => handleFieldUpdate('dialogue', e.target.value)}
-                      placeholder="角色对话..."
-                      rows={2}
-                      className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent resize-none"
-                    />
-                  ) : (
-                    <div className="text-sm text-light-text dark:text-white bg-light-panel dark:bg-cine-panel p-3 rounded-lg">
-                      "{shot.dialogue}"
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Narration */}
-              {(isEditing || shot.narration) && (
-                <div>
-                  <label className="block text-xs text-light-text-muted dark:text-cine-text-muted mb-2">
-                    旁白
-                  </label>
-                  {isEditing ? (
-                    <textarea
-                      value={shot.narration || ''}
-                      onChange={(e) => handleFieldUpdate('narration', e.target.value)}
-                      placeholder="旁白文本..."
-                      rows={2}
-                      className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent resize-none"
-                    />
-                  ) : (
-                    <div className="text-sm text-purple-200 bg-purple-900/20 p-3 rounded-lg italic">
-                      {shot.narration}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Generation History */}
+        {/* Generation History - 对话形式 */}
         {shot.generationHistory && shot.generationHistory.length > 0 && (
-          <div className="border-t border-light-border dark:border-cine-border pt-4">
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="flex items-center justify-between w-full text-sm font-bold text-light-text dark:text-white mb-3"
-            >
-              <span>生成历史 ({shot.generationHistory.length})</span>
-              {showHistory ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </button>
+          <div ref={historyRef} className="border-t border-light-border dark:border-cine-border pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-light-text dark:text-white flex items-center gap-2">
+                <Sparkles size={16} className="text-light-accent dark:text-cine-accent" />
+                生成历史 ({shot.generationHistory.length})
+              </h3>
+              <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                点击图片使用该版本
+              </span>
+            </div>
 
-            {showHistory && (
-              <div className="grid grid-cols-3 gap-2">
-                {shot.generationHistory.slice(0, 6).map((item, idx) => (
-                  <div
-                    key={item.id}
-                    className="aspect-square bg-light-panel dark:bg-cine-panel rounded-lg overflow-hidden border border-light-border dark:border-cine-border hover:border-light-accent dark:hover:border-cine-accent cursor-pointer transition-colors group relative"
-                    onClick={() => handleFieldUpdate('referenceImage', item.result)}
-                  >
-                    <img
-                      src={item.result}
-                      alt={`History ${idx + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex items-center justify-center">
-                      <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                        使用此版本
-                      </span>
+            {/* 对话形式的历史记录 */}
+            <div className="space-y-4">
+              {shot.generationHistory.map((item, idx) => (
+                <div key={item.id} className="space-y-2">
+                  {/* User Prompt - 用户提示词 */}
+                  {item.prompt && (
+                    <div className="flex justify-end">
+                      <div className="max-w-[85%] bg-light-accent/10 dark:bg-cine-accent/10 border border-light-accent/30 dark:border-cine-accent/30 rounded-lg p-3">
+                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-1">
+                          提示词 · {new Date(item.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                        <div className="text-sm text-light-text dark:text-white leading-relaxed">
+                          {item.prompt}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* AI Response - AI生成结果 */}
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg overflow-hidden">
+                      {/* Result Preview */}
+                      <div className="relative group">
+                        {item.type === 'image' ? (
+                          <img
+                            src={item.result}
+                            alt={`生成 ${idx + 1}`}
+                            className="w-full h-48 object-cover cursor-pointer"
+                            onClick={() => handleFieldUpdate('referenceImage', item.result)}
+                          />
+                        ) : (
+                          <video
+                            src={item.result}
+                            className="w-full h-48 object-cover cursor-pointer"
+                            onClick={() => handleFieldUpdate('videoClip', item.result)}
+                          />
+                        )}
+
+                        {/* Overlay */}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex items-center justify-center">
+                          <span className="text-white text-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                            点击使用此版本
+                          </span>
+                        </div>
+
+                        {/* Type Badge */}
+                        <div className="absolute top-2 right-2 bg-black/60 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
+                          {item.type === 'image' ? <ImageIcon size={12} /> : <VideoIcon size={12} />}
+                          <span>{item.type === 'image' ? '图片' : '视频'}</span>
+                        </div>
+                      </div>
+
+                      {/* Metadata & Actions */}
+                      <div className="p-3 space-y-2">
+                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                          {item.parameters?.model || 'Unknown Model'}
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setRegenerateType(item.type);
+                            setRegeneratePrompt(item.prompt || shot.description);
+                            setShowRegenerateModal(true);
+                          }}
+                          className="w-full bg-light-bg dark:bg-cine-black hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded px-3 py-2 text-xs transition-colors flex items-center justify-center gap-2"
+                        >
+                          <RotateCcw size={14} />
+                          <span>基于此重生成</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -378,6 +573,117 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
           >
             保存更改
           </button>
+        </div>
+      )}
+
+      {/* Regenerate Modal */}
+      {showRegenerateModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="bg-light-panel dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-lg p-6 w-96 max-w-[90vw]">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-light-text dark:text-white">
+                重生成{regenerateType === 'video' ? '视频' : '图片'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowRegenerateModal(false);
+                  setRegeneratePrompt('');
+                  setRegenerateType(null);
+                }}
+                className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2 text-light-text dark:text-white">
+                  提示词 (可微调)
+                </label>
+                <textarea
+                  value={regeneratePrompt}
+                  onChange={(e) => setRegeneratePrompt(e.target.value)}
+                  placeholder="输入生成提示词..."
+                  rows={6}
+                  className="w-full bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                />
+              </div>
+
+              {regenerateType === 'video' && (
+                <div className="text-xs text-light-text-muted dark:text-cine-text-muted bg-light-bg dark:bg-cine-panel p-3 rounded-lg">
+                  <p>⚠️ 视频生成需要 2-3 分钟，请耐心等待</p>
+                  <p className="mt-1">参考图片：{shot.referenceImage ? '已设置' : '使用 Grid 切片'}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowRegenerateModal(false);
+                    setRegeneratePrompt('');
+                    setRegenerateType(null);
+                  }}
+                  disabled={isRegenerating}
+                  className="flex-1 bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-4 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleConfirmRegenerate}
+                  disabled={isRegenerating || !regeneratePrompt.trim()}
+                  className="flex-1 bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white rounded-lg px-4 py-2 text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isRegenerating ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      生成中...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={16} />
+                      开始生成
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen Preview Modal */}
+      {showFullscreen && (
+        <div
+          className="fixed inset-0 bg-black z-[60] flex items-center justify-center"
+          onClick={() => setShowFullscreen(false)}
+        >
+          <button
+            onClick={() => setShowFullscreen(false)}
+            className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
+            title="关闭"
+          >
+            <X size={32} />
+          </button>
+
+          {hasVideo ? (
+            <video
+              src={shot.videoClip}
+              className="max-w-full max-h-full object-contain"
+              controls
+              autoPlay
+              onClick={(e) => e.stopPropagation()}
+            >
+              您的浏览器不支持视频播放
+            </video>
+          ) : hasImage ? (
+            <img
+              src={shot.referenceImage || shot.gridImages?.[0]}
+              alt={`Shot ${shot.order} 全屏预览`}
+              className="max-w-full max-h-full object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : null}
         </div>
       )}
     </div>

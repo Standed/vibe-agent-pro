@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { Bot, Sliders, ChevronRight, ChevronLeft } from 'lucide-react';
-import AgentPanel from './AgentPanel';
+import AgentPanel from '../agent/AgentPanel';
 import ProPanel from './ProPanel';
 import ShotDetailPanel from '../shot/ShotDetailPanel';
 

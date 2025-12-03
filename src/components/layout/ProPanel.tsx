@@ -9,6 +9,8 @@ import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
 import GridHistoryModal from '@/components/grid/GridHistoryModal';
 import ShotGenerationHistory from '@/components/shot/ShotGenerationHistory';
+import { toast } from 'sonner';
+import { validateGenerationConfig } from '@/utils/promptSecurity';
 
 type GenerationType = 'grid' | 'single' | 'video' | null;
 
@@ -60,14 +62,25 @@ export default function ProPanel() {
 
   const handleGenerateSingleImage = async () => {
     if (!prompt.trim()) {
-      alert('请输入提示词');
+      toast.error('请输入提示词');
+      return;
+    }
+
+    // 🔒 安全验证：检查提示词是否安全
+    const validation = validateGenerationConfig({ prompt });
+    if (!validation.isValid) {
+      toast.error('提示词包含不安全内容', {
+        description: validation.errors.join('\n')
+      });
       return;
     }
 
     setIsGenerating(true);
     try {
       const volcanoService = new VolcanoEngineService();
-      const imageUrl = await volcanoService.generateSingleImage(prompt);
+      // 使用项目的画面比例生成图片
+      const projectAspectRatio = project?.settings.aspectRatio;
+      const imageUrl = await volcanoService.generateSingleImage(prompt, projectAspectRatio);
 
       // Update selected shot with single image
       if (selectedShotId) {
@@ -92,11 +105,13 @@ export default function ProPanel() {
         addGenerationHistory(selectedShotId, historyItem);
       }
 
-      alert('单图生成成功！');
+      toast.success('单图生成成功！');
     } catch (error) {
       console.error('Single image generation error:', error);
       const errorMessage = error instanceof Error ? error.message : '单图生成失败';
-      alert(`单图生成失败：${errorMessage}\n\n请检查：\n1. Volcano Engine API 配置是否正确\n2. SeeDream 模型 ID 是否已设置\n3. API 密钥是否有效`);
+      toast.error('单图生成失败', {
+        description: `${errorMessage}\n\n请检查：\n1. Volcano Engine API 配置是否正确\n2. SeeDream 模型 ID 是否已设置\n3. API 密钥是否有效`
+      });
     } finally {
       setIsGenerating(false);
     }
@@ -104,12 +119,21 @@ export default function ProPanel() {
 
   const handleGenerateGrid = async () => {
     if (!prompt.trim()) {
-      alert('请输入提示词');
+      toast.error('请输入提示词');
+      return;
+    }
+
+    // 🔒 安全验证：检查提示词是否安全
+    const validation = validateGenerationConfig({ prompt });
+    if (!validation.isValid) {
+      toast.error('提示词包含不安全内容', {
+        description: validation.errors.join('\n')
+      });
       return;
     }
 
     if (!selectedSceneId) {
-      alert('请先选择一个场景');
+      toast.warning('请先选择一个场景');
       return;
     }
 
@@ -119,7 +143,7 @@ export default function ProPanel() {
       const targetScene = scenes.find((scene) => scene.id === selectedSceneId);
 
       if (!targetScene) {
-        alert('未找到选中的场景');
+        toast.error('未找到选中的场景');
         return;
       }
 
@@ -128,8 +152,28 @@ export default function ProPanel() {
       const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
       const totalSlices = rows * cols;
 
-      // Take first N shots to match grid size
-      const targetShots = sceneShots.slice(0, totalSlices);
+      // 动态选择未分配图片的镜头（跳过已有 referenceImage 的镜头）
+      const unassignedShots = sceneShots.filter((shot) => !shot.referenceImage);
+
+      if (unassignedShots.length === 0) {
+        toast.warning('该场景所有镜头都已分配图片', {
+          description: '如需重新生成，请先删除镜头的现有图片'
+        });
+        return;
+      }
+
+      // Take first N unassigned shots to match grid size
+      const targetShots = unassignedShots.slice(0, totalSlices);
+
+      if (targetShots.length < totalSlices) {
+        const confirmed = confirm(
+          `当前场景只有 ${targetShots.length} 个未分配镜头，但 Grid 大小为 ${gridSize}（${totalSlices} 个切片）。\n\n` +
+          `生成的 Grid 将只为这 ${targetShots.length} 个镜头提供切片，剩余切片可收藏备用。\n\n是否继续？`
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
 
       // Build enhanced prompt combining scene, shots descriptions, and user input
       let enhancedPrompt = '';
@@ -202,7 +246,9 @@ export default function ProPanel() {
     } catch (error) {
       console.error('Grid generation error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Grid 生成失败';
-      alert(`${errorMessage}\n\n请检查：\n1. Gemini API 配置是否正确\n2. 提示词是否完整\n3. API 密钥是否有效`);
+      toast.error('Grid 生成失败', {
+        description: `${errorMessage}\n\n请检查：\n1. Gemini API 配置是否正确\n2. 提示词是否完整\n3. API 密钥是否有效`
+      });
     } finally {
       setIsGenerating(false);
     }
@@ -212,13 +258,30 @@ export default function ProPanel() {
   const handleGridAssignment = (assignments: Record<string, string>, favoriteSlices?: string[]) => {
     if (!gridResult) return;
 
-    // Update shots with assigned images
+    // Update shots with assigned images AND add to generation history
     Object.entries(assignments).forEach(([shotId, imageUrl]) => {
       updateShot(shotId, {
         referenceImage: imageUrl,
         fullGridUrl: gridResult.fullImage,
         status: 'done',
       });
+
+      // ✨ 添加到 Shot 的生成历史记录
+      const historyItem: GenerationHistoryItem = {
+        id: `gen_${Date.now()}_${shotId}`,
+        type: 'image',
+        timestamp: new Date(),
+        result: imageUrl,
+        prompt: prompt,
+        parameters: {
+          model: 'Gemini Grid',
+          gridSize: gridSize,
+          aspectRatio: aspectRatio,
+          fullGridUrl: gridResult.fullImage,
+        },
+        status: 'success',
+      };
+      addGenerationHistory(shotId, historyItem);
     });
 
     // Save Grid to scene history
@@ -242,12 +305,14 @@ export default function ProPanel() {
     const assignedCount = Object.keys(assignments).length;
     const favoriteCount = favoriteSlices?.length || 0;
 
-    let message = `Grid 分配成功！已为 ${assignedCount} 个镜头分配图片`;
+    let message = `已为 ${assignedCount} 个镜头分配图片`;
     if (favoriteCount > 0) {
       message += `，${favoriteCount} 个切片已收藏`;
     }
 
-    alert(message);
+    toast.success('Grid 分配成功！', {
+      description: message
+    });
     setGridResult(null);
   };
 
@@ -262,12 +327,24 @@ export default function ProPanel() {
 
   const handleGenerateVideo = async () => {
     if (!prompt.trim()) {
-      alert('请输入提示词');
+      toast.error('请输入提示词');
+      return;
+    }
+
+    // 🔒 安全验证：检查提示词是否安全
+    const validation = validateGenerationConfig({
+      prompt,
+      videoPrompt: prompt
+    });
+    if (!validation.isValid) {
+      toast.error('提示词包含不安全内容', {
+        description: validation.errors.join('\n')
+      });
       return;
     }
 
     if (!selectedShot) {
-      alert('请先选择一个镜头');
+      toast.warning('请先选择一个镜头');
       return;
     }
 
@@ -275,11 +352,15 @@ export default function ProPanel() {
     const hasImage = selectedShot.referenceImage || (selectedShot.gridImages && selectedShot.gridImages.length > 0);
 
     if (!hasImage) {
-      alert('请先生成 Grid 图片，然后再生成视频');
+      toast.warning('请先生成图片', {
+        description: '视频生成需要先有参考图片'
+      });
       return;
     }
 
     setIsGenerating(true);
+    const loadingToast = toast.loading('正在提交视频生成任务，预计需要 2-3 分钟...');
+
     try {
       const volcanoService = new VolcanoEngineService();
 
@@ -290,8 +371,6 @@ export default function ProPanel() {
       const videoPrompt = prompt || selectedShot.description || '镜头运动，平稳流畅';
 
       // 步骤1：生成视频任务
-      alert('正在提交视频生成任务，预计需要 2-3 分钟...');
-
       const videoTask = await volcanoService.generateSceneVideo(
         videoPrompt,
         imageUrl // 直接使用 base64 或 URL
@@ -328,13 +407,19 @@ export default function ProPanel() {
       };
       addGenerationHistory(selectedShotId!, historyItem);
 
-      alert(`视频生成成功！\n视频 URL: ${videoUrl}`);
+      toast.success('视频生成成功！', {
+        id: loadingToast,
+        description: `视频已保存到镜头`
+      });
     } catch (error) {
       console.error('Video generation error:', error);
       updateShot(selectedShotId!, { status: 'error' });
 
       const errorMessage = error instanceof Error ? error.message : '未知错误';
-      alert(`视频生成失败：${errorMessage}\n\n请检查：\n1. Volcano Engine API 配置是否正确\n2. 模型 endpoint_id 是否已创建\n3. API 密钥是否有效`);
+      toast.error('视频生成失败', {
+        id: loadingToast,
+        description: `${errorMessage}\n\n请检查：\n1. Volcano Engine API 配置是否正确\n2. 模型 endpoint_id 是否已创建\n3. API 密钥是否有效`
+      });
     } finally {
       setIsGenerating(false);
     }
@@ -356,10 +441,14 @@ export default function ProPanel() {
         setAspectRatio(item.parameters.aspectRatio as AspectRatio);
       }
 
-      alert('已加载历史参数，请点击"生成单图"按钮重新生成');
+      toast.info('已加载历史参数', {
+        description: '请点击"生成单图"按钮重新生成'
+      });
     } else if (item.type === 'video') {
       setGenerationType('video');
-      alert('已加载历史参数，请点击"生成视频"按钮重新生成');
+      toast.info('已加载历史参数', {
+        description: '请点击"生成视频"按钮重新生成'
+      });
     }
   };
 
@@ -373,12 +462,12 @@ export default function ProPanel() {
 
   const handleFavorite = (item: GenerationHistoryItem) => {
     // TODO: Implement favorite functionality (could save to a favorites list)
-    alert('收藏功能即将上线！');
+    toast.info('收藏功能即将上线！');
   };
 
   const handleDubbing = (item: GenerationHistoryItem) => {
     // TODO: Implement dubbing functionality
-    alert('配音功能即将上线！');
+    toast.info('配音功能即将上线！');
   };
 
   return (

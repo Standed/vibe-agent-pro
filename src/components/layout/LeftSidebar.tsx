@@ -72,8 +72,11 @@ export default function LeftSidebar() {
       // 1. Analyze script for metadata
       const analysis = await analyzeScript(scriptContent);
 
-      // 2. Generate storyboard shots
-      const shots = await generateStoryboardFromScript(scriptContent);
+      // 2. Generate storyboard shots with project art style
+      const shots = await generateStoryboardFromScript(
+        scriptContent,
+        project.metadata.artStyle // 传入用户设置的画风
+      );
 
       // 3. Group shots into scenes
       const sceneGroups = await groupShotsIntoScenes(shots);
