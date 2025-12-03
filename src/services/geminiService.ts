@@ -5,11 +5,8 @@ import { AspectRatio, ImageSize } from '@/types/project';
 
 // Get Gemini API client
 const getClient = () => {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
-  if (!apiKey) {
-    throw new Error('NEXT_PUBLIC_GEMINI_API_KEY is not configured');
-  }
-  return new GoogleGenAI({ apiKey });
+  // Always create a new client to pick up the potentially newly selected key
+  return new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
 };
 
 // Helper to slice a grid image into individual images
@@ -134,6 +131,7 @@ export const generateMultiViewGrid = async (
         parts: parts,
       },
       config: {
+        // @ts-ignore - imageConfig might not be in the types yet
         imageConfig: {
           aspectRatio: aspectRatio,
           imageSize: '4K', // Force 4K
@@ -154,8 +152,14 @@ export const generateMultiViewGrid = async (
     // Slice the single high-res grid into separate base64 images
     const panels = await sliceImageGrid(fullImageBase64, gridRows, gridCols);
     return { fullImage: fullImageBase64, slices: panels };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Grid generation error:', error);
+    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
+      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
+    }
+    if (error.status === 503 || error.message?.includes('overloaded') || error.message?.includes('UNAVAILABLE')) {
+      throw new Error('Gemini 服务当前过载 (503)。请稍后重试。');
+    }
     throw error;
   }
 };
@@ -188,8 +192,14 @@ export const analyzeAsset = async (
     });
 
     return response.text || '无法获取分析结果。';
-  } catch (error) {
+  } catch (error: any) {
     console.error('Analysis error:', error);
+    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
+      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
+    }
+    if (error.status === 503 || error.message?.includes('overloaded') || error.message?.includes('UNAVAILABLE')) {
+      throw new Error('Gemini 服务当前过载 (503)。请稍后重试。');
+    }
     throw error;
   }
 };
@@ -207,8 +217,14 @@ export const enhancePrompt = async (rawPrompt: string): Promise<string> => {
       contents: `You are a film director's assistant. Rewrite the following scene description into a detailed, cinematic image generation prompt. Focus on lighting, camera angle, texture, and mood. Keep it under 100 words. \n\nInput: "${rawPrompt}"`,
     });
     return response.text || rawPrompt;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Prompt enhancement error:', error);
+    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
+      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
+    }
+    if (error.status === 503 || error.message?.includes('overloaded') || error.message?.includes('UNAVAILABLE')) {
+      throw new Error('Gemini 服务当前过载 (503)。请稍后重试。');
+    }
     return rawPrompt;
   }
 };
@@ -265,8 +281,14 @@ Do NOT write full sentences. Do NOT describe the subject again if the user alrea
       contents: { parts: contents },
     });
     return response.text || baseIdea;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Auto-Director error:', error);
+    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
+      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
+    }
+    if (error.status === 503 || error.message?.includes('overloaded') || error.message?.includes('UNAVAILABLE')) {
+      throw new Error('Gemini 服务当前过载 (503)。请稍后重试。');
+    }
     return baseIdea;
   }
 };

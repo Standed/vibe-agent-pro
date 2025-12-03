@@ -243,7 +243,7 @@ export default function ProPanel() {
         slices: result.slices,
         sceneId: targetScene.id,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Grid generation error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Grid 生成失败';
       toast.error('Grid 生成失败', {
@@ -380,7 +380,7 @@ export default function ProPanel() {
       updateShot(selectedShotId!, { status: 'processing' });
 
       const videoUrl = await volcanoService.waitForVideoCompletion(
-        videoTask.taskId,
+        videoTask.id,
         (status) => {
           console.log('视频生成状态:', status);
         }
@@ -482,11 +482,10 @@ export default function ProPanel() {
         <div className={`grid gap-2 ${isShotSelected ? 'grid-cols-2' : 'grid-cols-3'}`}>
           <button
             onClick={() => setGenerationType('single')}
-            className={`border rounded-lg p-3 transition-colors ${
-              generationType === 'single'
-                ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
-                : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-            }`}
+            className={`border rounded-lg p-3 transition-colors ${generationType === 'single'
+              ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+              : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
+              }`}
           >
             <ImageIcon size={20} className="mx-auto mb-1" />
             <div className="text-xs">单图生成</div>
@@ -496,11 +495,10 @@ export default function ProPanel() {
           {isSceneSelected && (
             <button
               onClick={() => setGenerationType('grid')}
-              className={`border rounded-lg p-3 transition-colors ${
-                generationType === 'grid'
-                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
-                  : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-              }`}
+              className={`border rounded-lg p-3 transition-colors ${generationType === 'grid'
+                ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
+                }`}
             >
               <Grid3x3 size={20} className="mx-auto mb-1" />
               <div className="text-xs">Grid 多视图</div>
@@ -509,11 +507,10 @@ export default function ProPanel() {
 
           <button
             onClick={() => setGenerationType('video')}
-            className={`border rounded-lg p-3 transition-colors ${
-              generationType === 'video'
-                ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
-                : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-            }`}
+            className={`border rounded-lg p-3 transition-colors ${generationType === 'video'
+              ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+              : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
+              }`}
           >
             <Video size={20} className="mx-auto mb-1" />
             <div className="text-xs">视频生成</div>
@@ -553,12 +550,12 @@ export default function ProPanel() {
                   const hasHistory = selectedScene?.gridHistory && selectedScene.gridHistory.length > 0;
 
                   if (hasHistory) {
-                    const latestGrid = selectedScene.gridHistory[0];
+                    const latestGrid = selectedScene!.gridHistory![0];
                     return (
                       <div className="bg-light-bg dark:bg-cine-black/30 border border-light-border dark:border-cine-border rounded-lg p-3">
                         <div className="flex items-center justify-between mb-2">
                           <div className="text-xs font-medium text-light-accent dark:text-cine-accent">
-                            历史记录 ({selectedScene.gridHistory.length} 条)
+                            历史记录 ({selectedScene!.gridHistory!.length} 条)
                           </div>
                           <button
                             onClick={() => setShowGridHistory(true)}
@@ -599,11 +596,10 @@ export default function ProPanel() {
                 <button
                   key={size}
                   onClick={() => setGridSize(size)}
-                  className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${
-                    gridSize === size
-                      ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
-                      : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-                  }`}
+                  className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${gridSize === size
+                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                    : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
+                    }`}
                 >
                   {size} ({size === '2x2' ? '4视图' : '9视图'})
                 </button>
@@ -711,10 +707,10 @@ export default function ProPanel() {
             {generationType === 'single'
               ? '生成单图'
               : generationType === 'grid'
-              ? '生成 Grid'
-              : generationType === 'video'
-              ? '生成视频'
-              : '选择生成类型'}
+                ? '生成 Grid'
+                : generationType === 'video'
+                  ? '生成视频'
+                  : '选择生成类型'}
           </>
         )}
       </button>
@@ -743,15 +739,14 @@ export default function ProPanel() {
             <div className="flex justify-between">
               <span className="text-light-text-muted dark:text-cine-text-muted">状态:</span>
               <span
-                className={`text-xs px-2 py-1 rounded ${
-                  selectedShot.status === 'done'
-                    ? 'bg-green-500/20 text-green-400'
-                    : selectedShot.status === 'processing'
+                className={`text-xs px-2 py-1 rounded ${selectedShot.status === 'done'
+                  ? 'bg-green-500/20 text-green-400'
+                  : selectedShot.status === 'processing'
                     ? 'bg-yellow-500/20 text-yellow-400'
                     : selectedShot.status === 'error'
-                    ? 'bg-red-500/20 text-red-400'
-                    : 'bg-gray-500/20 text-gray-400'
-                }`}
+                      ? 'bg-red-500/20 text-red-400'
+                      : 'bg-gray-500/20 text-gray-400'
+                  }`}
               >
                 {selectedShot.status}
               </span>

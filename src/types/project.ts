@@ -20,7 +20,7 @@ export type CameraMovement =
   | 'Handheld';
 
 export type GenerationMode = 'grid' | 'single';
-export type ShotStatus = 'pending' | 'processing' | 'done' | 'error';
+export type ShotStatus = 'draft' | 'pending' | 'processing' | 'done' | 'error';
 export type LocationType = 'interior' | 'exterior';
 export type AudioType = 'voice' | 'music' | 'sfx';
 export type TrackType = 'video' | 'audio';
@@ -90,6 +90,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  thought?: string; // AI reasoning process
 }
 
 export interface GenerationHistoryItem {
@@ -137,6 +138,8 @@ export interface Shot {
   // 状态
   status: ShotStatus;
   error?: string;
+  created?: Date;
+  modified?: Date;
 }
 
 export interface GridHistoryItem {
@@ -157,6 +160,10 @@ export interface Scene {
   description: string;
   shotIds: string[];
   position: { x: number; y: number };
+  order: number;
+  status: 'draft' | 'done';
+  created?: Date;
+  modified?: Date;
   gridHistory?: GridHistoryItem[]; // Grid generation history
   savedGridSlices?: string[]; // Favorited/unused Grid slices
 }
