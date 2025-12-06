@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { X, Plus, Upload, Trash2, Sparkles, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, Plus, Upload, Trash2, Sparkles, Loader2, Eye } from 'lucide-react';
 import type { Character } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { toast } from 'sonner';
@@ -18,8 +18,21 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
   const [description, setDescription] = useState(initialCharacter?.description || '');
   const [appearance, setAppearance] = useState(initialCharacter?.appearance || '');
   const [referenceImages, setReferenceImages] = useState<string[]>(initialCharacter?.referenceImages || []);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [generationPrompt, setGenerationPrompt] = useState('');
+  const [aspectRatio, setAspectRatio] = useState<'21:9' | '16:9'>('21:9');
   const [isGenerating, setIsGenerating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 默认拼装提示词（不包含角色名，方便用户自行输入）
+  useEffect(() => {
+    if (generationPrompt.trim()) return;
+    const parts: string[] = [];
+    if (description.trim()) parts.push(`角色描述/性格：${description}`);
+    if (appearance.trim()) parts.push(`外貌特征：${appearance}`);
+    parts.push('生成全身三视图以及一张面部特写。(最左边占满 1/3 的位置是超大的面部特写，右边 2/3 放正视图、侧视图、后视图)，纯白背景。');
+    setGenerationPrompt(parts.join('\n'));
+  }, [description, appearance, generationPrompt]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -83,23 +96,17 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
       toast.error('请先输入角色名称');
       return;
     }
+    const prompt = generationPrompt.trim();
+    if (!prompt) {
+      toast.error('请完善三视图提示词');
+      return;
+    }
 
     setIsGenerating(true);
     try {
       const volcanoService = VolcanoEngineService.getInstance();
 
-      // Build prompt for three-view generation
-      let prompt = `角色名称：${name}\n`;
-      if (description.trim()) {
-        prompt += `角色描述：${description}\n`;
-      }
-      if (appearance.trim()) {
-        prompt += `外貌特征：${appearance}\n`;
-      }
-      prompt += '\n生成全身三视图以及一张面部特写。(最左边占满 1/3 的位置是超大的面部特写，右边 2/3 放正视图、侧视图、后视图)，纯白背景。';
-
-      // 强制使用 21:9 超宽屏比例，适合三视图横向排列
-      const imageUrl = await volcanoService.generateSingleImage(prompt, '21:9');
+      const imageUrl = await volcanoService.generateSingleImage(prompt, aspectRatio);
 
       // Add to reference images
       setReferenceImages([...referenceImages, imageUrl]);
@@ -185,7 +192,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
           {/* Character Description */}
           <div>
             <label className="block text-sm font-medium text-light-text dark:text-white mb-2">
-              角色描述 *
+              角色描述/性格 *
             </label>
             <textarea
               value={description}
@@ -214,8 +221,9 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
 
           {/* Reference Images */}
           <div>
-            <label className="block text-sm font-medium text-light-text dark:text-white mb-2">
-              参考图片（选填）
+            <label className="block text-sm font-medium text-light-text dark:text-white mb-2 flex items-center gap-2">
+              参考图片（必填）
+              <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted">至少 1 张，点击可放大预览</span>
             </label>
 
             {/* AI Generate Three-View Button */}
@@ -279,7 +287,8 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                     <img
                       src={imageUrl}
                       alt={`参考图 ${index + 1}`}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover cursor-pointer"
+                      onClick={() => setPreviewImage(imageUrl)}
                     />
                     {/* Delete Button */}
                     <button
@@ -299,6 +308,29 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
               </div>
             )}
 
+            <div className="mt-2 flex items-center gap-2">
+              <select
+                value={aspectRatio}
+                onChange={(e) => setAspectRatio(e.target.value as '21:9' | '16:9')}
+                className="text-xs border border-light-border dark:border-cine-border rounded px-2 py-1"
+              >
+                <option value="21:9">21:9 超宽</option>
+                <option value="16:9">16:9 宽屏</option>
+              </select>
+              <span className="text-[11px] text-light-text-muted dark:text-cine-text-muted">
+                选择生成比例
+              </span>
+            </div>
+            <div className="mt-3">
+              <label className="block text-xs text-light-text-muted dark:text-cine-text-muted mb-1">
+                三视图提示词（可微调后再生成）
+              </label>
+              <textarea
+                value={generationPrompt}
+                onChange={(e) => setGenerationPrompt(e.target.value)}
+                className="w-full h-24 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-xs resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+              />
+            </div>
             <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-2">
               💡 上传角色参考图后，生成时会优先使用这些图片作为参考，保持角色一致性
             </p>
@@ -319,10 +351,26 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
             className="bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
           >
             <Plus size={16} />
-            添加角色
+            {mode === 'add' ? '添加角色' : '保存修改'}
           </button>
         </div>
       </div>
     </div>
+      {previewImage && (
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div className="relative max-w-5xl w-full" onClick={(e) => e.stopPropagation()}>
+            <img src={previewImage} alt="预览" className="w-full h-auto rounded-lg object-contain" />
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute top-2 right-2 bg-white/80 text-gray-800 rounded-full p-2 hover:bg-white"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
   );
 }
