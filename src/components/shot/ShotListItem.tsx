@@ -8,6 +8,7 @@ interface ShotListItemProps {
   isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  onEdit?: () => void;
 }
 
 export default function ShotListItem({
@@ -15,6 +16,7 @@ export default function ShotListItem({
   isSelected,
   onSelect,
   onDelete,
+  onEdit,
 }: ShotListItemProps) {
   return (
     <div
@@ -70,6 +72,20 @@ export default function ShotListItem({
           </div>
         </div>
       </button>
+
+      {/* Edit Button */}
+      {onEdit && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          className="absolute top-2 right-8 p-1.5 hover:bg-light-border/50 dark:hover:bg-cine-panel/60 rounded transition-colors group"
+          title="编辑分镜"
+        >
+          <Film size={14} className="text-light-text-muted dark:text-cine-text-muted group-hover:text-light-accent dark:group-hover:text-cine-accent" />
+        </button>
+      )}
 
       {/* Delete Button - Absolute positioned */}
       <button

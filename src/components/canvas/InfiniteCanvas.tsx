@@ -223,9 +223,17 @@ export default function InfiniteCanvas() {
                   const isShotSelected = selectedShotId === shot.id;
 
                   return (
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     key={shot.id}
                     onClick={() => selectShot(shot.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        selectShot(shot.id);
+                      }
+                    }}
                     className={`group bg-light-bg dark:bg-cine-panel rounded overflow-hidden hover:border-light-accent dark:border-cine-accent transition-all ${
                       isShotSelected
                         ? 'border-2 border-light-accent dark:border-cine-accent shadow-md shadow-cine-accent/30'
@@ -347,7 +355,7 @@ export default function InfiniteCanvas() {
                         {shot.shotSize}
                       </div>
                     </div>
-                  </button>
+                  </div>
                   );
                 })}
               </div>

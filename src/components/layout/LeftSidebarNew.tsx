@@ -16,6 +16,7 @@ import {
   Download,
   Trash2,
   Edit2,
+  X,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
@@ -26,13 +27,13 @@ import ShotListItem from '@/components/shot/ShotListItem';
 import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import AddLocationDialog from '@/components/asset/AddLocationDialog';
 import { toast } from 'sonner';
-import type { Shot } from '@/types/project';
+import type { Shot, ShotSize, CameraMovement } from '@/types/project';
 
 type Tab = 'script' | 'storyboard' | 'assets';
 
 export default function LeftSidebarNew() {
   const router = useRouter();
-  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot, deleteShot, deleteScene, updateScene, addCharacter, addLocation, setControlMode } = useProjectStore();
+  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot, deleteShot, deleteScene, updateScene, addCharacter, addLocation, setControlMode, updateShot } = useProjectStore();
   const [activeTab, setActiveTab] = useState<Tab>('storyboard');
   const [collapsedScenes, setCollapsedScenes] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
@@ -44,6 +45,25 @@ export default function LeftSidebarNew() {
   const [showAddCharacterDialog, setShowAddCharacterDialog] = useState(false);
   const [showAddLocationDialog, setShowAddLocationDialog] = useState(false);
   const [showScriptEditor, setShowScriptEditor] = useState(false);
+  const [editingShot, setEditingShot] = useState<Shot | null>(null);
+  const [shotForm, setShotForm] = useState<{
+    description: string;
+    narration: string;
+    dialogue: string;
+    shotSize: ShotSize | '';
+    cameraMovement: CameraMovement | '';
+    duration: number;
+  }>({
+    description: '',
+    narration: '',
+    dialogue: '',
+    shotSize: '',
+    cameraMovement: '',
+    duration: 3,
+  });
+
+  const shotSizeOptions: ShotSize[] = ['Extreme Wide Shot', 'Wide Shot', 'Medium Shot', 'Close-Up', 'Extreme Close-Up'];
+  const cameraMovementOptions: CameraMovement[] = ['Static', 'Pan Left', 'Pan Right', 'Tilt Up', 'Tilt Down', 'Dolly In', 'Dolly Out', 'Zoom In', 'Zoom Out', 'Handheld'];
 
   const scenes = project?.scenes || [];
   const shots = project?.shots || [];
@@ -63,6 +83,40 @@ export default function LeftSidebarNew() {
   const handleShotClick = (shotId: string) => {
     selectShot(shotId);
     setControlMode('pro'); // 点击镜头直接进入 Pro 模式，配合右侧上下文
+  };
+
+  const openShotEditor = (shot: Shot) => {
+    setEditingShot(shot);
+    setShotForm({
+      description: shot.description || '',
+      narration: shot.narration || '',
+      dialogue: shot.dialogue || '',
+      shotSize: shot.shotSize || '',
+      cameraMovement: shot.cameraMovement || '',
+      duration: shot.duration || 3,
+    });
+  };
+
+  const saveShotEdit = () => {
+    if (!editingShot) return;
+    if (!shotForm.description.trim()) {
+      toast.error('分镜描述不能为空');
+      return;
+    }
+    if (!shotForm.shotSize || !shotForm.cameraMovement) {
+      toast.error('请选择镜头景别和镜头运动');
+      return;
+    }
+    updateShot(editingShot.id, {
+      description: shotForm.description.trim(),
+      narration: shotForm.narration.trim(),
+      dialogue: shotForm.dialogue.trim(),
+      shotSize: shotForm.shotSize,
+      cameraMovement: shotForm.cameraMovement,
+      duration: shotForm.duration,
+    });
+    toast.success('分镜已更新');
+    setEditingShot(null);
   };
 
   const handleAddShotClick = (sceneId: string) => {
@@ -409,8 +463,8 @@ export default function LeftSidebarNew() {
             </div>
 
             {/* Scene List */}
-            <div className="space-y-3">
-              {scenes.map((scene) => {
+              <div className="space-y-3">
+                {scenes.map((scene) => {
                 // Get shots - try scene.shotIds first for correct order, fallback to filter
                 let sceneShots: Shot[];
                 if (scene.shotIds && scene.shotIds.length > 0) {
@@ -555,6 +609,7 @@ export default function LeftSidebarNew() {
                             shot={shot}
                             isSelected={selectedShotId === shot.id}
                             onSelect={() => handleShotClick(shot.id)}
+                            onEdit={() => openShotEditor(shot)}
                             onDelete={() => handleDeleteShot(shot.id, shot.order, scene.name)}
                           />
                         ))}
@@ -723,6 +778,111 @@ export default function LeftSidebarNew() {
                 className="w-full h-full min-h-[400px] bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted"
                 placeholder="在此粘贴或编写分镜脚本..."
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingShot && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-xl shadow-xl w-[900px] max-w-[96vw] max-h-[88vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-cine-border">
+              <div className="flex items-center gap-2">
+                <Edit2 size={16} className="text-light-accent dark:text-cine-accent" />
+                <span className="text-sm font-bold text-light-text dark:text-white">分镜详情编辑</span>
+                <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                  #{editingShot.order} • {editingShot.shotSize}
+                </span>
+              </div>
+              <button
+                onClick={() => setEditingShot(null)}
+                className="p-1 rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
+              >
+                <X size={16} className="text-light-text-muted dark:text-cine-text-muted" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-4 p-4 overflow-auto">
+              <div className="space-y-3">
+                <label className="text-xs text-light-text-muted dark:text-cine-text-muted">镜头描述</label>
+                <textarea
+                  value={shotForm.description}
+                  onChange={(e) => setShotForm((prev) => ({ ...prev, description: e.target.value }))}
+                  className="w-full h-40 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                  placeholder="写下镜头内容..."
+                />
+                <label className="text-xs text-light-text-muted dark:text-cine-text-muted">旁白</label>
+                <textarea
+                  value={shotForm.narration}
+                  onChange={(e) => setShotForm((prev) => ({ ...prev, narration: e.target.value }))}
+                  className="w-full h-24 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                  placeholder="旁白/场景说明"
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="text-xs text-light-text-muted dark:text-cine-text-muted">对白</label>
+                <textarea
+                  value={shotForm.dialogue}
+                  onChange={(e) => setShotForm((prev) => ({ ...prev, dialogue: e.target.value }))}
+                  className="w-full h-24 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                  placeholder="角色对白（可选）"
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-light-text-muted dark:text-cine-text-muted">镜头景别</label>
+                    <select
+                      value={shotForm.shotSize}
+                      onChange={(e) => setShotForm((prev) => ({ ...prev, shotSize: e.target.value as ShotSize }))}
+                      className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                    >
+                      <option value="">选择景别</option>
+                      {shotSizeOptions.map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-light-text-muted dark:text-cine-text-muted">镜头运动</label>
+                    <select
+                      value={shotForm.cameraMovement}
+                      onChange={(e) => setShotForm((prev) => ({ ...prev, cameraMovement: e.target.value as CameraMovement }))}
+                      className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                    >
+                      <option value="">选择运动</option>
+                      {cameraMovementOptions.map((move) => (
+                        <option key={move} value={move}>
+                          {move}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-light-text-muted dark:text-cine-text-muted">时长 (秒)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={shotForm.duration}
+                    onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))}
+                    className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 px-4 py-3 border-t border-light-border dark:border-cine-border">
+              <button
+                onClick={() => setEditingShot(null)}
+                className="px-3 py-2 text-sm rounded-lg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={saveShotEdit}
+                className="px-3 py-2 text-sm rounded-lg bg-light-accent dark:bg-cine-accent text-white hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors"
+              >
+                保存并应用
+              </button>
             </div>
           </div>
         </div>
