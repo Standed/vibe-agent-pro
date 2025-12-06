@@ -61,6 +61,8 @@ export default function ChatPanelWithHistory() {
   const [uploadedImages, setUploadedImages] = useState<File[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showHistory, setShowHistory] = useState(true);
+  const [historyWidth, setHistoryWidth] = useState(320);
+  const [isResizingHistory, setIsResizingHistory] = useState(false);
   const [mentionedAssets, setMentionedAssets] = useState<{
     characters: Character[];
     locations: Location[];
@@ -73,6 +75,8 @@ export default function ChatPanelWithHistory() {
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const prevContextRef = useRef<{ shotId: string | null; sceneId: string | null }>({ shotId: null, sceneId: null });
 
   const shots = project?.shots || [];
   const scenes = project?.scenes || [];
@@ -89,6 +93,39 @@ export default function ChatPanelWithHistory() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // 默认模型：镜头选中默认 SeeDream，场景默认 Gemini Grid；仅在上下文切换时切换默认值
+  useEffect(() => {
+    const prev = prevContextRef.current;
+    if (selectedShotId && selectedShotId !== prev.shotId) {
+      setSelectedModel('seedream');
+    } else if (!selectedShotId && currentSceneId && currentSceneId !== prev.sceneId) {
+      setSelectedModel('gemini-grid');
+    }
+    prevContextRef.current = { shotId: selectedShotId || null, sceneId: currentSceneId || null };
+  }, [selectedShotId, currentSceneId]);
+
+  // 历史栏拖拽调整宽度
+  useEffect(() => {
+    const handleMove = (e: MouseEvent) => {
+      if (!isResizingHistory || !resizeStateRef.current) return;
+      const delta = e.clientX - resizeStateRef.current.startX;
+      const next = Math.min(Math.max(resizeStateRef.current.startWidth + delta, 240), 540);
+      setHistoryWidth(next);
+    };
+    const handleUp = () => setIsResizingHistory(false);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [isResizingHistory]);
+
+  const startResizeHistory = (e: React.MouseEvent) => {
+    setIsResizingHistory(true);
+    resizeStateRef.current = { startX: e.clientX, startWidth: historyWidth };
+  };
 
   const buildPromptWithReferences = (prompt: string) => {
     const { enrichedPrompt, usedCharacters, usedLocations, referenceImageUrls, concisePrompt, missingAssets } = enrichPromptWithAssets(
@@ -582,7 +619,10 @@ export default function ChatPanelWithHistory() {
     <div className="h-full flex bg-light-bg dark:bg-cine-bg">
       {/* History Sidebar */}
       {showHistory && generationHistory.length > 0 && (
-        <div className="w-80 border-r border-light-border dark:border-cine-border bg-light-panel dark:bg-cine-panel flex flex-col">
+        <div
+          className="border-r border-light-border dark:border-cine-border bg-light-panel dark:bg-cine-panel flex flex-col relative"
+          style={{ width: historyWidth }}
+        >
           <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-cine-border">
             <div className="flex items-center gap-2">
               <Clock size={16} className="text-light-accent dark:text-cine-accent" />
@@ -629,6 +669,12 @@ export default function ChatPanelWithHistory() {
               </div>
             ))}
           </div>
+          {/* Resize handle */}
+          <div
+            onMouseDown={startResizeHistory}
+            className={`absolute right-0 top-0 h-full w-1 cursor-col-resize ${isResizingHistory ? 'bg-light-accent/40 dark:bg-cine-accent/40' : 'bg-transparent hover:bg-light-border dark:hover:bg-cine-border'}`}
+            title="拖拽调整宽度"
+          />
         </div>
       )}
 

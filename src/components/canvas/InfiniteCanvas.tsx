@@ -2,13 +2,33 @@
 
 import { useState, useRef } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X } from 'lucide-react';
+import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Edit2 } from 'lucide-react';
+import type { ShotSize, CameraMovement, Shot } from '@/types/project';
 
 export default function InfiniteCanvas() {
-  const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed } = useProjectStore();
+  const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed, updateShot } = useProjectStore();
   const [zoom, setZoom] = useState(100);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [editingShot, setEditingShot] = useState<Shot | null>(null);
+  const [shotForm, setShotForm] = useState<{
+    description: string;
+    narration: string;
+    dialogue: string;
+    shotSize: ShotSize | '';
+    cameraMovement: CameraMovement | '';
+    duration: number;
+  }>({
+    description: '',
+    narration: '',
+    dialogue: '',
+    shotSize: '',
+    cameraMovement: '',
+    duration: 3,
+  });
+
+  const shotSizeOptions: ShotSize[] = ['Extreme Wide Shot', 'Wide Shot', 'Medium Shot', 'Close-Up', 'Extreme Close-Up'];
+  const cameraMovementOptions: CameraMovement[] = ['Static', 'Pan Left', 'Pan Right', 'Tilt Up', 'Tilt Down', 'Dolly In', 'Dolly Out', 'Zoom In', 'Zoom Out', 'Handheld'];
 
   // Handle image preview
   const handlePreview = (imageUrl: string, e: React.MouseEvent) => {
@@ -35,6 +55,34 @@ export default function InfiniteCanvas() {
     if (rightSidebarCollapsed) {
       toggleRightSidebar();
     }
+  };
+
+  const handleEditShot = (shot: Shot, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingShot(shot);
+    setShotForm({
+      description: shot.description || '',
+      narration: shot.narration || '',
+      dialogue: shot.dialogue || '',
+      shotSize: shot.shotSize || '',
+      cameraMovement: shot.cameraMovement || '',
+      duration: shot.duration || 3,
+    });
+  };
+
+  const saveShotEdit = () => {
+    if (!editingShot) return;
+    if (!shotForm.description.trim()) return;
+    if (!shotForm.shotSize || !shotForm.cameraMovement) return;
+    updateShot(editingShot.id, {
+      description: shotForm.description.trim(),
+      narration: shotForm.narration.trim(),
+      dialogue: shotForm.dialogue.trim(),
+      shotSize: shotForm.shotSize,
+      cameraMovement: shotForm.cameraMovement,
+      duration: shotForm.duration,
+    });
+    setEditingShot(null);
   };
 
   const handleZoomIn = () => {
@@ -266,6 +314,13 @@ export default function InfiniteCanvas() {
                               <Download size={14} />
                             </button>
                             <button
+                              onClick={(e) => handleEditShot(shot, e)}
+                              className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800 transition-colors"
+                              title="编辑分镜"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
                               onClick={(e) => handleGenerate(shot.id, e)}
                               className="p-1.5 bg-light-accent hover:bg-light-accent-hover rounded text-white transition-colors"
                               title="重新生成"
@@ -298,6 +353,13 @@ export default function InfiniteCanvas() {
                               <Download size={14} />
                             </button>
                             <button
+                              onClick={(e) => handleEditShot(shot, e)}
+                              className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800 transition-colors"
+                              title="编辑分镜"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
                               onClick={(e) => handleGenerate(shot.id, e)}
                               className="p-1.5 bg-light-accent hover:bg-light-accent-hover rounded text-white transition-colors"
                               title="重新生成"
@@ -317,6 +379,13 @@ export default function InfiniteCanvas() {
                             >
                               <Sparkles size={14} />
                               生成图片
+                            </button>
+                            <button
+                              onClick={(e) => handleEditShot(shot, e)}
+                              className="p-2 bg-white/90 hover:bg-white rounded-lg text-gray-800 transition-colors flex items-center gap-1 text-xs"
+                            >
+                              <Edit2 size={14} />
+                              编辑
                             </button>
                           </div>
                         </>
@@ -389,6 +458,111 @@ export default function InfiniteCanvas() {
             >
               <X size={20} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {editingShot && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-xl shadow-xl w-[900px] max-w-[96vw] max-h-[88vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-cine-border">
+              <div className="flex items-center gap-2">
+                <Edit2 size={16} className="text-light-accent dark:text-cine-accent" />
+                <span className="text-sm font-bold text-light-text dark:text-white">分镜详情编辑</span>
+                <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                  #{editingShot.order} • {editingShot.shotSize}
+                </span>
+              </div>
+              <button
+                onClick={() => setEditingShot(null)}
+                className="p-1 rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
+              >
+                <X size={16} className="text-light-text-muted dark:text-cine-text-muted" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-4 p-4 overflow-auto">
+              <div className="space-y-3">
+                <label className="text-xs text-light-text-muted dark:text-cine-text-muted">镜头描述</label>
+                <textarea
+                  value={shotForm.description}
+                  onChange={(e) => setShotForm((prev) => ({ ...prev, description: e.target.value }))}
+                  className="w-full h-40 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                  placeholder="写下镜头内容..."
+                />
+                <label className="text-xs text-light-text-muted dark:text-cine-text-muted">旁白</label>
+                <textarea
+                  value={shotForm.narration}
+                  onChange={(e) => setShotForm((prev) => ({ ...prev, narration: e.target.value }))}
+                  className="w-full h-24 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                  placeholder="旁白/场景说明"
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="text-xs text-light-text-muted dark:text-cine-text-muted">对白</label>
+                <textarea
+                  value={shotForm.dialogue}
+                  onChange={(e) => setShotForm((prev) => ({ ...prev, dialogue: e.target.value }))}
+                  className="w-full h-24 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                  placeholder="角色对白（可选）"
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-light-text-muted dark:text-cine-text-muted">镜头景别</label>
+                    <select
+                      value={shotForm.shotSize}
+                      onChange={(e) => setShotForm((prev) => ({ ...prev, shotSize: e.target.value as ShotSize }))}
+                      className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                    >
+                      <option value="">选择景别</option>
+                      {shotSizeOptions.map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-light-text-muted dark:text-cine-text-muted">镜头运动</label>
+                    <select
+                      value={shotForm.cameraMovement}
+                      onChange={(e) => setShotForm((prev) => ({ ...prev, cameraMovement: e.target.value as CameraMovement }))}
+                      className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                    >
+                      <option value="">选择运动</option>
+                      {cameraMovementOptions.map((move) => (
+                        <option key={move} value={move}>
+                          {move}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-light-text-muted dark:text-cine-text-muted">时长 (秒)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={shotForm.duration}
+                    onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))}
+                    className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 px-4 py-3 border-t border-light-border dark:border-cine-border">
+              <button
+                onClick={() => setEditingShot(null)}
+                className="px-3 py-2 text-sm rounded-lg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={saveShotEdit}
+                className="px-3 py-2 text-sm rounded-lg bg-light-accent dark:bg-cine-accent text-white hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors"
+              >
+                保存并应用
+              </button>
+            </div>
           </div>
         </div>
       )}
