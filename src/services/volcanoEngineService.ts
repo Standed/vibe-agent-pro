@@ -162,14 +162,14 @@ export class VolcanoEngineService {
       throw new Error('SeeDream model ID 未配置，请在 .env.local 中设置 NEXT_PUBLIC_SEEDREAM_MODEL_ID');
     }
 
-    // 根据画面比例计算尺寸 - 使用 2K 分辨率
+    // 根据画面比例计算尺寸 - 满足 SeeDream API 最小像素要求（3,686,400 像素）
     const sizeMap: Record<string, string> = {
-      '16:9': '2048x1152',   // 16:9 宽屏 2K
-      '9:16': '1152x2048',   // 9:16 竖屏 2K
-      '1:1': '2048x2048',    // 1:1 正方形 2K
-      '4:3': '2048x1536',    // 4:3 标准 2K
-      '3:4': '1536x2048',    // 3:4 竖版 2K
-      '21:9': '2560x1097',   // 21:9 超宽屏 2.5K
+      '16:9': '2560x1440',   // 16:9 宽屏 QHD (3,686,400 px)
+      '9:16': '1440x2560',   // 9:16 竖屏 QHD (3,686,400 px)
+      '1:1': '2048x2048',    // 1:1 正方形 2K (4,194,304 px)
+      '4:3': '2240x1680',    // 4:3 标准 (3,763,200 px)
+      '3:4': '1680x2240',    // 3:4 竖版 (3,763,200 px)
+      '21:9': '2940x1260',   // 21:9 超宽屏 (3,704,400 px)
     };
 
     const size = aspectRatio && sizeMap[aspectRatio] ? sizeMap[aspectRatio] : '2048x2048';
@@ -197,6 +197,60 @@ export class VolcanoEngineService {
 
     if (!data.data || !data.data[0] || !data.data[0].url) {
       throw new Error('SeeDream 返回数据格式错误');
+    }
+
+    return data.data[0].url;
+  }
+
+  /**
+   * 图片编辑 (Image-to-Image)
+   * 根据原图和新提示词生成编辑后的图片
+   */
+  async editImage(
+    imageUrl: string,
+    prompt: string,
+    aspectRatio?: string
+  ): Promise<string> {
+    if (!this.seedreamModelId) {
+      throw new Error('SeeDream model ID 未配置');
+    }
+
+    // 根据画面比例计算尺寸 - 与 generateSingleImage 保持一致，满足 3,686,400 像素最小要求
+    const sizeMap: Record<string, string> = {
+      '16:9': '2560x1440',   // 16:9 宽屏 QHD (3,686,400 px)
+      '9:16': '1440x2560',   // 9:16 竖屏 QHD (3,686,400 px)
+      '1:1': '2048x2048',    // 1:1 正方形 2K (4,194,304 px)
+      '4:3': '2240x1680',    // 4:3 标准 (3,763,200 px)
+      '3:4': '1680x2240',    // 3:4 竖版 (3,763,200 px)
+      '21:9': '2940x1260',   // 21:9 超宽屏 (3,704,400 px)
+    };
+
+    const size = aspectRatio && sizeMap[aspectRatio] ? sizeMap[aspectRatio] : '2048x2048';
+
+    const response = await fetch(`${this.baseUrl}/images/variations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: this.seedreamModelId,
+        prompt: prompt,
+        image: imageUrl, // 原图URL
+        size: size,
+        n: 1,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`图片编辑失败: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.data || !data.data[0] || !data.data[0].url) {
+      throw new Error('返回数据格式错误');
     }
 
     return data.data[0].url;

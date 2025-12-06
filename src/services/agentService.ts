@@ -1,15 +1,43 @@
 /**
- * AI Agent Service - Real AI conversation using Volcano Engine Doubao model
- * Replaces mock responses with actual AI interactions
+ * AI Agent Service - Function calling with Gemini 3 Pro
+ * Uses Gemini for better tool calling capabilities
  */
 
-const VOLCANO_API_KEY = process.env.NEXT_PUBLIC_VOLCANO_API_KEY || '';
-const VOLCANO_BASE_URL = process.env.NEXT_PUBLIC_VOLCANO_BASE_URL || '';
-const DOUBAO_MODEL_ID = process.env.NEXT_PUBLIC_DOUBAO_MODEL_ID || '';
+import { AGENT_TOOLS, ToolCall, formatToolsForPrompt } from './agentTools';
+
+const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
+const GEMINI_MODEL = 'gemini-3-pro-preview'; // Using Gemini 3 Pro text model for better reasoning
+const API_TIMEOUT_MS = 30000; // 30 second timeout
+
+/**
+ * Fetch with timeout
+ */
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = API_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`请求超时（${timeoutMs/1000}秒）`);
+    }
+    throw error;
+  }
+}
 
 export interface AgentMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
+  toolCalls?: ToolCall[];
+  toolCallId?: string;
+  name?: string; // Tool name for tool role
 }
 
 export interface AgentContext {
@@ -30,6 +58,7 @@ export type AgentActionType =
   | 'batch_generate_grid'
   | 'batch_generate_video'
   | 'query_project'
+  | 'tool_use'
   | 'none';
 
 export interface AgentAction {
@@ -37,148 +66,318 @@ export interface AgentAction {
   parameters?: Record<string, any>;
   thought?: string; // AI's reasoning
   message: string; // Message to display to user
+  toolCalls?: ToolCall[]; // Tool calls to execute
+  requiresToolExecution?: boolean; // Whether tools need to be executed
 }
 
 /**
- * Generate AI agent system prompt based on context
+ * Generate AI agent system prompt with tool calling support
  */
 function generateSystemPrompt(context: AgentContext): string {
-  return `你是 Vibe Agent，一个专业的 AI 影视创作助手。你的任务是帮助用户快速创作影视内容，通过对话理解用户意图并自动操作相关参数。
+  const toolsDescription = formatToolsForPrompt(AGENT_TOOLS);
 
-## 你的能力：
-1. **理解意图**：准确识别用户想要做什么（创建场景、添加镜头、生成素材等）
-2. **参数提取**：从自然语言中提取关键参数（如时长、景别、描述）
-3. **批量操作**：识别批量处理的需求
-4. **专业建议**：提供专业的影视制作建议
+  return `你是 Vibe Agent，一个专业的 AI 影视创作助手。你的任务是帮助用户快速创作影视内容，通过对话理解用户意图并使用工具操作项目。
 
-## 当前项目信息：
+## 重要规则：
+1. **优先使用工具**：当用户询问项目信息或需要查询数据时，**必须先调用工具获取真实数据**，不要猜测或使用旧信息
+2. **理解上下文**：使用 getProjectContext 和 searchScenes 等工具来理解项目的真实内容
+3. **精准操作**：当用户要求操作特定场景时（如"场景2"），先用 searchScenes 找到它，再执行操作
+4. **简洁回复**：避免冗长的文本回复，重点是执行工具和给出结果
+
+## 当前项目基础信息：
 - 项目名称：${context.projectName || '未命名项目'}
 - 项目描述：${context.projectDescription || '无'}
 - 场景数量：${context.sceneCount || 0}
 - 镜头数量：${context.shotCount || 0}
 - 当前场景：${context.currentScene || '无'}
-- 当前镜头：${context.currentShot || '无'}
+
+## 可用工具（Tools）：
+${toolsDescription}
 
 ## 输出格式：
-你必须严格以 JSON 格式回复，不要包含任何 Markdown 标记。格式如下：
+你必须严格以 JSON 格式回复，不要包含任何 Markdown 标记。有两种输出模式：
+
+### 模式 1：调用工具（优先使用）
+当需要查询项目信息或执行批量操作时：
 {
-  "thought": "分析用户意图的思考过程",
-  "type": "操作类型",
-  "parameters": { "参数名": "参数值" },
-  "message": "回复给用户的自然语言消息"
+  "thought": "思考过程",
+  "type": "tool_use",
+  "toolCalls": [
+    { "name": "工具名", "arguments": { "参数名": "参数值" } }
+  ],
+  "message": "简短说明正在执行的操作"
 }
 
-## 可用的操作类型 (type)：
-- "create_scene": 创建新场景
-  - parameters: { "name": "场景名称", "description": "场景描述" }
-- "add_shot": 添加镜头
-  - parameters: { "count": 数量, "description": "画面描述", "duration": 时长(秒), "shotSize": "景别" }
-- "update_shot": 修改当前或指定镜头
-  - parameters: { "target": "current"|"all"|"id", "updates": { "duration": 5, "description": "..." } }
-- "generate_grid": 生成 Grid 多视图
-  - parameters: { "target": "current"|"shot_id", "prompt": "提示词" }
-- "generate_video": 生成视频
-  - parameters: { "target": "current"|"shot_id", "prompt": "运镜提示词" }
-- "batch_generate_grid": 批量生成 Grid
-  - parameters: { "scope": "scene"|"project", "sceneId": "可选" }
-- "batch_generate_video": 批量生成视频
-  - parameters: { "scope": "scene"|"project", "sceneId": "可选" }
-- "query_project": 查询项目信息
-  - parameters: { "query": "查询内容" }
-- "none": 仅对话，无操作
-  - parameters: {}
+### 模式 2：直接操作
+当需要创建场景、添加镜头或批量生成时：
+{
+  "thought": "思考过程",
+  "type": "create_scene" | "add_shot" | "batch_generate_grid" | "none",
+  "parameters": {
+    // For batch_generate_grid:
+    "scope": "scene",
+    "sceneId": "从工具获取的场景ID",
+    "mode": "grid" | "seedream"
+  },
+  "message": "简短的用户反馈"
+}
 
-## 示例：
-用户："帮我建个新场景，叫赛博朋克街道"
+## 示例对话：
+
+用户："场景 2 的分镜都生成图片"
+思考：用户提到"场景2"，我需要先用 searchScenes 工具找到场景2的ID，然后再用 batchGenerateSceneImages 工具批量生成
 回复：
 {
-  "thought": "用户想创建新场景",
+  "thought": "需要先查找场景2，然后批量生成图片",
+  "type": "tool_use",
+  "toolCalls": [
+    { "name": "searchScenes", "arguments": { "query": "场景 2" } }
+  ],
+  "message": "正在查找场景 2..."
+}
+
+用户："我的项目里有哪些场景？"
+回复：
+{
+  "thought": "用户想了解项目结构，需要获取完整上下文",
+  "type": "tool_use",
+  "toolCalls": [
+    { "name": "getProjectContext", "arguments": {} }
+  ],
+  "message": "正在获取项目信息..."
+}
+
+用户："创建一个新场景叫城市夜景"
+回复：
+{
+  "thought": "创建新场景",
   "type": "create_scene",
-  "parameters": { "name": "赛博朋克街道", "description": "赛博朋克风格的街道" },
-  "message": "好的，正在为您创建'赛博朋克街道'场景。"
-}
-
-用户："给这个场景加 3 个特写镜头"
-回复：
-{
-  "thought": "用户想添加镜头，数量3，景别特写",
-  "type": "add_shot",
-  "parameters": { "count": 3, "shotSize": "Close-up", "description": "特写镜头" },
-  "message": "没问题，正在添加 3 个特写镜头。"
+  "parameters": { "name": "城市夜景", "description": "城市夜晚的景观" },
+  "message": "正在创建场景'城市夜景'"
 }
 `;
 }
 
 /**
- * Process user command using Volcano Engine
+ * Process user command using Gemini 3 Pro with function calling
  */
 export async function processUserCommand(
   userMessage: string,
   chatHistory: AgentMessage[],
   context: AgentContext = {}
 ): Promise<AgentAction> {
-  if (!VOLCANO_API_KEY || !VOLCANO_BASE_URL || !DOUBAO_MODEL_ID) {
-    console.warn('Volcano Engine API keys missing, falling back to mock');
+  if (!GEMINI_API_KEY) {
+    console.warn('Gemini API key missing, falling back to mock');
     return mockProcessCommand(userMessage);
   }
 
   const systemPrompt = generateSystemPrompt(context);
 
-  // Construct messages array
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    ...chatHistory.slice(-5), // Keep last 5 messages for context
-    { role: 'user', content: userMessage }
+  // Convert chat history to Gemini format
+  const contents = [
+    {
+      role: 'user',
+      parts: [{ text: systemPrompt + '\n\n' + userMessage }]
+    }
   ];
 
+  // Convert tools to Gemini function declaration format
+  const tools = [{
+    function_declarations: AGENT_TOOLS.map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters
+    }))
+  }];
+
   try {
-    const response = await fetch(`${VOLCANO_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${VOLCANO_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: DOUBAO_MODEL_ID,
-        messages: messages,
-        temperature: 0.3, // Lower temperature for more deterministic JSON
-        max_tokens: 1000,
-      }),
-    });
+    const response = await fetchWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents,
+          tools,
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 2000,
+          }
+        })
+      }
+    );
 
     if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`Gemini API Error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
+    const candidate = data.candidates?.[0];
 
-    // Parse JSON response
-    try {
-      // Clean up markdown code blocks if present
-      const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
-      const action = JSON.parse(jsonStr) as AgentAction;
-      return action;
-    } catch (e) {
-      console.error('Failed to parse Agent response:', content);
+    if (!candidate) {
+      throw new Error('No candidate in Gemini response');
+    }
+
+    // Check if Gemini made function calls
+    const functionCall = candidate.content?.parts?.[0]?.functionCall;
+
+    if (functionCall) {
+      // Gemini wants to call a tool
       return {
-        type: 'none',
-        message: content || '抱歉，我没有理解您的指令。',
-        thought: 'Failed to parse JSON'
+        type: 'tool_use',
+        toolCalls: [{
+          name: functionCall.name,
+          arguments: functionCall.args || {}
+        }],
+        message: `正在调用工具: ${functionCall.name}`,
+        requiresToolExecution: true
       };
     }
 
-  } catch (error: any) {
-    console.error('Agent API error:', error);
+    // Gemini returned text response
+    const text = candidate.content?.parts?.[0]?.text || '';
 
-    let message = '抱歉，AI 服务暂时不可用。';
-    if (error.message?.includes('401') || error.message?.includes('403')) {
-      message = 'Volcano Engine API Key 无效或已过期，请检查配置。';
+    // Try to parse as JSON action
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const action = JSON.parse(jsonMatch[0]) as AgentAction;
+        return action;
+      }
+    } catch (e) {
+      // Not JSON, treat as plain text
     }
 
     return {
       type: 'none',
-      message: message,
+      message: text || '好的，我理解了。',
+      thought: 'Plain text response'
+    };
+
+  } catch (error: any) {
+    console.error('Gemini API error:', error);
+    return {
+      type: 'none',
+      message: `抱歉，AI 服务出错了: ${error.message}`,
+      thought: 'API Error'
+    };
+  }
+}
+
+/**
+ * Continue conversation after tool execution with Gemini
+ * Pass tool results back to AI for next response
+ */
+export async function continueWithToolResults(
+  toolResults: Array<{ tool: string; result: any }>,
+  chatHistory: AgentMessage[],
+  context: AgentContext = {}
+): Promise<AgentAction> {
+  if (!GEMINI_API_KEY) {
+    console.warn('Gemini API not configured');
+    return {
+      type: 'none',
+      message: '工具执行完成',
+      thought: 'No API available'
+    };
+  }
+
+  const systemPrompt = generateSystemPrompt(context);
+
+  // Format tool results for Gemini
+  const toolResultsText = toolResults.map(tr =>
+    `工具 ${tr.tool} 返回结果:\n${JSON.stringify(tr.result, null, 2)}`
+  ).join('\n\n');
+
+  const contents = [
+    {
+      role: 'user',
+      parts: [{
+        text: systemPrompt + '\n\n' + '工具执行完成，请根据结果决定下一步操作：\n\n' + toolResultsText
+      }]
+    }
+  ];
+
+  // Include tools so Gemini can make additional function calls
+  const tools = [{
+    function_declarations: AGENT_TOOLS.map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters
+    }))
+  }];
+
+  try {
+    const response = await fetchWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents,
+          tools,
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 2000,
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Gemini API Error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const candidate = data.candidates?.[0];
+
+    if (!candidate) {
+      throw new Error('No candidate in Gemini response');
+    }
+
+    // Check if Gemini made another function call
+    const functionCall = candidate.content?.parts?.[0]?.functionCall;
+
+    if (functionCall) {
+      // Gemini wants to call another tool
+      return {
+        type: 'tool_use',
+        toolCalls: [{
+          name: functionCall.name,
+          arguments: functionCall.args || {}
+        }],
+        message: `正在调用工具: ${functionCall.name}`,
+        requiresToolExecution: true
+      };
+    }
+
+    // Gemini returned text response
+    const text = candidate?.content?.parts?.[0]?.text || '';
+
+    // Try to parse as JSON action
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const action = JSON.parse(jsonMatch[0]) as AgentAction;
+        return action;
+      }
+    } catch (e) {
+      // Not JSON
+    }
+
+    return {
+      type: 'none',
+      message: text || '已处理工具结果',
+      thought: 'Processed tool results'
+    };
+
+  } catch (error: any) {
+    console.error('Gemini continuation error:', error);
+    return {
+      type: 'none',
+      message: '处理工具结果时出错',
       thought: 'API Error'
     };
   }

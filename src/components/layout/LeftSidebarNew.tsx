@@ -15,25 +15,34 @@ import {
   Loader2,
   Download,
   Trash2,
+  Edit2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
 import { generateStoryboardFromScript, analyzeScript, groupShotsIntoScenes } from '@/services/storyboardService';
 import { batchDownloadAssets } from '@/utils/batchDownload';
 import AddShotDialog from '@/components/shot/AddShotDialog';
+import ShotListItem from '@/components/shot/ShotListItem';
+import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
+import AddLocationDialog from '@/components/asset/AddLocationDialog';
 import { toast } from 'sonner';
+import type { Shot } from '@/types/project';
 
 type Tab = 'script' | 'storyboard' | 'assets';
 
 export default function LeftSidebarNew() {
   const router = useRouter();
-  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot, deleteShot } = useProjectStore();
+  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot, deleteShot, deleteScene, updateScene, addCharacter, addLocation } = useProjectStore();
   const [activeTab, setActiveTab] = useState<Tab>('storyboard');
   const [collapsedScenes, setCollapsedScenes] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showAddShotDialog, setShowAddShotDialog] = useState(false);
   const [selectedSceneForNewShot, setSelectedSceneForNewShot] = useState<string>('');
+  const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
+  const [editingSceneName, setEditingSceneName] = useState<string>('');
+  const [showAddCharacterDialog, setShowAddCharacterDialog] = useState(false);
+  const [showAddLocationDialog, setShowAddLocationDialog] = useState(false);
 
   const scenes = project?.scenes || [];
   const shots = project?.shots || [];
@@ -83,6 +92,45 @@ export default function LeftSidebarNew() {
         description: `已从 ${sceneName} 中删除`
       });
     }
+  };
+
+  const handleDeleteScene = (sceneId: string, sceneName: string) => {
+    const scene = scenes.find(s => s.id === sceneId);
+    if (!scene) return;
+
+    const shotCount = scene.shotIds.length;
+    const confirmed = confirm(
+      `确定要删除场景 "${sceneName}" 吗？\n\n该场景包含 ${shotCount} 个镜头，删除场景将同时删除所有镜头及其生成内容，此操作无法恢复。`
+    );
+
+    if (confirmed) {
+      deleteScene(sceneId);
+      toast.success('场景已删除', {
+        description: `已删除场景 "${sceneName}" 及其所有镜头`
+      });
+    }
+  };
+
+  const handleStartEditScene = (sceneId: string, currentName: string) => {
+    setEditingSceneId(sceneId);
+    setEditingSceneName(currentName);
+  };
+
+  const handleSaveSceneName = (sceneId: string) => {
+    if (!editingSceneName.trim()) {
+      toast.error('场景名称不能为空');
+      return;
+    }
+
+    updateScene(sceneId, { name: editingSceneName.trim() });
+    setEditingSceneId(null);
+    setEditingSceneName('');
+    toast.success('场景名称已更新');
+  };
+
+  const handleCancelEditScene = () => {
+    setEditingSceneId(null);
+    setEditingSceneName('');
   };
 
   const handleAIStoryboard = async () => {
@@ -354,7 +402,22 @@ export default function LeftSidebarNew() {
             {/* Scene List */}
             <div className="space-y-3">
               {scenes.map((scene) => {
-                const sceneShots = shots.filter((s) => s.sceneId === scene.id);
+                // Get shots - try scene.shotIds first for correct order, fallback to filter
+                let sceneShots: Shot[];
+                if (scene.shotIds && scene.shotIds.length > 0) {
+                  // Use scene.shotIds for correct drag-and-drop order
+                  sceneShots = scene.shotIds
+                    .map(shotId => shots.find(s => s.id === shotId))
+                    .filter((shot): shot is Shot => shot !== undefined);
+
+                  // 如果通过 shotIds 没找到任何 shot，fallback 到 sceneId
+                  if (sceneShots.length === 0) {
+                    sceneShots = shots.filter(s => s.sceneId === scene.id);
+                  }
+                } else {
+                  // Fallback: filter by sceneId (for scenes where shotIds isn't maintained)
+                  sceneShots = shots.filter(s => s.sceneId === scene.id);
+                }
                 const isCollapsed = collapsedScenes.has(scene.id);
 
                 return (
@@ -375,102 +438,116 @@ export default function LeftSidebarNew() {
                             <ChevronDown size={16} className="text-light-text-muted dark:text-cine-text-muted flex-shrink-0" />
                           )}
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-bold text-light-text dark:text-white truncate">
-                              {scene.name}
-                            </div>
-                            <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                              {sceneShots.length} 个镜头
-                            </div>
+                            {editingSceneId === scene.id ? (
+                              <input
+                                type="text"
+                                value={editingSceneName}
+                                onChange={(e) => setEditingSceneName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation();
+                                  if (e.key === 'Enter') {
+                                    handleSaveSceneName(scene.id);
+                                  } else if (e.key === 'Escape') {
+                                    handleCancelEditScene();
+                                  }
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-full text-sm font-bold bg-light-panel dark:bg-cine-panel border border-light-accent dark:border-cine-accent rounded px-2 py-1 focus:outline-none"
+                                autoFocus
+                              />
+                            ) : (
+                              <>
+                                <div className="text-sm font-bold text-light-text dark:text-white truncate">
+                                  {scene.name}
+                                </div>
+                                <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                                  {sceneShots.length} 个镜头
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       </button>
 
-                      {/* Add Shot Button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAddShotClick(scene.id);
-                        }}
-                        className="p-1.5 hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 rounded transition-colors flex-shrink-0"
-                        title="添加镜头"
-                      >
-                        <Plus size={16} className="text-light-accent dark:text-cine-accent" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {editingSceneId === scene.id ? (
+                          <>
+                            {/* Save Button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSaveSceneName(scene.id);
+                              }}
+                              className="p-1.5 hover:bg-green-500/10 rounded transition-colors flex-shrink-0"
+                              title="保存"
+                            >
+                              <span className="text-green-500 text-xs font-bold">✓</span>
+                            </button>
+                            {/* Cancel Button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCancelEditScene();
+                              }}
+                              className="p-1.5 hover:bg-red-500/10 rounded transition-colors flex-shrink-0"
+                              title="取消"
+                            >
+                              <span className="text-red-500 text-xs font-bold">✕</span>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {/* Edit Scene Name Button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartEditScene(scene.id, scene.name);
+                              }}
+                              className="p-1.5 hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 rounded transition-colors flex-shrink-0"
+                              title="编辑场景名称"
+                            >
+                              <Edit2 size={14} className="text-light-text-muted dark:text-cine-text-muted" />
+                            </button>
+
+                            {/* Add Shot Button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddShotClick(scene.id);
+                              }}
+                              className="p-1.5 hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 rounded transition-colors flex-shrink-0"
+                              title="添加镜头"
+                            >
+                              <Plus size={16} className="text-light-accent dark:text-cine-accent" />
+                            </button>
+
+                            {/* Delete Scene Button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteScene(scene.id, scene.name);
+                              }}
+                              className="p-1.5 hover:bg-red-500/10 rounded transition-colors flex-shrink-0 group"
+                              title="删除场景"
+                            >
+                              <Trash2 size={14} className="text-light-text-muted dark:text-cine-text-muted group-hover:text-red-500" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     {/* Shot List */}
                     {!isCollapsed && (
                       <div className="px-3 pb-3 space-y-2">
                         {sceneShots.map((shot) => (
-                          <div
+                          <ShotListItem
                             key={shot.id}
-                            className={`relative rounded-lg transition-all ${selectedShotId === shot.id
-                              ? 'bg-light-accent/10 dark:bg-cine-accent/10 border-2 border-light-accent dark:border-cine-accent'
-                              : 'bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border hover:border-light-accent/50 dark:hover:border-cine-accent/50'
-                              }`}
-                          >
-                            {/* Shot Content - Clickable */}
-                            <button
-                              onClick={() => handleShotClick(shot.id)}
-                              className="w-full text-left p-3"
-                            >
-                              <div className="flex items-start gap-3">
-                                {/* Thumbnail */}
-                                <div className="w-16 h-16 flex-shrink-0 bg-light-bg dark:bg-cine-black rounded overflow-hidden">
-                                  {shot.referenceImage ? (
-                                    <img
-                                      src={shot.referenceImage}
-                                      alt={`Shot ${shot.order}`}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-light-text-muted dark:text-cine-text-muted">
-                                      <Film size={20} className="opacity-50" />
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Shot Info */}
-                                <div className="flex-1 min-w-0 pr-8">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-xs font-bold text-light-accent dark:text-cine-accent">
-                                      #{shot.order}
-                                    </span>
-                                    <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                                      {shot.shotSize}
-                                    </span>
-                                    <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                                      {shot.duration}s
-                                    </span>
-                                    {shot.status === 'done' && (
-                                      <span className="text-xs text-green-400">✓</span>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-light-text dark:text-white line-clamp-2">
-                                    {shot.description}
-                                  </p>
-                                  {/* 显示对白（如果有） */}
-                                  {shot.dialogue && (
-                                    <p className="text-xs text-light-accent dark:text-cine-accent mt-1 line-clamp-1 italic">
-                                      💬 "{shot.dialogue}"
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            </button>
-
-                            {/* Delete Button - Absolute positioned */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteShot(shot.id, shot.order, scene.name);
-                              }}
-                              className="absolute top-2 right-2 p-1.5 hover:bg-red-500/10 rounded transition-colors group"
-                              title="删除镜头"
-                            >
-                              <Trash2 size={14} className="text-light-text-muted dark:text-cine-text-muted group-hover:text-red-500" />
-                            </button>
-                          </div>
+                            shot={shot}
+                            isSelected={selectedShotId === shot.id}
+                            onSelect={() => handleShotClick(shot.id)}
+                            onDelete={() => handleDeleteShot(shot.id, shot.order, scene.name)}
+                          />
                         ))}
                       </div>
                     )}
@@ -497,7 +574,10 @@ export default function LeftSidebarNew() {
                 <h3 className="text-sm font-bold text-light-text dark:text-white">
                   角色 ({project?.characters.length || 0})
                 </h3>
-                <button className="text-xs text-light-accent dark:text-cine-accent hover:text-light-accent-hover dark:hover:text-cine-accent-hover transition-colors flex items-center gap-1">
+                <button
+                  onClick={() => setShowAddCharacterDialog(true)}
+                  className="text-xs text-light-accent dark:text-cine-accent hover:text-light-accent-hover dark:hover:text-cine-accent-hover transition-colors flex items-center gap-1"
+                >
                   <Plus size={14} />
                   <span>添加</span>
                 </button>
@@ -514,6 +594,23 @@ export default function LeftSidebarNew() {
                     <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 line-clamp-2">
                       {character.description}
                     </div>
+                    {/* Reference Images */}
+                    {character.referenceImages && character.referenceImages.length > 0 && (
+                      <div className="flex gap-1 mt-2 overflow-x-auto">
+                        {character.referenceImages.map((imageUrl, idx) => (
+                          <div
+                            key={idx}
+                            className="flex-shrink-0 w-16 h-16 bg-light-panel dark:bg-cine-panel rounded overflow-hidden"
+                          >
+                            <img
+                              src={imageUrl}
+                              alt={`${character.name} 参考图 ${idx + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
                 {(!project?.characters || project.characters.length === 0) && (
@@ -530,7 +627,10 @@ export default function LeftSidebarNew() {
                 <h3 className="text-sm font-bold text-light-text dark:text-white">
                   场景地点 ({project?.locations.length || 0})
                 </h3>
-                <button className="text-xs text-light-accent dark:text-cine-accent hover:text-light-accent-hover dark:hover:text-cine-accent-hover transition-colors flex items-center gap-1">
+                <button
+                  onClick={() => setShowAddLocationDialog(true)}
+                  className="text-xs text-light-accent dark:text-cine-accent hover:text-light-accent-hover dark:hover:text-cine-accent-hover transition-colors flex items-center gap-1"
+                >
                   <Plus size={14} />
                   <span>添加</span>
                 </button>
@@ -547,6 +647,23 @@ export default function LeftSidebarNew() {
                     <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
                       {location.type === 'interior' ? '室内' : '室外'}
                     </div>
+                    {/* Reference Images */}
+                    {location.referenceImages && location.referenceImages.length > 0 && (
+                      <div className="flex gap-1 mt-2 overflow-x-auto">
+                        {location.referenceImages.map((imageUrl, idx) => (
+                          <div
+                            key={idx}
+                            className="flex-shrink-0 w-16 h-16 bg-light-panel dark:bg-cine-panel rounded overflow-hidden"
+                          >
+                            <img
+                              src={imageUrl}
+                              alt={`${location.name} 参考图 ${idx + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
                 {(!project?.locations || project.locations.length === 0) && (
@@ -580,6 +697,22 @@ export default function LeftSidebarNew() {
           existingShotsCount={shots.filter(s => s.sceneId === selectedSceneForNewShot).length}
           onAdd={handleAddShot}
           onClose={() => setShowAddShotDialog(false)}
+        />
+      )}
+
+      {/* Add Character Dialog */}
+      {showAddCharacterDialog && (
+        <AddCharacterDialog
+          onAdd={addCharacter}
+          onClose={() => setShowAddCharacterDialog(false)}
+        />
+      )}
+
+      {/* Add Location Dialog */}
+      {showAddLocationDialog && (
+        <AddLocationDialog
+          onAdd={addLocation}
+          onClose={() => setShowAddLocationDialog(false)}
         />
       )}
     </div>

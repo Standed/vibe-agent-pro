@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { Bot, Sliders, ChevronRight, ChevronLeft } from 'lucide-react';
 import AgentPanel from '../agent/AgentPanel';
-import ProPanel from './ProPanel';
+import ChatPanelWithHistory from './ChatPanelWithHistory';
 import ShotDetailPanel from '../shot/ShotDetailPanel';
 
 export default function RightPanel() {
@@ -71,7 +71,7 @@ export default function RightPanel() {
 
           {/* Panel Content */}
           <div className="flex-1 overflow-hidden">
-            {controlMode === 'agent' ? <AgentPanel /> : <ProPanel />}
+            {controlMode === 'agent' ? <AgentPanel /> : <ChatPanelWithHistory />}
           </div>
         </>
       )}

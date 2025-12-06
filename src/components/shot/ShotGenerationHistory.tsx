@@ -1,11 +1,12 @@
 'use client';
 
-import { RotateCcw, Download, Heart, Mic } from 'lucide-react';
+import { RotateCcw, Download, Heart, Mic, CheckCircle2 } from 'lucide-react';
 import { GenerationHistoryItem } from '@/types/project';
 
 interface ShotGenerationHistoryProps {
   history: GenerationHistoryItem[];
   onRegenerate: (item: GenerationHistoryItem) => void;
+  onApply: (item: GenerationHistoryItem) => void;
   onDownload: (item: GenerationHistoryItem) => void;
   onFavorite: (item: GenerationHistoryItem) => void;
   onDubbing: (item: GenerationHistoryItem) => void;
@@ -14,6 +15,7 @@ interface ShotGenerationHistoryProps {
 export default function ShotGenerationHistory({
   history,
   onRegenerate,
+  onApply,
   onDownload,
   onFavorite,
   onDubbing,
@@ -56,11 +58,10 @@ export default function ShotGenerationHistory({
 
             {/* Status Badge */}
             <div
-              className={`absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded ${
-                item.status === 'success'
+              className={`absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded ${item.status === 'success'
                   ? 'bg-green-500/20 text-green-400 border border-green-500/30'
                   : 'bg-red-500/20 text-red-400 border border-red-500/30'
-              }`}
+                }`}
             >
               {item.status === 'success' ? '成功' : '失败'}
             </div>
@@ -106,6 +107,14 @@ export default function ShotGenerationHistory({
 
           {/* Action Buttons (Aipai style) */}
           <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => onApply(item)}
+              className="col-span-2 flex items-center justify-center gap-1 bg-cine-accent hover:bg-cine-accent-hover text-white rounded px-2 py-1.5 text-xs transition-colors font-medium border border-transparent shadow-sm"
+            >
+              <CheckCircle2 size={12} />
+              使用此版本
+            </button>
+
             <button
               onClick={() => onRegenerate(item)}
               className="flex items-center justify-center gap-1 bg-cine-panel hover:bg-cine-border border border-cine-border rounded px-2 py-1.5 text-xs transition-colors"
