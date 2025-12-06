@@ -71,6 +71,7 @@ export default function ChatPanelWithHistory() {
   // Grid specific state
   const [gridSize, setGridSize] = useState<'2x2' | '3x3'>('2x2');
   const [gridResult, setGridResult] = useState<GridGenerationResult | null>(null);
+  const prevInputContextRef = useRef<string | null>(null);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -88,6 +89,17 @@ export default function ChatPanelWithHistory() {
     setMessages([]);
     setMentionedAssets({ characters: [], locations: [] });
   }, [selectedShotId, currentSceneId]);
+
+  // 选中未生成图片的镜头时，自动把分镜描述填入输入框，便于直接生成
+  useEffect(() => {
+    if (!selectedShot) return;
+    const ctxKey = selectedShot.id;
+    const hasImage = Boolean(selectedShot.referenceImage || selectedShot.gridImages?.length);
+    if (!hasImage && prevInputContextRef.current !== ctxKey) {
+      setInputText(selectedShot.description || '');
+      prevInputContextRef.current = ctxKey;
+    }
+  }, [selectedShot]);
 
   // Auto scroll to bottom when new messages arrive
   useEffect(() => {
@@ -316,7 +328,7 @@ export default function ChatPanelWithHistory() {
   const handleSeeDreamGeneration = async (prompt: string, imageFiles: File[]) => {
     const volcanoService = new VolcanoEngineService();
 
-    const { promptForModel, usedCharacters, usedLocations } = buildPromptWithReferences(prompt);
+    const { promptForModel, usedCharacters, usedLocations, referenceImageUrls } = buildPromptWithReferences(prompt);
 
     // Show asset usage info
     if (usedCharacters.length > 0 || usedLocations.length > 0) {
@@ -333,7 +345,10 @@ export default function ChatPanelWithHistory() {
     }
 
     const projectAspectRatio = project?.settings.aspectRatio;
-    const imageUrl = await volcanoService.generateSingleImage(promptForModel, projectAspectRatio);
+    const promptWithRefs = referenceImageUrls.length > 0
+      ? `${promptForModel}\n参考图：${referenceImageUrls.map((_, i) => `(图${i + 1})`).join(' ')}`
+      : promptForModel;
+    const imageUrl = await volcanoService.generateSingleImage(promptWithRefs, projectAspectRatio);
 
     // Update shot if selected
     if (selectedShotId) {
