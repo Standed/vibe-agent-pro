@@ -79,10 +79,38 @@ export default function ChatPanelWithHistory() {
   const selectedShot = shots.find((s) => s.id === selectedShotId);
   const generationHistory = selectedShot?.generationHistory || [];
 
+  // Reset chat when上下文切换（按镜头/场景隔离 Pro 历史）
+  useEffect(() => {
+    setMessages([]);
+    setMentionedAssets({ characters: [], locations: [] });
+  }, [selectedShotId, currentSceneId]);
+
   // Auto scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const buildPromptWithReferences = (prompt: string) => {
+    const { enrichedPrompt, usedCharacters, usedLocations, referenceImageUrls, concisePrompt, missingAssets } = enrichPromptWithAssets(
+      prompt,
+      project,
+      selectedShot?.description
+    );
+
+    // 强制参考图校验：提到角色/场景但没有图时阻止发送
+    if (missingAssets.length > 0 || referenceImageUrls.length === 0 && (usedCharacters.length > 0 || usedLocations.length > 0)) {
+      const detail = missingAssets.length > 0
+        ? missingAssets.map(a => `${a.type === 'character' ? '角色' : '场景'}「${a.name}」`).join('、')
+        : `${usedCharacters.length ? `角色(${usedCharacters.map(c => c.name).join(',')})` : ''}${usedLocations.length ? ` 场景(${usedLocations.map(l => l.name).join(',')})` : ''}`;
+      toast.error('请先上传参考图', {
+        description: `缺少参考图：${detail}`
+      });
+      throw new Error('缺少参考图');
+    }
+
+    const promptForModel = concisePrompt || enrichedPrompt || prompt;
+    return { promptForModel, referenceImageUrls, usedCharacters, usedLocations };
+  };
 
   // Handle file upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -224,12 +252,7 @@ export default function ChatPanelWithHistory() {
   const handleSeeDreamGeneration = async (prompt: string, imageFiles: File[]) => {
     const volcanoService = new VolcanoEngineService();
 
-    // Enrich prompt with assets
-    const { enrichedPrompt, usedCharacters, usedLocations } = enrichPromptWithAssets(
-      prompt,
-      project,
-      selectedShot?.description
-    );
+    const { promptForModel, usedCharacters, usedLocations } = buildPromptWithReferences(prompt);
 
     // Show asset usage info
     if (usedCharacters.length > 0 || usedLocations.length > 0) {
@@ -246,7 +269,7 @@ export default function ChatPanelWithHistory() {
     }
 
     const projectAspectRatio = project?.settings.aspectRatio;
-    const imageUrl = await volcanoService.generateSingleImage(enrichedPrompt, projectAspectRatio);
+    const imageUrl = await volcanoService.generateSingleImage(promptForModel, projectAspectRatio);
 
     // Update shot if selected
     if (selectedShotId) {
@@ -261,7 +284,7 @@ export default function ChatPanelWithHistory() {
         type: 'image',
         timestamp: new Date(),
         result: imageUrl,
-        prompt: prompt,
+          prompt: prompt,
         parameters: {
           model: 'SeeDream',
           aspectRatio: projectAspectRatio,
@@ -287,12 +310,7 @@ export default function ChatPanelWithHistory() {
 
   // Gemini direct generation (single image without grid)
   const handleGeminiDirectGeneration = async (prompt: string, imageFiles: File[]) => {
-    // Enrich prompt with assets
-    const { enrichedPrompt, referenceImageUrls, usedCharacters, usedLocations } = enrichPromptWithAssets(
-      prompt,
-      project,
-      selectedShot?.description
-    );
+    const { promptForModel, referenceImageUrls, usedCharacters, usedLocations } = buildPromptWithReferences(prompt);
 
     // Collect all reference image URLs from mentioned assets
     const mentionedImageUrls: string[] = [
@@ -345,7 +363,7 @@ export default function ChatPanelWithHistory() {
 
     // Generate single image with Gemini
     const imageUrl = await generateSingleImage(
-      enrichedPrompt,
+      promptForModel,
       project?.settings.aspectRatio || AspectRatio.WIDE,
       allRefImages
     );
@@ -389,12 +407,7 @@ export default function ChatPanelWithHistory() {
 
   // Gemini Grid generation
   const handleGeminiGridGeneration = async (prompt: string, imageFiles: File[]) => {
-    // Enrich prompt with assets
-    const { enrichedPrompt, referenceImageUrls } = enrichPromptWithAssets(
-      prompt,
-      project,
-      selectedShot?.description
-    );
+    const { promptForModel, referenceImageUrls } = buildPromptWithReferences(prompt);
 
     // Collect all reference image URLs from mentioned assets
     const mentionedImageUrls: string[] = [
@@ -427,7 +440,7 @@ export default function ChatPanelWithHistory() {
     // Generate Grid
     const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
     const result = await generateMultiViewGrid(
-      enrichedPrompt,
+      promptForModel,
       rows,
       cols,
       project?.settings.aspectRatio || AspectRatio.WIDE,

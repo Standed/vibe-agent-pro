@@ -32,7 +32,7 @@ type Tab = 'script' | 'storyboard' | 'assets';
 
 export default function LeftSidebarNew() {
   const router = useRouter();
-  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot, deleteShot, deleteScene, updateScene, addCharacter, addLocation } = useProjectStore();
+  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot, deleteShot, deleteScene, updateScene, addCharacter, addLocation, setControlMode } = useProjectStore();
   const [activeTab, setActiveTab] = useState<Tab>('storyboard');
   const [collapsedScenes, setCollapsedScenes] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
@@ -43,6 +43,7 @@ export default function LeftSidebarNew() {
   const [editingSceneName, setEditingSceneName] = useState<string>('');
   const [showAddCharacterDialog, setShowAddCharacterDialog] = useState(false);
   const [showAddLocationDialog, setShowAddLocationDialog] = useState(false);
+  const [showScriptEditor, setShowScriptEditor] = useState(false);
 
   const scenes = project?.scenes || [];
   const shots = project?.shots || [];
@@ -61,6 +62,7 @@ export default function LeftSidebarNew() {
 
   const handleShotClick = (shotId: string) => {
     selectShot(shotId);
+    setControlMode('pro'); // 点击镜头直接进入 Pro 模式，配合右侧上下文
   };
 
   const handleAddShotClick = (sceneId: string) => {
@@ -397,6 +399,13 @@ export default function LeftSidebarNew() {
               <h3 className="text-sm font-bold text-light-text dark:text-white">
                 分镜脚本 ({shots.length} 个镜头)
               </h3>
+              <button
+                onClick={() => setShowScriptEditor(true)}
+                className="flex items-center gap-1 text-xs px-2 py-1 border border-light-border dark:border-cine-border rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
+              >
+                <Edit2 size={12} />
+                <span>编辑分镜脚本</span>
+              </button>
             </div>
 
             {/* Scene List */}
@@ -688,6 +697,36 @@ export default function LeftSidebarNew() {
           </div>
         )}
       </div>
+
+      {showScriptEditor && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-xl shadow-xl w-[800px] max-w-[95vw] max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-cine-border">
+              <div className="flex items-center gap-2">
+                <Film size={16} className="text-light-accent dark:text-cine-accent" />
+                <span className="text-sm font-bold text-light-text dark:text-white">分镜脚本编辑</span>
+              </div>
+              <button
+                onClick={() => setShowScriptEditor(false)}
+                className="p-1 rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
+              >
+                <ChevronRightIcon size={16} className="text-light-text-muted dark:text-cine-text-muted" />
+              </button>
+            </div>
+            <div className="p-4 flex-1 overflow-auto space-y-3">
+              <p className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                直接在此修改完整分镜脚本内容，保存后右侧 Pro 模式将按镜头/场景上下文展示历史。
+              </p>
+              <textarea
+                value={project?.script || ''}
+                onChange={(e) => updateScript(e.target.value)}
+                className="w-full h-full min-h-[400px] bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted"
+                placeholder="在此粘贴或编写分镜脚本..."
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Shot Dialog */}
       {showAddShotDialog && selectedSceneForNewShot && (

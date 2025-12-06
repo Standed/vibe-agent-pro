@@ -5,13 +5,9 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { Bot, Sliders, ChevronRight, ChevronLeft } from 'lucide-react';
 import AgentPanel from '../agent/AgentPanel';
 import ChatPanelWithHistory from './ChatPanelWithHistory';
-import ShotDetailPanel from '../shot/ShotDetailPanel';
 
 export default function RightPanel() {
-  const { controlMode, setControlMode, rightSidebarCollapsed, toggleRightSidebar, selectedShotId, selectShot } = useProjectStore();
-
-  // 当有选中的 Shot 时，显示分镜详情面板
-  const showShotDetail = !rightSidebarCollapsed && selectedShotId;
+  const { controlMode, setControlMode, rightSidebarCollapsed, toggleRightSidebar } = useProjectStore();
 
   return (
     <div className={`bg-light-panel dark:bg-cine-dark border-l border-light-border dark:border-cine-border flex flex-col transition-all duration-300 ${rightSidebarCollapsed ? 'w-12' : 'w-96'}`}>
@@ -26,14 +22,8 @@ export default function RightPanel() {
             <ChevronLeft size={20} className="text-light-text-muted dark:text-cine-text-muted" />
           </button>
         </div>
-      ) : showShotDetail ? (
-        /* Shot Detail Panel */
-        <ShotDetailPanel
-          shotId={selectedShotId}
-          onClose={() => selectShot('')}
-        />
       ) : (
-        /* Normal Agent/Pro Mode */
+        /* Agent/Pro Mode */
         <>
           {/* Mode Toggle */}
           <div className="flex border-b border-light-border dark:border-cine-border relative">

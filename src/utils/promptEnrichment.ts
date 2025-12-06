@@ -21,6 +21,8 @@ export function enrichPromptWithAssets(
   usedLocations: Location[];
   referenceImageUrls: string[];
   referenceImageMap: { index: number; type: 'character' | 'location'; name: string; imageUrl: string }[];
+  concisePrompt: string;
+  missingAssets: { type: 'character' | 'location'; name: string }[];
 } {
   if (!project) {
     return {
@@ -29,6 +31,8 @@ export function enrichPromptWithAssets(
       usedLocations: [],
       referenceImageUrls: [],
       referenceImageMap: [],
+      concisePrompt: basePrompt,
+      missingAssets: [],
     };
   }
 
@@ -36,6 +40,7 @@ export function enrichPromptWithAssets(
   const usedLocations: Location[] = [];
   const referenceImageUrls: string[] = [];
   const referenceImageMap: { index: number; type: 'character' | 'location'; name: string; imageUrl: string }[] = [];
+  const missingAssets: { type: 'character' | 'location'; name: string }[] = [];
 
   // Combine base prompt and shot description for matching
   const fullText = `${basePrompt} ${shotDescription || ''}`.toLowerCase();
@@ -59,6 +64,8 @@ export function enrichPromptWithAssets(
             imageUrl,
           });
         }
+      } else {
+        missingAssets.push({ type: 'character', name: character.name });
       }
     }
   }
@@ -80,12 +87,15 @@ export function enrichPromptWithAssets(
             imageUrl,
           });
         }
+      } else {
+        missingAssets.push({ type: 'location', name: location.name });
       }
     }
   }
 
   // Build enriched prompt with reference image markers
   let enrichedPrompt = basePrompt;
+  let concisePrompt = basePrompt;
 
   // Add character context with reference image markers
   if (usedCharacters.length > 0) {
@@ -141,6 +151,12 @@ export function enrichPromptWithAssets(
     referenceImageMap.forEach(ref => {
       enrichedPrompt += `(第${convertNumberToChinese(ref.index)}个参考图) - ${ref.type === 'character' ? '角色' : '场景'}: ${ref.name}\n`;
     });
+
+    // Concise markers only
+    const markerList = referenceImageMap
+      .map(ref => `@${ref.name}(第${ref.index}张参考图)`)
+      .join(' ');
+    concisePrompt = [basePrompt, markerList].filter(Boolean).join('\n');
   }
 
   return {
@@ -149,6 +165,8 @@ export function enrichPromptWithAssets(
     usedLocations,
     referenceImageUrls,
     referenceImageMap,
+    concisePrompt,
+    missingAssets,
   };
 }
 
