@@ -401,6 +401,7 @@ export default function ChatPanelWithHistory() {
         } else {
           const errText = await resp.text();
           console.error('seedream proxy error', errText);
+          toast.warning('SeeDream 多图接口不可用，已自动降级单图生成');
         }
       } catch (e) {
         console.error('seedream proxy failed', e);
