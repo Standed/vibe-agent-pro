@@ -385,7 +385,10 @@ export default function ChatPanelWithHistory() {
         if (resp.ok) {
           const data = await resp.json();
           imageUrl = data.url;
-          toast.info('已通过 SeeDream 多图接口生成');
+          toast.info('已通过 SeeDream 多图接口生成（含参考图）');
+        } else {
+          const errText = await resp.text();
+          console.error('seedream proxy error', errText);
         }
       } catch (e) {
         console.error('seedream proxy failed', e);
