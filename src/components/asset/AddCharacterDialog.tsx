@@ -356,6 +356,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
           </button>
         </div>
       </div>
+      </div>
       {previewImage && (
         <div
           className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
