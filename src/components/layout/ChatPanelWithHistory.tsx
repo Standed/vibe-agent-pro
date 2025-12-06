@@ -344,11 +344,43 @@ export default function ChatPanelWithHistory() {
       });
     }
 
+    // 如果有参考图或用户上传图，优先走 Gemini 直出以确保引用图片
+    const mentionedImageUrls: string[] = [
+      ...mentionedAssets.characters.flatMap(c => c.referenceImages || []),
+      ...mentionedAssets.locations.flatMap(l => l.referenceImages || []),
+    ];
+    const allReferenceUrls = Array.from(new Set([...referenceImageUrls, ...mentionedImageUrls]));
+
+    const uploadedRefImages = await Promise.all(
+      imageFiles.map(async (file) => {
+        const base64 = await fileToBase64(file);
+        return {
+          mimeType: file.type,
+          data: base64,
+        };
+      })
+    );
+
     const projectAspectRatio = project?.settings.aspectRatio;
-    const promptWithRefs = referenceImageUrls.length > 0
-      ? `${promptForModel}\n参考图：${referenceImageUrls.map((_, i) => `(图${i + 1})`).join(' ')}`
-      : promptForModel;
-    const imageUrl = await volcanoService.generateSingleImage(promptWithRefs, projectAspectRatio);
+    let imageUrl = '';
+
+    if (allReferenceUrls.length > 0 || uploadedRefImages.length > 0) {
+      const assetRefImages = allReferenceUrls.length > 0
+        ? await urlsToReferenceImages(allReferenceUrls)
+        : [];
+      const allRefImages = [...uploadedRefImages, ...assetRefImages];
+      toast.info('检测到参考图，使用 Gemini 直出（含参考图）');
+      imageUrl = await generateSingleImage(
+        promptForModel,
+        projectAspectRatio || AspectRatio.WIDE,
+        allRefImages
+      );
+    } else {
+      const promptWithRefs = referenceImageUrls.length > 0
+        ? `${promptForModel}\n参考图：${referenceImageUrls.map((_, i) => `(图${i + 1})`).join(' ')}`
+        : promptForModel;
+      imageUrl = await volcanoService.generateSingleImage(promptWithRefs, projectAspectRatio);
+    }
 
     // Update shot if selected
     if (selectedShotId) {
@@ -365,7 +397,7 @@ export default function ChatPanelWithHistory() {
         result: imageUrl,
           prompt: prompt,
         parameters: {
-          model: 'SeeDream',
+          model: allReferenceUrls.length > 0 || uploadedRefImages.length > 0 ? 'Gemini Direct(含参考图)' : 'SeeDream',
           aspectRatio: projectAspectRatio,
         },
         status: 'success',
@@ -377,10 +409,10 @@ export default function ChatPanelWithHistory() {
     const assistantMessage: ChatMessage = {
       id: `msg_${Date.now()}`,
       role: 'assistant',
-      content: '已使用 SeeDream 生成图片',
+      content: allReferenceUrls.length > 0 || uploadedRefImages.length > 0 ? '已使用 Gemini 直出（含参考图）生成图片' : '已使用 SeeDream 生成图片',
       timestamp: new Date(),
       images: [imageUrl],
-      model: 'seedream',
+      model: allReferenceUrls.length > 0 || uploadedRefImages.length > 0 ? 'gemini-direct' : 'seedream',
     };
     setMessages(prev => [...prev, assistantMessage]);
 
