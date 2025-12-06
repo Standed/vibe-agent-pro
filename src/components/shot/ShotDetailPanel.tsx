@@ -21,6 +21,7 @@ import {
 import { useProjectStore } from '@/store/useProjectStore';
 import type { Shot, ShotSize, CameraMovement, GenerationHistoryItem } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
+import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import { toast } from 'sonner';
 
 interface ShotDetailPanelProps {
@@ -75,9 +76,31 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
       if (regenerateType === 'image') {
         // 重生成图片
         const volcanoService = new VolcanoEngineService();
+
+        // Enrich prompt with character and location context
+        const { enrichedPrompt, usedCharacters, usedLocations } = enrichPromptWithAssets(
+          regeneratePrompt,
+          project,
+          shot.description
+        );
+
+        // Show toast if assets are being used
+        if (usedCharacters.length > 0 || usedLocations.length > 0) {
+          const assetInfo = [];
+          if (usedCharacters.length > 0) {
+            assetInfo.push(`角色: ${usedCharacters.map(c => c.name).join(', ')}`);
+          }
+          if (usedLocations.length > 0) {
+            assetInfo.push(`场景: ${usedLocations.map(l => l.name).join(', ')}`);
+          }
+          toast.info('正在使用资源库参考', {
+            description: assetInfo.join(' | ')
+          });
+        }
+
         // 使用项目的画面比例
         const projectAspectRatio = project?.settings.aspectRatio;
-        const imageUrl = await volcanoService.generateSingleImage(regeneratePrompt, projectAspectRatio);
+        const imageUrl = await volcanoService.generateSingleImage(enrichedPrompt, projectAspectRatio);
 
         updateShot(shotId, {
           referenceImage: imageUrl,
@@ -114,9 +137,30 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
         const volcanoService = new VolcanoEngineService();
         const imageUrl = shot.referenceImage || shot.gridImages?.[0] || '';
 
+        // Enrich prompt with character and location context
+        const { enrichedPrompt, usedCharacters, usedLocations } = enrichPromptWithAssets(
+          regeneratePrompt,
+          project,
+          shot.description
+        );
+
+        // Show toast if assets are being used
+        if (usedCharacters.length > 0 || usedLocations.length > 0) {
+          const assetInfo = [];
+          if (usedCharacters.length > 0) {
+            assetInfo.push(`角色: ${usedCharacters.map(c => c.name).join(', ')}`);
+          }
+          if (usedLocations.length > 0) {
+            assetInfo.push(`场景: ${usedLocations.map(l => l.name).join(', ')}`);
+          }
+          toast.info('正在使用资源库参考', {
+            description: assetInfo.join(' | ')
+          });
+        }
+
         // 提交视频生成任务
         const videoTask = await volcanoService.generateSceneVideo(
-          regeneratePrompt,
+          enrichedPrompt,
           imageUrl
         );
 
@@ -295,14 +339,26 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
             <Edit3 size={16} />
             <span>编辑</span>
           </button>
-          <button
-            onClick={handleRegenerate}
-            disabled={!hasImage && !hasVideo}
-            className="flex items-center justify-center gap-2 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RotateCcw size={16} />
-            <span>重生成</span>
-          </button>
+
+          {/* 如果没有图片，显示"生成"按钮；否则显示"重生成"按钮 */}
+          {!hasImage ? (
+            <button
+              onClick={handleRegenerate}
+              className="flex items-center justify-center gap-2 bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white rounded-lg px-3 py-2 text-sm transition-colors font-medium"
+            >
+              <Sparkles size={16} />
+              <span>生成</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleRegenerate}
+              className="flex items-center justify-center gap-2 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm transition-colors"
+            >
+              <RotateCcw size={16} />
+              <span>重生成</span>
+            </button>
+          )}
+
           <button
             onClick={handleDownload}
             disabled={!hasImage && !hasVideo}

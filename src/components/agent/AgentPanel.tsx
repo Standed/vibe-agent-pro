@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Sparkles, User, Bot, Terminal } from 'lucide-react';
+import { Send, Loader2, Sparkles, User, Bot, Terminal, ChevronDown, ChevronRight } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { ChatMessage } from '@/types/project';
 import { toast } from 'sonner';
-import { processUserCommand, AgentAction, AgentMessage } from '@/services/agentService';
+import { processUserCommand, continueWithToolResults, AgentAction, AgentMessage } from '@/services/agentService';
+import { AgentToolExecutor, ToolResult } from '@/services/agentTools';
 import { generateMultiViewGrid } from '@/services/geminiService';
 import { volcanoEngineService } from '@/services/volcanoEngineService';
 import { AspectRatio, ImageSize, GenerationHistoryItem, Shot } from '@/types/project';
@@ -24,9 +25,22 @@ export default function AgentPanel() {
 
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const chatHistory = project?.chatHistory || [];
+
+  const toggleMessageExpanded = (messageId: string) => {
+    setExpandedMessages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId);
+      } else {
+        newSet.add(messageId);
+      }
+      return newSet;
+    });
+  };
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -70,18 +84,58 @@ export default function AgentPanel() {
       }));
 
       // Call Agent API
-      const action = await processUserCommand(userContent, apiHistory, context);
+      let action = await processUserCommand(userContent, apiHistory, context);
 
-      // Execute Action
+      // Store all tool results for display
+      let allToolResults: ToolResult[] = [];
+
+      // Loop to handle recursive tool calls (max 5 iterations to prevent infinite loops)
+      let maxIterations = 5;
+      let iteration = 0;
+
+      while (action.requiresToolExecution && action.toolCalls && iteration < maxIterations) {
+        iteration++;
+
+        // Execute tools silently (only show toast notifications)
+        const executor = new AgentToolExecutor(project);
+        const toolResults: ToolResult[] = [];
+
+        for (const toolCall of action.toolCalls) {
+          toast.info(`🔧 ${toolCall.name}`, { duration: 1500 });
+          const result = await executor.execute(toolCall);
+          toolResults.push(result);
+          allToolResults.push(result);
+
+          if (result.error) {
+            console.error(`Tool ${toolCall.name} error:`, result.error);
+          }
+        }
+
+        // Continue with AI using tool results
+        console.log(`🔄 Iteration ${iteration}: Calling continueWithToolResults with`, toolResults);
+        try {
+          action = await continueWithToolResults(toolResults, apiHistory, context);
+          console.log(`✅ Iteration ${iteration}: Got action`, action);
+        } catch (error: any) {
+          console.error(`❌ Iteration ${iteration}: continueWithToolResults failed`, error);
+          toast.error('AI 处理超时，请重试');
+          throw error;
+        }
+      }
+
+      const executedToolResults = allToolResults.length > 0 ? allToolResults : undefined;
+
+      // Execute final action
       await executeAgentAction(action);
 
-      // Add Assistant Message
+      // Add final assistant message with tool results
       const assistantMessage: ChatMessage = {
         id: `msg_${Date.now()}_assistant`,
         role: 'assistant',
         content: action.message,
         timestamp: new Date(),
-        thought: action.thought // Optional: display thought process
+        thought: action.thought,
+        toolResults: executedToolResults
       };
 
       addChatMessage(assistantMessage);
@@ -303,6 +357,7 @@ export default function AgentPanel() {
         if (action.parameters) {
           const scope = action.parameters.scope;
           const targetSceneId = action.parameters.sceneId || currentSceneId;
+          const mode = action.parameters.mode || 'grid';
 
           let targetShots: Shot[] = [];
           if (scope === 'scene' && targetSceneId) {
@@ -316,49 +371,140 @@ export default function AgentPanel() {
             return;
           }
 
-          toast.info(`开始批量生成 ${targetShots.length} 个镜头的 Grid...`);
+          const modeLabel = mode === 'grid' ? 'Grid (Gemini)' : 'SeeDream (火山引擎)';
+          const currentToast = toast.info(`开始批量生成 ${targetShots.length} 个镜头...`, {
+            description: `使用 ${modeLabel} 模式`
+          });
+
+          let successCount = 0;
+          let failCount = 0;
 
           // Process sequentially to avoid rate limits
-          for (const shot of targetShots) {
+          for (let i = 0; i < targetShots.length; i++) {
+            const shot = targetShots[i];
             try {
-              toast.loading(`正在生成镜头 #${shot.order} 的 Grid...`);
-              const result = await generateMultiViewGrid(
-                shot.description || 'Cinematic shot',
-                2, 2,
-                project?.settings.aspectRatio || AspectRatio.WIDE,
-                ImageSize.K4,
-                []
-              );
-
-              updateShot(shot.id, {
-                referenceImage: result.slices[0],
-                fullGridUrl: result.fullImage,
-                gridImages: result.slices,
-                status: 'done'
+              toast.loading(`正在生成 [${i + 1}/${targetShots.length}] 镜头 #${shot.order}`, {
+                id: currentToast,
+                description: `预计还需 ${Math.ceil((targetShots.length - i) * 3)} 秒`
               });
 
-              addGenerationHistory(shot.id, {
-                id: `gen_${Date.now()}`,
-                type: 'image',
-                timestamp: new Date(),
-                result: result.slices[0],
-                prompt: shot.description || 'Batch generation',
-                parameters: {
-                  model: 'Gemini Grid',
-                  gridSize: '2x2',
-                  fullGridUrl: result.fullImage
-                },
-                status: 'success'
-              });
+              updateShot(shot.id, { status: 'generating' as any });
+
+              if (mode === 'grid') {
+                // Use Gemini Grid
+                const result = await generateMultiViewGrid(
+                  shot.description || 'Cinematic shot',
+                  2, 2,
+                  project?.settings.aspectRatio || AspectRatio.WIDE,
+                  ImageSize.K4,
+                  []
+                );
+
+                updateShot(shot.id, {
+                  referenceImage: result.slices[0],
+                  fullGridUrl: result.fullImage,
+                  gridImages: result.slices,
+                  status: 'done'
+                });
+
+                addGenerationHistory(shot.id, {
+                  id: `gen_${Date.now()}`,
+                  type: 'image',
+                  timestamp: new Date(),
+                  result: result.slices[0],
+                  prompt: shot.description || 'Batch generation',
+                  parameters: {
+                    model: 'Gemini Grid',
+                    gridSize: '2x2',
+                    fullGridUrl: result.fullImage
+                  },
+                  status: 'success'
+                });
+              } else {
+                // Use SeeDream
+                try {
+                  const imageUrl = await volcanoEngineService.generateSingleImage(
+                    shot.description || 'Cinematic shot',
+                    project?.settings.aspectRatio
+                  );
+
+                  updateShot(shot.id, {
+                    referenceImage: imageUrl,
+                    status: 'done'
+                  });
+
+                  addGenerationHistory(shot.id, {
+                    id: `gen_${Date.now()}`,
+                    type: 'image',
+                    timestamp: new Date(),
+                    result: imageUrl,
+                    prompt: shot.description || 'Batch generation',
+                    parameters: {
+                      model: 'SeeDream',
+                      aspectRatio: project?.settings.aspectRatio
+                    },
+                    status: 'success'
+                  });
+                } catch (seedreamError: any) {
+                  // Fallback to Gemini Grid on SeeDream failure
+                  const isModelNotOpen = seedreamError.message?.includes('ModelNotOpen') ||
+                    seedreamError.message?.includes('404');
+
+                  if (isModelNotOpen) {
+                    toast.warning(`SeeDream 模型未激活，降级使用 Gemini Grid`, {
+                      description: `镜头 #${shot.order}`
+                    });
+
+                    const result = await generateMultiViewGrid(
+                      shot.description || 'Cinematic shot',
+                      2, 2,
+                      project?.settings.aspectRatio || AspectRatio.WIDE,
+                      ImageSize.K4,
+                      []
+                    );
+
+                    updateShot(shot.id, {
+                      referenceImage: result.slices[0],
+                      fullGridUrl: result.fullImage,
+                      gridImages: result.slices,
+                      status: 'done'
+                    });
+
+                    addGenerationHistory(shot.id, {
+                      id: `gen_${Date.now()}`,
+                      type: 'image',
+                      timestamp: new Date(),
+                      result: result.slices[0],
+                      prompt: shot.description || 'Batch generation',
+                      parameters: {
+                        model: 'Gemini Grid (降级)',
+                        gridSize: '2x2',
+                        fullGridUrl: result.fullImage
+                      },
+                      status: 'success'
+                    });
+                  } else {
+                    throw seedreamError;
+                  }
+                }
+              }
+
+              successCount++;
             } catch (error: any) {
-              console.error(`Failed to generate grid for shot ${shot.id}:`, error);
+              console.error(`Failed to generate for shot ${shot.id}:`, error);
+              const errorMsg = error.message || '生成失败';
               toast.error(`镜头 #${shot.order} 生成失败`, {
-                description: error.message || '请检查API配置'
+                description: errorMsg.length > 100 ? errorMsg.substring(0, 100) + '...' : errorMsg
               });
-              // Continue with next shot
+              updateShot(shot.id, { status: 'error' });
+              failCount++;
             }
           }
-          toast.success('批量生成完成');
+
+          toast.success('批量生成完成', {
+            id: currentToast,
+            description: `✅ 成功: ${successCount} 个 | ❌ 失败: ${failCount} 个`
+          });
         }
         break;
 
@@ -451,7 +597,7 @@ export default function AgentPanel() {
           </h2>
         </div>
         <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
-          通过对话操作您的项目 (Powered by Volcano Engine)
+          通过对话操作您的项目 (Powered by Gemini 3 Pro)
         </p>
       </div>
 
@@ -496,6 +642,55 @@ export default function AgentPanel() {
                 <div className="flex items-center gap-1 text-xs text-light-text-muted dark:text-cine-text-muted px-1">
                   <Terminal size={10} />
                   <span>{message.thought}</span>
+                </div>
+              )}
+
+              {/* Show tool execution details if available (collapsible) */}
+              {message.toolResults && message.toolResults.length > 0 && (
+                <div className="mt-2">
+                  <button
+                    onClick={() => toggleMessageExpanded(message.id)}
+                    className="flex items-center gap-1 text-xs text-light-accent dark:text-cine-accent hover:underline px-1"
+                  >
+                    {expandedMessages.has(message.id) ? (
+                      <>
+                        <ChevronDown size={12} />
+                        <span>隐藏工具执行详情 ({message.toolResults.length} 个工具)</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronRight size={12} />
+                        <span>查看工具执行详情 ({message.toolResults.length} 个工具)</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Expanded tool results */}
+                  {expandedMessages.has(message.id) && (
+                    <div className="mt-2 space-y-2 bg-light-bg dark:bg-cine-black rounded p-2 border border-light-border dark:border-cine-border">
+                      {message.toolResults.map((toolResult, idx) => (
+                        <div
+                          key={idx}
+                          className="text-xs border-l-2 border-light-accent dark:border-cine-accent pl-2"
+                        >
+                          <div className="font-medium text-light-accent dark:text-cine-accent mb-1">
+                            🔧 {toolResult.tool}
+                          </div>
+                          {toolResult.error ? (
+                            <div className="text-red-400">
+                              ❌ 错误: {toolResult.error}
+                            </div>
+                          ) : (
+                            <div className="text-light-text-muted dark:text-cine-text-muted">
+                              <pre className="whitespace-pre-wrap font-mono text-xs overflow-x-auto">
+                                {JSON.stringify(toolResult.result, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

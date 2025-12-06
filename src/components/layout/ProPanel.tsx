@@ -1,9 +1,9 @@
 'use client';
 
-import { Sparkles, Image as ImageIcon, Video, Upload, Loader2, Grid3x3, History } from 'lucide-react';
-import { useState } from 'react';
+import { Sparkles, Image as ImageIcon, Video, Upload, Loader2, Grid3x3, History, Wand2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { generateMultiViewGrid, fileToBase64 } from '@/services/geminiService';
+import { generateMultiViewGrid, fileToBase64, editImageWithGemini, urlsToReferenceImages } from '@/services/geminiService';
 import { AspectRatio, ImageSize, GridHistoryItem, GenerationHistoryItem } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
@@ -11,8 +11,11 @@ import GridHistoryModal from '@/components/grid/GridHistoryModal';
 import ShotGenerationHistory from '@/components/shot/ShotGenerationHistory';
 import { toast } from 'sonner';
 import { validateGenerationConfig } from '@/utils/promptSecurity';
+import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 
-type GenerationType = 'grid' | 'single' | 'video' | null;
+type GenerationType = 'grid' | 'single' | 'video' | 'edit' | 'batch' | null;
+type EditModel = 'seedream' | 'gemini';
+type BatchMode = 'grid' | 'seedream';
 
 interface GridGenerationResult {
   fullImage: string;
@@ -31,6 +34,10 @@ export default function ProPanel() {
   const [gridResult, setGridResult] = useState<GridGenerationResult | null>(null);
   const [selectedSceneId, setSelectedSceneId] = useState<string>('');
   const [showGridHistory, setShowGridHistory] = useState(false);
+  const [editModel, setEditModel] = useState<EditModel>('gemini');
+  const [batchMode, setBatchMode] = useState<BatchMode>('grid');
+  const [batchScope, setBatchScope] = useState<'scene' | 'project'>('scene');
+  const [showBatchConfig, setShowBatchConfig] = useState(false);
 
   const shots = project?.shots || [];
   const scenes = project?.scenes || [];
@@ -55,6 +62,21 @@ export default function ProPanel() {
     setSelectedSceneId(currentSceneId);
   }
 
+  // Auto-select generation type based on selection
+  useEffect(() => {
+    if (isShotSelected) {
+      // When shot is selected, default to single image generation
+      if (!generationType || generationType === 'grid') {
+        setGenerationType('single');
+      }
+    } else if (isSceneSelected) {
+      // When scene is selected, default to grid generation
+      if (!generationType || generationType === 'single') {
+        setGenerationType('grid');
+      }
+    }
+  }, [isShotSelected, isSceneSelected]);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     setReferenceImages((prev) => [...prev, ...files]);
@@ -78,9 +100,34 @@ export default function ProPanel() {
     setIsGenerating(true);
     try {
       const volcanoService = new VolcanoEngineService();
+
+      // Get selected shot for context
+      const selectedShot = project?.shots.find(s => s.id === selectedShotId);
+
+      // Enrich prompt with character and location context
+      const { enrichedPrompt, usedCharacters, usedLocations } = enrichPromptWithAssets(
+        prompt,
+        project,
+        selectedShot?.description
+      );
+
+      // Show toast if assets are being used
+      if (usedCharacters.length > 0 || usedLocations.length > 0) {
+        const assetInfo = [];
+        if (usedCharacters.length > 0) {
+          assetInfo.push(`角色: ${usedCharacters.map(c => c.name).join(', ')}`);
+        }
+        if (usedLocations.length > 0) {
+          assetInfo.push(`场景: ${usedLocations.map(l => l.name).join(', ')}`);
+        }
+        toast.info('正在使用资源库参考', {
+          description: assetInfo.join(' | ')
+        });
+      }
+
       // 使用项目的画面比例生成图片
       const projectAspectRatio = project?.settings.aspectRatio;
-      const imageUrl = await volcanoService.generateSingleImage(prompt, projectAspectRatio);
+      const imageUrl = await volcanoService.generateSingleImage(enrichedPrompt, projectAspectRatio);
 
       // Update selected shot with single image
       if (selectedShotId) {
@@ -470,6 +517,328 @@ export default function ProPanel() {
     toast.info('配音功能即将上线！');
   };
 
+  const handleApplyHistory = (item: GenerationHistoryItem) => {
+    if (!selectedShotId) return;
+
+    if (item.type === 'image') {
+      updateShot(selectedShotId, {
+        referenceImage: item.result,
+        fullGridUrl: item.parameters.fullGridUrl as string | undefined, // Restore grid source if available
+        status: 'done',
+      });
+      toast.success('已应用此版本图片');
+    } else if (item.type === 'video') {
+      updateShot(selectedShotId, {
+        videoClip: item.result,
+        status: 'done',
+      });
+      toast.success('已应用此版本视频');
+    }
+  };
+
+  const handleEditImage = async () => {
+    if (!prompt.trim()) {
+      toast.error('请输入编辑提示词');
+      return;
+    }
+
+    if (!selectedShotId || !selectedShot?.referenceImage) {
+      toast.error('请先选择有图片的镜头');
+      return;
+    }
+
+    // 🔒 安全验证
+    const validation = validateGenerationConfig({ prompt });
+    if (!validation.isValid) {
+      toast.error('提示词包含不安全内容', {
+        description: validation.errors.join('\n')
+      });
+      return;
+    }
+
+    setIsGenerating(true);
+    const loadingToast = toast.loading(`使用 ${editModel === 'gemini' ? 'Gemini' : 'SeeDream'} 编辑图片中...`);
+
+    try {
+      const projectAspectRatio = project?.settings.aspectRatio || AspectRatio.WIDE;
+      let editedImageUrl: string;
+
+      if (editModel === 'gemini') {
+        // 使用 Gemini 编辑
+        editedImageUrl = await editImageWithGemini(
+          selectedShot.referenceImage,
+          prompt,
+          projectAspectRatio
+        );
+      } else {
+        // 使用 SeeDream 编辑
+        const volcanoService = new VolcanoEngineService();
+        editedImageUrl = await volcanoService.editImage(
+          selectedShot.referenceImage,
+          prompt,
+          projectAspectRatio
+        );
+      }
+
+      // 更新镜头图片
+      updateShot(selectedShotId, {
+        referenceImage: editedImageUrl,
+        status: 'done',
+      });
+
+      // 添加到生成历史
+      const historyItem: GenerationHistoryItem = {
+        id: `gen_${Date.now()}`,
+        type: 'image',
+        timestamp: new Date(),
+        result: editedImageUrl,
+        prompt: prompt,
+        parameters: {
+          model: editModel === 'gemini' ? 'Gemini Image Edit' : 'SeeDream Edit',
+          aspectRatio: projectAspectRatio,
+          originalImage: selectedShot.referenceImage,
+        },
+        status: 'success',
+      };
+      addGenerationHistory(selectedShotId, historyItem);
+
+      toast.success('图片编辑成功！', {
+        id: loadingToast,
+      });
+    } catch (error) {
+      console.error('Image edit error:', error);
+      const errorMessage = error instanceof Error ? error.message : '图片编辑失败';
+      toast.error('图片编辑失败', {
+        id: loadingToast,
+        description: `${errorMessage}\n\n请检查：\n1. API 配置是否正确\n2. 图片格式是否支持\n3. 提示词是否有效`
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleBatchGenerate = async () => {
+    // Only validate scene selection for scene-level generation
+    if (batchScope === 'scene' && !selectedSceneId) {
+      toast.warning('请先选择一个场景');
+      return;
+    }
+
+    setIsGenerating(true);
+
+    // Find target shots based on scope
+    let targetShots: Shot[] = [];
+
+    if (batchScope === 'scene') {
+      // Scene-level batch generation
+      const targetScene = scenes.find(s => s.id === selectedSceneId);
+      if (!targetScene) {
+        toast.error('请先选择一个场景');
+        setIsGenerating(false);
+        return;
+      }
+
+      const unassignedShots = shots.filter(s => s.sceneId === selectedSceneId && !s.referenceImage);
+
+      if (unassignedShots.length === 0) {
+        const confirmAll = confirm('该场景所有镜头都已有图片。是否重新生成所有镜头的图片？');
+        if (!confirmAll) {
+          setIsGenerating(false);
+          return;
+        }
+        targetShots = shots.filter(s => s.sceneId === selectedSceneId);
+      } else {
+        targetShots = unassignedShots;
+      }
+    } else {
+      // Project-level batch generation
+      const unassignedShots = shots.filter(s => !s.referenceImage);
+
+      if (unassignedShots.length === 0) {
+        const confirmAll = confirm('项目中所有镜头都已有图片。是否重新生成所有镜头的图片？');
+        if (!confirmAll) {
+          setIsGenerating(false);
+          return;
+        }
+        targetShots = shots;
+      } else {
+        targetShots = unassignedShots;
+      }
+    }
+
+    const modeLabel = batchMode === 'grid' ? 'Grid (Gemini)' : 'SeeDream (火山引擎)';
+    const scopeLabel = batchScope === 'scene' ? '当前场景' : '整个项目';
+    const initialToast = toast.info(`开始批量生成 ${targetShots.length} 个镜头...`, {
+      description: `${scopeLabel} | 使用 ${modeLabel} 模式`
+    });
+
+    try {
+      const volcanoService = new VolcanoEngineService();
+      let successCount = 0;
+      let failCount = 0;
+      let currentToast = initialToast;
+
+      // Process sequentially to avoid rate limits
+      for (let i = 0; i < targetShots.length; i++) {
+        const shot = targetShots[i];
+        try {
+          // Update toast with current progress
+          toast.loading(`正在生成 [${i + 1}/${targetShots.length}] 镜头 #${shot.order}`, {
+            id: currentToast,
+            description: `预计还需 ${Math.ceil((targetShots.length - i) * 3)} 秒`
+          });
+
+          // Mark shot as generating
+          updateShot(shot.id, { status: 'generating' as any });
+
+          // Construct prompt
+          let shotPrompt = shot.description || 'Cinematic shot';
+          if (targetScene.description) shotPrompt = `Scene: ${targetScene.description}. ` + shotPrompt;
+          if (project?.metadata.artStyle) shotPrompt += `. Style: ${project.metadata.artStyle}`;
+
+          // Enrich prompt with character and location context
+          const { enrichedPrompt, referenceImageUrls } = enrichPromptWithAssets(
+            shotPrompt,
+            project,
+            shot.description
+          );
+          shotPrompt = enrichedPrompt;
+
+          if (batchMode === 'grid') {
+            // 使用 Grid 模式 (Gemini)
+            // 转换参考图 URL 为 Gemini 格式
+            const refImages = referenceImageUrls.length > 0
+              ? await urlsToReferenceImages(referenceImageUrls)
+              : [];
+
+            const result = await generateMultiViewGrid(
+              shotPrompt,
+              2, 2,
+              project?.settings.aspectRatio || AspectRatio.WIDE,
+              ImageSize.K4,
+              refImages // 传递参考图
+            );
+
+            updateShot(shot.id, {
+              referenceImage: result.slices[0],
+              fullGridUrl: result.fullImage,
+              gridImages: result.slices,
+              status: 'done'
+            });
+
+            addGenerationHistory(shot.id, {
+              id: `gen_${Date.now()}`,
+              type: 'image',
+              timestamp: new Date(),
+              result: result.slices[0],
+              prompt: shotPrompt,
+              parameters: {
+                model: 'Gemini Grid',
+                gridSize: '2x2',
+                fullGridUrl: result.fullImage
+              },
+              status: 'success'
+            });
+          } else {
+            // 使用 SeeDream 模式 (Volcano)
+            try {
+              const imageUrl = await volcanoService.generateSingleImage(
+                shotPrompt,
+                project?.settings.aspectRatio
+              );
+
+              updateShot(shot.id, {
+                referenceImage: imageUrl,
+                status: 'done'
+              });
+
+              addGenerationHistory(shot.id, {
+                id: `gen_${Date.now()}`,
+                type: 'image',
+                timestamp: new Date(),
+                result: imageUrl,
+                prompt: shotPrompt,
+                parameters: {
+                  model: 'SeeDream',
+                  aspectRatio: project?.settings.aspectRatio
+                },
+                status: 'success'
+              });
+            } catch (seedreamError: any) {
+              // 检测是否为模型未激活错误
+              const isModelNotOpen = seedreamError.message?.includes('ModelNotOpen') ||
+                                    seedreamError.message?.includes('404');
+
+              if (isModelNotOpen) {
+                // 降级到 Gemini Grid
+                toast.warning(`SeeDream 模型未激活，降级使用 Gemini Grid`, {
+                  description: `镜头 #${shot.order}`
+                });
+
+                // 转换参考图 URL 为 Gemini 格式
+                const refImages = referenceImageUrls.length > 0
+                  ? await urlsToReferenceImages(referenceImageUrls)
+                  : [];
+
+                const result = await generateMultiViewGrid(
+                  shotPrompt,
+                  2, 2,
+                  project?.settings.aspectRatio || AspectRatio.WIDE,
+                  ImageSize.K4,
+                  refImages // 传递参考图
+                );
+
+                updateShot(shot.id, {
+                  referenceImage: result.slices[0],
+                  fullGridUrl: result.fullImage,
+                  gridImages: result.slices,
+                  status: 'done'
+                });
+
+                addGenerationHistory(shot.id, {
+                  id: `gen_${Date.now()}`,
+                  type: 'image',
+                  timestamp: new Date(),
+                  result: result.slices[0],
+                  prompt: shotPrompt,
+                  parameters: {
+                    model: 'Gemini Grid (降级)',
+                    gridSize: '2x2',
+                    fullGridUrl: result.fullImage
+                  },
+                  status: 'success'
+                });
+              } else {
+                throw seedreamError;
+              }
+            }
+          }
+
+          successCount++;
+        } catch (error: any) {
+          console.error(`Failed to generate for shot ${shot.id}:`, error);
+          const errorMsg = error.message || '生成失败';
+          toast.error(`镜头 #${shot.order} 生成失败`, {
+            description: errorMsg.length > 100 ? errorMsg.substring(0, 100) + '...' : errorMsg
+          });
+          updateShot(shot.id, { status: 'error' });
+          failCount++;
+        }
+      }
+
+      toast.success('批量生成完成', {
+        id: currentToast,
+        description: `✅ 成功: ${successCount} 个 | ❌ 失败: ${failCount} 个`
+      });
+    } catch (e) {
+      console.error(e);
+      toast.error('批量生成过程中断');
+    } finally {
+      setIsGenerating(false);
+      setShowBatchConfig(false);
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto p-4 space-y-6">
       {/* Generation Type */}
@@ -479,7 +848,7 @@ export default function ProPanel() {
           {isSceneSelected && <span className="text-xs text-light-text-muted dark:text-cine-text-muted ml-2">(场景级)</span>}
           {isShotSelected && <span className="text-xs text-light-text-muted dark:text-cine-text-muted ml-2">(镜头级)</span>}
         </h3>
-        <div className={`grid gap-2 ${isShotSelected ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        <div className={`grid gap-2 ${isShotSelected ? 'grid-cols-3' : 'grid-cols-3'}`}>
           <button
             onClick={() => setGenerationType('single')}
             className={`border rounded-lg p-3 transition-colors ${generationType === 'single'
@@ -491,18 +860,48 @@ export default function ProPanel() {
             <div className="text-xs">单图生成</div>
           </button>
 
-          {/* Grid button - Only show for scene-level */}
-          {isSceneSelected && (
+          {/* Edit button - Only show for shot-level with existing image */}
+          {isShotSelected && selectedShot?.referenceImage && (
             <button
-              onClick={() => setGenerationType('grid')}
-              className={`border rounded-lg p-3 transition-colors ${generationType === 'grid'
+              onClick={() => setGenerationType('edit')}
+              className={`border rounded-lg p-3 transition-colors ${generationType === 'edit'
                 ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
                 : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
                 }`}
+              title="编辑当前图片"
             >
-              <Grid3x3 size={20} className="mx-auto mb-1" />
-              <div className="text-xs">Grid 多视图</div>
+              <Wand2 size={20} className="mx-auto mb-1" />
+              <div className="text-xs">图片编辑</div>
             </button>
+          )}
+
+          {/* Grid button - Only show for scene-level */}
+          {isSceneSelected && (
+            <>
+              <button
+                onClick={() => setGenerationType('grid')}
+                className={`border rounded-lg p-3 transition-colors ${generationType === 'grid'
+                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                  : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
+                  }`}
+              >
+                <Grid3x3 size={20} className="mx-auto mb-1" />
+                <div className="text-xs">Grid 多视图</div>
+              </button>
+
+              <button
+                onClick={() => setShowBatchConfig(true)}
+                disabled={isGenerating}
+                className={`border rounded-lg p-3 transition-colors ${showBatchConfig
+                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                  : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
+                  }`}
+                title="一键为当前场景所有空缺镜头生成图片"
+              >
+                <Sparkles size={20} className="mx-auto mb-1 text-purple-400" />
+                <div className="text-xs">批量生成</div>
+              </button>
+            </>
           )}
 
           <button
@@ -517,6 +916,158 @@ export default function ProPanel() {
           </button>
         </div>
       </div>
+
+      {showBatchConfig && (
+        <>
+          {/* Batch Generation Configuration */}
+          <div className="bg-light-accent/5 dark:bg-cine-accent/5 border border-light-accent/30 dark:border-cine-accent/30 rounded-lg p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-light-text dark:text-white">批量生成配置</h3>
+              <button
+                onClick={() => setShowBatchConfig(false)}
+                className="text-xs text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white"
+              >
+                ✕ 关闭
+              </button>
+            </div>
+
+            {/* Generation Scope Selection */}
+            <div>
+              <h4 className="text-xs font-bold mb-2 text-light-text dark:text-white">生成范围</h4>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setBatchScope('scene')}
+                  className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${batchScope === 'scene'
+                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white'
+                    : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border text-light-text dark:text-white'
+                    }`}
+                >
+                  当前场景
+                </button>
+                <button
+                  onClick={() => setBatchScope('project')}
+                  className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${batchScope === 'project'
+                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white'
+                    : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border text-light-text dark:text-white'
+                    }`}
+                >
+                  整个项目
+                </button>
+              </div>
+            </div>
+
+            {/* Generation Mode Selection */}
+            <div>
+              <h4 className="text-xs font-bold mb-2 text-light-text dark:text-white">生成模式</h4>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setBatchMode('grid')}
+                  className={`flex-1 border rounded-lg px-3 py-3 text-sm transition-colors ${batchMode === 'grid'
+                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white'
+                    : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
+                    }`}
+                >
+                  <div className="font-bold">Grid 多视图</div>
+                  <div className="text-xs opacity-80 mt-1">Gemini 生成 2x2 切片</div>
+                </button>
+                <button
+                  onClick={() => setBatchMode('seedream')}
+                  className={`flex-1 border rounded-lg px-3 py-3 text-sm transition-colors ${batchMode === 'seedream'
+                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white'
+                    : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
+                    }`}
+                >
+                  <div className="font-bold">SeeDream 单图</div>
+                  <div className="text-xs opacity-80 mt-1">火山引擎高质量生成</div>
+                </button>
+              </div>
+            </div>
+
+            {/* Info */}
+            <div className="text-xs text-light-text-muted dark:text-cine-text-muted bg-light-bg/50 dark:bg-cine-black/30 rounded p-3">
+              <div className="font-bold mb-1">📋 说明：</div>
+              <ul className="space-y-1 list-disc list-inside">
+                <li>
+                  {batchScope === 'scene'
+                    ? '将为当前场景的所有未生成图片的镜头批量生成'
+                    : '将为整个项目的所有未生成图片的镜头批量生成'}
+                </li>
+                <li>已有图片的镜头会跳过（可手动重新生成）</li>
+                <li>Grid 模式：生成 4 张变体，自动选择第一张</li>
+                <li>SeeDream 模式：直接生成单张高质量图片</li>
+              </ul>
+            </div>
+
+            {/* Start Button */}
+            <button
+              onClick={handleBatchGenerate}
+              disabled={isGenerating}
+              className="w-full bg-light-accent dark:bg-cine-accent text-white py-3 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  批量生成中...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={18} />
+                  开始批量生成
+                </>
+              )}
+            </button>
+          </div>
+        </>
+      )}
+
+      {generationType === 'edit' && selectedShot?.referenceImage && (
+        <>
+          {/* Current Image Preview */}
+          <div>
+            <h3 className="text-sm font-bold mb-3">当前图片</h3>
+            <div className="relative group">
+              <img
+                src={selectedShot.referenceImage}
+                alt="Current Image"
+                className="w-full rounded-lg border border-light-border dark:border-cine-border"
+              />
+              <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                原图
+              </div>
+            </div>
+          </div>
+
+          {/* Model Selection */}
+          <div>
+            <h3 className="text-sm font-bold mb-3">编辑模型</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setEditModel('gemini')}
+                className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${editModel === 'gemini'
+                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                  : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
+                  }`}
+              >
+                Gemini 3 Pro
+              </button>
+              <button
+                onClick={() => setEditModel('seedream')}
+                className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${editModel === 'seedream'
+                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                  : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
+                  }`}
+              >
+                SeeDream 4.5
+              </button>
+            </div>
+            <div className="mt-2 text-xs text-light-text-muted dark:text-cine-text-muted">
+              {editModel === 'gemini'
+                ? '使用 Gemini 编辑：支持风格转换、构图调整、细节修改等各种编辑'
+                : '使用 SeeDream 编辑：基于原图生成变体，支持风格和内容的灵活调整'}
+            </div>
+          </div>
+        </>
+      )}
 
       {generationType === 'grid' && (
         <>
@@ -660,7 +1211,9 @@ export default function ProPanel() {
           placeholder={
             generationType === 'grid'
               ? '描述角色或场景...\n例如：一位穿着黑色西装的赛博朋克侦探，背景是霓虹灯闪烁的街道'
-              : '描述你想要生成的画面...'
+              : generationType === 'edit'
+                ? '描述你想要的修改...\n例如：\n- 改为赛博朋克风格\n- 将背景改为白天的街道\n- 增加更多人物和细节\n- 完全重新构图，改为俯视角度'
+                : '描述你想要生成的画面...'
           }
           className="w-full h-32 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:border-cine-accent"
         />
@@ -691,6 +1244,8 @@ export default function ProPanel() {
             handleGenerateSingleImage();
           } else if (generationType === 'video') {
             handleGenerateVideo();
+          } else if (generationType === 'edit') {
+            handleEditImage();
           }
         }}
         disabled={isGenerating || !generationType}
@@ -710,7 +1265,9 @@ export default function ProPanel() {
                 ? '生成 Grid'
                 : generationType === 'video'
                   ? '生成视频'
-                  : '选择生成类型'}
+                  : generationType === 'edit'
+                    ? '编辑图片'
+                    : '选择生成类型'}
           </>
         )}
       </button>
@@ -823,6 +1380,7 @@ export default function ProPanel() {
                 <ShotGenerationHistory
                   history={selectedShot.generationHistory}
                   onRegenerate={handleRegenerate}
+                  onApply={handleApplyHistory}
                   onDownload={handleDownload}
                   onFavorite={handleFavorite}
                   onDubbing={handleDubbing}

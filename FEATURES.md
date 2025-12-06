@@ -162,7 +162,7 @@ npm install
 1. 登录火山方舟控制台：https://console.volcengine.com/ark
 2. 进入「推理接入」页面
 3. 创建三个推理接入点：
-   - SeeDream 4.0 (选择 doubao-seedream-4.0)
+   - SeeDream 4.5 (选择 doubao-seedream-4.5)
    - SeeDance 1.0 Pro (选择 doubao-seedance-1.0-pro)
    - Doubao Pro 32k (选择 doubao-pro-32k)
 4. 复制生成的 endpoint_id (格式：ep-xxxxxx-xxxxx)

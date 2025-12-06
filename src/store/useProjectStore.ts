@@ -54,6 +54,7 @@ interface ProjectStore {
   updateShot: (id: string, updates: Partial<Shot>) => void;
   deleteShot: (id: string) => void;
   selectShot: (id: string) => void;
+  reorderShots: (sceneId: string, shotIds: string[]) => void;
   addGenerationHistory: (shotId: string, historyItem: GenerationHistoryItem) => void;
 
   // Character Actions
@@ -290,6 +291,24 @@ export const useProjectStore = create<ProjectStore>()(
         };
       }),
 
+    reorderShots: (sceneId, shotIds) => {
+      set((state) => {
+        const scene = state.project?.scenes.find((s) => s.id === sceneId);
+        if (scene) {
+          scene.shotIds = shotIds;
+          // 更新每个镜头的 order 属性
+          shotIds.forEach((shotId, index) => {
+            const shot = state.project?.shots.find((s) => s.id === shotId);
+            if (shot) {
+              shot.order = index + 1;
+            }
+          });
+        }
+      });
+      // 自动保存
+      get().saveProject();
+    },
+
     addGenerationHistory: (shotId, historyItem) => {
       set((state) => {
         const shot = state.project?.shots.find((s) => s.id === shotId);
@@ -373,14 +392,28 @@ export const useProjectStore = create<ProjectStore>()(
         if (!state.project.chatHistory) {
           state.project.chatHistory = [];
         }
+
+        // 添加新消息
         state.project.chatHistory.push(message);
+
+        // 限制历史记录数量（保留最近50条）
+        const MAX_HISTORY = 50;
+        if (state.project.chatHistory.length > MAX_HISTORY) {
+          state.project.chatHistory = state.project.chatHistory.slice(-MAX_HISTORY);
+        }
+      }, false, () => {
+        // 自动保存到 IndexedDB
+        get().saveProject();
       }),
 
-    clearChatHistory: () =>
+    clearChatHistory: () => {
       set((state) => {
         if (!state.project) return;
         state.project.chatHistory = [];
-      }),
+      });
+      // 自动保存到 IndexedDB
+      get().saveProject();
+    },
 
     // Timeline Actions
     addToTimeline: (clip, trackIndex) =>

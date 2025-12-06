@@ -91,6 +91,11 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   thought?: string; // AI reasoning process
+  toolResults?: Array<{
+    tool: string;
+    result: any;
+    error?: string;
+  }>; // Tool execution results
 }
 
 export interface GenerationHistoryItem {
@@ -121,6 +126,8 @@ export interface Shot {
   description: string;
   narration?: string;
   dialogue?: string;
+  mainCharacters?: string[]; // 该镜头中出现的主要角色
+  mainScenes?: string[]; // 该镜头涉及的场景地点
 
   // 生成的素材
   referenceImage?: string;

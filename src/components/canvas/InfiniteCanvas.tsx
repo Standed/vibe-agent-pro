@@ -2,12 +2,40 @@
 
 import { useState, useRef } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid } from 'lucide-react';
+import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X } from 'lucide-react';
 
 export default function InfiniteCanvas() {
-  const { project, selectScene, selectShot, currentSceneId, selectedShotId } = useProjectStore();
+  const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed } = useProjectStore();
   const [zoom, setZoom] = useState(100);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Handle image preview
+  const handlePreview = (imageUrl: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setImagePreview(imageUrl);
+  };
+
+  // Handle image download
+  const handleDownload = (imageUrl: string, shotOrder: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = `shot_${shotOrder}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Handle generate/regenerate
+  const handleGenerate = (shotId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    selectShot(shotId);
+    setControlMode('pro');
+    if (rightSidebarCollapsed) {
+      toggleRightSidebar();
+    }
+  };
 
   const handleZoomIn = () => {
     setZoom((prev) => Math.min(prev + 10, 200));
@@ -207,19 +235,83 @@ export default function InfiniteCanvas() {
                     {/* Shot Thumbnail */}
                     <div className="aspect-video bg-light-bg dark:bg-cine-black flex items-center justify-center relative">
                       {shot.referenceImage ? (
-                        <img
-                          src={shot.referenceImage}
-                          alt={`Shot ${shot.order}`}
-                          className="w-full h-full object-cover"
-                        />
+                        <>
+                          <img
+                            src={shot.referenceImage}
+                            alt={`Shot ${shot.order}`}
+                            className="w-full h-full object-cover"
+                          />
+                          {/* Action Buttons Overlay */}
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                            <button
+                              onClick={(e) => handlePreview(shot.referenceImage!, e)}
+                              className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800 transition-colors"
+                              title="预览"
+                            >
+                              <Eye size={14} />
+                            </button>
+                            <button
+                              onClick={(e) => handleDownload(shot.referenceImage!, shot.order, e)}
+                              className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800 transition-colors"
+                              title="下载"
+                            >
+                              <Download size={14} />
+                            </button>
+                            <button
+                              onClick={(e) => handleGenerate(shot.id, e)}
+                              className="p-1.5 bg-light-accent hover:bg-light-accent-hover rounded text-white transition-colors"
+                              title="重新生成"
+                            >
+                              <RefreshCw size={14} />
+                            </button>
+                          </div>
+                        </>
                       ) : shot.gridImages && shot.gridImages.length > 0 ? (
-                        <img
-                          src={shot.gridImages[0]}
-                          alt={`Shot ${shot.order}`}
-                          className="w-full h-full object-cover"
-                        />
+                        <>
+                          <img
+                            src={shot.gridImages[0]}
+                            alt={`Shot ${shot.order}`}
+                            className="w-full h-full object-cover"
+                          />
+                          {/* Action Buttons Overlay */}
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                            <button
+                              onClick={(e) => handlePreview(shot.gridImages![0], e)}
+                              className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800 transition-colors"
+                              title="预览"
+                            >
+                              <Eye size={14} />
+                            </button>
+                            <button
+                              onClick={(e) => handleDownload(shot.gridImages![0], shot.order, e)}
+                              className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800 transition-colors"
+                              title="下载"
+                            >
+                              <Download size={14} />
+                            </button>
+                            <button
+                              onClick={(e) => handleGenerate(shot.id, e)}
+                              className="p-1.5 bg-light-accent hover:bg-light-accent-hover rounded text-white transition-colors"
+                              title="重新生成"
+                            >
+                              <RefreshCw size={14} />
+                            </button>
+                          </div>
+                        </>
                       ) : (
-                        <ImageIcon size={24} className="text-light-text-muted dark:text-cine-text-muted" />
+                        <>
+                          <ImageIcon size={24} className="text-light-text-muted dark:text-cine-text-muted" />
+                          {/* Generate Button for empty shots */}
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <button
+                              onClick={(e) => handleGenerate(shot.id, e)}
+                              className="p-2 bg-light-accent hover:bg-light-accent-hover rounded-lg text-white transition-colors flex items-center gap-1 text-xs"
+                            >
+                              <Sparkles size={14} />
+                              生成图片
+                            </button>
+                          </div>
+                        </>
                       )}
 
                       {/* Status Indicator */}
@@ -269,6 +361,29 @@ export default function InfiniteCanvas() {
         })}
         </div>
       </div>
+
+      {/* Image Preview Modal */}
+      {imagePreview && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setImagePreview(null)}
+        >
+          <div className="relative max-w-7xl max-h-full">
+            <img
+              src={imagePreview}
+              alt="Preview"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setImagePreview(null)}
+              className="absolute top-4 right-4 p-2 bg-white/90 hover:bg-white rounded-full text-gray-800 transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

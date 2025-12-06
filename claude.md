@@ -1,3 +1,110 @@
+## Documentation Principles
+### Core Beliefs
+- **Single Source of Truth (SSOT)** - One canonical location for each piece of information
+- **Documentation as Code** - Treat docs with same rigor as code
+- **Proximity over centralization** - Keep docs close to what they document
+- **Minimal but sufficient** - Write only what's necessary, but write it well
+### DRY for Documentation
+- Use links/references instead of copying content
+- Extract common content to shared includes
+- Generate documentation from code when possible (API docs, schemas)
+- One concept = one location = multiple references
+### Documentation Layers
+Each project should have clear separation:
+1. **README.md** - What it is, quick start, basic examples
+2. **ARCHITECTURE.md** - High-level design, key decisions, why
+3. **API/Reference docs** - Generated from code comments
+4. **Guides** - How-to for common tasks
+5. **ADRs** (Architecture Decision Records) - Historical context for major decisions
+### Documentation Workflow
+1. **When writing code**:
+   - Update inline documentation (comments for "why")
+   - Update README if public API changes
+   - Update guides if workflows change
+   - Create ADR for architectural decisions
+2. **Documentation in PRs**:
+   - Include doc changes with code changes
+   - Treat doc review as seriously as code review
+   - Test examples and commands actually work
+   - Update version-specific docs
+3. **Documentation placement**:
+   - Code comments: Why (not what - code shows what)
+   - README: Quick start, installation, basic usage
+   - Separate docs: Detailed guides, architecture
+   - Wiki/External: Only for frequently changing operational info
+### Documentation Quality Gates
+#### Definition of Done for Documentation
+- [ ] Single source for this information (no duplicates)
+- [ ] Placed in appropriate layer (README vs guide vs reference)
+- [ ] All code examples tested and working
+- [ ] Links verified (no broken references)
+- [ ] Version clearly indicated if version-specific
+- [ ] Updated in same commit as code changes
+#### Testing Documentation
+- Run all code examples to verify they work
+- Check all internal links resolve correctly
+- Verify commands with actual execution
+- Test setup instructions on clean environment
+### Documentation Anti-Patterns
+**Avoid**:
+- Duplicating information in multiple files
+- Documenting obvious code behavior
+- Creating "docs" folder that gets out of sync
+- Writing extensive docs for unstable features
+- Explaining "what" when code is self-explanatory
+**Prefer**:
+- Self-documenting code with clear naming
+- Minimal comments explaining "why" and "gotchas"
+- Generated documentation from code
+- Living documents in version control
+- Examples over lengthy explanations
+### Decision Framework for Documentation
+When deciding what to document, ask:
+1. **Can code be self-explanatory?** - Improve naming first
+2. **Will this change frequently?** - Minimize or generate it
+3. **Is this discoverable?** - Ensure proper placement
+4. **Can users infer this?** - Only document non-obvious parts
+5. **Does this duplicate?** - Link instead
+### Version Control for Documentation
+- All docs in same repo as code (proximity)
+- Docs versioned with code releases
+- CHANGELOG.md for user-facing changes
+- Mark deprecated features clearly with removal timeline
+- Archive old version docs, don't delete
+### Documentation Checklist
+Add to your PR template:
+```markdown
+## Documentation Changes
+- [ ] Code comments updated (for "why" not "what")
+- [ ] README updated if public API changed
+- [ ] All code examples tested and working
+- [ ] No duplicate information created
+- [ ] Appropriate documentation layer chosen
+- [ ] Version/deprecation clearly marked if applicable
+```
+## Important Reminders
+**NEVER**:
+- Use `--no-verify` to bypass commit hooks
+- Disable tests instead of fixing them
+- Commit code that doesn't compile
+- Make assumptions - verify with existing code
+- Copy-paste documentation to multiple locations
+- Skip updating docs because "it's just a small change"
+- Commit code without updating related documentation
+- Write extensive documentation for experimental features
+- Create separate doc repos that drift from code
+**ALWAYS**:
+- Commit working code incrementally
+- Update plan documentation as you go
+- Learn from existing implementations
+- Stop after 3 failed attempts and reassess
+- Update docs in the same PR as code changes
+- Test all code examples before committing
+- Link to existing documentation instead of duplicating
+- Place docs close to what they document
+- Review documentation with same rigor as code
+- Delete or update outdated documentation immediately
+
 # Vibe Agent Pro - Claude 项目管理文档
 
 > 本文档用于 Claude Code 加载项目上下文、追踪开发进度、记录技术决策

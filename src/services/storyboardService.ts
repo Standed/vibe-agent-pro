@@ -204,7 +204,7 @@ export async function generateStoryboardFromScript(
   artStyle?: string
 ): Promise<Shot[]> {
   const ai = getGeminiClient();
-  const model = 'gemini-2.5-flash';
+  const model = 'gemini-3-pro-preview';
 
   try {
     // 构建用户输入，包含画风要求
@@ -274,6 +274,8 @@ export async function generateStoryboardFromScript(
       description: shot.visual_description || '',
       narration: shot.narration,
       dialogue: shot.dialogue,
+      mainCharacters: shot.main_characters || [], // 提取角色信息
+      mainScenes: shot.main_scenes || [], // 提取场景信息
       status: 'pending',
     }));
   } catch (error: any) {
