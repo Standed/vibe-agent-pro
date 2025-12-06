@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { generateMultiViewGrid, generateSingleImage, editImageWithGemini, urlsToReferenceImages } from '@/services/geminiService';
+import { generateMultiViewGrid, editImageWithGemini, urlsToReferenceImages } from '@/services/geminiService';
 import { AspectRatio, ImageSize, GenerationHistoryItem, Character, Location } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { toast } from 'sonner';
@@ -351,12 +351,12 @@ export default function ChatPanelWithHistory() {
       });
     }
 
-    // 如果有参考图或用户上传图，优先走 Gemini 直出以确保引用图片
+    // 如果有参考图或用户上传图，优先通过服务器代理的 seedream 多图接口；如果失败再降级
     const mentionedImageUrls: string[] = [
       ...mentionedAssets.characters.flatMap(c => c.referenceImages || []),
       ...mentionedAssets.locations.flatMap(l => l.referenceImages || []),
     ];
-    const allReferenceUrls = Array.from(new Set([...referenceImageUrls, ...mentionedImageUrls]));
+    const allReferenceUrls = Array.from(new Set([...referenceImageUrls, ...mentionedImageUrls, ...manualReferenceUrls]));
 
     const uploadedRefImages = await Promise.all(
       imageFiles.map(async (file) => {
@@ -371,18 +371,28 @@ export default function ChatPanelWithHistory() {
     const projectAspectRatio = project?.settings.aspectRatio;
     let imageUrl = '';
 
-    if (allReferenceUrls.length > 0 || uploadedRefImages.length > 0) {
-      const assetRefImages = allReferenceUrls.length > 0
-        ? await urlsToReferenceImages(allReferenceUrls)
-        : [];
-      const allRefImages = [...uploadedRefImages, ...assetRefImages];
-      toast.info('检测到参考图，使用 Gemini 直出（含参考图）');
-      imageUrl = await generateSingleImage(
-        promptForModel,
-        projectAspectRatio || AspectRatio.WIDE,
-        allRefImages
-      );
-    } else {
+    if (allReferenceUrls.length > 0) {
+      try {
+        const resp = await fetch('/api/seedream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: promptForModel,
+            imageUrls: allReferenceUrls,
+            size: projectAspectRatio === AspectRatio.MOBILE ? '1440x2560' : '2560x1440'
+          })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          imageUrl = data.url;
+          toast.info('已通过 SeeDream 多图接口生成');
+        }
+      } catch (e) {
+        console.error('seedream proxy failed', e);
+      }
+    }
+
+    if (!imageUrl) {
       const promptWithRefs = referenceImageUrls.length > 0
         ? `${promptForModel}\n参考图：${referenceImageUrls.map((_, i) => `(图${i + 1})`).join(' ')}`
         : promptForModel;
@@ -404,7 +414,7 @@ export default function ChatPanelWithHistory() {
         result: imageUrl,
           prompt: prompt,
         parameters: {
-          model: allReferenceUrls.length > 0 || uploadedRefImages.length > 0 ? 'Gemini Direct(含参考图)' : 'SeeDream',
+          model: 'SeeDream',
           aspectRatio: projectAspectRatio,
         },
         status: 'success',
@@ -416,10 +426,10 @@ export default function ChatPanelWithHistory() {
     const assistantMessage: ChatMessage = {
       id: `msg_${Date.now()}`,
       role: 'assistant',
-      content: allReferenceUrls.length > 0 || uploadedRefImages.length > 0 ? '已使用 Gemini 直出（含参考图）生成图片' : '已使用 SeeDream 生成图片',
+      content: '已使用 SeeDream 生成图片',
       timestamp: new Date(),
       images: [imageUrl],
-      model: allReferenceUrls.length > 0 || uploadedRefImages.length > 0 ? 'gemini-direct' : 'seedream',
+      model: 'seedream',
     };
     setMessages(prev => [...prev, assistantMessage]);
 
