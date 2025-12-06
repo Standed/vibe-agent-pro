@@ -154,8 +154,9 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-light-panel dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <>
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <div className="bg-light-panel dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-light-border dark:border-cine-border">
           <div>
@@ -355,7 +356,6 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
           </button>
         </div>
       </div>
-    </div>
       {previewImage && (
         <div
           className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
@@ -372,5 +372,6 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
           </div>
         </div>
       )}
+    </>
   );
 }
