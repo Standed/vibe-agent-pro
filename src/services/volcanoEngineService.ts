@@ -37,6 +37,7 @@ export class VolcanoEngineService {
   private seedreamModelId: string;
   private seedanceModelId: string;
   private doubaoModelId: string;
+  private static instance: VolcanoEngineService | null = null;
 
   constructor() {
     this.apiKey = process.env.NEXT_PUBLIC_VOLCANO_API_KEY || '';
@@ -44,6 +45,16 @@ export class VolcanoEngineService {
     this.seedreamModelId = process.env.NEXT_PUBLIC_SEEDREAM_MODEL_ID || '';
     this.seedanceModelId = process.env.NEXT_PUBLIC_SEEDANCE_MODEL_ID || '';
     this.doubaoModelId = process.env.NEXT_PUBLIC_DOUBAO_MODEL_ID || '';
+  }
+
+  /**
+   * Singleton helper for client components that expect getInstance
+   */
+  static getInstance(): VolcanoEngineService {
+    if (!this.instance) {
+      this.instance = new VolcanoEngineService();
+    }
+    return this.instance;
   }
 
   /**
