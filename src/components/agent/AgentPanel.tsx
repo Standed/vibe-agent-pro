@@ -25,13 +25,13 @@ export default function AgentPanel() {
 
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
+  const [expandedDetails, setExpandedDetails] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const chatHistory = project?.chatHistory || [];
 
   const toggleMessageExpanded = (messageId: string) => {
-    setExpandedMessages(prev => {
+    setExpandedDetails(prev => {
       const newSet = new Set(prev);
       if (newSet.has(messageId)) {
         newSet.delete(messageId);
@@ -616,99 +616,107 @@ export default function AgentPanel() {
           </div>
         )}
 
-        {chatHistory.map((message) => (
-          <div
-            key={message.id}
-            className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            {message.role === 'assistant' && (
-              <div className="w-8 h-8 rounded-full bg-light-accent/10 dark:bg-cine-accent/10 flex items-center justify-center flex-shrink-0">
-                <Bot size={16} className="text-light-accent dark:text-cine-accent" />
-              </div>
-            )}
+        {chatHistory.map((message) => {
+          const hasDetails = Boolean(message.thought || (message.toolResults && message.toolResults.length > 0));
+          const isExpanded = expandedDetails.has(message.id);
 
-            <div className="flex flex-col gap-1 max-w-[80%]">
-              <div
-                className={`rounded-lg p-3 ${message.role === 'user'
-                  ? 'bg-light-accent dark:bg-cine-accent text-white'
-                  : 'bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white'
-                  }`}
-              >
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-              </div>
-
-              {/* Show thought process if available */}
-              {message.thought && (
-                <div className="flex items-center gap-1 text-xs text-light-text-muted dark:text-cine-text-muted px-1">
-                  <Terminal size={10} />
-                  <span>{message.thought}</span>
+          return (
+            <div
+              key={message.id}
+              className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              {message.role === 'assistant' && (
+                <div className="w-8 h-8 rounded-full bg-light-accent/10 dark:bg-cine-accent/10 flex items-center justify-center flex-shrink-0">
+                  <Bot size={16} className="text-light-accent dark:text-cine-accent" />
                 </div>
               )}
 
-              {/* Show tool execution details if available (collapsible) */}
-              {message.toolResults && message.toolResults.length > 0 && (
-                <div className="mt-2">
-                  <button
-                    onClick={() => toggleMessageExpanded(message.id)}
-                    className="flex items-center gap-1 text-xs text-light-accent dark:text-cine-accent hover:underline px-1"
-                  >
-                    {expandedMessages.has(message.id) ? (
-                      <>
-                        <ChevronDown size={12} />
-                        <span>隐藏工具执行详情 ({message.toolResults.length} 个工具)</span>
-                      </>
-                    ) : (
-                      <>
-                        <ChevronRight size={12} />
-                        <span>查看工具执行详情 ({message.toolResults.length} 个工具)</span>
-                      </>
-                    )}
-                  </button>
-
-                  {/* Expanded tool results */}
-                  {expandedMessages.has(message.id) && (
-                    <div className="mt-2 space-y-2 bg-light-bg dark:bg-cine-black rounded p-2 border border-light-border dark:border-cine-border">
-                      {message.toolResults.map((toolResult, idx) => (
-                        <div
-                          key={idx}
-                          className="text-xs border-l-2 border-light-accent dark:border-cine-accent pl-2"
-                        >
-                          <div className="font-medium text-light-accent dark:text-cine-accent mb-1">
-                            🔧 {toolResult.tool}
-                          </div>
-                          {toolResult.error ? (
-                            <div className="text-red-400">
-                              ❌ 错误: {toolResult.error}
-                            </div>
-                          ) : (
-                            <div className="text-light-text-muted dark:text-cine-text-muted">
-                              <pre className="whitespace-pre-wrap font-mono text-xs overflow-x-auto">
-                                {JSON.stringify(toolResult.result, null, 2)}
-                              </pre>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+              <div className="flex flex-col gap-2 max-w-[80%]">
+                <div
+                  className={`rounded-lg p-3 ${message.role === 'user'
+                    ? 'bg-light-accent dark:bg-cine-accent text-white'
+                    : 'bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white'
+                    }`}
+                >
+                  {message.role === 'assistant' && (
+                    <div className="text-[11px] uppercase tracking-wide text-light-text-muted dark:text-cine-text-muted mb-1 flex items-center gap-1">
+                      <Sparkles size={12} />
+                      <span>最终摘要</span>
                     </div>
                   )}
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
+
+                  {hasDetails && message.role === 'assistant' && (
+                    <button
+                      onClick={() => toggleMessageExpanded(message.id)}
+                      className="mt-2 inline-flex items-center gap-1 text-xs text-light-accent dark:text-cine-accent hover:underline"
+                    >
+                      {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      <span>{isExpanded ? '折叠中间步骤' : '展开中间步骤'}</span>
+                    </button>
+                  )}
+                </div>
+
+                {hasDetails && isExpanded && message.role === 'assistant' && (
+                  <div className="bg-light-bg dark:bg-cine-black rounded-lg border border-light-border dark:border-cine-border p-3 space-y-2">
+                    {message.thought && (
+                      <div className="flex items-start gap-2 text-xs text-light-text-muted dark:text-cine-text-muted">
+                        <Terminal size={12} className="mt-[2px]" />
+                        <div>
+                          <div className="font-medium text-light-text dark:text-white mb-1">思考过程</div>
+                          <p className="leading-relaxed">{message.thought}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {message.toolResults && message.toolResults.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium text-light-text dark:text-white flex items-center gap-1">
+                          <Sparkles size={12} />
+                          工具执行
+                        </div>
+                        {message.toolResults.map((toolResult, idx) => (
+                          <div
+                            key={idx}
+                            className="text-xs border border-light-border dark:border-cine-border rounded-md p-2 bg-white/40 dark:bg-cine-panel/40"
+                          >
+                            <div className="font-medium text-light-accent dark:text-cine-accent mb-1 flex items-center gap-1">
+                              🔧 {toolResult.tool}
+                            </div>
+                            {toolResult.error ? (
+                              <div className="text-red-500">
+                                ❌ 错误: {toolResult.error}
+                              </div>
+                            ) : (
+                              <div className="text-light-text-muted dark:text-cine-text-muted">
+                                <pre className="whitespace-pre-wrap font-mono text-xs overflow-x-auto">
+                                  {JSON.stringify(toolResult.result, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-xs opacity-60 px-1">
+                  {new Date(message.timestamp).toLocaleTimeString('zh-CN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </p>
+              </div>
+
+              {message.role === 'user' && (
+                <div className="w-8 h-8 rounded-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border flex items-center justify-center flex-shrink-0">
+                  <User size={16} className="text-light-text dark:text-white" />
                 </div>
               )}
-
-              <p className="text-xs opacity-60 px-1">
-                {new Date(message.timestamp).toLocaleTimeString('zh-CN', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </p>
             </div>
-
-            {message.role === 'user' && (
-              <div className="w-8 h-8 rounded-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border flex items-center justify-center flex-shrink-0">
-                <User size={16} className="text-light-text dark:text-white" />
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
 
         {isProcessing && (
           <div className="flex gap-3">
