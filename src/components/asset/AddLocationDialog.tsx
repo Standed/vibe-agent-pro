@@ -8,13 +8,15 @@ import { toast } from 'sonner';
 interface AddLocationDialogProps {
   onAdd: (location: Location) => void;
   onClose: () => void;
+  mode?: 'add' | 'edit';
+  initialLocation?: Location | null;
 }
 
-export default function AddLocationDialog({ onAdd, onClose }: AddLocationDialogProps) {
-  const [name, setName] = useState('');
-  const [type, setType] = useState<LocationType>('interior');
-  const [description, setDescription] = useState('');
-  const [referenceImages, setReferenceImages] = useState<string[]>([]);
+export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initialLocation }: AddLocationDialogProps) {
+  const [name, setName] = useState(initialLocation?.name || '');
+  const [type, setType] = useState<LocationType>(initialLocation?.type || 'interior');
+  const [description, setDescription] = useState(initialLocation?.description || '');
+  const [referenceImages, setReferenceImages] = useState<string[]>(initialLocation?.referenceImages || []);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -86,9 +88,13 @@ export default function AddLocationDialog({ onAdd, onClose }: AddLocationDialogP
       toast.error('请输入场景描述');
       return;
     }
+    if (referenceImages.length === 0) {
+      toast.error('请至少上传 1 张参考图');
+      return;
+    }
 
     const location: Location = {
-      id: `location_${Date.now()}`,
+      id: initialLocation?.id || `location_${Date.now()}`,
       name: name.trim(),
       type,
       description: description.trim(),
@@ -96,7 +102,7 @@ export default function AddLocationDialog({ onAdd, onClose }: AddLocationDialogP
     };
 
     onAdd(location);
-    toast.success(`场景地点 "${name}" 已添加！`);
+    toast.success(mode === 'add' ? `场景地点 "${name}" 已添加！` : `场景地点 "${name}" 已更新！`);
     onClose();
   };
 
@@ -106,7 +112,7 @@ export default function AddLocationDialog({ onAdd, onClose }: AddLocationDialogP
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-light-border dark:border-cine-border">
           <div>
-            <h2 className="text-lg font-bold text-light-text dark:text-white">添加场景地点</h2>
+            <h2 className="text-lg font-bold text-light-text dark:text-white">{mode === 'add' ? '添加场景地点' : '编辑场景地点'}</h2>
             <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
               上传参考图片，提升场景生成质量
             </p>

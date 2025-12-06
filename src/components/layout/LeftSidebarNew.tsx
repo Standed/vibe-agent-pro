@@ -27,7 +27,7 @@ import ShotListItem from '@/components/shot/ShotListItem';
 import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import AddLocationDialog from '@/components/asset/AddLocationDialog';
 import { toast } from 'sonner';
-import type { Shot, ShotSize, CameraMovement } from '@/types/project';
+import type { Shot, ShotSize, CameraMovement, Character, Location } from '@/types/project';
 
 type Tab = 'script' | 'storyboard' | 'assets';
 
@@ -44,6 +44,8 @@ export default function LeftSidebarNew() {
   const [editingSceneName, setEditingSceneName] = useState<string>('');
   const [showAddCharacterDialog, setShowAddCharacterDialog] = useState(false);
   const [showAddLocationDialog, setShowAddLocationDialog] = useState(false);
+  const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
+  const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [showScriptEditor, setShowScriptEditor] = useState(false);
   const [editingShot, setEditingShot] = useState<Shot | null>(null);
   const [shotForm, setShotForm] = useState<{
@@ -724,10 +726,38 @@ export default function LeftSidebarNew() {
                 {project?.characters.map((character) => (
                   <div
                     key={character.id}
-                    className="bg-light-bg dark:bg-cine-black/30 rounded-lg p-3"
+                    className="bg-light-bg dark:bg-cine-black/30 rounded-lg p-3 border border-light-border/60 dark:border-cine-border/60"
                   >
-                    <div className="font-medium text-sm text-light-text dark:text-white">
-                      {character.name}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-medium text-sm text-light-text dark:text-white">
+                          {character.name}
+                        </div>
+                        <div className="text-[11px] text-light-text-muted dark:text-cine-text-muted mt-0.5">
+                          {character.gender || '未设置'}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setEditingCharacter(character)}
+                          className="p-1 text-light-text-muted dark:text-cine-text-muted hover:text-light-accent dark:hover:text-cine-accent rounded"
+                          title="编辑角色"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`确定删除角色「${character.name}」？`)) {
+                              useProjectStore.getState().deleteCharacter(character.id);
+                              toast.success('角色已删除');
+                            }
+                          }}
+                          className="p-1 text-light-text-muted dark:text-cine-text-muted hover:text-red-500 rounded"
+                          title="删除角色"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                     <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 line-clamp-2">
                       {character.description}
@@ -777,13 +807,38 @@ export default function LeftSidebarNew() {
                 {project?.locations.map((location) => (
                   <div
                     key={location.id}
-                    className="bg-light-bg dark:bg-cine-black/30 rounded-lg p-3"
+                    className="bg-light-bg dark:bg-cine-black/30 rounded-lg p-3 border border-light-border/60 dark:border-cine-border/60"
                   >
-                    <div className="font-medium text-sm text-light-text dark:text-white">
-                      {location.name}
-                    </div>
-                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
-                      {location.type === 'interior' ? '室内' : '室外'}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-medium text-sm text-light-text dark:text-white">
+                          {location.name}
+                        </div>
+                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
+                          {location.type === 'interior' ? '室内' : '室外'}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setEditingLocation(location)}
+                          className="p-1 text-light-text-muted dark:text-cine-text-muted hover:text-light-accent dark:hover:text-cine-accent rounded"
+                          title="编辑场景"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`确定删除场景地点「${location.name}」？`)) {
+                              useProjectStore.getState().deleteLocation(location.id);
+                              toast.success('场景地点已删除');
+                            }
+                          }}
+                          className="p-1 text-light-text-muted dark:text-cine-text-muted hover:text-red-500 rounded"
+                          title="删除场景"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                     {/* Reference Images */}
                     {location.referenceImages && location.referenceImages.length > 0 && (
@@ -980,12 +1035,32 @@ export default function LeftSidebarNew() {
           onClose={() => setShowAddCharacterDialog(false)}
         />
       )}
+      {editingCharacter && (
+        <AddCharacterDialog
+          mode="edit"
+          initialCharacter={editingCharacter}
+          onAdd={(updated) => {
+            useProjectStore.getState().updateCharacter(editingCharacter.id, updated);
+          }}
+          onClose={() => setEditingCharacter(null)}
+        />
+      )}
 
       {/* Add Location Dialog */}
       {showAddLocationDialog && (
         <AddLocationDialog
           onAdd={addLocation}
           onClose={() => setShowAddLocationDialog(false)}
+        />
+      )}
+      {editingLocation && (
+        <AddLocationDialog
+          mode="edit"
+          initialLocation={editingLocation}
+          onAdd={(updated) => {
+            useProjectStore.getState().updateLocation(editingLocation.id, updated);
+          }}
+          onClose={() => setEditingLocation(null)}
         />
       )}
     </div>

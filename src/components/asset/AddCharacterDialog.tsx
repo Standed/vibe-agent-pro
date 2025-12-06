@@ -9,13 +9,15 @@ import { toast } from 'sonner';
 interface AddCharacterDialogProps {
   onAdd: (character: Character) => void;
   onClose: () => void;
+  mode?: 'add' | 'edit';
+  initialCharacter?: Character | null;
 }
 
-export default function AddCharacterDialog({ onAdd, onClose }: AddCharacterDialogProps) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [appearance, setAppearance] = useState('');
-  const [referenceImages, setReferenceImages] = useState<string[]>([]);
+export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initialCharacter }: AddCharacterDialogProps) {
+  const [name, setName] = useState(initialCharacter?.name || '');
+  const [description, setDescription] = useState(initialCharacter?.description || '');
+  const [appearance, setAppearance] = useState(initialCharacter?.appearance || '');
+  const [referenceImages, setReferenceImages] = useState<string[]>(initialCharacter?.referenceImages || []);
   const [isGenerating, setIsGenerating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -125,17 +127,22 @@ export default function AddCharacterDialog({ onAdd, onClose }: AddCharacterDialo
       toast.error('请输入角色描述');
       return;
     }
+    if (referenceImages.length === 0) {
+      toast.error('请至少上传 1 张参考图');
+      return;
+    }
 
     const character: Character = {
-      id: `character_${Date.now()}`,
+      id: initialCharacter?.id || `character_${Date.now()}`,
       name: name.trim(),
       description: description.trim(),
       appearance: appearance.trim(),
       referenceImages,
+      gender: initialCharacter?.gender,
     };
 
     onAdd(character);
-    toast.success(`角色 "${name}" 已添加！`);
+    toast.success(mode === 'add' ? `角色 "${name}" 已添加！` : `角色 "${name}" 已更新！`);
     onClose();
   };
 
@@ -145,7 +152,7 @@ export default function AddCharacterDialog({ onAdd, onClose }: AddCharacterDialo
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-light-border dark:border-cine-border">
           <div>
-            <h2 className="text-lg font-bold text-light-text dark:text-white">添加角色</h2>
+            <h2 className="text-lg font-bold text-light-text dark:text-white">{mode === 'add' ? '添加角色' : '编辑角色'}</h2>
             <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
               上传参考图片，提升生成质量
             </p>

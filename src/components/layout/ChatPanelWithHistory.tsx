@@ -128,8 +128,23 @@ export default function ChatPanelWithHistory() {
   };
 
   const buildPromptWithReferences = (prompt: string) => {
+    // 自动附加该镜头关联的角色/场景名，便于 @ 引用
+    let basePrompt = prompt;
+    if (selectedShot) {
+      const autoMentions: string[] = [];
+      if (selectedShot.mainCharacters) {
+        autoMentions.push(...selectedShot.mainCharacters.map((c) => `@${c}`));
+      }
+      if (selectedShot.mainScenes) {
+        autoMentions.push(...selectedShot.mainScenes.map((s) => `@${s}`));
+      }
+      if (autoMentions.length > 0) {
+        basePrompt = `${prompt}\n${autoMentions.join(' ')}`;
+      }
+    }
+
     const { enrichedPrompt, usedCharacters, usedLocations, referenceImageUrls, concisePrompt, missingAssets } = enrichPromptWithAssets(
-      prompt,
+      basePrompt,
       project,
       selectedShot?.description
     );
