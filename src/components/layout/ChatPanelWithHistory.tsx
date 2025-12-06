@@ -124,17 +124,29 @@ export default function ChatPanelWithHistory() {
   };
 
   // Use history item (quick select)
-  const handleUseHistoryItem = (item: GenerationHistoryItem) => {
-    // Add item's prompt to input
+  const handleUseHistoryPrompt = (item: GenerationHistoryItem) => {
     setInputText(item.prompt);
-
-    // Show toast
     toast.success('已加载历史提示词', {
       description: `模型: ${item.parameters.model || '未知'}`
     });
-
-    // Scroll to input
     document.getElementById('chat-input')?.focus();
+  };
+
+  const handleUseHistoryImage = async (item: GenerationHistoryItem) => {
+    try {
+      const resp = await fetch(item.result);
+      const blob = await resp.blob();
+      const file = new File([blob], `history-${item.id}.png`, { type: blob.type || 'image/png' });
+      setUploadedImages([file]);
+      setInputText(''); // 用户自行输入提示词
+      toast.success('已加载历史图片', {
+        description: '可直接用于编辑/重绘'
+      });
+      document.getElementById('chat-input')?.focus();
+    } catch (error) {
+      console.error('Failed to load history image', error);
+      toast.error('加载历史图片失败');
+    }
   };
 
   // Handle asset mention
@@ -570,7 +582,7 @@ export default function ChatPanelWithHistory() {
     <div className="h-full flex bg-light-bg dark:bg-cine-bg">
       {/* History Sidebar */}
       {showHistory && generationHistory.length > 0 && (
-        <div className="w-64 border-r border-light-border dark:border-cine-border bg-light-panel dark:bg-cine-panel flex flex-col">
+        <div className="w-80 border-r border-light-border dark:border-cine-border bg-light-panel dark:bg-cine-panel flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-cine-border">
             <div className="flex items-center gap-2">
               <Clock size={16} className="text-light-accent dark:text-cine-accent" />
@@ -585,10 +597,9 @@ export default function ChatPanelWithHistory() {
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-2">
             {generationHistory.slice().reverse().map((item) => (
-              <button
+              <div
                 key={item.id}
-                onClick={() => handleUseHistoryItem(item)}
-                className="w-full bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border rounded-lg p-2 hover:border-light-accent dark:hover:border-cine-accent transition-colors text-left group"
+                className="w-full bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border rounded-lg p-2 text-left group"
               >
                 <img
                   src={item.result}
@@ -601,7 +612,21 @@ export default function ChatPanelWithHistory() {
                 <div className="text-[10px] text-light-text-muted dark:text-cine-text-muted mt-1">
                   {item.parameters.model || '未知模型'} · {new Date(item.timestamp).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </div>
-              </button>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => handleUseHistoryPrompt(item)}
+                    className="flex-1 px-2 py-1 text-xs rounded border border-light-border dark:border-cine-border hover:border-light-accent dark:hover:border-cine-accent transition-colors"
+                  >
+                    用提示词
+                  </button>
+                  <button
+                    onClick={() => handleUseHistoryImage(item)}
+                    className="flex-1 px-2 py-1 text-xs rounded border border-light-border dark:border-cine-border hover:border-light-accent dark:hover:border-cine-accent transition-colors"
+                  >
+                    用图片
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
         </div>
