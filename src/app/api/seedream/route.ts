@@ -11,9 +11,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'missing prompt' }, { status: 400 });
     }
 
-    const apiKey = process.env.NEXT_VOLCANO_API_KEY;
-    const baseUrl = process.env.NEXT_VOLCANO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
-    const seedreamModelId = model || process.env.NEXT_SEEDREAM_MODEL_ID || process.env.NEXT_PUBLIC_SEEDREAM_MODEL_ID;
+    const apiKey =
+      process.env.NEXT_VOLCANO_API_KEY ||
+      process.env.VOLCANO_API_KEY ||
+      process.env.NEXT_PUBLIC_VOLCANO_API_KEY;
+    const baseUrl = process.env.NEXT_VOLCANO_BASE_URL || process.env.VOLCANO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+    const seedreamModelId =
+      model ||
+      process.env.NEXT_SEEDREAM_MODEL_ID ||
+      process.env.SEEDREAM_MODEL_ID ||
+      process.env.NEXT_PUBLIC_SEEDREAM_MODEL_ID ||
+      'doubao-seedream-4-5-251128';
 
     if (!apiKey || !seedreamModelId) {
       return NextResponse.json({ error: 'seedream api not configured' }, { status: 500 });
