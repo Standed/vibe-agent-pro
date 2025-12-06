@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { Bot, Sliders, ChevronRight, ChevronLeft } from 'lucide-react';
