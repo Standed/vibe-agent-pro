@@ -17,6 +17,7 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
   const [type, setType] = useState<LocationType>(initialLocation?.type || 'interior');
   const [description, setDescription] = useState(initialLocation?.description || '');
   const [referenceImages, setReferenceImages] = useState<string[]>(initialLocation?.referenceImages || []);
+  const [selectedRefIndex, setSelectedRefIndex] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -50,7 +51,11 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
       }
     }
 
-    setReferenceImages([...referenceImages, ...newImages]);
+    const combined = [...referenceImages, ...newImages];
+    setReferenceImages(combined);
+    if (combined.length === newImages.length) {
+      setSelectedRefIndex(0);
+    }
 
     // Reset input
     if (fileInputRef.current) {
@@ -72,7 +77,15 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
   };
 
   const removeImage = (index: number) => {
-    setReferenceImages(referenceImages.filter((_, i) => i !== index));
+    const updated = referenceImages.filter((_, i) => i !== index);
+    setReferenceImages(updated);
+    if (updated.length === 0) {
+      setSelectedRefIndex(0);
+    } else if (index === selectedRefIndex) {
+      setSelectedRefIndex(0);
+    } else if (index < selectedRefIndex) {
+      setSelectedRefIndex((prev) => Math.max(prev - 1, 0));
+    }
     toast.success('图片已删除');
   };
 
@@ -93,12 +106,19 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
       return;
     }
 
+    // reorder with selected first
+    let finalImages = [...referenceImages];
+    if (finalImages.length > 1 && selectedRefIndex >= 0 && selectedRefIndex < finalImages.length) {
+      const [primary] = finalImages.splice(selectedRefIndex, 1);
+      finalImages = [primary, ...finalImages];
+    }
+
     const location: Location = {
       id: initialLocation?.id || `location_${Date.now()}`,
       name: name.trim(),
       type,
       description: description.trim(),
-      referenceImages,
+      referenceImages: finalImages,
     };
 
     onAdd(location);
@@ -190,7 +210,7 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
           {/* Reference Images */}
           <div>
             <label className="block text-sm font-medium text-light-text dark:text-white mb-2">
-              参考图片（选填）
+              参考图片（必填）
             </label>
 
             {/* Upload Button */}
@@ -222,12 +242,15 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
                 {referenceImages.map((imageUrl, index) => (
                   <div
                     key={index}
-                    className="relative aspect-square bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden group"
+                    className={`relative aspect-square bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden group border ${
+                      selectedRefIndex === index ? 'border-light-accent dark:border-cine-accent' : 'border-light-border dark:border-cine-border'
+                    }`}
                   >
                     <img
                       src={imageUrl}
                       alt={`参考图 ${index + 1}`}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover cursor-pointer"
+                      onClick={() => setSelectedRefIndex(index)}
                     />
                     {/* Delete Button */}
                     <button
@@ -239,7 +262,8 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
                       <Trash2 size={12} />
                     </button>
                     {/* Image Index */}
-                    <div className="absolute bottom-1 left-1 bg-black/60 text-white px-1.5 py-0.5 rounded text-xs">
+                    <div className="absolute bottom-1 left-1 bg-black/60 text-white px-1.5 py-0.5 rounded text-xs flex items-center gap-1">
+                      {selectedRefIndex === index && <span className="text-yellow-300">★</span>}
                       {index + 1}
                     </div>
                   </div>

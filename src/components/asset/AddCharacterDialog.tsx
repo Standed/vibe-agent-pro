@@ -18,6 +18,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
   const [description, setDescription] = useState(initialCharacter?.description || '');
   const [appearance, setAppearance] = useState(initialCharacter?.appearance || '');
   const [referenceImages, setReferenceImages] = useState<string[]>(initialCharacter?.referenceImages || []);
+  const [selectedRefIndex, setSelectedRefIndex] = useState<number>(0);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [generationPrompt, setGenerationPrompt] = useState('');
   const [aspectRatio, setAspectRatio] = useState<'21:9' | '16:9'>('21:9');
@@ -65,7 +66,11 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
       }
     }
 
-    setReferenceImages([...referenceImages, ...newImages]);
+    const combined = [...referenceImages, ...newImages];
+    setReferenceImages(combined);
+    if (combined.length === newImages.length) {
+      setSelectedRefIndex(0);
+    }
 
     // Reset input
     if (fileInputRef.current) {
@@ -87,7 +92,15 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
   };
 
   const removeImage = (index: number) => {
-    setReferenceImages(referenceImages.filter((_, i) => i !== index));
+    const updated = referenceImages.filter((_, i) => i !== index);
+    setReferenceImages(updated);
+    if (updated.length === 0) {
+      setSelectedRefIndex(0);
+    } else if (index === selectedRefIndex) {
+      setSelectedRefIndex(0);
+    } else if (index < selectedRefIndex) {
+      setSelectedRefIndex((prev) => Math.max(prev - 1, 0));
+    }
     toast.success('图片已删除');
   };
 
@@ -139,12 +152,19 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
       return;
     }
 
+    // 把选中的参考图排到第一张，方便后续引用
+    let finalImages = [...referenceImages];
+    if (finalImages.length > 1 && selectedRefIndex >= 0 && selectedRefIndex < finalImages.length) {
+      const [primary] = finalImages.splice(selectedRefIndex, 1);
+      finalImages = [primary, ...finalImages];
+    }
+
     const character: Character = {
       id: initialCharacter?.id || `character_${Date.now()}`,
       name: name.trim(),
       description: description.trim(),
       appearance: appearance.trim(),
-      referenceImages,
+      referenceImages: finalImages,
       gender: initialCharacter?.gender,
     };
 
@@ -283,13 +303,16 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                 {referenceImages.map((imageUrl, index) => (
                   <div
                     key={index}
-                    className="relative aspect-square bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden group"
+                    className={`relative aspect-square bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden group border ${selectedRefIndex === index ? 'border-light-accent dark:border-cine-accent' : 'border-transparent'}`}
                   >
                     <img
                       src={imageUrl}
                       alt={`参考图 ${index + 1}`}
                       className="w-full h-full object-cover cursor-pointer"
-                      onClick={() => setPreviewImage(imageUrl)}
+                      onClick={() => {
+                        setPreviewImage(imageUrl);
+                        setSelectedRefIndex(index);
+                      }}
                     />
                     {/* Delete Button */}
                     <button
@@ -301,7 +324,8 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                       <Trash2 size={12} />
                     </button>
                     {/* Image Index */}
-                    <div className="absolute bottom-1 left-1 bg-black/60 text-white px-1.5 py-0.5 rounded text-xs">
+                    <div className="absolute bottom-1 left-1 bg-black/60 text-white px-1.5 py-0.5 rounded text-xs flex items-center gap-1">
+                      {selectedRefIndex === index && <span className="text-yellow-300">★</span>}
                       {index + 1}
                     </div>
                   </div>
