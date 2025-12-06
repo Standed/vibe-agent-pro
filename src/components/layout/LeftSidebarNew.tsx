@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   FileText,
   Film,
@@ -64,6 +64,30 @@ export default function LeftSidebarNew() {
 
   const shotSizeOptions: ShotSize[] = ['Extreme Wide Shot', 'Wide Shot', 'Medium Shot', 'Close-Up', 'Extreme Close-Up'];
   const cameraMovementOptions: CameraMovement[] = ['Static', 'Pan Left', 'Pan Right', 'Tilt Up', 'Tilt Down', 'Dolly In', 'Dolly Out', 'Zoom In', 'Zoom Out', 'Handheld'];
+  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [resizing, setResizing] = useState(false);
+  const resizeState = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!resizing || !resizeState.current) return;
+      const delta = e.clientX - resizeState.current.startX;
+      const next = Math.min(Math.max(resizeState.current.startWidth + delta, 260), 520);
+      setSidebarWidth(next);
+    };
+    const onUp = () => setResizing(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [resizing]);
+
+  const startResize = (e: React.MouseEvent) => {
+    setResizing(true);
+    resizeState.current = { startX: e.clientX, startWidth: sidebarWidth };
+  };
 
   const scenes = project?.scenes || [];
   const shots = project?.shots || [];
@@ -235,6 +259,49 @@ export default function LeftSidebarNew() {
         });
       });
 
+      // 5. 根据分镜推断主要角色/场景并创建资源占位，方便后续上传图片
+      const characterSet = new Map<string, string>(); // name -> description
+      const locationSet = new Map<string, string>(); // name -> description
+      generatedShots.forEach((shot) => {
+        (shot.mainCharacters || []).forEach((name) => {
+          if (!characterSet.has(name)) {
+            characterSet.set(name, shot.description || '');
+          }
+        });
+        (shot.mainScenes || []).forEach((name) => {
+          if (!locationSet.has(name)) {
+            locationSet.set(name, shot.description || '');
+          }
+        });
+      });
+
+      characterSet.forEach((desc, name) => {
+        const exists = project.characters.some((c) => c.name === name);
+        if (!exists) {
+          addCharacter({
+            id: `char_${Date.now()}_${name}`,
+            name,
+            description: desc || '待补充角色描述',
+            referenceImages: [],
+            gender: 'unknown' as any,
+            appearance: '',
+          });
+        }
+      });
+
+      locationSet.forEach((desc, name) => {
+        const exists = project.locations.some((l) => l.name === name);
+        if (!exists) {
+          addLocation({
+            id: `loc_${Date.now()}_${name}`,
+            name,
+            description: desc || '待补充场景描述',
+            type: 'interior',
+            referenceImages: [],
+          });
+        }
+      });
+
       toast.success(`成功生成 ${sceneGroups.length} 个场景，${generatedShots.length} 个镜头！`);
       // 自动切换到分镜脚本标签页
       setActiveTab('storyboard');
@@ -301,7 +368,10 @@ export default function LeftSidebarNew() {
   }
 
   return (
-    <div className="w-80 bg-light-panel dark:bg-cine-dark border-r border-light-border dark:border-cine-border flex flex-col">
+    <div
+      className="bg-light-panel dark:bg-cine-dark border-r border-light-border dark:border-cine-border flex flex-col relative"
+      style={{ width: sidebarWidth }}
+    >
       {/* Header */}
       <div className="border-b border-light-border dark:border-cine-border p-4 flex items-center justify-between">
         <button
@@ -319,6 +389,10 @@ export default function LeftSidebarNew() {
           <ChevronLeft size={16} className="text-light-text-muted dark:text-cine-text-muted" />
         </button>
       </div>
+      <div
+        className={`absolute right-0 top-0 h-full w-1 cursor-col-resize ${resizing ? 'bg-light-accent/30 dark:bg-cine-accent/30' : 'bg-transparent hover:bg-light-border dark:hover:bg-cine-border'}`}
+        onMouseDown={startResize}
+      />
 
       {/* Project Info */}
       <div className="p-4 border-b border-light-border dark:border-cine-border">
