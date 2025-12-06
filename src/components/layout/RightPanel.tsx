@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { Bot, Sliders, ChevronRight, ChevronLeft } from 'lucide-react';
 import AgentPanel from '../agent/AgentPanel';
@@ -8,9 +9,36 @@ import ChatPanelWithHistory from './ChatPanelWithHistory';
 
 export default function RightPanel() {
   const { controlMode, setControlMode, rightSidebarCollapsed, toggleRightSidebar } = useProjectStore();
+  const [panelWidth, setPanelWidth] = useState(384);
+  const [resizing, setResizing] = useState(false);
+  const resizeState = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!resizing || !resizeState.current) return;
+      const delta = - (e.clientX - resizeState.current.startX);
+      const next = Math.min(Math.max(resizeState.current.startWidth + delta, 320), 560);
+      setPanelWidth(next);
+    };
+    const onUp = () => setResizing(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [resizing]);
+
+  const startResize = (e: React.MouseEvent) => {
+    setResizing(true);
+    resizeState.current = { startX: e.clientX, startWidth: panelWidth };
+  };
 
   return (
-    <div className={`bg-light-panel dark:bg-cine-dark border-l border-light-border dark:border-cine-border flex flex-col transition-all duration-300 ${rightSidebarCollapsed ? 'w-12' : 'w-96'}`}>
+    <div
+      className={`bg-light-panel dark:bg-cine-dark border-l border-light-border dark:border-cine-border flex flex-col transition-all duration-300 ${rightSidebarCollapsed ? 'w-12' : ''}`}
+      style={rightSidebarCollapsed ? {} : { width: panelWidth }}
+    >
       {rightSidebarCollapsed ? (
         /* Collapsed State */
         <div className="flex flex-col items-center h-full">
@@ -57,6 +85,13 @@ export default function RightPanel() {
             >
               <ChevronRight size={16} className="text-light-text-muted dark:text-cine-text-muted" />
             </button>
+            {!rightSidebarCollapsed && (
+              <div
+                className={`absolute -left-1 top-0 h-full w-1 cursor-col-resize ${resizing ? 'bg-light-accent/30 dark:bg-cine-accent/30' : 'bg-transparent hover:bg-light-border dark:hover:bg-cine-border'}`}
+                onMouseDown={startResize}
+                title="拖拽调整宽度"
+              />
+            )}
           </div>
 
           {/* Panel Content */}
