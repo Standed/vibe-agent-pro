@@ -63,6 +63,7 @@ export default function ChatPanelWithHistory() {
   const [showHistory, setShowHistory] = useState(true);
   const [historyWidth, setHistoryWidth] = useState(320);
   const [isResizingHistory, setIsResizingHistory] = useState(false);
+  const [manualReferenceUrls, setManualReferenceUrls] = useState<string[]>([]);
   const [mentionedAssets, setMentionedAssets] = useState<{
     characters: Character[];
     locations: Location[];
@@ -202,14 +203,19 @@ export default function ChatPanelWithHistory() {
       const blob = await resp.blob();
       const file = new File([blob], `history-${item.id}.png`, { type: blob.type || 'image/png' });
       setUploadedImages([file]);
-      setInputText(''); // 用户自行输入提示词
+      setInputText(item.prompt || '');
       toast.success('已加载历史图片', {
-        description: '可直接用于编辑/重绘'
+        description: '已添加到参考图'
       });
-      document.getElementById('chat-input')?.focus();
     } catch (error) {
       console.error('Failed to load history image', error);
-      toast.error('加载历史图片失败');
+      // 无法 fetch 时，改为直接把 URL 作为参考图使用
+      setManualReferenceUrls([item.result]);
+      setUploadedImages([]);
+      setInputText(item.prompt || '');
+      toast.warning('无法直接下载历史图片，已将链接作为参考图使用');
+    } finally {
+      document.getElementById('chat-input')?.focus();
     }
   };
 
@@ -321,6 +327,7 @@ export default function ChatPanelWithHistory() {
       });
     } finally {
       setIsGenerating(false);
+      setManualReferenceUrls([]); // 清空临时参考 URL
     }
   };
 
@@ -430,7 +437,7 @@ export default function ChatPanelWithHistory() {
     ];
 
     // Combine with enriched prompt reference images (remove duplicates)
-    const allReferenceUrls = Array.from(new Set([...referenceImageUrls, ...mentionedImageUrls]));
+    const allReferenceUrls = Array.from(new Set([...referenceImageUrls, ...mentionedImageUrls, ...manualReferenceUrls]));
 
     // Show asset usage info
     const allUsedCharacters = Array.from(new Map(
