@@ -73,6 +73,18 @@ export default function ChatPanelWithHistory() {
   const [gridSize, setGridSize] = useState<'2x2' | '3x3'>('2x2');
   const [gridResult, setGridResult] = useState<GridGenerationResult | null>(null);
   const prevInputContextRef = useRef<string | null>(null);
+  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 45000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(id);
+      return resp;
+    } catch (e) {
+      clearTimeout(id);
+      throw e;
+    }
+  };
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -373,7 +385,7 @@ export default function ChatPanelWithHistory() {
 
     if (allReferenceUrls.length > 0) {
       try {
-        const resp = await fetch('/api/seedream', {
+        const resp = await fetchWithTimeout('/api/seedream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
