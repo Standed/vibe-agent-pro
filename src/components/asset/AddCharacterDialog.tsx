@@ -165,7 +165,6 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
       description: description.trim(),
       appearance: appearance.trim(),
       referenceImages: finalImages,
-      gender: initialCharacter?.gender,
     };
 
     onAdd(character);
