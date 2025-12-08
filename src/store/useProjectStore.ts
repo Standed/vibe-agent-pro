@@ -15,6 +15,7 @@ import type {
   GenerationHistoryItem,
 } from '@/types/project';
 import { db, saveProject as saveProjectToDB } from '@/lib/db';
+import { recalcShotOrders, normalizeSceneOrder } from '@/utils/shotOrder';
 
 interface ProjectStore {
   // 状态
@@ -107,7 +108,12 @@ export const useProjectStore = create<ProjectStore>()(
     rightSidebarCollapsed: false,
 
     // Project Actions
-    loadProject: (project) => set({ project }),
+    loadProject: (project) =>
+      set(() => {
+        normalizeSceneOrder(project);
+        recalcShotOrders(project);
+        return { project };
+      }),
 
     saveProject: async () => {
       const { project } = get();
@@ -183,6 +189,8 @@ export const useProjectStore = create<ProjectStore>()(
     addScene: (scene) => {
       set((state) => {
         state.project?.scenes.push(scene);
+        normalizeSceneOrder(state.project);
+        recalcShotOrders(state.project);
       });
       // 自动保存
       get().saveProject();
@@ -193,6 +201,8 @@ export const useProjectStore = create<ProjectStore>()(
         const scene = state.project?.scenes.find((s) => s.id === id);
         if (scene) {
           Object.assign(scene, updates);
+          normalizeSceneOrder(state.project);
+          recalcShotOrders(state.project);
         }
       });
       // 自动保存
@@ -207,6 +217,8 @@ export const useProjectStore = create<ProjectStore>()(
         state.project.shots = state.project.shots.filter(
           (shot) => shot.sceneId !== id
         );
+        normalizeSceneOrder(state.project);
+        recalcShotOrders(state.project);
       });
       // 自动保存
       get().saveProject();
@@ -250,6 +262,7 @@ export const useProjectStore = create<ProjectStore>()(
     addShot: (shot) => {
       set((state) => {
         state.project?.shots.push(shot);
+        recalcShotOrders(state.project);
       });
       // 自动保存
       get().saveProject();
@@ -274,6 +287,7 @@ export const useProjectStore = create<ProjectStore>()(
         state.project.timeline.forEach((track) => {
           track.clips = track.clips.filter((clip) => clip.shotId !== id);
         });
+        recalcShotOrders(state.project);
       });
       // 自动保存
       get().saveProject();
@@ -296,13 +310,7 @@ export const useProjectStore = create<ProjectStore>()(
         const scene = state.project?.scenes.find((s) => s.id === sceneId);
         if (scene) {
           scene.shotIds = shotIds;
-          // 更新每个镜头的 order 属性
-          shotIds.forEach((shotId, index) => {
-            const shot = state.project?.shots.find((s) => s.id === shotId);
-            if (shot) {
-              shot.order = index + 1;
-            }
-          });
+          recalcShotOrders(state.project);
         }
       });
       // 自动保存
