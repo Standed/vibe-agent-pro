@@ -10,7 +10,7 @@ import {
   Grid3x3,
   History
 } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { generateMultiViewGrid, generateSingleImage, editImageWithGemini, urlsToReferenceImages } from '@/services/geminiService';
 import { AspectRatio, ImageSize, GenerationHistoryItem } from '@/types/project';
@@ -41,6 +41,8 @@ interface GridGenerationResult {
   fullImage: string;
   slices: string[];
   sceneId: string;
+  gridRows: number;
+  gridCols: number;
 }
 
 export default function ChatPanel() {
@@ -57,7 +59,7 @@ export default function ChatPanel() {
   const [inputText, setInputText] = useState('');
   const [selectedModel, setSelectedModel] = useState<GenerationModel>('gemini-grid');
   const [uploadedImages, setUploadedImages] = useState<File[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [pendingState, setPendingState] = useState<Record<string, { loading: boolean; message?: string }>>({});
 
   // Grid specific state
   const [gridSize, setGridSize] = useState<'2x2' | '3x3'>('2x2');
@@ -70,11 +72,54 @@ export default function ChatPanel() {
   const shots = project?.shots || [];
   const scenes = project?.scenes || [];
   const selectedShot = shots.find((s) => s.id === selectedShotId);
+  const projectId = project?.id || 'default';
+
+  const contextKey = useMemo(() => {
+    if (selectedShotId) return `pro-chat:${projectId}:shot:${selectedShotId}`;
+    if (currentSceneId) return `pro-chat:${projectId}:scene:${currentSceneId}`;
+    return `pro-chat:${projectId}:global`;
+  }, [projectId, selectedShotId, currentSceneId]);
+
+  const currentPending = contextKey ? pendingState[contextKey] : undefined;
+  const isGenerating = Boolean(currentPending?.loading);
 
   // Auto scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Load chat history per上下文
+  useEffect(() => {
+    try {
+      const saved = contextKey ? localStorage.getItem(contextKey) : null;
+      if (saved) {
+        const parsed: ChatMessage[] = JSON.parse(saved).map((m: any) => ({
+          ...m,
+          timestamp: new Date(m.timestamp),
+        }));
+        setMessages(parsed);
+      } else {
+        setMessages([]);
+      }
+    } catch (e) {
+      console.warn('Failed to load pro chat history', e);
+      setMessages([]);
+    }
+  }, [contextKey]);
+
+  // Persist chat history per上下文
+  useEffect(() => {
+    if (!contextKey) return;
+    try {
+      const serializable = messages.map(m => ({
+        ...m,
+        timestamp: m.timestamp.toISOString(),
+      }));
+      localStorage.setItem(contextKey, JSON.stringify(serializable));
+    } catch (e) {
+      console.warn('Failed to save pro chat history', e);
+    }
+  }, [messages, contextKey]);
 
   // Handle file upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -136,8 +181,11 @@ export default function ChatPanel() {
     setInputText('');
     setUploadedImages([]);
 
-    // Generate based on selected model
-    setIsGenerating(true);
+    // Generate based on selected model（只锁定当前上下文）
+    setPendingState((prev) => ({
+      ...prev,
+      [contextKey]: { loading: true, message: '正在生成...' }
+    }));
     try {
       switch (selectedModel) {
         case 'seedream':
@@ -163,7 +211,13 @@ export default function ChatPanel() {
         description: error.message
       });
     } finally {
-      setIsGenerating(false);
+      setPendingState((prev) => {
+        const next = { ...prev };
+        if (contextKey) {
+          delete next[contextKey];
+        }
+        return next;
+      });
     }
   };
 
@@ -348,14 +402,23 @@ export default function ChatPanel() {
 
     // Generate Grid
     const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
-    const result = await generateMultiViewGrid(
-      enrichedPrompt,
-      rows,
-      cols,
-      project?.settings.aspectRatio || AspectRatio.WIDE,
-      ImageSize.K4,
-      allRefImages
-    );
+    setPendingState((prev) => ({
+      ...prev,
+      [contextKey]: { loading: true, message: `正在生成 ${gridSize} Grid (${rows * cols} 张切片)...` }
+    }));
+    let result;
+    try {
+      result = await generateMultiViewGrid(
+        enrichedPrompt,
+        rows,
+        cols,
+        project?.settings.aspectRatio || AspectRatio.WIDE,
+        ImageSize.K4,
+        allRefImages
+      );
+    } catch (error: any) {
+      throw error;
+    }
 
     // Find current scene
     const currentScene = currentSceneId
@@ -370,6 +433,8 @@ export default function ChatPanel() {
         fullImage: result.fullImage,
         slices: result.slices,
         sceneId: currentScene.id,
+        gridRows: rows,
+        gridCols: cols,
       });
     }
 
@@ -388,7 +453,7 @@ export default function ChatPanel() {
     };
     setMessages(prev => [...prev, assistantMessage]);
 
-    toast.success('Gemini Grid 生成成功！');
+    // success toast removed; inline消息和pending提示即可
   };
 
   // Helper: Convert File to base64
@@ -496,6 +561,11 @@ export default function ChatPanel() {
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
+        {isGenerating && (
+          <div className="mb-3 px-3 py-2 rounded-lg bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border text-xs text-light-text-muted dark:text-cine-text-muted">
+            {currentPending?.message || '正在生成当前场景/镜头的内容...'}
+          </div>
+        )}
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <Sparkles size={48} className="text-light-accent dark:text-cine-accent mb-4 opacity-50" />
@@ -626,8 +696,22 @@ export default function ChatPanel() {
       {gridResult && (
         <GridPreviewModal
           fullGridUrl={gridResult.fullImage}
-          slices={gridResult.slices}
+          gridImages={gridResult.slices}
           sceneId={gridResult.sceneId}
+          shots={shots}
+          gridRows={gridResult.gridRows}
+          gridCols={gridResult.gridCols}
+          onAssign={(assignments) => {
+            // 简单落盘到选中镜头：仅用于兼容旧入口
+            Object.entries(assignments).forEach(([shotId, imageUrl]) => {
+              updateShot(shotId, {
+                referenceImage: imageUrl,
+                fullGridUrl: gridResult.fullImage,
+                status: 'done',
+              });
+            });
+            setGridResult(null);
+          }}
           onClose={() => setGridResult(null)}
         />
       )}

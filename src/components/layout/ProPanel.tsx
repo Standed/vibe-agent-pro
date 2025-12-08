@@ -4,7 +4,7 @@ import { Sparkles, Image as ImageIcon, Video, Upload, Loader2, Grid3x3, History,
 import { useState, useEffect } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { generateMultiViewGrid, fileToBase64, editImageWithGemini, urlsToReferenceImages } from '@/services/geminiService';
-import { AspectRatio, ImageSize, GridHistoryItem, GenerationHistoryItem } from '@/types/project';
+import { AspectRatio, ImageSize, GridHistoryItem, GenerationHistoryItem, Shot } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
 import GridHistoryModal from '@/components/grid/GridHistoryModal';
@@ -21,6 +21,8 @@ interface GridGenerationResult {
   fullImage: string;
   slices: string[];
   sceneId: string;
+  gridRows: number;
+  gridCols: number;
 }
 
 export default function ProPanel() {
@@ -52,15 +54,14 @@ export default function ProPanel() {
     scene.shotIds.includes(selectedShotId || '')
   );
 
-  // Set selected scene ID when shot changes
-  if (currentScene && selectedSceneId !== currentScene.id) {
-    setSelectedSceneId(currentScene.id);
-  }
-
-  // Also set selectedSceneId from currentSceneId if scene is selected
-  if (isSceneSelected && selectedSceneId !== currentSceneId) {
-    setSelectedSceneId(currentSceneId);
-  }
+  // Sync selected scene ID safely
+  useEffect(() => {
+    if (currentScene && selectedSceneId !== currentScene.id) {
+      setSelectedSceneId(currentScene.id);
+    } else if (isSceneSelected && currentSceneId && selectedSceneId !== currentSceneId) {
+      setSelectedSceneId(currentSceneId);
+    }
+  }, [currentScene, currentSceneId, isSceneSelected, selectedSceneId]);
 
   // Auto-select generation type based on selection
   useEffect(() => {
@@ -165,6 +166,11 @@ export default function ProPanel() {
   };
 
   const handleGenerateGrid = async () => {
+    // 🔍 调试：确认函数被调用
+    console.log('[ProPanel] ========== handleGenerateGrid CALLED ==========');
+    console.log('[ProPanel] prompt:', prompt);
+    console.log('[ProPanel] selectedSceneId:', selectedSceneId);
+
     if (!prompt.trim()) {
       toast.error('请输入提示词');
       return;
@@ -200,7 +206,8 @@ export default function ProPanel() {
       const totalSlices = rows * cols;
 
       // 动态选择未分配图片的镜头（跳过已有 referenceImage 的镜头）
-      const unassignedShots = sceneShots.filter((shot) => !shot.referenceImage);
+      const sortedSceneShots = [...sceneShots].sort((a, b) => (a.order || 0) - (b.order || 0));
+      const unassignedShots = sortedSceneShots.filter((shot) => !shot.referenceImage);
 
       if (unassignedShots.length === 0) {
         toast.warning('该场景所有镜头都已分配图片', {
@@ -209,8 +216,19 @@ export default function ProPanel() {
         return;
       }
 
-      // Take first N unassigned shots to match grid size
-      const targetShots = unassignedShots.slice(0, totalSlices);
+      // 先取未分配的镜头，不足则从场景中相邻（按 order）补齐
+      const targetShots: typeof sceneShots = [];
+      for (const shot of unassignedShots) {
+        if (targetShots.length >= totalSlices) break;
+        targetShots.push(shot);
+      }
+      if (targetShots.length < totalSlices) {
+        for (const shot of sortedSceneShots) {
+          if (targetShots.length >= totalSlices) break;
+          if (targetShots.find((s) => s.id === shot.id)) continue;
+          targetShots.push(shot);
+        }
+      }
 
       if (targetShots.length < totalSlices) {
         const confirmed = confirm(
@@ -264,8 +282,28 @@ export default function ProPanel() {
         enhancedPrompt += `\n额外要求：${prompt}`;
       }
 
-      // Convert reference images to base64
-      const refImages = await Promise.all(
+      // 🔍 调试：输出增强提示词
+      console.log('[ProPanel Grid Debug] ========== START ==========');
+      console.log('[ProPanel Grid Debug] selectedSceneId:', selectedSceneId);
+      console.log('[ProPanel Grid Debug] targetScene.name:', targetScene.name);
+      console.log('[ProPanel Grid Debug] targetScene.description:', targetScene.description);
+      console.log('[ProPanel Grid Debug] project?.metadata.artStyle:', project?.metadata.artStyle);
+      console.log('[ProPanel Grid Debug] targetShots:', targetShots.map(s => ({
+        id: s.id,
+        order: s.order,
+        shotSize: s.shotSize,
+        cameraMovement: s.cameraMovement,
+        description: s.description,
+        narration: s.narration,
+        dialogue: s.dialogue
+      })));
+      console.log('[ProPanel Grid Debug] targetShots.length:', targetShots.length);
+      console.log('[ProPanel Grid Debug] enhancedPrompt:', enhancedPrompt);
+      console.log('[ProPanel Grid Debug] user input prompt:', prompt);
+      console.log('[ProPanel Grid Debug] ========== END ==========');
+
+      // 聚合参考图：上传 + 角色/场景资源库 + 场景/镜头的引用
+      const refImagesFromUpload = await Promise.all(
         referenceImages.map(async (file) => {
           const base64 = await fileToBase64(file);
           return {
@@ -274,6 +312,29 @@ export default function ProPanel() {
           };
         })
       );
+
+      const refUrlSet = new Set<string>();
+      const addUrls = (urls?: string[]) => {
+        urls?.forEach((u) => refUrlSet.add(u));
+      };
+
+      targetShots.forEach((shot) => {
+        shot.mainCharacters?.forEach((name) => {
+          const c = project?.characters.find((ch) => ch.name === name);
+          addUrls(c?.referenceImages);
+        });
+        shot.mainScenes?.forEach((name) => {
+          const l = project?.locations.find((loc) => loc.name === name);
+          addUrls(l?.referenceImages);
+        });
+      });
+
+      const refImagesFromAssets = await urlsToReferenceImages(Array.from(refUrlSet));
+      const refImages = [...refImagesFromUpload, ...refImagesFromAssets];
+
+      // 🔍 调试：输出参考图信息
+      console.log('[ProPanel Grid Debug] refUrlSet:', refUrlSet);
+      console.log('[ProPanel Grid Debug] refImages.length:', refImages.length);
 
       const result = await generateMultiViewGrid(
         enhancedPrompt,
@@ -289,6 +350,8 @@ export default function ProPanel() {
         fullImage: result.fullImage,
         slices: result.slices,
         sceneId: targetScene.id,
+        gridRows: rows,
+        gridCols: cols,
       });
     } catch (error: any) {
       console.error('Grid generation error:', error);
@@ -365,10 +428,13 @@ export default function ProPanel() {
 
   // Handle selecting a Grid from history
   const handleSelectGridHistory = (historyItem: GridHistoryItem) => {
+    const [rows, cols] = historyItem.gridSize === '2x2' ? [2, 2] : [3, 3];
     setGridResult({
       fullImage: historyItem.fullGridUrl,
       slices: historyItem.slices,
       sceneId: selectedSceneId,
+      gridRows: rows,
+      gridCols: cols,
     });
   };
 
@@ -693,7 +759,8 @@ export default function ProPanel() {
 
           // Construct prompt
           let shotPrompt = shot.description || 'Cinematic shot';
-          if (targetScene.description) shotPrompt = `Scene: ${targetScene.description}. ` + shotPrompt;
+          const shotScene = scenes.find(s => s.id === shot.sceneId);
+          if (shotScene?.description) shotPrompt = `Scene: ${shotScene.description}. ` + shotPrompt;
           if (project?.metadata.artStyle) shotPrompt += `. Style: ${project.metadata.artStyle}`;
 
           // Enrich prompt with character and location context
@@ -1398,6 +1465,8 @@ export default function ProPanel() {
           fullGridUrl={gridResult.fullImage}
           shots={shots}
           sceneId={gridResult.sceneId}
+          gridRows={gridResult.gridRows}
+          gridCols={gridResult.gridCols}
           onAssign={handleGridAssignment}
           onClose={() => setGridResult(null)}
         />

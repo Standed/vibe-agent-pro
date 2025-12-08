@@ -164,15 +164,12 @@ export class VolcanoEngineService {
   /**
    * Generate single image using SeeDream model
    * 根据项目画面比例生成单图
+   * 🔥 通过 API 路由生成，服务器端自动转换为 base64 避免 URL 过期
    */
   async generateSingleImage(
     prompt: string,
     aspectRatio?: string // '16:9', '9:16', '1:1', '4:3', '3:4', '21:9'
   ): Promise<string> {
-    if (!this.seedreamModelId) {
-      throw new Error('SeeDream model ID 未配置，请在 .env.local 中设置 NEXT_PUBLIC_SEEDREAM_MODEL_ID');
-    }
-
     // 根据画面比例计算尺寸 - 满足 SeeDream API 最小像素要求（3,686,400 像素）
     const sizeMap: Record<string, string> = {
       '16:9': '2560x1440',   // 16:9 宽屏 QHD (3,686,400 px)
@@ -185,47 +182,44 @@ export class VolcanoEngineService {
 
     const size = aspectRatio && sizeMap[aspectRatio] ? sizeMap[aspectRatio] : '2048x2048';
 
-    const response = await fetch(`${this.baseUrl}/images/generations`, {
+    // 调用 API 路由，由服务器端处理下载和 base64 转换
+    const response = await fetch('/api/seedream', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
+        prompt,
+        size,
         model: this.seedreamModelId,
-        prompt: prompt,
-        size: size,
-        n: 1,
       }),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`SeeDream 图片生成失败: ${response.status} - ${errorText}`);
+      const errorData = await response.json();
+      throw new Error(errorData.error || `SeeDream 图片生成失败: ${response.status}`);
     }
 
     const data = await response.json();
 
-    if (!data.data || !data.data[0] || !data.data[0].url) {
+    if (!data.url) {
       throw new Error('SeeDream 返回数据格式错误');
     }
 
-    return data.data[0].url;
+    // API 路由已经返回 base64 data URL
+    return data.url;
   }
 
   /**
    * 图片编辑 (Image-to-Image)
    * 根据原图和新提示词生成编辑后的图片
+   * 🔥 通过 API 路由生成，服务器端自动转换为 base64 避免 URL 过期
    */
   async editImage(
     imageUrl: string,
     prompt: string,
     aspectRatio?: string
   ): Promise<string> {
-    if (!this.seedreamModelId) {
-      throw new Error('SeeDream model ID 未配置');
-    }
-
     // 根据画面比例计算尺寸 - 与 generateSingleImage 保持一致，满足 3,686,400 像素最小要求
     const sizeMap: Record<string, string> = {
       '16:9': '2560x1440',   // 16:9 宽屏 QHD (3,686,400 px)
@@ -238,33 +232,33 @@ export class VolcanoEngineService {
 
     const size = aspectRatio && sizeMap[aspectRatio] ? sizeMap[aspectRatio] : '2048x2048';
 
-    const response = await fetch(`${this.baseUrl}/images/variations`, {
+    // 调用 API 路由，由服务器端处理下载和 base64 转换
+    const response = await fetch('/api/seedream-edit', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
+        imageUrl,
+        prompt,
+        size,
         model: this.seedreamModelId,
-        prompt: prompt,
-        image: imageUrl, // 原图URL
-        size: size,
-        n: 1,
       }),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`图片编辑失败: ${response.status} - ${errorText}`);
+      const errorData = await response.json();
+      throw new Error(errorData.error || `图片编辑失败: ${response.status}`);
     }
 
     const data = await response.json();
 
-    if (!data.data || !data.data[0] || !data.data[0].url) {
+    if (!data.url) {
       throw new Error('返回数据格式错误');
     }
 
-    return data.data[0].url;
+    // API 路由已经返回 base64 data URL
+    return data.url;
   }
 
   /**

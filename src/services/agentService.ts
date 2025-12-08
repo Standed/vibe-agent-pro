@@ -5,14 +5,33 @@
 
 import { AGENT_TOOLS, ToolCall, formatToolsForPrompt } from './agentTools';
 
-const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
 const GEMINI_MODEL = 'gemini-3-pro-preview'; // Using Gemini 3 Pro text model for better reasoning
-const API_TIMEOUT_MS = 30000; // 30 second timeout
+const GEMINI_API_KEY =
+  process.env.GEMINI_API_KEY ||
+  process.env.NEXT_GEMINI_API_KEY ||
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+
+// Allow configurable timeouts:短步骤用短超时，AI 生成/推理用长超时
+const parseTimeout = (val: string | undefined, fallback: number) => {
+  const n = Number(val);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+
+// 默认短超时（工具查询等轻量请求）
+const DEFAULT_TIMEOUT_MS = parseTimeout(
+  process.env.NEXT_PUBLIC_AGENT_TIMEOUT_MS || process.env.AGENT_TIMEOUT_MS,
+  30000
+);
+// AI 对话/生成允许更长时间，避免大 prompt 被过早中断
+const AI_TIMEOUT_MS = parseTimeout(
+  process.env.NEXT_PUBLIC_AGENT_AI_TIMEOUT_MS || process.env.AGENT_AI_TIMEOUT_MS,
+  90000
+);
 
 /**
  * Fetch with timeout
  */
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = API_TIMEOUT_MS): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -166,11 +185,6 @@ export async function processUserCommand(
   chatHistory: AgentMessage[],
   context: AgentContext = {}
 ): Promise<AgentAction> {
-  if (!GEMINI_API_KEY) {
-    console.warn('Gemini API key missing, falling back to mock');
-    return mockProcessCommand(userMessage);
-  }
-
   const systemPrompt = generateSystemPrompt(context);
 
   // Convert chat history to Gemini format
@@ -192,19 +206,23 @@ export async function processUserCommand(
 
   try {
     const response = await fetchWithTimeout(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      '/api/gemini-generate',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents,
-          tools,
-          generationConfig: {
-            temperature: 0.3,
-            maxOutputTokens: 2000,
+          model: GEMINI_MODEL,
+          payload: {
+            contents,
+            tools,
+            generationConfig: {
+              temperature: 0.3,
+              maxOutputTokens: 2000,
+            }
           }
         })
-      }
+      },
+      AI_TIMEOUT_MS // AI 对话/推理阶段允许更长时间
     );
 
     if (!response.ok) {
@@ -212,8 +230,8 @@ export async function processUserCommand(
       throw new Error(`Gemini API Error: ${response.status} - ${errorText}`);
     }
 
-    const data = await response.json();
-    const candidate = data.candidates?.[0];
+    const { data } = await response.json();
+    const candidate = data?.candidates?.[0];
 
     if (!candidate) {
       throw new Error('No candidate in Gemini response');
@@ -310,19 +328,23 @@ export async function continueWithToolResults(
 
   try {
     const response = await fetchWithTimeout(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      '/api/gemini-generate',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents,
-          tools,
-          generationConfig: {
-            temperature: 0.3,
-            maxOutputTokens: 2000,
+          model: GEMINI_MODEL,
+          payload: {
+            contents,
+            tools,
+            generationConfig: {
+              temperature: 0.3,
+              maxOutputTokens: 2000,
+            }
           }
         })
-      }
+      },
+      AI_TIMEOUT_MS // 继续对话也视为 AI 生成，给足时间
     );
 
     if (!response.ok) {
@@ -330,8 +352,8 @@ export async function continueWithToolResults(
       throw new Error(`Gemini API Error: ${response.status} - ${errorText}`);
     }
 
-    const data = await response.json();
-    const candidate = data.candidates?.[0];
+    const { data } = await response.json();
+    const candidate = data?.candidates?.[0];
 
     if (!candidate) {
       throw new Error('No candidate in Gemini response');
@@ -404,4 +426,3 @@ function mockProcessCommand(userMessage: string): AgentAction {
     thought: 'Mock fallback'
   };
 }
-

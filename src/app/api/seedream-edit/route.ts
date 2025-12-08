@@ -5,10 +5,10 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { prompt, imageUrls = [], size = '2560x1440', model } = body || {};
+    const { imageUrl, prompt, size = '2048x2048', model } = body || {};
 
-    if (!prompt) {
-      return NextResponse.json({ error: 'missing prompt' }, { status: 400 });
+    if (!imageUrl || !prompt) {
+      return NextResponse.json({ error: 'missing imageUrl or prompt' }, { status: 400 });
     }
 
     const apiKey =
@@ -27,7 +27,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'seedream api not configured' }, { status: 500 });
     }
 
-    const resp = await fetch(`${baseUrl}/images/generations`, {
+    // Call Volcano Engine image variations API
+    const resp = await fetch(`${baseUrl}/images/variations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -36,10 +37,9 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         model: seedreamModelId,
         prompt,
-        image: imageUrls,
-        sequential_image_generation: 'disabled',
+        image: imageUrl,
         size,
-        watermark: false,
+        n: 1,
       }),
     });
 
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     try {
       const imageResp = await fetch(url);
       if (!imageResp.ok) {
-        console.warn('Failed to download image, returning original URL:', imageResp.statusText);
+        console.warn('Failed to download edited image, returning original URL:', imageResp.statusText);
         return NextResponse.json({ url });
       }
 
@@ -68,10 +68,10 @@ export async function POST(request: Request) {
       const base64 = Buffer.from(arrayBuffer).toString('base64');
       const dataUrl = `data:${mimeType};base64,${base64}`;
 
-      console.log('✅ SeeDream 图片已转换为 base64 data URL');
+      console.log('✅ SeeDream 编辑图片已转换为 base64 data URL');
       return NextResponse.json({ url: dataUrl });
     } catch (downloadError: any) {
-      console.warn('Failed to convert image to base64, returning original URL:', downloadError);
+      console.warn('Failed to convert edited image to base64, returning original URL:', downloadError);
       return NextResponse.json({ url });
     }
   } catch (error: any) {

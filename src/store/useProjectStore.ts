@@ -386,7 +386,7 @@ export const useProjectStore = create<ProjectStore>()(
       }),
 
     // Chat Actions
-    addChatMessage: (message) =>
+    addChatMessage: (message) => {
       set((state) => {
         if (!state.project) return;
         if (!state.project.chatHistory) {
@@ -401,10 +401,11 @@ export const useProjectStore = create<ProjectStore>()(
         if (state.project.chatHistory.length > MAX_HISTORY) {
           state.project.chatHistory = state.project.chatHistory.slice(-MAX_HISTORY);
         }
-      }, false, () => {
-        // 自动保存到 IndexedDB
-        get().saveProject();
-      }),
+      }, false);
+
+      // 自动保存到 IndexedDB
+      get().saveProject();
+    },
 
     clearChatHistory: () => {
       set((state) => {

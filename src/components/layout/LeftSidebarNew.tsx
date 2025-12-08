@@ -285,7 +285,6 @@ export default function LeftSidebarNew() {
             name,
             description: desc || '待补充角色描述',
             referenceImages: [],
-            gender: 'unknown' as any,
             appearance: '',
           });
         }
@@ -734,7 +733,7 @@ export default function LeftSidebarNew() {
                           {character.name}
                         </div>
                         <div className="text-[11px] text-light-text-muted dark:text-cine-text-muted mt-0.5">
-                          {character.gender || '未设置'}
+                          {character.appearance || character.description.slice(0, 30) || '角色'}
                         </div>
                       </div>
                       <div className="flex gap-1">

@@ -1,16 +1,32 @@
 // AI Service for storyboard generation and analysis
 // Uses the prompt engineering rules from finalAgent/提示词.txt
 
-import { GoogleGenAI } from '@google/genai';
 import type { Shot, Scene } from '@/types/project';
 import { securePromptExecution, filterAIOutput } from '@/utils/promptSecurity';
 
-const getGeminiClient = () => {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
-  if (!apiKey) {
-    throw new Error('NEXT_PUBLIC_GEMINI_API_KEY is not configured');
+const MODEL_FULL = 'gemini-3-pro-preview'; // 拆剧本/Agent 底层
+const MODEL_FAST = 'gemini-2.5-flash'; // 快速文本处理
+const GEMINI_ROUTE = '/api/gemini-generate';
+
+const postGemini = async (payload: any, model: string = MODEL_FULL): Promise<any> => {
+  const resp = await fetch(GEMINI_ROUTE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, payload })
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(text || resp.statusText);
   }
-  return new GoogleGenAI({ apiKey });
+  const { data, error } = await resp.json();
+  if (error) {
+    throw new Error(error);
+  }
+  return data;
+};
+
+const extractText = (data: any): string => {
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 };
 
 /**
@@ -203,9 +219,6 @@ export async function generateStoryboardFromScript(
   script: string,
   artStyle?: string
 ): Promise<Shot[]> {
-  const ai = getGeminiClient();
-  const model = 'gemini-3-pro-preview';
-
   try {
     // 构建用户输入，包含画风要求
     let userInput = `## 用户剧本：\n\n${script}`;
@@ -223,12 +236,19 @@ export async function generateStoryboardFromScript(
       throw new Error(`安全验证失败：${securityCheck.error}`);
     }
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: securityCheck.processedPrompt!, // 使用安全包装后的提示词
-    });
+    const aiResult = await postGemini(
+      {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: securityCheck.processedPrompt! }]
+          }
+        ]
+      },
+      MODEL_FULL
+    );
 
-    const rawText = response.text || '';
+    const rawText = extractText(aiResult);
 
     // 🔒 输出过滤：移除可能泄露的系统信息
     const text = filterAIOutput(rawText);
@@ -299,9 +319,6 @@ export async function analyzeScript(script: string): Promise<{
   locations: string[];
   duration: number;
 }> {
-  const ai = getGeminiClient();
-  const model = 'gemini-2.5-flash';
-
   const prompt = `分析以下剧本，提取关键信息并以JSON格式返回：
 
 剧本：
@@ -324,22 +341,29 @@ ${script}
 \`\`\``;
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-    });
+    const data = await postGemini(
+      {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }]
+          }
+        ]
+      },
+      MODEL_FAST
+    );
 
-    const text = response.text || '';
+    const text = extractText(data) || '';
     const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
     const jsonStr = jsonMatch ? jsonMatch[1] : text;
 
-    const data = JSON.parse(jsonStr);
+    const parsed = JSON.parse(jsonStr);
 
     return {
-      artStyle: data.art_style || '',
-      characters: data.characters || [],
-      locations: data.locations || [],
-      duration: data.estimated_duration || 0,
+      artStyle: parsed.art_style || '',
+      characters: parsed.characters || [],
+      locations: parsed.locations || [],
+      duration: parsed.estimated_duration || 0,
     };
   } catch (error: any) {
     console.error('Script analysis error:', error);
@@ -356,25 +380,28 @@ ${script}
 export async function enhanceShotDescription(
   description: string
 ): Promise<string> {
-  const ai = getGeminiClient();
-  const model = 'gemini-2.5-flash';
-
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: `作为一位专业影视分镜师，请增强以下镜头描述，添加更多视觉细节、光影描述和情绪氛围。保持原意，但让描述更加生动和具有画面感。
+    const data = await postGemini(
+      {
+        contents: [
+          {
+            role: 'user',
+            parts: [{
+              text: `作为一位专业影视分镜师，请增强以下镜头描述，添加更多视觉细节、光影描述和情绪氛围。保持原意，但让描述更加生动和具有画面感。
 
 原描述：${description}
 
-请输出增强后的描述（不要使用markdown格式，直接返回文本）：`,
-    });
+请输出增强后的描述（不要使用markdown格式，直接返回文本）：`
+            }]
+          }
+        ]
+      },
+      MODEL_FAST
+    );
 
-    return response.text || description;
+    return extractText(data) || description;
   } catch (error: any) {
     console.error('Shot enhancement error:', error);
-    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
-      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
-    }
     return description;
   }
 }
@@ -385,9 +412,6 @@ export async function enhanceShotDescription(
 export async function groupShotsIntoScenes(
   shots: Shot[]
 ): Promise<{ name: string; location: string; shotIds: string[] }[]> {
-  const ai = getGeminiClient();
-  const model = 'gemini-2.5-flash';
-
   const shotsInfo = shots
     .map(
       (s, i) =>
@@ -411,12 +435,19 @@ ${shotsInfo}
 \`\`\``;
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-    });
+    const data = await postGemini(
+      {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }]
+          }
+        ]
+      },
+      MODEL_FAST
+    );
 
-    const text = response.text || '';
+    const text = extractText(data) || '';
     const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
     const jsonStr = jsonMatch ? jsonMatch[1] : text;
 

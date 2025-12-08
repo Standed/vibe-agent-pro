@@ -1,12 +1,41 @@
 'use client';
 
-import { GoogleGenAI } from '@google/genai';
 import { AspectRatio, ImageSize } from '@/types/project';
 
-// Get Gemini API client
-const getClient = () => {
-  // Always create a new client to pick up the potentially newly selected key
-  return new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
+const parseTimeout = (val: string | undefined, fallback: number) => {
+  const n = Number(val);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+
+// 默认 180s，可通过环境变量覆盖
+const GEMINI_TIMEOUT_MS = parseTimeout(
+  process.env.NEXT_PUBLIC_GEMINI_IMG_TIMEOUT_MS || process.env.GEMINI_IMG_TIMEOUT_MS,
+  180000
+);
+
+const postJson = async <T>(url: string, body: any, timeoutMs: number = GEMINI_TIMEOUT_MS): Promise<T> => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(text || resp.statusText);
+    }
+    return resp.json();
+  } catch (error) {
+    clearTimeout(id);
+    if ((error as any)?.name === 'AbortError') {
+      throw new Error(`请求超时（${timeoutMs / 1000}秒）`);
+    }
+    throw error;
+  }
 };
 
 // Helper to slice a grid image into individual images
@@ -84,69 +113,52 @@ export const generateMultiViewGrid = async (
   imageSize: ImageSize,
   referenceImages: ReferenceImageData[] = []
 ): Promise<{ fullImage: string; slices: string[] }> => {
-  const ai = getClient();
-  const model = 'gemini-3-pro-image-preview'; // directordeck 使用的模型
-
   const totalViews = gridRows * gridCols;
   const gridType = `${gridRows}x${gridCols}`;
 
-  // STRICT prompt engineering for grid generation
-  const gridPrompt = `MANDATORY LAYOUT: Create a precise ${gridType} GRID containing exactly ${totalViews} distinct panels.
+  // STRICT prompt engineering for storyboard grid generation
+  const gridPrompt = `MANDATORY LAYOUT: Create a precise ${gridType} GRID containing exactly ${totalViews} distinct storyboard panels.
   - The output image MUST be a single image divided into a ${gridRows} (rows) by ${gridCols} (columns) matrix.
   - There must be EXACTLY ${gridRows} horizontal rows and ${gridCols} vertical columns.
   - Each panel must be completely separated by a thin, distinct, solid black line.
   - DO NOT create a collage. DO NOT overlap images. DO NOT create random sizes.
   - The grid structure must be perfectly aligned for slicing.
 
-  Subject Content: "${prompt}"
+  STORYBOARD CONTENT (Create ${totalViews} DIFFERENT shots based on these descriptions):
 
-  Styling Instructions:
-  - Each panel shows the SAME subject/scene from a DIFFERENT angle (e.g., Front, Side, Back, Action, Close-up).
-  - Maintain perfect consistency of the character/object across all panels.
-  - Cinematic lighting, high fidelity, 8k resolution.
+${prompt}
 
-  Negative Constraints:
+  CRITICAL INSTRUCTIONS:
+  - Each numbered description corresponds to ONE specific panel in the grid (read left-to-right, top-to-bottom).
+  - Each panel MUST match its corresponding shot description EXACTLY (shot size, camera angle, action, characters).
+  - DO NOT show the same scene from different angles - each panel is a DIFFERENT shot/scene.
+  - If reference images are provided, use them for character/scene consistency across different shots.
+  - Maintain consistent art style and lighting mood across all panels while showing different shots.
+
+  Technical Requirements:
+  - Cinematic lighting, 4K resolution.
+  - Professional color grading and composition.
   - No text, no captions, no UI elements.
   - No watermarks.
   - No broken grid lines.`;
 
-  const parts: any[] = [];
-
-  // Add all reference images
-  for (const ref of referenceImages) {
-    parts.push({
-      inlineData: {
-        mimeType: ref.mimeType,
-        data: ref.data,
-      },
-    });
-  }
-
-  parts.push({ text: gridPrompt });
+  // 🔍 调试：输出最终的 Grid 提示词
+  console.log('[geminiService Grid Debug] ========== START ==========');
+  console.log('[geminiService Grid Debug] Input prompt:', prompt);
+  console.log('[geminiService Grid Debug] referenceImages.length:', referenceImages.length);
+  console.log('[geminiService Grid Debug] Final gridPrompt:', gridPrompt);
+  console.log('[geminiService Grid Debug] ========== END ==========');
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: {
-        parts: parts,
-      },
-      config: {
-        // @ts-ignore - imageConfig might not be in the types yet
-        imageConfig: {
-          aspectRatio: aspectRatio,
-          imageSize: '4K', // Force 4K
-        },
-      },
+    const data = await postJson<{ fullImage: string }>('/api/gemini-grid', {
+      prompt: gridPrompt,
+      gridRows,
+      gridCols,
+      aspectRatio,
+      referenceImages
     });
 
-    let fullImageBase64 = '';
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        fullImageBase64 = `data:image/png;base64,${part.inlineData.data}`;
-        break;
-      }
-    }
-
+    const fullImageBase64 = data.fullImage;
     if (!fullImageBase64) throw new Error('未能生成 Grid 图片');
 
     // Slice the single high-res grid into separate base64 images
@@ -173,55 +185,18 @@ export const editImageWithGemini = async (
   prompt: string,
   aspectRatio: AspectRatio
 ): Promise<string> => {
-  const ai = getClient();
-  const model = 'gemini-3-pro-image-preview';
-
-  // 提取纯 base64 数据（移除前缀）
-  const base64Data = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
-
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: 'image/png',
-              data: base64Data,
-            },
-          },
-          {
-            text: `基于这张图片，${prompt}`,
-          },
-        ],
-      },
-      config: {
-        // @ts-ignore
-        imageConfig: {
-          aspectRatio: aspectRatio,
-          imageSize: '4K',
-        },
-      },
+    const data = await postJson<{ url: string }>('/api/gemini-edit', {
+      imageBase64,
+      prompt,
+      aspectRatio
     });
-
-    let newImageBase64 = '';
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        newImageBase64 = `data:image/png;base64,${part.inlineData.data}`;
-        break;
-      }
-    }
-
-    if (!newImageBase64) {
+    if (!data.url) {
       throw new Error('未能生成编辑后的图片');
     }
-
-    return newImageBase64;
+    return data.url;
   } catch (error: any) {
     console.error('Gemini 图片编辑错误:', error);
-    if (error.message?.includes('403') || error.status === 403) {
-      throw new Error('Gemini API Key 无效或已失效 (403)');
-    }
     throw error;
   }
 };
@@ -235,22 +210,6 @@ export const generateSingleImage = async (
   aspectRatio: AspectRatio,
   referenceImages: ReferenceImageData[] = []
 ): Promise<string> => {
-  const ai = getClient();
-  const model = 'gemini-3-pro-image-preview';
-
-  const parts: any[] = [];
-
-  // Add all reference images first
-  for (const ref of referenceImages) {
-    parts.push({
-      inlineData: {
-        mimeType: ref.mimeType,
-        data: ref.data,
-      },
-    });
-  }
-
-  // Add the text prompt
   const enhancedPrompt = `Create a single high-quality cinematic image based on the following description:
 
 ${prompt}
@@ -266,44 +225,18 @@ Style Constraints:
 - No watermarks
 - Single cohesive image (NOT a collage or grid)`;
 
-  parts.push({ text: enhancedPrompt });
-
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: {
-        parts: parts,
-      },
-      config: {
-        // @ts-ignore - imageConfig might not be in the types yet
-        imageConfig: {
-          aspectRatio: aspectRatio,
-          imageSize: '4K',
-        },
-      },
+    const data = await postJson<{ url: string }>('/api/gemini-image', {
+      prompt: enhancedPrompt,
+      referenceImages,
+      aspectRatio
     });
-
-    let imageBase64 = '';
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        imageBase64 = `data:image/png;base64,${part.inlineData.data}`;
-        break;
-      }
-    }
-
-    if (!imageBase64) {
+    if (!data.url) {
       throw new Error('未能生成图片');
     }
-
-    return imageBase64;
+    return data.url;
   } catch (error: any) {
     console.error('Gemini single image generation error:', error);
-    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
-      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
-    }
-    if (error.status === 503 || error.message?.includes('overloaded') || error.message?.includes('UNAVAILABLE')) {
-      throw new Error('Gemini 服务当前过载 (503)。请稍后重试。');
-    }
     throw error;
   }
 };
@@ -316,34 +249,15 @@ export const analyzeAsset = async (
   mimeType: string,
   prompt: string
 ): Promise<string> => {
-  const ai = getClient();
-  const model = 'gemini-3-pro-preview';
-
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: mimeType,
-              data: fileBase64,
-            },
-          },
-          { text: prompt },
-        ],
-      },
+    const data = await postJson<{ result: string }>('/api/gemini-analyze', {
+      fileBase64,
+      mimeType,
+      prompt
     });
-
-    return response.text || '无法获取分析结果。';
+    return data.result || '无法获取分析结果。';
   } catch (error: any) {
     console.error('Analysis error:', error);
-    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
-      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
-    }
-    if (error.status === 503 || error.message?.includes('overloaded') || error.message?.includes('UNAVAILABLE')) {
-      throw new Error('Gemini 服务当前过载 (503)。请稍后重试。');
-    }
     throw error;
   }
 };
@@ -352,23 +266,14 @@ export const analyzeAsset = async (
  * Enhance a raw prompt into a detailed cinematic description
  */
 export const enhancePrompt = async (rawPrompt: string): Promise<string> => {
-  const ai = getClient();
-  const model = 'gemini-2.5-flash';
-
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: `You are a film director's assistant. Rewrite the following scene description into a detailed, cinematic image generation prompt. Focus on lighting, camera angle, texture, and mood. Keep it under 100 words. \n\nInput: "${rawPrompt}"`,
+    const data = await postJson<{ result: string }>('/api/gemini-text', {
+      model: 'gemini-2.5-flash',
+      prompt: `You are a film director's assistant. Rewrite the following scene description into a detailed, cinematic image generation prompt. Focus on lighting, camera angle, texture, and mood. Keep it under 100 words. \n\nInput: "${rawPrompt}"`
     });
-    return response.text || rawPrompt;
+    return data.result || rawPrompt;
   } catch (error: any) {
     console.error('Prompt enhancement error:', error);
-    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
-      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
-    }
-    if (error.status === 503 || error.message?.includes('overloaded') || error.message?.includes('UNAVAILABLE')) {
-      throw new Error('Gemini 服务当前过载 (503)。请稍后重试。');
-    }
     return rawPrompt;
   }
 };
@@ -380,9 +285,6 @@ export const generateCinematicPrompt = async (
   baseIdea: string,
   referenceImages: ReferenceImageData[] = []
 ): Promise<string> => {
-  const ai = getClient();
-  const model = 'gemini-3-pro-preview';
-
   const systemInstruction = `You are a professional Director of Photography assistant.
 Your goal is to ENHANCE the user's existing idea with technical camera keywords, NOT to rewrite or replace their idea.
 
@@ -397,42 +299,19 @@ Example Output: "A cyber samurai, low angle shot, anamorphic lens, neon rim ligh
 
 Do NOT write full sentences. Do NOT describe the subject again if the user already did. Just add the technical sauce.`;
 
-  const contents: any[] = [];
-
-  if (baseIdea.trim()) {
-    contents.push({ text: `User Idea: "${baseIdea}"` });
-  } else {
-    contents.push({ text: `User Idea: Cinematic shot based on references.` });
-  }
-
-  // Add references for context
-  referenceImages.forEach((ref) => {
-    contents.push({
-      inlineData: {
-        mimeType: ref.mimeType,
-        data: ref.data,
-      },
-    });
-  });
-
   try {
-    const response = await ai.models.generateContent({
-      model,
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-      },
-      contents: { parts: contents },
+    const data = await postJson<{ result: string }>('/api/gemini-text', {
+      model: 'gemini-3-pro-preview',
+      prompt: baseIdea.trim()
+        ? `User Idea: "${baseIdea}"`
+        : 'User Idea: Cinematic shot based on references.',
+      systemInstruction,
+      referenceImages,
+      temperature: 0.7
     });
-    return response.text || baseIdea;
+    return data.result || baseIdea;
   } catch (error: any) {
     console.error('Auto-Director error:', error);
-    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
-      throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
-    }
-    if (error.status === 503 || error.message?.includes('overloaded') || error.message?.includes('UNAVAILABLE')) {
-      throw new Error('Gemini 服务当前过载 (503)。请稍后重试。');
-    }
     return baseIdea;
   }
 };

@@ -1,7 +1,7 @@
 'use client';
 
 import { X, Check, Star, AlertCircle } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Shot } from '@/types/project';
 
 interface GridPreviewModalProps {
@@ -9,6 +9,8 @@ interface GridPreviewModalProps {
   fullGridUrl: string;
   shots: Shot[];
   sceneId: string;
+  gridRows?: number;
+  gridCols?: number;
   onAssign: (assignments: Record<string, string>, favoriteSlices?: string[]) => void;
   onClose: () => void;
 }
@@ -18,14 +20,22 @@ export default function GridPreviewModal({
   fullGridUrl,
   shots,
   sceneId,
+  gridRows = 2,
+  gridCols = 2,
   onAssign,
   onClose,
 }: GridPreviewModalProps) {
-  const sceneShots = shots.filter((s) => s.sceneId === sceneId);
+  // 防御空值：保证 slices/shots 不为 undefined
+  const initialSlices = Array.isArray(gridImages) ? gridImages : [];
+  const safeShots = Array.isArray(shots) ? shots : [];
+  const sceneShots = sceneId
+    ? safeShots.filter((s) => s.sceneId === sceneId)
+    : safeShots;
+  const [slices, setSlices] = useState<string[]>(initialSlices);
   const [selectedShots, setSelectedShots] = useState<Set<string>>(() => {
     // If shots > slices, user must select which shots to assign
-    if (sceneShots.length > gridImages.length) {
-      return new Set(sceneShots.slice(0, gridImages.length).map((s) => s.id));
+    if (sceneShots.length > slices.length) {
+      return new Set(sceneShots.slice(0, slices.length).map((s) => s.id));
     }
     return new Set(sceneShots.map((s) => s.id));
   });
@@ -35,14 +45,65 @@ export default function GridPreviewModal({
     const initial: Record<string, string> = {};
     const selectedShotsList = sceneShots.filter((s) => selectedShots.has(s.id));
     selectedShotsList.forEach((shot, idx) => {
-      if (idx < gridImages.length) {
-        initial[shot.id] = gridImages[idx];
+      if (idx < slices.length) {
+        initial[shot.id] = slices[idx];
       }
     });
     return initial;
   });
 
   const [favoriteSlices, setFavoriteSlices] = useState<Set<string>>(new Set());
+
+  // 同步外部切片变更
+  useEffect(() => {
+    setSlices(initialSlices);
+  }, [initialSlices.join('|')]);
+
+  // 如果没有传入切片但有完整 Grid，前端兜底切片（避免空数组）
+  useEffect(() => {
+    if (slices.length === 0 && fullGridUrl) {
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = () => {
+        const w = img.width;
+        const h = img.height;
+        const pieceWidth = Math.floor(w / gridCols);
+        const pieceHeight = Math.floor(h / gridRows);
+        const pieces: string[] = [];
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        for (let r = 0; r < gridRows; r++) {
+          for (let c = 0; c < gridCols; c++) {
+            const isLastCol = c === gridCols - 1;
+            const isLastRow = r === gridRows - 1;
+            const sliceW = isLastCol ? w - c * pieceWidth : pieceWidth;
+            const sliceH = isLastRow ? h - r * pieceHeight : pieceHeight;
+            canvas.width = sliceW;
+            canvas.height = sliceH;
+            ctx.drawImage(
+              img,
+              c * pieceWidth,
+              r * pieceHeight,
+              sliceW,
+              sliceH,
+              0,
+              0,
+              sliceW,
+              sliceH
+            );
+            pieces.push(canvas.toDataURL('image/png'));
+          }
+        }
+        setSlices(pieces);
+      };
+      img.onerror = () => {
+        // 保底至少返回整张图，避免空数组
+        setSlices([fullGridUrl]);
+      };
+      img.src = fullGridUrl;
+    }
+  }, [slices.length, fullGridUrl, gridRows, gridCols]);
 
   const handleSliceClick = (sliceUrl: string, shotId: string) => {
     setAssignments((prev) => ({
@@ -85,10 +146,10 @@ export default function GridPreviewModal({
     onClose();
   };
 
-  const hasCountMismatch = sceneShots.length !== gridImages.length;
-  const hasMoreSlices = gridImages.length > sceneShots.length;
-  const hasMoreShots = sceneShots.length > gridImages.length;
-  const unusedSlices = gridImages.filter(
+  const hasCountMismatch = sceneShots.length !== slices.length;
+  const hasMoreSlices = slices.length > sceneShots.length;
+  const hasMoreShots = sceneShots.length > slices.length;
+  const unusedSlices = slices.filter(
     (slice) => !Object.values(assignments).includes(slice)
   );
 
@@ -106,10 +167,10 @@ export default function GridPreviewModal({
               <div className="flex items-center gap-2 mt-2 text-xs text-yellow-400">
                 <AlertCircle size={14} />
                 {hasMoreSlices && (
-                  <span>切片数量({gridImages.length})多于镜头数量({sceneShots.length})，未使用的切片可收藏保存</span>
+                  <span>切片数量({slices.length})多于镜头数量({sceneShots.length})，未使用的切片可收藏保存</span>
                 )}
                 {hasMoreShots && (
-                  <span>镜头数量({sceneShots.length})多于切片数量({gridImages.length})，请选择要分配的镜头</span>
+                  <span>镜头数量({sceneShots.length})多于切片数量({slices.length})，请选择要分配的镜头</span>
                 )}
               </div>
             )}
@@ -134,9 +195,9 @@ export default function GridPreviewModal({
 
           {/* Sliced Images */}
           <div>
-            <h3 className="text-sm font-bold mb-3">切片后的分镜 ({gridImages.length} 个)</h3>
+            <h3 className="text-sm font-bold mb-3">切片后的分镜 ({slices.length} 个)</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {gridImages.map((img, idx) => {
+              {slices.map((img, idx) => {
                 const isUsed = Object.values(assignments).includes(img);
                 const isFavorited = favoriteSlices.has(img);
                 return (
@@ -189,7 +250,7 @@ export default function GridPreviewModal({
               镜头分配 ({sceneShots.length} 个镜头)
               {hasMoreShots && (
                 <span className="ml-2 text-xs text-yellow-400 font-normal">
-                  (已选择 {selectedShots.size}/{gridImages.length})
+                  (已选择 {selectedShots.size}/{slices.length})
                 </span>
               )}
             </h3>
@@ -214,7 +275,7 @@ export default function GridPreviewModal({
                             checked={isSelected}
                             onChange={() => handleShotSelect(shot.id)}
                             disabled={
-                              !isSelected && selectedShots.size >= gridImages.length
+                              !isSelected && selectedShots.size >= slices.length
                             }
                             className="w-4 h-4 accent-cine-accent"
                           />
@@ -257,10 +318,10 @@ export default function GridPreviewModal({
                       {/* Slice Selector */}
                       {isSelected && (
                         <div className="flex gap-2">
-                          {gridImages.map((img, idx) => (
+                          {slices.map((img, idx) => (
                             <button
                               key={idx}
-                              onClick={() => handleSliceClick(img, shot.id)}
+                          onClick={() => handleSliceClick(img, shot.id)}
                               className={`w-12 h-12 rounded border-2 transition-all ${
                                 assignments[shot.id] === img
                                   ? 'border-cine-accent scale-110'

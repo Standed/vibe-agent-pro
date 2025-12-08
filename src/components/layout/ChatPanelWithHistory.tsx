@@ -11,9 +11,9 @@ import {
   History,
   Clock
 } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { generateMultiViewGrid, editImageWithGemini, urlsToReferenceImages } from '@/services/geminiService';
+import { generateMultiViewGrid, generateSingleImage, editImageWithGemini, urlsToReferenceImages } from '@/services/geminiService';
 import { AspectRatio, ImageSize, GenerationHistoryItem, Character, Location } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { toast } from 'sonner';
@@ -43,6 +43,8 @@ interface GridGenerationResult {
   fullImage: string;
   slices: string[];
   sceneId: string;
+  gridRows: number;
+  gridCols: number;
 }
 
 export default function ChatPanelWithHistory() {
@@ -59,7 +61,7 @@ export default function ChatPanelWithHistory() {
   const [inputText, setInputText] = useState('');
   const [selectedModel, setSelectedModel] = useState<GenerationModel>('gemini-grid');
   const [uploadedImages, setUploadedImages] = useState<File[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [pendingState, setPendingState] = useState<Record<string, { loading: boolean; message?: string }>>({});
   const [showHistory, setShowHistory] = useState(true);
   const [historyWidth, setHistoryWidth] = useState(320);
   const [isResizingHistory, setIsResizingHistory] = useState(false);
@@ -96,12 +98,35 @@ export default function ChatPanelWithHistory() {
   const scenes = project?.scenes || [];
   const selectedShot = shots.find((s) => s.id === selectedShotId);
   const generationHistory = selectedShot?.generationHistory || [];
+  const projectId = project?.id || 'default';
+
+  const contextKey = useMemo(() => {
+    if (selectedShotId) return `pro-chat:${projectId}:shot:${selectedShotId}`;
+    if (currentSceneId) return `pro-chat:${projectId}:scene:${currentSceneId}`;
+    return `pro-chat:${projectId}:global`;
+  }, [projectId, selectedShotId, currentSceneId]);
+  const currentPending = contextKey ? pendingState[contextKey] : undefined;
+  const isGenerating = Boolean(currentPending?.loading);
 
   // Reset chat when上下文切换（按镜头/场景隔离 Pro 历史）
   useEffect(() => {
-    setMessages([]);
+    try {
+      const saved = contextKey ? localStorage.getItem(contextKey) : null;
+      if (saved) {
+        const parsed: ChatMessage[] = JSON.parse(saved).map((m: any) => ({
+          ...m,
+          timestamp: new Date(m.timestamp),
+        }));
+        setMessages(parsed);
+      } else {
+        setMessages([]);
+      }
+    } catch (e) {
+      console.warn('Failed to load pro chat history', e);
+      setMessages([]);
+    }
     setMentionedAssets({ characters: [], locations: [] });
-  }, [selectedShotId, currentSceneId]);
+  }, [contextKey]);
 
   // 选中未生成图片的镜头时，自动把分镜描述填入输入框，便于直接生成
   useEffect(() => {
@@ -118,6 +143,20 @@ export default function ChatPanelWithHistory() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Persist chat history per上下文
+  useEffect(() => {
+    if (!contextKey) return;
+    try {
+      const serializable = messages.map(m => ({
+        ...m,
+        timestamp: m.timestamp.toISOString(),
+      }));
+      localStorage.setItem(contextKey, JSON.stringify(serializable));
+    } catch (e) {
+      console.warn('Failed to save pro chat history', e);
+    }
+  }, [messages, contextKey]);
 
   // 默认模型：镜头选中默认 SeeDream，场景默认 Gemini Grid；仅在上下文切换时切换默认值
   useEffect(() => {
@@ -311,8 +350,11 @@ export default function ChatPanelWithHistory() {
     setUploadedImages([]);
     setMentionedAssets({ characters: [], locations: [] });
 
-    // Generate based on selected model
-    setIsGenerating(true);
+    // Generate based on selected model（只锁定当前上下文）
+    setPendingState((prev) => ({
+      ...prev,
+      [contextKey]: { loading: true, message: '正在生成...' }
+    }));
     try {
       switch (selectedModel) {
         case 'seedream':
@@ -338,7 +380,11 @@ export default function ChatPanelWithHistory() {
         description: error.message
       });
     } finally {
-      setIsGenerating(false);
+      setPendingState((prev) => {
+        const next = { ...prev };
+        if (contextKey) delete next[contextKey];
+        return next;
+      });
       setManualReferenceUrls([]); // 清空临时参考 URL
     }
   };
@@ -551,16 +597,181 @@ export default function ChatPanelWithHistory() {
 
   // Gemini Grid generation
   const handleGeminiGridGeneration = async (prompt: string, imageFiles: File[]) => {
-    const { promptForModel, referenceImageUrls } = buildPromptWithReferences(prompt);
+    // 🎬 场景级别 Grid 生成：自动聚合场景的镜头描述
 
-    // Collect all reference image URLs from mentioned assets
-    const mentionedImageUrls: string[] = [
-      ...mentionedAssets.characters.flatMap(c => c.referenceImages || []),
-      ...mentionedAssets.locations.flatMap(l => l.referenceImages || []),
-    ];
+    // Find current scene FIRST (before prompt building)
+    const currentScene = currentSceneId
+      ? scenes.find(s => s.id === currentSceneId)
+      : selectedShot
+        ? scenes.find(s => s.shotIds.includes(selectedShotId!))
+        : null;
 
-    // Combine with enriched prompt reference images (remove duplicates)
-    const allReferenceUrls = Array.from(new Set([...referenceImageUrls, ...mentionedImageUrls]));
+    let enhancedPrompt = '';
+    const refUrlSet = new Set<string>();
+
+    // 🔍 调试：输出场景信息
+    console.log('[ChatPanel Grid Debug] ========== START ==========');
+    console.log('[ChatPanel Grid Debug] currentSceneId:', currentSceneId);
+    console.log('[ChatPanel Grid Debug] currentScene:', currentScene ? {
+      id: currentScene.id,
+      name: currentScene.name,
+      description: currentScene.description,
+      shotIds: currentScene.shotIds
+    } : null);
+
+    if (currentScene) {
+      // 🎬 场景级 Grid：聚合场景的所有镜头信息
+      const sceneShots = shots.filter(s => s.sceneId === currentScene.id);
+      const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
+      const totalSlices = rows * cols; // 2x2=4张, 3x3=9张
+
+      // 按 order 排序所有镜头
+      const sortedSceneShots = [...sceneShots].sort((a, b) => (a.order || 0) - (b.order || 0));
+
+      // 分离未分配和已分配的镜头
+      const unassignedShots = sortedSceneShots.filter(shot => !shot.referenceImage);
+      const assignedShots = sortedSceneShots.filter(shot => shot.referenceImage);
+
+      // 构建目标镜头列表：优先未分配，不足则选择最靠近的已分配镜头
+      const targetShots = [];
+
+      // 先添加所有未分配的镜头（最多 totalSlices 个）
+      for (const shot of unassignedShots) {
+        if (targetShots.length >= totalSlices) break;
+        targetShots.push(shot);
+      }
+
+      // 如果未分配的不够，从已分配的中选择"最靠近"的镜头补充
+      if (targetShots.length < totalSlices && assignedShots.length > 0) {
+        // 找到未分配镜头的 order 范围
+        const unassignedOrders = targetShots.map(s => s.order || 0);
+        const minOrder = Math.min(...unassignedOrders);
+        const maxOrder = Math.max(...unassignedOrders);
+
+        // 计算每个已分配镜头到未分配范围的"距离"
+        const assignedWithDistance = assignedShots.map(shot => {
+          const order = shot.order || 0;
+          let distance: number;
+
+          // 如果在未分配范围内，距离为 0（优先选择）
+          if (order >= minOrder && order <= maxOrder) {
+            distance = 0;
+          } else if (order < minOrder) {
+            // 在范围左边，距离 = minOrder - order
+            distance = minOrder - order;
+          } else {
+            // 在范围右边，距离 = order - maxOrder
+            distance = order - maxOrder;
+          }
+
+          return { shot, distance, order };
+        });
+
+        // 按距离排序（距离相同时按 order 排序）
+        assignedWithDistance.sort((a, b) => {
+          if (a.distance !== b.distance) {
+            return a.distance - b.distance;
+          }
+          return a.order - b.order;
+        });
+
+        // 补充需要的镜头
+        const needed = totalSlices - targetShots.length;
+        for (let i = 0; i < needed && i < assignedWithDistance.length; i++) {
+          targetShots.push(assignedWithDistance[i].shot);
+        }
+
+        // 按 order 重新排序 targetShots，保持镜头顺序
+        targetShots.sort((a, b) => (a.order || 0) - (b.order || 0));
+      }
+
+      console.log('[ChatPanel Grid Debug] sceneShots.length:', sceneShots.length);
+      console.log('[ChatPanel Grid Debug] unassignedShots.length:', unassignedShots.length);
+      console.log('[ChatPanel Grid Debug] assignedShots.length:', assignedShots.length);
+      console.log('[ChatPanel Grid Debug] totalSlices needed:', totalSlices);
+      console.log('[ChatPanel Grid Debug] targetShots.length:', targetShots.length);
+      console.log('[ChatPanel Grid Debug] targetShots:', targetShots.map(s => ({
+        id: s.id,
+        order: s.order,
+        shotSize: s.shotSize,
+        cameraMovement: s.cameraMovement,
+        description: s.description?.substring(0, 50),
+        hasImage: !!s.referenceImage
+      })));
+
+      // Build enhanced prompt combining scene, shots descriptions, and user input
+      // Add scene context
+      if (currentScene.description) {
+        enhancedPrompt += `场景：${currentScene.description}\n`;
+      }
+      if (project?.metadata.artStyle) {
+        enhancedPrompt += `画风：${project.metadata.artStyle}\n`;
+      }
+
+      // Add shot descriptions with CLEAR mapping to grid positions
+      if (targetShots.length > 0) {
+        enhancedPrompt += `\n分镜要求（${targetShots.length} 个镜头，按顺序对应 Grid 从左到右、从上到下的位置）：\n`;
+        targetShots.forEach((shot, idx) => {
+          // For 3x3 (9张), simplify shot descriptions - keep only core info
+          if (gridSize === '3x3') {
+            // 只保留核心关键信息：序号 + 景别 + 运镜 + 核心描述
+            enhancedPrompt += `Grid位置${idx + 1}（镜头#${shot.order}）: ${shot.shotSize} ${shot.cameraMovement}`;
+            // 如果有描述，只取前30字符的核心内容
+            if (shot.description) {
+              const coreDesc = shot.description.length > 30
+                ? shot.description.substring(0, 30).trim()
+                : shot.description;
+              enhancedPrompt += ` - ${coreDesc}`;
+            }
+            enhancedPrompt += '\n';
+          } else {
+            // For 2x2 (4张), use full description
+            enhancedPrompt += `Grid位置${idx + 1}（镜头#${shot.order}）: ${shot.shotSize} - ${shot.cameraMovement}\n`;
+            if (shot.description) {
+              enhancedPrompt += `   ${shot.description}\n`;
+            }
+          }
+        });
+      }
+
+      // Add user's specific requirements
+      if (prompt.trim()) {
+        enhancedPrompt += `\n额外要求：${prompt}`;
+      }
+
+      // 聚合参考图：从镜头的 mainCharacters 和 mainScenes
+      targetShots.forEach((shot) => {
+        shot.mainCharacters?.forEach((name) => {
+          const c = project?.characters.find((ch) => ch.name === name);
+          c?.referenceImages?.forEach((url) => refUrlSet.add(url));
+        });
+        shot.mainScenes?.forEach((name) => {
+          const l = project?.locations.find((loc) => loc.name === name);
+          l?.referenceImages?.forEach((url) => refUrlSet.add(url));
+        });
+      });
+
+      console.log('[ChatPanel Grid Debug] enhancedPrompt:', enhancedPrompt);
+      console.log('[ChatPanel Grid Debug] refUrlSet.size:', refUrlSet.size);
+    } else {
+      // 🖼️ 单镜头级：使用原有逻辑
+      const { promptForModel, referenceImageUrls } = buildPromptWithReferences(prompt);
+      enhancedPrompt = promptForModel;
+
+      // Collect reference images from mentioned assets
+      mentionedAssets.characters.forEach(c => {
+        c.referenceImages?.forEach(url => refUrlSet.add(url));
+      });
+      mentionedAssets.locations.forEach(l => {
+        l.referenceImages?.forEach(url => refUrlSet.add(url));
+      });
+      referenceImageUrls.forEach(url => refUrlSet.add(url));
+
+      console.log('[ChatPanel Grid Debug] No scene selected, using shot-level prompt');
+      console.log('[ChatPanel Grid Debug] promptForModel:', promptForModel);
+    }
+
+    console.log('[ChatPanel Grid Debug] ========== END ==========');
 
     // Convert uploaded files to ReferenceImageData
     const uploadedRefImages = await Promise.all(
@@ -574,30 +785,34 @@ export default function ChatPanelWithHistory() {
     );
 
     // Convert asset reference URLs to ReferenceImageData
-    const assetRefImages = allReferenceUrls.length > 0
-      ? await urlsToReferenceImages(allReferenceUrls)
+    const assetRefImages = refUrlSet.size > 0
+      ? await urlsToReferenceImages(Array.from(refUrlSet))
       : [];
 
     // Combine all reference images
     const allRefImages = [...uploadedRefImages, ...assetRefImages];
 
+    console.log('[ChatPanel Grid Debug] allRefImages.length:', allRefImages.length);
+
     // Generate Grid
     const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
-    const result = await generateMultiViewGrid(
-      promptForModel,
-      rows,
-      cols,
-      project?.settings.aspectRatio || AspectRatio.WIDE,
-      ImageSize.K4,
-      allRefImages
-    );
-
-    // Find current scene
-    const currentScene = currentSceneId
-      ? scenes.find(s => s.id === currentSceneId)
-      : selectedShot
-        ? scenes.find(s => s.shotIds.includes(selectedShotId!))
-        : null;
+    setPendingState((prev) => ({
+      ...prev,
+      [contextKey]: { loading: true, message: `正在生成 ${gridSize} Grid (${rows * cols} 张切片)...` }
+    }));
+    let result;
+    try {
+      result = await generateMultiViewGrid(
+        enhancedPrompt,
+        rows,
+        cols,
+        project?.settings.aspectRatio || AspectRatio.WIDE,
+        ImageSize.K4,
+        allRefImages
+      );
+    } catch (error: any) {
+      throw error;
+    }
 
     // Show Grid preview modal
     if (currentScene) {
@@ -605,6 +820,8 @@ export default function ChatPanelWithHistory() {
         fullImage: result.fullImage,
         slices: result.slices,
         sceneId: currentScene.id,
+        gridRows: rows,
+        gridCols: cols,
       });
     }
 
@@ -623,7 +840,7 @@ export default function ChatPanelWithHistory() {
     };
     setMessages(prev => [...prev, assistantMessage]);
 
-    toast.success('Gemini Grid 生成成功！');
+    // success toast removed; inline消息和pending提示即可
   };
 
   // Helper: Convert File to base64
@@ -804,6 +1021,11 @@ export default function ChatPanelWithHistory() {
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
+          {isGenerating && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border text-xs text-light-text-muted dark:text-cine-text-muted">
+              {currentPending?.message || '正在生成当前场景/镜头的内容...'}
+            </div>
+          )}
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <Sparkles size={48} className="text-light-accent dark:text-cine-accent mb-4 opacity-50" />
@@ -934,8 +1156,21 @@ export default function ChatPanelWithHistory() {
         {gridResult && (
           <GridPreviewModal
             fullGridUrl={gridResult.fullImage}
-            slices={gridResult.slices}
+            gridImages={gridResult.slices}
             sceneId={gridResult.sceneId}
+            shots={shots}
+            gridRows={gridResult.gridRows}
+            gridCols={gridResult.gridCols}
+            onAssign={(assignments) => {
+              Object.entries(assignments).forEach(([shotId, imageUrl]) => {
+                updateShot(shotId, {
+                  referenceImage: imageUrl,
+                  fullGridUrl: gridResult.fullImage,
+                  status: 'done',
+                });
+              });
+              setGridResult(null);
+            }}
             onClose={() => setGridResult(null)}
           />
         )}
