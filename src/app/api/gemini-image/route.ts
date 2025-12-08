@@ -1,6 +1,8 @@
-'use server';
-
 import { NextResponse } from 'next/server';
+import { ProxyAgent } from 'undici';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
@@ -10,7 +12,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'missing prompt' }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_GEMINI_API_KEY;
     const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-3-pro-image-preview';
     if (!apiKey) {
       return NextResponse.json({ error: 'gemini api key not configured' }, { status: 500 });
@@ -33,15 +35,40 @@ export async function POST(request: Request) {
       ],
       generationConfig: {
         temperature: 0.3,
+        // @ts-ignore
+        imageConfig: {
+          aspectRatio,
+          imageSize: '2K',  // 单图生成使用 2K 分辨率
+        },
       },
     };
 
     // Gemini image endpoint
-    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000); // 120s safeguard
+
+    const fetchOptions: any = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody),
-    });
+      signal: controller.signal,
+    };
+
+    // Proxy support (align with grid route)
+    if (process.env.HTTP_PROXY) {
+      try {
+        const proxyAgent = new ProxyAgent(process.env.HTTP_PROXY);
+        fetchOptions.dispatcher = proxyAgent;
+        console.log('[Gemini Image] ✅ ProxyAgent created successfully');
+      } catch (e) {
+        console.error('[Gemini Image] ❌ Failed to create ProxyAgent:', e);
+      }
+    } else {
+      console.warn('[Gemini Image] ⚠️ No HTTP_PROXY found, proceeding without proxy');
+    }
+
+    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, fetchOptions);
+    clearTimeout(timeout);
 
     if (!resp.ok) {
       const text = await resp.text();

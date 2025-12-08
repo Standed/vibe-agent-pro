@@ -1,3 +1,392 @@
+# Development Guidelines (开发指南)
+
+> **重要提醒**: always response in '简体中文'
+
+---
+
+## Philosophy (哲学理念)
+
+### 1. 渐进式开发（Progressive Development）
+- **从简单开始**：先完成核心功能的最简实现，确保可以工作
+- **逐步增强**：在可工作的基础上添加更多功能和优化
+- **快速迭代**：每个小步骤都要能编译、运行、测试
+- **避免完美主义**：不要一开始就追求完美的架构，先让它工作起来
+
+### 2. 从现有代码学习（Learn from Existing Code）
+- **搜索先行**：在写新代码前，先搜索项目中是否有类似的实现
+- **复用模式**：遵循项目中已有的代码风格和架构模式
+- **参考先例**：如果不确定如何实现，找到最相似的已有功能作为参考
+- **保持一致性**：新代码应该看起来像是项目原有的一部分
+
+### 3. 实用主义（Pragmatism）
+- **解决实际问题**：专注于用户需求，不要过度设计
+- **技术债务是可以接受的**：先让功能工作，然后标注 TODO 或技术债务
+- **渐进式重构**：不要试图一次性重构整个系统
+- **优先级驱动**：高优先级功能 > 代码优雅性
+
+### 4. 清晰的意图（Clear Intent）
+- **命名即文档**：变量名、函数名应该清楚表达意图
+- **注释解释"为什么"**：代码展示"是什么"，注释说明"为什么"
+- **更新计划文档**：完成一个步骤后，立即更新 claude.md 或 FEATURES.md
+- **沟通进度**：遇到问题时，清楚地告诉用户当前状态和选项
+
+---
+
+## Process (流程)
+
+### 规划与分阶段
+
+#### 1. 理解需求
+- 仔细阅读用户需求
+- 明确功能的输入、输出、边界条件
+- 如果需求不清晰，**提出具体的澄清问题**
+
+#### 2. 搜索先例
+```
+使用 Grep 工具搜索：
+- 类似的功能实现
+- 相关的类型定义
+- 类似的 API 调用
+- 现有的错误处理模式
+```
+
+#### 3. 分解任务
+将大任务分解为小步骤，例如：
+```
+任务：添加 Grid 历史记录
+步骤：
+1. 扩展 Scene 类型（添加 gridHistory 字段）
+2. 修改 Store Action（添加 addGridHistory）
+3. 修改 ProPanel（生成时保存历史）
+4. 添加历史记录 UI（新 Tab 或 Modal）
+5. 实现选择历史版本功能
+```
+
+#### 4. 逐步实施
+- **一次只改一个文件或一个小功能**
+- 每完成一个步骤，确保代码可以编译
+- 如果可能，在浏览器中测试
+- 更新 claude.md 标记进度
+
+### 实施流程
+
+#### Step 1: 类型定义（如果需要）
+```typescript
+// src/types/project.ts
+// 添加或修改类型定义
+```
+**检查点**：TypeScript 编译无错误
+
+#### Step 2: Store Action（如果需要）
+```typescript
+// src/store/useProjectStore.ts
+// 添加新的 action
+```
+**检查点**：TypeScript 编译无错误
+
+#### Step 3: UI 组件
+```typescript
+// src/components/...
+// 实现 UI 逻辑
+```
+**检查点**：组件可以正常渲染
+
+#### Step 4: 集成测试
+- 在浏览器中测试完整流程
+- 测试边界情况（空数据、错误等）
+- 测试与现有功能的兼容性
+
+#### Step 5: 文档更新
+- 更新 claude.md（标记任务完成）
+- 更新 FEATURES.md（如果是新功能）
+- 添加代码注释（解释复杂逻辑）
+
+### 遇到困难时
+
+#### 如果编译错误
+1. 仔细阅读错误信息
+2. 检查类型定义是否正确
+3. 搜索项目中是否有类似的错误处理
+
+#### 如果功能不工作
+1. 添加 console.log 调试
+2. 检查数据流（props → state → render）
+3. 对比现有的工作实现
+
+#### 如果连续 3 次尝试失败
+1. **停止**
+2. 重新评估方法
+3. 向用户说明情况和可能的替代方案
+4. 询问用户是否继续或改变方向
+
+---
+
+## Technical Standards (技术标准)
+
+### 架构原则
+
+#### 1. 数据流
+```
+User Action → Store Action → State Update → Component Re-render
+```
+- 所有状态修改通过 Store Actions
+- 组件尽量保持无状态（使用 Store）
+- 避免直接修改 state（使用 Immer）
+
+#### 2. 组件设计
+- **单一职责**：一个组件只做一件事
+- **Props 明确**：使用 TypeScript 定义清晰的 Props 接口
+- **事件上报**：子组件通过回调函数通知父组件，不直接修改全局状态
+
+#### 3. 文件组织
+```
+src/
+├── components/        # UI 组件
+│   ├── layout/       # 布局组件（Sidebar, Panel）
+│   ├── canvas/       # 画布相关
+│   ├── grid/         # Grid 相关
+│   ├── shot/         # 镜头相关
+│   └── project/      # 项目相关
+├── services/         # 业务逻辑和 API 调用
+├── store/            # Zustand 状态管理
+├── types/            # TypeScript 类型定义
+└── locales/          # 国际化翻译
+```
+
+### 代码质量
+
+#### 1. TypeScript 使用
+- **严格类型**：避免 `any`，使用具体类型
+- **类型复用**：相同结构的类型应该复用
+- **类型导入**：从 `src/types/project.ts` 统一导入
+
+#### 2. 命名规范
+```typescript
+// 组件：PascalCase
+const GridPreviewModal = () => {};
+
+// 函数：camelCase
+const handleGridGeneration = () => {};
+
+// 常量：UPPER_CASE
+const DEFAULT_TIMEOUT = 30000;
+
+// 类型：PascalCase
+interface GridHistoryItem {}
+```
+
+#### 3. 注释规范
+```typescript
+// ✅ 好的注释（解释"为什么"）
+// 使用 Immer 避免直接修改状态，保证 React 可以检测到变化
+const newState = produce(state, draft => {});
+
+// ❌ 不好的注释（重复代码）
+// 设置 loading 为 true
+setLoading(true);
+```
+
+### 错误处理
+
+#### 1. API 调用
+```typescript
+try {
+  const result = await apiCall();
+  return result;
+} catch (error: any) {
+  console.error('API 调用失败:', error);
+  // 显示用户友好的错误信息
+  throw new Error('操作失败，请稍后重试');
+}
+```
+
+#### 2. 边界情况
+- 检查空数组、null、undefined
+- 提供默认值
+- 显示友好的空状态 UI
+
+#### 3. 用户反馈
+- Loading 状态：显示加载指示器
+- Success 状态：显示成功提示
+- Error 状态：显示具体错误信息
+
+---
+
+## Decision Framework (决策框架)
+
+### 何时重构 vs 何时新写
+
+#### 重构现有代码（如果满足）：
+- ✅ 功能类似，只是参数或流程稍有不同
+- ✅ 可以通过添加参数或条件分支实现
+- ✅ 不会破坏现有功能
+
+#### 新写代码（如果满足）：
+- ✅ 功能完全不同
+- ✅ 重构会让现有代码过于复杂
+- ✅ 需要不同的数据结构
+
+### 何时优化 vs 何时先实现
+
+#### 先实现，后优化（如果满足）：
+- ✅ 功能是新的核心需求
+- ✅ 性能问题不明显
+- ✅ 可以标注 TODO 后续优化
+
+#### 立即优化（如果满足）：
+- ✅ 明显的性能瓶颈（如循环嵌套、大数据量）
+- ✅ 安全问题（如 XSS、CORS）
+- ✅ 用户体验严重受影响
+
+### 何时询问用户
+
+#### 应该询问的情况：
+- ❓ 需求有多种合理解释
+- ❓ 需要用户做出产品决策（如 UI 布局）
+- ❓ 需要额外的 API Key 或配置
+- ❓ 可能破坏现有功能
+
+#### 不应询问的情况（自行决定）：
+- ✅ 技术实现细节（如用哪个库）
+- ✅ 代码组织方式
+- ✅ 变量命名
+- ✅ 临时的调试代码
+
+---
+
+## Project Integration (项目集成)
+
+### 添加新功能的完整流程
+
+#### 1. 规划阶段
+- [ ] 在 claude.md "待实现功能" 部分添加条目
+- [ ] 确定是否需要修改类型定义
+- [ ] 确定是否需要新的 API 调用
+- [ ] 确定是否需要新的 Store Action
+
+#### 2. 实施阶段
+- [ ] 修改 `src/types/project.ts`（如果需要）
+- [ ] 修改 `src/store/useProjectStore.ts`（如果需要）
+- [ ] 实现服务层逻辑（`src/services/`）
+- [ ] 实现 UI 组件（`src/components/`）
+- [ ] 添加国际化文本（`src/locales/zh.ts`, `en.ts`）
+
+#### 3. 测试阶段
+- [ ] 在浏览器中手动测试
+- [ ] 测试边界情况（空数据、错误、取消操作）
+- [ ] 测试与现有功能的兼容性
+- [ ] 检查控制台是否有错误或警告
+
+#### 4. 文档阶段
+- [ ] 更新 claude.md（标记任务完成）
+- [ ] 更新 FEATURES.md（如果是新功能）
+- [ ] 添加代码注释（复杂逻辑）
+- [ ] 提交 Git Commit（遵循规范）
+
+### 使用现有服务
+
+#### Gemini API (`geminiService.ts`)
+```typescript
+import { generateMultiViewGrid } from '@/services/geminiService';
+
+const { fullImage, slices } = await generateMultiViewGrid(
+  prompt,
+  gridRows,
+  gridCols,
+  aspectRatio,
+  referenceImages
+);
+```
+
+#### Volcano Engine API (`volcanoEngineService.ts`)
+```typescript
+import { VolcanoEngineService } from '@/services/volcanoEngineService';
+
+const volcanoService = new VolcanoEngineService();
+const imageUrl = await volcanoService.generateSingleImage(prompt, size);
+const videoUrl = await volcanoService.generateVideo(imageUrl, prompt);
+```
+
+#### Store Actions (`useProjectStore.ts`)
+```typescript
+const { updateShot, addScene, deleteShot } = useProjectStore();
+
+updateShot(shotId, { referenceImage: newImageUrl });
+addScene({ name: 'Scene 1', description: '...' });
+```
+
+---
+
+## Quality Gates (质量门槛)
+
+### 提交代码前检查清单
+
+#### 编译检查
+- [ ] `npm run build` 无错误
+- [ ] TypeScript 类型检查通过
+- [ ] 无 ESLint 警告
+
+#### 功能检查
+- [ ] 主要功能流程可以正常工作
+- [ ] 边界情况（空数据、错误）有合理处理
+- [ ] 不会破坏现有功能
+
+#### 代码质量
+- [ ] 无 `any` 类型（除非确实必要）
+- [ ] 无 `console.log`（除非是有意的调试日志）
+- [ ] 命名清晰，符合项目规范
+- [ ] 复杂逻辑有注释说明
+
+#### 文档检查
+- [ ] claude.md 或 FEATURES.md 已更新
+- [ ] 复杂逻辑有代码注释
+- [ ] Git Commit Message 清晰
+
+### 定义完成（Definition of Done）
+
+一个功能被认为"完成"当且仅当：
+1. ✅ 代码可以编译且无错误
+2. ✅ 功能在浏览器中可以正常工作
+3. ✅ 边界情况有合理处理
+4. ✅ 文档已更新（claude.md / FEATURES.md）
+5. ✅ 代码已提交到 Git
+
+---
+
+## Important Reminders (重要提醒)
+
+### ⚠️ 绝对不要（NEVER）
+- ❌ 使用 `--no-verify` 跳过 Git Hooks
+- ❌ 禁用测试而不是修复它们
+- ❌ 提交无法编译的代码
+- ❌ 在不确定的情况下做出假设 - 应该验证现有代码
+- ❌ 将文档复制到多个位置
+- ❌ 因为"只是小改动"而跳过文档更新
+- ❌ 提交代码而不更新相关文档
+- ❌ 为实验性功能编写大量文档
+- ❌ 创建会与代码脱节的独立文档仓库
+
+### ✅ 始终（ALWAYS）
+- ✅ 增量提交可工作的代码
+- ✅ 随时更新计划文档
+- ✅ 从现有实现中学习
+- ✅ 3 次失败后停止并重新评估
+- ✅ 在同一个 PR 中更新文档和代码
+- ✅ 提交前测试所有代码示例
+- ✅ 链接到现有文档而不是复制
+- ✅ 将文档放在它所记录的内容附近
+- ✅ 以审查代码的严格程度审查文档
+- ✅ 立即删除或更新过时的文档
+- ✅ **所有回复使用简体中文**
+
+### 🎯 核心原则
+1. **渐进式开发** - 从简单开始，逐步增强
+2. **从现有代码学习** - 搜索先例，保持一致
+3. **实用主义** - 先让它工作，再让它完美
+4. **清晰沟通** - 及时更新进度和文档
+
+---
+
 ## Documentation Principles
 ### Core Beliefs
 - **Single Source of Truth (SSOT)** - One canonical location for each piece of information

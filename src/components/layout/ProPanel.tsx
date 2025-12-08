@@ -297,8 +297,44 @@ export default function ProPanel() {
         narration: s.narration,
         dialogue: s.dialogue
       })));
+      // 🔍 资产提示词增强：把 mainCharacters/mainScenes 也写入文本，方便匹配参考图
+      const assetNameHints = targetShots
+        .map((shot) => {
+          const parts: string[] = [];
+          if (shot.mainCharacters?.length) {
+            parts.push(`角色: ${shot.mainCharacters.join(', ')}`);
+          }
+          if (shot.mainScenes?.length) {
+            parts.push(`场景: ${shot.mainScenes.join(', ')}`);
+          }
+          return parts.join(' | ');
+        })
+        .filter(Boolean)
+        .join('\n');
+
+      const { enrichedPrompt, referenceImageUrls, referenceImageMap, usedCharacters, usedLocations } = enrichPromptWithAssets(
+        [enhancedPrompt, assetNameHints].filter(Boolean).join('\n'),
+        project
+      );
+
+      const finalPrompt = enrichedPrompt;
+
+      // 使用资源库时提示
+      if (usedCharacters.length > 0 || usedLocations.length > 0) {
+        const assetInfo: string[] = [];
+        if (usedCharacters.length > 0) {
+          assetInfo.push(`角色: ${usedCharacters.map((c) => c.name).join(', ')}`);
+        }
+        if (usedLocations.length > 0) {
+          assetInfo.push(`场景: ${usedLocations.map((l) => l.name).join(', ')}`);
+        }
+        toast.info('正在使用参考图保持一致性', {
+          description: assetInfo.join(' | ')
+        });
+      }
+
       console.log('[ProPanel Grid Debug] targetShots.length:', targetShots.length);
-      console.log('[ProPanel Grid Debug] enhancedPrompt:', enhancedPrompt);
+      console.log('[ProPanel Grid Debug] finalPrompt (with refs):', finalPrompt);
       console.log('[ProPanel Grid Debug] user input prompt:', prompt);
       console.log('[ProPanel Grid Debug] ========== END ==========');
 
@@ -329,15 +365,25 @@ export default function ProPanel() {
         });
       });
 
-      const refImagesFromAssets = await urlsToReferenceImages(Array.from(refUrlSet));
-      const refImages = [...refImagesFromUpload, ...refImagesFromAssets];
+      // 同时把 enrichPromptWithAssets 返回的参考图 URL 一并加入
+      referenceImageUrls.forEach((url) => refUrlSet.add(url));
+
+      // 参考图顺序保持与 referenceImageMap 一致，避免编号错位
+      const orderedAssetUrls = referenceImageMap.map((ref) => ref.imageUrl);
+      const extraUrls = Array.from(refUrlSet).filter((url) => !orderedAssetUrls.includes(url));
+      const finalAssetUrls = [...orderedAssetUrls, ...extraUrls];
+      const refImagesFromAssets = await urlsToReferenceImages(finalAssetUrls);
+
+      // 先放资产参考图（与编号对应），再放用户上传的补充图
+      const refImages = [...refImagesFromAssets, ...refImagesFromUpload];
 
       // 🔍 调试：输出参考图信息
       console.log('[ProPanel Grid Debug] refUrlSet:', refUrlSet);
+      console.log('[ProPanel Grid Debug] referenceImageMap:', referenceImageMap);
       console.log('[ProPanel Grid Debug] refImages.length:', refImages.length);
 
       const result = await generateMultiViewGrid(
-        enhancedPrompt,
+        finalPrompt,
         rows,
         cols,
         aspectRatio,
@@ -757,25 +803,34 @@ export default function ProPanel() {
           // Mark shot as generating
           updateShot(shot.id, { status: 'generating' as any });
 
-          // Construct prompt
+          // Construct prompt + 资产提示
           let shotPrompt = shot.description || 'Cinematic shot';
           const shotScene = scenes.find(s => s.id === shot.sceneId);
           if (shotScene?.description) shotPrompt = `Scene: ${shotScene.description}. ` + shotPrompt;
           if (project?.metadata.artStyle) shotPrompt += `. Style: ${project.metadata.artStyle}`;
 
-          // Enrich prompt with character and location context
-          const { enrichedPrompt, referenceImageUrls } = enrichPromptWithAssets(
-            shotPrompt,
+          const assetNameHints: string[] = [];
+          if (shot.mainCharacters?.length) assetNameHints.push(`角色: ${shot.mainCharacters.join(', ')}`);
+          if (shot.mainScenes?.length) assetNameHints.push(`场景: ${shot.mainScenes.join(', ')}`);
+
+          // Enrich prompt with character and location context（带参考图编号）
+          const { enrichedPrompt, referenceImageUrls, referenceImageMap } = enrichPromptWithAssets(
+            [shotPrompt, assetNameHints.join(' | ')].filter(Boolean).join('\n'),
             project,
             shot.description
           );
           shotPrompt = enrichedPrompt;
 
+          // 参考图顺序与提示词编号对齐
+          const orderedAssetUrls = referenceImageMap.map((ref) => ref.imageUrl);
+          const extraUrls = referenceImageUrls.filter((url) => !orderedAssetUrls.includes(url));
+          const finalAssetUrls = [...orderedAssetUrls, ...extraUrls];
+
           if (batchMode === 'grid') {
             // 使用 Grid 模式 (Gemini)
             // 转换参考图 URL 为 Gemini 格式
-            const refImages = referenceImageUrls.length > 0
-              ? await urlsToReferenceImages(referenceImageUrls)
+            const refImages = finalAssetUrls.length > 0
+              ? await urlsToReferenceImages(finalAssetUrls)
               : [];
 
             const result = await generateMultiViewGrid(
@@ -843,8 +898,8 @@ export default function ProPanel() {
                 });
 
                 // 转换参考图 URL 为 Gemini 格式
-                const refImages = referenceImageUrls.length > 0
-                  ? await urlsToReferenceImages(referenceImageUrls)
+                const refImages = finalAssetUrls.length > 0
+                  ? await urlsToReferenceImages(finalAssetUrls)
                   : [];
 
                 const result = await generateMultiViewGrid(
