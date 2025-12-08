@@ -87,13 +87,16 @@ export default function ChatPanelWithHistory() {
   const prevInputContextRef = useRef<string | null>(null);
   const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 45000) => {
     const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
+    const id = setTimeout(() => controller.abort('timeout'), timeoutMs);
     try {
       const resp = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(id);
       return resp;
-    } catch (e) {
+    } catch (e: any) {
       clearTimeout(id);
+      if (e?.name === 'AbortError') {
+        throw new Error('请求超时');
+      }
       throw e;
     }
   };
@@ -424,7 +427,29 @@ export default function ChatPanelWithHistory() {
       ...mentionedAssets.characters.flatMap(c => c.referenceImages || []),
       ...mentionedAssets.locations.flatMap(l => l.referenceImages || []),
     ];
-    const allReferenceUrls = Array.from(new Set([...referenceImageUrls, ...mentionedImageUrls, ...manualReferenceUrls]));
+
+    // 🔄 Seedream 也带上项目资产参考图（和 Gemini 直出保持一致）：
+    // - enrichPromptWithAssets 返回的 referenceImageUrls
+    // - usedCharacters/usedLocations 的参考图
+    // - 手动 @ 提及的资产
+    // - 手动输入的参考 URL
+    const assetUrlSet = new Set<string>(referenceImageUrls);
+    // 兼容没有 @ 的明文角色/场景名：从镜头主角色/场景取参考图
+    if (selectedShot) {
+      selectedShot.mainCharacters?.forEach(name => {
+        const c = project?.characters.find(ch => ch.name === name);
+        c?.referenceImages?.forEach(u => assetUrlSet.add(u));
+      });
+      selectedShot.mainScenes?.forEach(name => {
+        const l = project?.locations.find(loc => loc.name === name);
+        l?.referenceImages?.forEach(u => assetUrlSet.add(u));
+      });
+    }
+    usedCharacters.forEach(c => c.referenceImages?.forEach(u => assetUrlSet.add(u)));
+    usedLocations.forEach(l => l.referenceImages?.forEach(u => assetUrlSet.add(u)));
+    mentionedImageUrls.forEach(u => assetUrlSet.add(u));
+    manualReferenceUrls.forEach(u => assetUrlSet.add(u));
+    const allReferenceUrls = Array.from(assetUrlSet);
 
     const uploadedRefImages = await Promise.all(
       imageFiles.map(async (file) => {

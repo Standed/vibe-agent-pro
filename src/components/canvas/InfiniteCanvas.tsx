@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Edit2 } from 'lucide-react';
 import type { ShotSize, CameraMovement, Shot } from '@/types/project';
@@ -26,9 +26,35 @@ export default function InfiniteCanvas() {
     cameraMovement: '',
     duration: 3,
   });
+  const [shotImagePreview, setShotImagePreview] = useState<string | null>(null);
+  const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
 
   const shotSizeOptions: ShotSize[] = ['Extreme Wide Shot', 'Wide Shot', 'Medium Shot', 'Close-Up', 'Extreme Close-Up'];
   const cameraMovementOptions: CameraMovement[] = ['Static', 'Pan Left', 'Pan Right', 'Tilt Up', 'Tilt Down', 'Dolly In', 'Dolly Out', 'Zoom In', 'Zoom Out', 'Handheld'];
+
+  const liveEditingShot = editingShot
+    ? project?.shots.find((s) => s.id === editingShot.id) || editingShot
+    : null;
+
+  const shotHistoryImages = useMemo(() => {
+    if (!liveEditingShot) return [];
+    const urls = new Set<string>();
+    if (liveEditingShot.referenceImage) urls.add(liveEditingShot.referenceImage);
+    liveEditingShot.gridImages?.forEach((u) => u && urls.add(u));
+    liveEditingShot.generationHistory?.forEach((h) => {
+      if (h.type === 'image' && typeof h.result === 'string') urls.add(h.result);
+      if ((h.parameters as any)?.fullGridUrl) urls.add((h.parameters as any).fullGridUrl);
+    });
+    return Array.from(urls);
+  }, [liveEditingShot]);
+
+  useEffect(() => {
+    if (liveEditingShot?.referenceImage) {
+      setSelectedHistoryImage(liveEditingShot.referenceImage);
+    } else {
+      setSelectedHistoryImage(null);
+    }
+  }, [liveEditingShot?.referenceImage, editingShot?.id]);
 
   // Handle image preview
   const handlePreview = (imageUrl: string, e: React.MouseEvent) => {
@@ -549,6 +575,31 @@ export default function InfiniteCanvas() {
                 </div>
               </div>
             </div>
+            {/* 历史分镜图片 */}
+            <div className="px-4">
+              <div className="text-xs font-medium text-light-text dark:text-white mb-2">历史分镜图片</div>
+              {shotHistoryImages.length === 0 ? (
+                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-3">暂无历史图片</div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 mb-3">
+                  {shotHistoryImages.map((url, idx) => (
+                    <div
+                      key={idx}
+                      className={`relative aspect-video bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden border cursor-pointer transition-colors ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/40 dark:ring-cine-accent/40' : 'border-light-border/70 dark:border-cine-border/70 hover:border-light-accent dark:hover:border-cine-accent'}`}
+                      onClick={() => {
+                        setSelectedHistoryImage(url);
+                        if (liveEditingShot) {
+                          updateShot(liveEditingShot.id, { referenceImage: url, status: 'done' });
+                        }
+                      }}
+                      onDoubleClick={() => setShotImagePreview(url)}
+                    >
+                      <img src={url} alt={`history-${idx + 1}`} className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="flex justify-end gap-2 px-4 py-3 border-t border-light-border dark:border-cine-border">
               <button
                 onClick={() => setEditingShot(null)}
@@ -563,6 +614,14 @@ export default function InfiniteCanvas() {
                 保存并应用
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {shotImagePreview && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] p-4" onClick={() => setShotImagePreview(null)}>
+          <div className="max-w-5xl w-full max-h-[90vh]">
+            <img src={shotImagePreview} alt="历史预览" className="w-full h-full object-contain rounded-lg" />
           </div>
         </div>
       )}
