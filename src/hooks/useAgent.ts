@@ -15,6 +15,7 @@ import { buildEnhancedContext } from '@/services/contextBuilder';
 import { ParallelExecutor, ExecutionProgress } from '@/services/parallelExecutor';
 import { SessionManager } from '@/services/sessionManager';
 import { ThinkingStep } from '@/components/agent/ThinkingProcess';
+import { StoreCallbacks } from '@/services/agentTools';
 import { toast } from 'sonner';
 
 export interface UseAgentResult {
@@ -26,7 +27,7 @@ export interface UseAgentResult {
 }
 
 export function useAgent(): UseAgentResult {
-  const { project, currentSceneId, selectedShotId } = useProjectStore();
+  const { project, currentSceneId, selectedShotId, updateShot, addGenerationHistory, addGridHistory, clearChatHistory } = useProjectStore();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
@@ -81,7 +82,7 @@ export function useAgent(): UseAgentResult {
         status: 'running',
       });
 
-      const enhancedContext = buildEnhancedContext(project, currentSceneId, selectedShotId);
+      const enhancedContext = buildEnhancedContext(project, currentSceneId ?? undefined, selectedShotId ?? undefined);
 
       updateStep(stepId1, {
         status: 'completed',
@@ -141,9 +142,17 @@ export function useAgent(): UseAgentResult {
           status: 'running',
         });
 
+        // 准备 Store 回调
+        const storeCallbacks: StoreCallbacks = {
+          updateShot,
+          addGenerationHistory,
+          addGridHistory,
+        };
+
         // 使用并行执行器
         const executor = new ParallelExecutor(
           project,
+          storeCallbacks,
           (progress: ExecutionProgress) => {
             updateStep(stepId4, {
               details: `${progress.currentStep} (${progress.completed}/${progress.total})`,
@@ -231,15 +240,16 @@ export function useAgent(): UseAgentResult {
     } finally {
       setIsProcessing(false);
     }
-  }, [project, currentSceneId, selectedShotId, sessionManager, addStep, updateStep]);
+  }, [project, currentSceneId, selectedShotId, sessionManager, addStep, updateStep, updateShot, addGenerationHistory, addGridHistory]);
 
   // Clear session
   const clearSession = useCallback(async () => {
     await sessionManager.clear();
+    clearChatHistory();
     setThinkingSteps([]);
     setSummary('');
     toast.info('会话已清除');
-  }, [sessionManager]);
+  }, [sessionManager, clearChatHistory]);
 
   return {
     isProcessing,

@@ -23,6 +23,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'missing payload' }, { status: 400 });
     }
 
+    // Log the request details for debugging
+    console.log('[Gemini Generate] Model:', model);
+    console.log('[Gemini Generate] Tools count:', payload.tools?.[0]?.function_declarations?.length || 0);
+    console.log('[Gemini Generate] Request payload:', JSON.stringify(payload, null, 2));
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 120000); // 120s safeguard
 

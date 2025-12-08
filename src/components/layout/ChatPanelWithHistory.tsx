@@ -1019,7 +1019,7 @@ export default function ChatPanelWithHistory() {
                         if (msg.gridData?.fullImage && msg.gridData?.slices?.length) {
                           const rows = msg.gridData.gridRows || (gridSize === '3x3' ? 3 : 2);
                           const cols = msg.gridData.gridCols || (gridSize === '3x3' ? 3 : 2);
-                          const sceneId = msg.gridData.sceneId || currentSceneId || currentScene?.id || null;
+                          const sceneId = msg.gridData.sceneId || currentSceneId || null;
                           if (sceneId) {
                             setGridResult({
                               fullImage: msg.gridData.fullImage,

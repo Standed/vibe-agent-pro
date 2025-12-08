@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, User, Bot, Trash2 } from 'lucide-react';
+import { Send, Loader2, User, Bot, Trash2, Sparkles, Image as ImageIcon, Grid3x3 } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { ChatMessage } from '@/types/project';
 import { useAgent } from '@/hooks/useAgent';
@@ -156,6 +156,45 @@ export default function AgentPanel() {
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Quick Presets */}
+      {chatHistory.length === 0 && !isProcessing && (
+        <div className="px-4 py-3 border-t border-light-border dark:border-cine-border bg-light-panel/50 dark:bg-cine-panel/50">
+          <p className="text-xs text-light-text-muted dark:text-cine-text-muted mb-2">
+            快捷操作：
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setInput('使用 SeeDream 为当前场景所有未生成的分镜生成图片')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
+            >
+              <Sparkles size={14} />
+              SeeDream 批量生成
+            </button>
+            <button
+              onClick={() => setInput('使用 Gemini Grid (2x2) 为当前场景生成多视图并自动分配')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
+            >
+              <Grid3x3 size={14} />
+              Grid 2x2 自动分配
+            </button>
+            <button
+              onClick={() => setInput('使用 Gemini Grid (3x3) 为当前场景生成多视图并自动分配')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
+            >
+              <Grid3x3 size={14} />
+              Grid 3x3 自动分配
+            </button>
+            <button
+              onClick={() => setInput('为整个项目的所有未生成分镜使用 SeeDream 生成图片')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
+            >
+              <ImageIcon size={14} />
+              全项目批量生成
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Input */}
       <div className="p-4 border-t border-light-border dark:border-cine-border">
