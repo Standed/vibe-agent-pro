@@ -39,6 +39,9 @@ interface ChatMessage {
     sceneId?: string;
     gridRows?: number;
     gridCols?: number;
+    prompt?: string;
+    aspectRatio?: AspectRatio;
+    gridSize?: '2x2' | '3x3';
   };
 }
 
@@ -48,6 +51,9 @@ interface GridGenerationResult {
   sceneId: string;
   gridRows: number;
   gridCols: number;
+  prompt: string;
+  aspectRatio: AspectRatio;
+  gridSize: '2x2' | '3x3';
 }
 
 export default function ChatPanelWithHistory() {
@@ -869,6 +875,9 @@ export default function ChatPanelWithHistory() {
         sceneId: currentScene.id,
         gridRows: rows,
         gridCols: cols,
+        prompt: finalPrompt,
+        aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
+        gridSize: gridSize,
       });
 
       // Save Grid to scene history
@@ -898,6 +907,9 @@ export default function ChatPanelWithHistory() {
         sceneId: currentScene?.id,
         gridRows: rows,
         gridCols: cols,
+        prompt: finalPrompt,
+        aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
+        gridSize: gridSize,
       },
     };
     setMessages(prev => [...prev, assistantMessage]);
@@ -976,6 +988,9 @@ export default function ChatPanelWithHistory() {
                               sceneId,
                               gridRows: rows,
                               gridCols: cols,
+                              prompt: msg.gridData.prompt || '',
+                              aspectRatio: msg.gridData.aspectRatio || AspectRatio.WIDE,
+                              gridSize: msg.gridData.gridSize || gridSize,
                             });
                           }
                         }
@@ -1246,6 +1261,23 @@ export default function ChatPanelWithHistory() {
                   fullGridUrl: gridResult.fullImage,
                   status: 'done',
                 });
+
+                // Add to shot generation history
+                const historyItem: GenerationHistoryItem = {
+                  id: `gen_${Date.now()}_${shotId}`,
+                  type: 'image',
+                  timestamp: new Date(),
+                  result: imageUrl,
+                  prompt: gridResult.prompt,
+                  parameters: {
+                    model: 'Gemini Grid',
+                    gridSize: gridResult.gridSize,
+                    aspectRatio: gridResult.aspectRatio,
+                    fullGridUrl: gridResult.fullImage,
+                  },
+                  status: 'success',
+                };
+                addGenerationHistory(shotId, historyItem);
               });
               setGridResult(null);
             }}
