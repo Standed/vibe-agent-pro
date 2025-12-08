@@ -7,8 +7,7 @@ export const dynamic = 'force-dynamic';
 const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-3-pro-image-preview';
 const GEMINI_API_KEY =
   process.env.GEMINI_API_KEY ||
-  process.env.NEXT_GEMINI_API_KEY ||
-  process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  process.env.NEXT_GEMINI_API_KEY;
 
 const isValidGridSize = (n: any) => Number.isInteger(n) && (n === 2 || n === 3);
 const toSafeImages = (refs: any) =>
@@ -89,6 +88,7 @@ export async function POST(request: Request) {
 
     if (process.env.HTTP_PROXY) {
       try {
+        // 创建代理 Agent（使用简单的字符串 URI，超时由外层 AbortController 控制）
         const proxyAgent = new ProxyAgent(process.env.HTTP_PROXY);
         fetchOptions.dispatcher = proxyAgent;
         console.log('[Gemini Grid] ✅ ProxyAgent created successfully');

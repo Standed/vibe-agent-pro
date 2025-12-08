@@ -113,6 +113,13 @@ export const generateMultiViewGrid = async (
   imageSize: ImageSize,
   referenceImages: ReferenceImageData[] = []
 ): Promise<{ fullImage: string; slices: string[] }> => {
+  // 过多参考图会拖慢生成或触发超时，这里做上限截断
+  const MAX_REF_IMAGES = 8;
+  const safeReferenceImages =
+    referenceImages.length > MAX_REF_IMAGES
+      ? referenceImages.slice(0, MAX_REF_IMAGES)
+      : referenceImages;
+
   const totalViews = gridRows * gridCols;
   const gridType = `${gridRows}x${gridCols}`;
 
@@ -155,7 +162,7 @@ ${prompt}
       gridRows,
       gridCols,
       aspectRatio,
-      referenceImages
+      referenceImages: safeReferenceImages
     });
 
     const fullImageBase64 = data.fullImage;
@@ -348,9 +355,9 @@ export const urlToReferenceImageData = async (imageUrl: string): Promise<Referen
     throw new Error('无效的 data URL 格式');
   }
 
-  // 如果是 HTTP(S) URL，需要下载并转换
-  try {
-    const response = await fetch(imageUrl);
+  // 如果是 HTTP(S) URL，需要下载并转换（先尝试前端，失败则走后端代理，避免 CORS）
+  const fetchAndConvert = async (url: string): Promise<ReferenceImageData> => {
+    const response = await fetch(url);
     const blob = await response.blob();
     const mimeType = blob.type || 'image/png';
 
@@ -364,9 +371,22 @@ export const urlToReferenceImageData = async (imageUrl: string): Promise<Referen
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+  };
+
+  try {
+    return await fetchAndConvert(imageUrl);
   } catch (error) {
-    console.error('Failed to fetch image:', imageUrl, error);
-    throw new Error(`无法获取参考图: ${imageUrl}`);
+    console.warn('Front-end fetch failed, fallback to proxy:', imageUrl, error);
+    const proxyResp = await fetch(`/api/fetch-image?url=${encodeURIComponent(imageUrl)}`);
+    if (!proxyResp.ok) {
+      const text = await proxyResp.text();
+      throw new Error(text || `无法获取参考图: ${imageUrl}`);
+    }
+    const data = await proxyResp.json();
+    return {
+      mimeType: data.mimeType || 'image/png',
+      data: data.data,
+    };
   }
 };
 

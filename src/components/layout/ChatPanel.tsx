@@ -374,12 +374,25 @@ export default function ChatPanel() {
 
   // Gemini Grid generation
   const handleGeminiGridGeneration = async (prompt: string, imageFiles: File[]) => {
-    // Enrich prompt with assets
-    const { enrichedPrompt, referenceImageUrls } = enrichPromptWithAssets(
-      prompt,
+    // 补充镜头/场景的角色/地点名称，确保参考图被识别
+    const assetNameHints: string[] = [];
+    if (selectedShot?.mainCharacters?.length) {
+      assetNameHints.push(`角色: ${selectedShot.mainCharacters.join(', ')}`);
+    }
+    if (selectedShot?.mainScenes?.length) {
+      assetNameHints.push(`场景: ${selectedShot.mainScenes.join(', ')}`);
+    }
+
+    // Enrich prompt with assets (包含参考图编号标记)
+    const { enrichedPrompt, referenceImageUrls, referenceImageMap, usedCharacters, usedLocations } = enrichPromptWithAssets(
+      [prompt, assetNameHints.join(' | ')].filter(Boolean).join('\n'),
       project,
       selectedShot?.description
     );
+    const finalPrompt = enrichedPrompt;
+
+    // 参考图顺序：按 referenceImageMap 的编号，避免与提示词标记错位
+    const orderedAssetUrls = referenceImageMap.map((ref) => ref.imageUrl);
 
     // Convert uploaded files to ReferenceImageData
     const uploadedRefImages = await Promise.all(
@@ -392,13 +405,21 @@ export default function ChatPanel() {
       })
     );
 
-    // Convert asset reference URLs to ReferenceImageData
-    const assetRefImages = referenceImageUrls.length > 0
-      ? await urlsToReferenceImages(referenceImageUrls)
+    // Convert asset reference URLs to ReferenceImageData（严格按顺序）
+    const assetRefImages = orderedAssetUrls.length > 0
+      ? await urlsToReferenceImages(orderedAssetUrls)
       : [];
 
-    // Combine all reference images
-    const allRefImages = [...uploadedRefImages, ...assetRefImages];
+    // Combine all reference images（资产在前，上传在后，保证编号对应资产参考图）
+    const allRefImages = [...assetRefImages, ...uploadedRefImages];
+
+    // 资产提示信息
+    if (usedCharacters.length > 0 || usedLocations.length > 0) {
+      const info: string[] = [];
+      if (usedCharacters.length > 0) info.push(`角色: ${usedCharacters.map(c => c.name).join(', ')}`);
+      if (usedLocations.length > 0) info.push(`场景: ${usedLocations.map(l => l.name).join(', ')}`);
+      toast.info('正在使用参考图保持一致性', { description: info.join(' | ') });
+    }
 
     // Generate Grid
     const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
@@ -409,7 +430,7 @@ export default function ChatPanel() {
     let result;
     try {
       result = await generateMultiViewGrid(
-        enrichedPrompt,
+        finalPrompt,
         rows,
         cols,
         project?.settings.aspectRatio || AspectRatio.WIDE,

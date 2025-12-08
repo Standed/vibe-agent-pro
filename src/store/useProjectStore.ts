@@ -328,62 +328,78 @@ export const useProjectStore = create<ProjectStore>()(
     },
 
     // Character Actions
-    addCharacter: (character) =>
+    addCharacter: (character) => {
       set((state) => {
         state.project?.characters.push(character);
-      }),
+      });
+      get().saveProject();
+    },
 
-    updateCharacter: (id, updates) =>
+    updateCharacter: (id, updates) => {
       set((state) => {
         const character = state.project?.characters.find((c) => c.id === id);
         if (character) {
           Object.assign(character, updates);
         }
-      }),
+      });
+      get().saveProject();
+    },
 
-    deleteCharacter: (id) =>
+    deleteCharacter: (id) => {
       set((state) => {
         if (!state.project) return;
         state.project.characters = state.project.characters.filter(
           (c) => c.id !== id
         );
-      }),
+      });
+      get().saveProject();
+    },
 
     // Location Actions
-    addLocation: (location) =>
+    addLocation: (location) => {
       set((state) => {
         state.project?.locations.push(location);
-      }),
+      });
+      get().saveProject();
+    },
 
-    updateLocation: (id, updates) =>
+    updateLocation: (id, updates) => {
       set((state) => {
         const location = state.project?.locations.find((l) => l.id === id);
         if (location) {
           Object.assign(location, updates);
         }
-      }),
+      });
+      get().saveProject();
+    },
 
-    deleteLocation: (id) =>
+    deleteLocation: (id) => {
       set((state) => {
         if (!state.project) return;
         state.project.locations = state.project.locations.filter(
           (l) => l.id !== id
         );
-      }),
+      });
+      get().saveProject();
+    },
 
     // Audio Actions
-    addAudioAsset: (audio) =>
+    addAudioAsset: (audio) => {
       set((state) => {
         state.project?.audioAssets.push(audio);
-      }),
+      });
+      get().saveProject();
+    },
 
-    deleteAudioAsset: (id) =>
+    deleteAudioAsset: (id) => {
       set((state) => {
         if (!state.project) return;
         state.project.audioAssets = state.project.audioAssets.filter(
           (a) => a.id !== id
         );
-      }),
+      });
+      get().saveProject();
+    },
 
     // Chat Actions
     addChatMessage: (message) => {

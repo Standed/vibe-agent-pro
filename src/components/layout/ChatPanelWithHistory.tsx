@@ -36,6 +36,9 @@ interface ChatMessage {
   gridData?: {
     fullImage: string;
     slices: string[];
+    sceneId?: string;
+    gridRows?: number;
+    gridCols?: number;
   };
 }
 
@@ -607,6 +610,7 @@ export default function ChatPanelWithHistory() {
         : null;
 
     let enhancedPrompt = '';
+    let assetNameHints = '';
     const refUrlSet = new Set<string>();
 
     // 🔍 调试：输出场景信息
@@ -734,6 +738,21 @@ export default function ChatPanelWithHistory() {
         });
       }
 
+      // 生成资产名称提示，便于参考图匹配
+      assetNameHints = targetShots
+        .map((shot) => {
+          const parts: string[] = [];
+          if (shot.mainCharacters?.length) {
+            parts.push(`角色: ${shot.mainCharacters.join(', ')}`);
+          }
+          if (shot.mainScenes?.length) {
+            parts.push(`场景: ${shot.mainScenes.join(', ')}`);
+          }
+          return parts.join(' | ');
+        })
+        .filter(Boolean)
+        .join('\n');
+
       // Add user's specific requirements
       if (prompt.trim()) {
         enhancedPrompt += `\n额外要求：${prompt}`;
@@ -767,11 +786,36 @@ export default function ChatPanelWithHistory() {
       });
       referenceImageUrls.forEach(url => refUrlSet.add(url));
 
+      const shotHints: string[] = [];
+      if (selectedShot?.mainCharacters?.length) {
+        shotHints.push(`角色: ${selectedShot.mainCharacters.join(', ')}`);
+      }
+      if (selectedShot?.mainScenes?.length) {
+        shotHints.push(`场景: ${selectedShot.mainScenes.join(', ')}`);
+      }
+      assetNameHints = shotHints.join(' | ');
+
       console.log('[ChatPanel Grid Debug] No scene selected, using shot-level prompt');
       console.log('[ChatPanel Grid Debug] promptForModel:', promptForModel);
     }
 
+    const { enrichedPrompt, referenceImageUrls: enrichedRefUrls, referenceImageMap, usedCharacters, usedLocations } = enrichPromptWithAssets(
+      [enhancedPrompt, assetNameHints].filter(Boolean).join('\n'),
+      project,
+      currentScene ? undefined : selectedShot?.description
+    );
+    const finalPrompt = enrichedPrompt;
+    enrichedRefUrls.forEach((url) => refUrlSet.add(url));
+
+    if (usedCharacters.length > 0 || usedLocations.length > 0) {
+      const info: string[] = [];
+      if (usedCharacters.length > 0) info.push(`角色: ${usedCharacters.map(c => c.name).join(', ')}`);
+      if (usedLocations.length > 0) info.push(`场景: ${usedLocations.map(l => l.name).join(', ')}`);
+      toast.info('正在使用参考图保持一致性', { description: info.join(' | ') });
+    }
+
     console.log('[ChatPanel Grid Debug] ========== END ==========');
+    console.log('[ChatPanel Grid Debug] referenceImageMap:', referenceImageMap);
 
     // Convert uploaded files to ReferenceImageData
     const uploadedRefImages = await Promise.all(
@@ -784,13 +828,15 @@ export default function ChatPanelWithHistory() {
       })
     );
 
-    // Convert asset reference URLs to ReferenceImageData
+    // Convert asset reference URLs to ReferenceImageData（顺序与 referenceImageMap 对齐）
+    const orderedAssetUrls = referenceImageMap.map((ref) => ref.imageUrl);
+    const extraUrls = Array.from(refUrlSet).filter((url) => !orderedAssetUrls.includes(url));
     const assetRefImages = refUrlSet.size > 0
-      ? await urlsToReferenceImages(Array.from(refUrlSet))
+      ? await urlsToReferenceImages([...orderedAssetUrls, ...extraUrls])
       : [];
 
-    // Combine all reference images
-    const allRefImages = [...uploadedRefImages, ...assetRefImages];
+    // Combine all reference images（资产在前，上传在后，保证编号对应资产参考图）
+    const allRefImages = [...assetRefImages, ...uploadedRefImages];
 
     console.log('[ChatPanel Grid Debug] allRefImages.length:', allRefImages.length);
 
@@ -803,7 +849,7 @@ export default function ChatPanelWithHistory() {
     let result;
     try {
       result = await generateMultiViewGrid(
-        enhancedPrompt,
+        finalPrompt,
         rows,
         cols,
         project?.settings.aspectRatio || AspectRatio.WIDE,
@@ -836,6 +882,9 @@ export default function ChatPanelWithHistory() {
       gridData: {
         fullImage: result.fullImage,
         slices: result.slices,
+        sceneId: currentScene?.id,
+        gridRows: rows,
+        gridCols: cols,
       },
     };
     setMessages(prev => [...prev, assistantMessage]);
@@ -902,11 +951,27 @@ export default function ChatPanelWithHistory() {
                       src={img}
                       alt={`Result ${idx + 1}`}
                       className="rounded-lg border border-light-border dark:border-cine-border w-full cursor-pointer hover:border-light-accent dark:hover:border-cine-accent transition-colors"
+                      onClick={() => {
+                        if (msg.gridData?.fullImage && msg.gridData?.slices?.length) {
+                          const rows = msg.gridData.gridRows || (gridSize === '3x3' ? 3 : 2);
+                          const cols = msg.gridData.gridCols || (gridSize === '3x3' ? 3 : 2);
+                          const sceneId = msg.gridData.sceneId || currentSceneId || currentScene?.id || null;
+                          if (sceneId) {
+                            setGridResult({
+                              fullImage: msg.gridData.fullImage,
+                              slices: msg.gridData.slices,
+                              sceneId,
+                              gridRows: rows,
+                              gridCols: cols,
+                            });
+                          }
+                        }
+                      }}
                     />
                     {msg.gridData && (
                       <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
                         <Grid3x3 size={12} />
-                        Grid {gridSize}
+                        Grid {msg.gridData.gridRows && msg.gridData.gridCols ? `${msg.gridData.gridRows}x${msg.gridData.gridCols}` : gridSize}
                       </div>
                     )}
                   </div>

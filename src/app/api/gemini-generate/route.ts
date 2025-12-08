@@ -1,12 +1,10 @@
-'use server';
 
 import { NextResponse } from 'next/server';
 
 const DEFAULT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
 const GEMINI_API_KEY =
   process.env.GEMINI_API_KEY ||
-  process.env.NEXT_GEMINI_API_KEY ||
-  process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  process.env.NEXT_GEMINI_API_KEY;
 
 export async function POST(request: Request) {
   if (!GEMINI_API_KEY) {
