@@ -14,7 +14,7 @@ import {
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { generateMultiViewGrid, generateSingleImage, editImageWithGemini, urlsToReferenceImages } from '@/services/geminiService';
-import { AspectRatio, ImageSize, GenerationHistoryItem, Character, Location } from '@/types/project';
+import { AspectRatio, ImageSize, GenerationHistoryItem, GridHistoryItem, Character, Location } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { toast } from 'sonner';
 import { validateGenerationConfig } from '@/utils/promptSecurity';
@@ -56,6 +56,7 @@ export default function ChatPanelWithHistory() {
     selectedShotId,
     updateShot,
     addGenerationHistory,
+    addGridHistory,
     currentSceneId,
   } = useProjectStore();
 
@@ -869,6 +870,18 @@ export default function ChatPanelWithHistory() {
         gridRows: rows,
         gridCols: cols,
       });
+
+      // Save Grid to scene history
+      const gridHistory: GridHistoryItem = {
+        id: `grid_${Date.now()}`,
+        timestamp: new Date(),
+        fullGridUrl: result.fullImage,
+        slices: result.slices,
+        gridSize: gridSize,
+        prompt: finalPrompt,
+        aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
+      };
+      addGridHistory(currentScene.id, gridHistory);
     }
 
     // Add assistant message with grid result
