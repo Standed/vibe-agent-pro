@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FileText,
   Film,
@@ -48,6 +48,8 @@ export default function LeftSidebarNew() {
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [showScriptEditor, setShowScriptEditor] = useState(false);
   const [editingShot, setEditingShot] = useState<Shot | null>(null);
+  const [shotImagePreview, setShotImagePreview] = useState<string | null>(null);
+  const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
   const [shotForm, setShotForm] = useState<{
     description: string;
     narration: string;
@@ -93,6 +95,34 @@ export default function LeftSidebarNew() {
 
   const scenes = project?.scenes || [];
   const shots = project?.shots || [];
+  const liveEditingShot = editingShot ? project?.shots.find((s) => s.id === editingShot.id) || editingShot : null;
+
+  useEffect(() => {
+    if (liveEditingShot?.referenceImage) {
+      setSelectedHistoryImage(liveEditingShot.referenceImage);
+    } else {
+      setSelectedHistoryImage(null);
+    }
+  }, [liveEditingShot?.referenceImage, editingShot?.id]);
+  const shotHistoryImages = useMemo(() => {
+    if (!liveEditingShot) return [];
+    const urls = new Set<string>();
+    if (liveEditingShot.referenceImage) urls.add(liveEditingShot.referenceImage);
+    if (liveEditingShot.gridImages?.length) {
+      liveEditingShot.gridImages.forEach((u) => u && urls.add(u));
+    }
+    if (liveEditingShot.generationHistory?.length) {
+      liveEditingShot.generationHistory.forEach((h) => {
+        if (h.type === 'image' && typeof h.result === 'string') {
+          urls.add(h.result);
+        }
+        if (h.parameters && (h.parameters as any)?.fullGridUrl) {
+          urls.add((h.parameters as any).fullGridUrl);
+        }
+      });
+    }
+    return Array.from(urls);
+  }, [liveEditingShot]);
 
   const toggleSceneCollapse = (sceneId: string) => {
     setCollapsedScenes((prev) => {
@@ -911,6 +941,14 @@ export default function LeftSidebarNew() {
         </div>
       )}
 
+      {shotImagePreview && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" onClick={() => setShotImagePreview(null)}>
+          <div className="max-w-5xl w-full max-h-[90vh]">
+            <img src={shotImagePreview} alt="预览" className="w-full h-full object-contain rounded-lg" />
+          </div>
+        </div>
+      )}
+
       {editingShot && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-xl shadow-xl w-[900px] max-w-[96vw] max-h-[88vh] overflow-hidden flex flex-col">
@@ -997,6 +1035,31 @@ export default function LeftSidebarNew() {
                   />
                 </div>
               </div>
+            </div>
+            {/* 历史图片记录 */}
+            <div className="px-4">
+              <div className="text-xs font-medium text-light-text dark:text-white mb-2">历史分镜图片</div>
+              {shotHistoryImages.length === 0 ? (
+                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-3">暂无历史图片</div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 mb-3">
+                  {shotHistoryImages.map((url, idx) => (
+                    <div
+                      key={idx}
+                      className={`relative aspect-video bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden border cursor-pointer transition-colors ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/40 dark:ring-cine-accent/40' : 'border-light-border/70 dark:border-cine-border/70 hover:border-light-accent dark:hover:border-cine-accent'}`}
+                      onClick={() => {
+                        setSelectedHistoryImage(url);
+                        if (liveEditingShot) {
+                          updateShot(liveEditingShot.id, { referenceImage: url, status: 'done' });
+                        }
+                      }}
+                      onDoubleClick={() => setShotImagePreview(url)}
+                    >
+                      <img src={url} alt={`history-${idx + 1}`} className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2 px-4 py-3 border-t border-light-border dark:border-cine-border">
               <button

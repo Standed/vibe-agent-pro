@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   ArrowLeft,
   Download,
@@ -39,6 +39,8 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
   const [regeneratePrompt, setRegeneratePrompt] = useState('');
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [showFullscreen, setShowFullscreen] = useState(false);
+  const [shotImagePreview, setShotImagePreview] = useState<string | null>(null);
+  const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
 
   // 添加历史记录区域的 ref，用于自动滚动
   const historyRef = useRef<HTMLDivElement>(null);
@@ -54,6 +56,26 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
   const handleFieldUpdate = (field: keyof Shot, value: any) => {
     updateShot(shotId, { [field]: value });
   };
+
+  const shotHistoryImages = useMemo(() => {
+    if (!shot) return [];
+    const urls = new Set<string>();
+    if (shot.referenceImage) urls.add(shot.referenceImage);
+    shot.gridImages?.forEach((u) => u && urls.add(u));
+    shot.generationHistory?.forEach((h) => {
+      if (h.type === 'image' && typeof h.result === 'string') urls.add(h.result);
+      if ((h.parameters as any)?.fullGridUrl) urls.add((h.parameters as any).fullGridUrl);
+    });
+    return Array.from(urls);
+  }, [shot]);
+
+  useEffect(() => {
+    if (shot?.referenceImage) {
+      setSelectedHistoryImage(shot.referenceImage);
+    } else {
+      setSelectedHistoryImage(null);
+    }
+  }, [shot?.referenceImage, shotId]);
 
   const handleRegenerate = () => {
     // 获取最后一次生成的提示词
@@ -367,6 +389,30 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
             <Download size={16} />
             <span>下载</span>
           </button>
+        </div>
+
+        {/* 历史分镜图片 */}
+        <div>
+          <div className="text-sm font-medium text-light-text dark:text-white mb-2">历史分镜图片</div>
+          {shotHistoryImages.length === 0 ? (
+            <div className="text-xs text-light-text-muted dark:text-cine-text-muted">暂无历史图片</div>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+              {shotHistoryImages.map((url, idx) => (
+                <div
+                  key={idx}
+                  className={`relative aspect-video rounded-lg overflow-hidden border cursor-pointer transition-colors ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/40 dark:ring-cine-accent/40' : 'border-light-border/70 dark:border-cine-border/70 hover:border-light-accent dark:hover:border-cine-accent'}`}
+                  onClick={() => {
+                    setSelectedHistoryImage(url);
+                    updateShot(shotId, { referenceImage: url, status: 'done' });
+                  }}
+                  onDoubleClick={() => setShotImagePreview(url)}
+                >
+                  <img src={url} alt={`history-${idx + 1}`} className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* 视觉描述 - 放在最前面 */}
@@ -742,5 +788,17 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
         </div>
       )}
     </div>
+
+    {/* 历史图片全屏预览 */}
+    {shotImagePreview && (
+      <div
+        className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] p-4"
+        onClick={() => setShotImagePreview(null)}
+      >
+        <div className="max-w-5xl w-full max-h-[90vh]">
+          <img src={shotImagePreview} alt="历史预览" className="w-full h-full object-contain rounded-lg" />
+        </div>
+      </div>
+    )}
   );
 }
