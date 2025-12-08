@@ -8,6 +8,7 @@ interface AddShotDialogProps {
   sceneId: string;
   sceneName: string;
   existingShotsCount: number;
+  insertIndex?: number;
   onAdd: (shotData: {
     sceneId: string;
     order: number;
@@ -27,6 +28,7 @@ export default function AddShotDialog({
   existingShotsCount,
   onAdd,
   onClose,
+  insertIndex,
 }: AddShotDialogProps) {
   const [shotSize, setShotSize] = useState<ShotSize>('Medium Shot');
   const [cameraMovement, setCameraMovement] = useState<CameraMovement>('Static');
@@ -66,7 +68,7 @@ export default function AddShotDialog({
 
     onAdd({
       sceneId,
-      order: existingShotsCount + 1,
+      order: (insertIndex ?? existingShotsCount) + 1,
       shotSize,
       cameraMovement,
       duration,
@@ -86,7 +88,7 @@ export default function AddShotDialog({
           <div>
             <h2 className="text-lg font-bold text-light-text dark:text-white">添加新镜头</h2>
             <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
-              场景：{sceneName} · 镜头 #{existingShotsCount + 1}
+              场景：{sceneName} · 镜头 #{(insertIndex ?? existingShotsCount) + 1}
             </p>
           </div>
           <button

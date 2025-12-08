@@ -33,7 +33,7 @@ type Tab = 'script' | 'storyboard' | 'assets';
 
 export default function LeftSidebarNew() {
   const router = useRouter();
-  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot, deleteShot, deleteScene, updateScene, addCharacter, addLocation, setControlMode, updateShot } = useProjectStore();
+  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot, deleteShot, deleteScene, updateScene, addCharacter, addLocation, setControlMode, updateShot, reorderShots } = useProjectStore();
   const [activeTab, setActiveTab] = useState<Tab>('storyboard');
   const [collapsedScenes, setCollapsedScenes] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
@@ -50,6 +50,7 @@ export default function LeftSidebarNew() {
   const [editingShot, setEditingShot] = useState<Shot | null>(null);
   const [shotImagePreview, setShotImagePreview] = useState<string | null>(null);
   const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
+  const [shotInsertIndex, setShotInsertIndex] = useState<number | null>(null);
   const [shotForm, setShotForm] = useState<{
     description: string;
     narration: string;
@@ -175,21 +176,36 @@ export default function LeftSidebarNew() {
     setEditingShot(null);
   };
 
-  const handleAddShotClick = (sceneId: string) => {
+  const handleAddShotClick = (sceneId: string, insertIndex?: number) => {
     setSelectedSceneForNewShot(sceneId);
+    setShotInsertIndex(insertIndex ?? null);
     setShowAddShotDialog(true);
   };
 
   const handleAddShot = (shotData: any) => {
+    const scene = scenes.find(s => s.id === shotData.sceneId);
+    const sceneShots = shots.filter(s => s.sceneId === shotData.sceneId).sort((a, b) => (a.order || 0) - (b.order || 0));
+    const targetIndex = shotInsertIndex !== null ? shotInsertIndex : sceneShots.length;
+    const order = targetIndex + 1;
+
     const newShot = {
       id: `shot_${Date.now()}`,
       ...shotData,
+      order,
       status: 'pending' as const,
     };
 
     addShot(newShot);
+    // 更新场景 shotIds 顺序并重排 order
+    if (scene) {
+      const newShotIds = [...sceneShots.map(s => s.id)];
+      newShotIds.splice(targetIndex, 0, newShot.id);
+      reorderShots(scene.id, newShotIds);
+    }
+
+    setShotInsertIndex(null);
     toast.success('镜头添加成功！', {
-      description: `已添加到 ${scenes.find(s => s.id === shotData.sceneId)?.name}`
+      description: `已添加到 ${scene?.name || ''}`
     });
   };
 
@@ -211,16 +227,37 @@ export default function LeftSidebarNew() {
     if (!scene) return;
 
     const shotCount = scene.shotIds.length;
-    const confirmed = confirm(
-      `确定要删除场景 "${sceneName}" 吗？\n\n该场景包含 ${shotCount} 个镜头，删除场景将同时删除所有镜头及其生成内容，此操作无法恢复。`
-    );
+    toast.warning(`删除场景 "${sceneName}"？`, {
+      description: `该场景包含 ${shotCount} 个镜头，删除后无法恢复`,
+      action: {
+        label: '删除',
+        onClick: () => {
+          deleteScene(sceneId);
+          toast.success('场景已删除', {
+            description: `已删除场景 "${sceneName}" 及其所有镜头`
+          });
+        }
+      }
+    });
+  };
 
-    if (confirmed) {
-      deleteScene(sceneId);
-      toast.success('场景已删除', {
-        description: `已删除场景 "${sceneName}" 及其所有镜头`
-      });
-    }
+  const handleAddScene = () => {
+    const order = scenes.length + 1;
+    const scene = {
+      id: `scene_${Date.now()}`,
+      name: `场景 ${order}`,
+      location: '',
+      description: '',
+      shotIds: [],
+      position: { x: order * 200, y: 100 },
+      order,
+      status: 'draft' as const,
+      created: new Date(),
+      modified: new Date(),
+    };
+    addScene(scene);
+    selectScene(scene.id);
+    toast.success('已添加新场景', { description: scene.name });
   };
 
   const handleStartEditScene = (sceneId: string, currentName: string) => {
@@ -558,13 +595,23 @@ export default function LeftSidebarNew() {
               <h3 className="text-sm font-bold text-light-text dark:text-white">
                 分镜脚本 ({shots.length} 个镜头)
               </h3>
-              <button
-                onClick={() => setShowScriptEditor(true)}
-                className="flex items-center gap-1 text-xs px-2 py-1 border border-light-border dark:border-cine-border rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
-              >
-                <Edit2 size={12} />
-                <span>编辑分镜脚本</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleAddScene}
+                  className="flex items-center gap-1 text-xs px-2 py-1 border border-light-border dark:border-cine-border rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
+                  title="添加新场景"
+                >
+                  <Plus size={12} />
+                  <span>添加场景</span>
+                </button>
+                <button
+                  onClick={() => setShowScriptEditor(true)}
+                  className="flex items-center gap-1 text-xs px-2 py-1 border border-light-border dark:border-cine-border rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
+                >
+                  <Edit2 size={12} />
+                  <span>编辑分镜脚本</span>
+                </button>
+              </div>
             </div>
 
             {/* Scene List */}
@@ -677,18 +724,6 @@ export default function LeftSidebarNew() {
                               <Edit2 size={14} className="text-light-text-muted dark:text-cine-text-muted" />
                             </button>
 
-                            {/* Add Shot Button */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleAddShotClick(scene.id);
-                              }}
-                              className="p-1.5 hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 rounded transition-colors flex-shrink-0"
-                              title="添加镜头"
-                            >
-                              <Plus size={16} className="text-light-accent dark:text-cine-accent" />
-                            </button>
-
                             {/* Delete Scene Button */}
                             <button
                               onClick={(e) => {
@@ -708,16 +743,44 @@ export default function LeftSidebarNew() {
                     {/* Shot List */}
                     {!isCollapsed && (
                       <div className="px-3 pb-3 space-y-2">
-                        {sceneShots.map((shot) => (
-                          <ShotListItem
-                            key={shot.id}
-                            shot={shot}
-                            isSelected={selectedShotId === shot.id}
-                            onSelect={() => handleShotClick(shot.id)}
-                            onEdit={() => openShotEditor(shot)}
-                            onDelete={() => handleDeleteShot(shot.id, shot.order, scene.name)}
-                          />
-                        ))}
+                        {sceneShots
+                          .slice()
+                          .sort((a, b) => (a.order || 0) - (b.order || 0))
+                          .map((shot, idx) => (
+                            <div key={shot.id} className="relative group overflow-visible">
+                              <div className="absolute -top-3 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddShotClick(scene.id, idx);
+                                  }}
+                                  className="w-6 h-6 rounded-full bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent text-xs flex items-center justify-center shadow-sm z-20"
+                                  title="在此处插入镜头"
+                                >
+                                  <Plus size={12} />
+                                </button>
+                              </div>
+                              <ShotListItem
+                                shot={shot}
+                                isSelected={selectedShotId === shot.id}
+                                onSelect={() => handleShotClick(shot.id)}
+                                onEdit={() => openShotEditor(shot)}
+                                onDelete={() => handleDeleteShot(shot.id, shot.order, scene.name)}
+                              />
+                              <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddShotClick(scene.id, idx + 1);
+                                  }}
+                                  className="w-6 h-6 rounded-full bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent text-xs flex items-center justify-center shadow-sm z-20"
+                                  title="在此处插入镜头"
+                                >
+                                  <Plus size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
                       </div>
                     )}
                   </div>
@@ -1085,8 +1148,12 @@ export default function LeftSidebarNew() {
           sceneId={selectedSceneForNewShot}
           sceneName={scenes.find(s => s.id === selectedSceneForNewShot)?.name || ''}
           existingShotsCount={shots.filter(s => s.sceneId === selectedSceneForNewShot).length}
+          insertIndex={shotInsertIndex ?? undefined}
           onAdd={handleAddShot}
-          onClose={() => setShowAddShotDialog(false)}
+          onClose={() => {
+            setShowAddShotDialog(false);
+            setShotInsertIndex(null);
+          }}
         />
       )}
 

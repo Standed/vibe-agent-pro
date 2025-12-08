@@ -139,6 +139,8 @@ export default function ChatPanelWithHistory() {
       setMessages([]);
     }
     setMentionedAssets({ characters: [], locations: [] });
+    setInputText(''); // 避免跨镜头残留提示词
+    setManualReferenceUrls([]);
   }, [contextKey]);
 
   // 选中未生成图片的镜头时，自动把分镜描述填入输入框，便于直接生成
@@ -204,7 +206,9 @@ export default function ChatPanelWithHistory() {
     resizeStateRef.current = { startX: e.clientX, startWidth: historyWidth };
   };
 
-  const buildPromptWithReferences = (prompt: string) => {
+  const buildPromptWithReferences = (prompt: string, options?: { skipAssetRefs?: boolean }) => {
+    const skipAssetRefs = options?.skipAssetRefs;
+
     // 自动附加该镜头关联的角色/场景名，便于 @ 引用
     let basePrompt = prompt;
     if (selectedShot) {
@@ -225,6 +229,11 @@ export default function ChatPanelWithHistory() {
       project,
       selectedShot?.description
     );
+
+    // 如果用户上传了参考图并选择跳过资产参考图，则直接使用原始提示词，不做缺失校验
+    if (skipAssetRefs) {
+      return { promptForModel: prompt, referenceImageUrls: [], usedCharacters: [], usedLocations: [] };
+    }
 
     // 强制参考图校验：提到角色/场景但没有图时阻止发送
     if (missingAssets.length > 0 || referenceImageUrls.length === 0 && (usedCharacters.length > 0 || usedLocations.length > 0)) {
@@ -406,10 +415,11 @@ export default function ChatPanelWithHistory() {
   const handleSeeDreamGeneration = async (prompt: string, imageFiles: File[]) => {
     const volcanoService = new VolcanoEngineService();
 
-    const { promptForModel, usedCharacters, usedLocations, referenceImageUrls } = buildPromptWithReferences(prompt);
+    const skipAssetRefs = imageFiles.length > 0;
+    const { promptForModel, usedCharacters, usedLocations, referenceImageUrls } = buildPromptWithReferences(prompt, { skipAssetRefs });
 
     // Show asset usage info
-    if (usedCharacters.length > 0 || usedLocations.length > 0) {
+    if (!skipAssetRefs && (usedCharacters.length > 0 || usedLocations.length > 0)) {
       const assetInfo = [];
       if (usedCharacters.length > 0) {
         assetInfo.push(`角色: ${usedCharacters.map(c => c.name).join(', ')}`);
@@ -428,28 +438,29 @@ export default function ChatPanelWithHistory() {
       ...mentionedAssets.locations.flatMap(l => l.referenceImages || []),
     ];
 
-    // 🔄 Seedream 也带上项目资产参考图（和 Gemini 直出保持一致）：
-    // - enrichPromptWithAssets 返回的 referenceImageUrls
-    // - usedCharacters/usedLocations 的参考图
-    // - 手动 @ 提及的资产
-    // - 手动输入的参考 URL
-    const assetUrlSet = new Set<string>(referenceImageUrls);
-    // 兼容没有 @ 的明文角色/场景名：从镜头主角色/场景取参考图
-    if (selectedShot) {
-      selectedShot.mainCharacters?.forEach(name => {
-        const c = project?.characters.find(ch => ch.name === name);
-        c?.referenceImages?.forEach(u => assetUrlSet.add(u));
-      });
-      selectedShot.mainScenes?.forEach(name => {
-        const l = project?.locations.find(loc => loc.name === name);
-        l?.referenceImages?.forEach(u => assetUrlSet.add(u));
-      });
+    // 🔄 如果用户上传了参考图，则仅使用用户上传 + 手动输入，不自动附加资产参考图
+    let allReferenceUrls: string[] = [];
+    if (skipAssetRefs) {
+      allReferenceUrls = [...manualReferenceUrls];
+    } else {
+      const assetUrlSet = new Set<string>(referenceImageUrls);
+      // 兼容没有 @ 的明文角色/场景名：从镜头主角色/场景取参考图
+      if (selectedShot) {
+        selectedShot.mainCharacters?.forEach(name => {
+          const c = project?.characters.find(ch => ch.name === name);
+          c?.referenceImages?.forEach(u => assetUrlSet.add(u));
+        });
+        selectedShot.mainScenes?.forEach(name => {
+          const l = project?.locations.find(loc => loc.name === name);
+          l?.referenceImages?.forEach(u => assetUrlSet.add(u));
+        });
+      }
+      usedCharacters.forEach(c => c.referenceImages?.forEach(u => assetUrlSet.add(u)));
+      usedLocations.forEach(l => l.referenceImages?.forEach(u => assetUrlSet.add(u)));
+      mentionedImageUrls.forEach(u => assetUrlSet.add(u));
+      manualReferenceUrls.forEach(u => assetUrlSet.add(u));
+      allReferenceUrls = Array.from(assetUrlSet);
     }
-    usedCharacters.forEach(c => c.referenceImages?.forEach(u => assetUrlSet.add(u)));
-    usedLocations.forEach(l => l.referenceImages?.forEach(u => assetUrlSet.add(u)));
-    mentionedImageUrls.forEach(u => assetUrlSet.add(u));
-    manualReferenceUrls.forEach(u => assetUrlSet.add(u));
-    const allReferenceUrls = Array.from(assetUrlSet);
 
     const uploadedRefImages = await Promise.all(
       imageFiles.map(async (file) => {
@@ -490,7 +501,7 @@ export default function ChatPanelWithHistory() {
     }
 
     if (!imageUrl) {
-      const promptWithRefs = referenceImageUrls.length > 0
+      const promptWithRefs = !skipAssetRefs && referenceImageUrls.length > 0
         ? `${promptForModel}\n参考图：${referenceImageUrls.map((_, i) => `(图${i + 1})`).join(' ')}`
         : promptForModel;
       imageUrl = await volcanoService.generateSingleImage(promptWithRefs, projectAspectRatio);
@@ -535,7 +546,8 @@ export default function ChatPanelWithHistory() {
 
   // Gemini direct generation (single image without grid)
   const handleGeminiDirectGeneration = async (prompt: string, imageFiles: File[]) => {
-    const { promptForModel, referenceImageUrls, usedCharacters, usedLocations } = buildPromptWithReferences(prompt);
+    const skipAssetRefs = imageFiles.length > 0;
+    const { promptForModel, referenceImageUrls, usedCharacters, usedLocations } = buildPromptWithReferences(prompt, { skipAssetRefs });
 
     // Collect all reference image URLs from mentioned assets
     const mentionedImageUrls: string[] = [
@@ -544,7 +556,9 @@ export default function ChatPanelWithHistory() {
     ];
 
     // Combine with enriched prompt reference images (remove duplicates)
-    const allReferenceUrls = Array.from(new Set([...referenceImageUrls, ...mentionedImageUrls, ...manualReferenceUrls]));
+    const allReferenceUrls = skipAssetRefs
+      ? manualReferenceUrls
+      : Array.from(new Set([...referenceImageUrls, ...mentionedImageUrls, ...manualReferenceUrls]));
 
     // Show asset usage info
     const allUsedCharacters = Array.from(new Map(
@@ -554,7 +568,7 @@ export default function ChatPanelWithHistory() {
       [...usedLocations, ...mentionedAssets.locations].map(l => [l.id, l])
     ).values());
 
-    if (allUsedCharacters.length > 0 || allUsedLocations.length > 0) {
+    if (!skipAssetRefs && (allUsedCharacters.length > 0 || allUsedLocations.length > 0)) {
       const assetInfo = [];
       if (allUsedCharacters.length > 0) {
         assetInfo.push(`角色: ${allUsedCharacters.map(c => c.name).join(', ')}`);

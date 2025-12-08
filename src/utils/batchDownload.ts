@@ -12,10 +12,12 @@ export async function batchDownloadAssets(project: Project) {
 
   // 创建文件夹
   const imagesFolder = zip.folder('images');
+  const selectedFolder = imagesFolder?.folder('selected');
+  const historyFolder = imagesFolder?.folder('history');
   const videosFolder = zip.folder('videos');
   const audioFolder = zip.folder('audio');
 
-  if (!imagesFolder || !videosFolder || !audioFolder) {
+  if (!imagesFolder || !videosFolder || !audioFolder || !selectedFolder || !historyFolder) {
     throw new Error('创建文件夹失败');
   }
 
@@ -30,12 +32,12 @@ export async function batchDownloadAssets(project: Project) {
   for (const shot of project.shots) {
     const shotName = `shot_${String(shot.order).padStart(2, '0')}`;
 
-    // 1. 下载参考图片
+    // 1. 下载已选参考图片到 selected
     if (shot.referenceImage && !downloadedUrls.has(shot.referenceImage)) {
       try {
         const response = await fetch(shot.referenceImage);
         const blob = await response.blob();
-        imagesFolder.file(`${shotName}_reference.png`, blob);
+        selectedFolder.file(`${shotName}_selected.png`, blob);
         downloadedUrls.add(shot.referenceImage);
         imageCount++;
       } catch (error) {
@@ -43,14 +45,14 @@ export async function batchDownloadAssets(project: Project) {
       }
     }
 
-    // 2. 下载 Grid 图片（切片）
+    // 2. 下载 Grid 图片（切片）到 history
     if (shot.gridImages && shot.gridImages.length > 0) {
       for (let i = 0; i < shot.gridImages.length; i++) {
         if (!downloadedUrls.has(shot.gridImages[i])) {
           try {
             const response = await fetch(shot.gridImages[i]);
             const blob = await response.blob();
-            imagesFolder.file(`${shotName}_grid_slice_${i + 1}.png`, blob);
+            historyFolder.file(`${shotName}_grid_slice_${i + 1}.png`, blob);
             downloadedUrls.add(shot.gridImages[i]);
             imageCount++;
           } catch (error) {
@@ -60,7 +62,7 @@ export async function batchDownloadAssets(project: Project) {
       }
     }
 
-    // 3. 下载完整 Grid 图（去重：同一个 Grid 只下载一次）
+    // 3. 下载完整 Grid 图（历史，去重）
     if (shot.fullGridUrl && !downloadedUrls.has(shot.fullGridUrl)) {
       try {
         const response = await fetch(shot.fullGridUrl);
@@ -68,7 +70,7 @@ export async function batchDownloadAssets(project: Project) {
         // 使用场景信息命名，避免重复
         const scene = project.scenes.find((s) => s.shotIds.includes(shot.id));
         const sceneName = scene?.name.replace(/[^\w\u4e00-\u9fa5]/g, '_') || 'scene';
-        imagesFolder.file(`${sceneName}_full_grid.png`, blob);
+        historyFolder.file(`${sceneName}_full_grid.png`, blob);
         downloadedUrls.add(shot.fullGridUrl);
         imageCount++;
       } catch (error) {
@@ -97,7 +99,10 @@ export async function batchDownloadAssets(project: Project) {
           const blob = await response.blob();
 
           if (history.type === 'image') {
-            imagesFolder.file(`${shotName}_history_${i + 1}.png`, blob);
+            const isSelected = history.result === shot.referenceImage;
+            const targetFolder = isSelected ? selectedFolder : historyFolder;
+            const prefix = isSelected ? 'selected_history' : 'history';
+            targetFolder.file(`${shotName}_${prefix}_${i + 1}.png`, blob);
             imageCount++;
           } else if (history.type === 'video') {
             videosFolder.file(`${shotName}_history_${i + 1}.mp4`, blob);

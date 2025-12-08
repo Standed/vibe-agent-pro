@@ -391,6 +391,17 @@ export default function ProPanel() {
         refImages
       );
 
+      // 持久化 Grid 历史（场景级）
+      addGridHistory(targetScene.id, {
+        id: `grid_${Date.now()}`,
+        timestamp: new Date(),
+        fullGridUrl: result.fullImage,
+        slices: result.slices,
+        gridSize,
+        prompt: finalPrompt,
+        aspectRatio,
+      });
+
       // Show Grid preview modal for manual assignment
       setGridResult({
         fullImage: result.fullImage,
