@@ -3,7 +3,11 @@
  * These tools allow the Agent to query and manipulate project context
  */
 
-import { Project, Scene, Shot } from '@/types/project';
+import { Project, Scene, Shot, AspectRatio, ImageSize, GenerationHistoryItem, GridHistoryItem } from '@/types/project';
+import { VolcanoEngineService } from './volcanoEngineService';
+import { generateMultiViewGrid, editImageWithGemini, urlsToReferenceImages } from './geminiService';
+import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
+import { useProjectStore } from '@/store/useProjectStore';
 
 export interface ToolDefinition {
   name: string;
@@ -28,7 +32,58 @@ export interface ToolResult {
   tool: string;
   result: any;
   error?: string;
+  success?: boolean;
 }
+
+/**
+ * 并发池配置
+ * 使用 NEXT_PUBLIC_AGENT_IMAGE_CONCURRENCY（或 AGENT_IMAGE_CONCURRENCY）动态控制生成并发，默认 3
+ */
+const parseConcurrency = (val: string | undefined, fallback: number) => {
+  const n = Number(val);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+const IMAGE_CONCURRENCY = parseConcurrency(
+  process.env.NEXT_PUBLIC_AGENT_IMAGE_CONCURRENCY || process.env.AGENT_IMAGE_CONCURRENCY,
+  3
+);
+const SEEDREAM_MAX_RETRIES = parseConcurrency(
+  process.env.NEXT_PUBLIC_SEEDREAM_MAX_RETRIES || process.env.SEEDREAM_MAX_RETRIES,
+  2
+);
+const SEEDREAM_RETRY_DELAY_MS = parseConcurrency(
+  process.env.NEXT_PUBLIC_SEEDREAM_RETRY_DELAY_MS || process.env.SEEDREAM_RETRY_DELAY_MS,
+  1200
+);
+
+/**
+ * 简单的并发控制器（保序）
+ */
+async function runWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  iterator: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const realLimit = Math.max(1, limit);
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+
+  const worker = async () => {
+    while (true) {
+      const current = cursor;
+      if (current >= items.length) break;
+      cursor++;
+      results[current] = await iterator(items[current], current);
+    }
+  };
+
+  const workers = Array(Math.min(realLimit, items.length)).fill(null).map(() => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Define available tools for the Agent
@@ -86,8 +141,31 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     }
   },
   {
+    name: 'generateShotImage',
+    description: '为单个分镜生成图片（支持 SeeDream、Gemini 直出、Grid 三种模式）',
+    parameters: {
+      type: 'object',
+      properties: {
+        shotId: {
+          type: 'string',
+          description: '分镜的ID'
+        },
+        mode: {
+          type: 'string',
+          description: '生成模式：seedream (火山引擎单图)、gemini (Gemini 直出)、grid (Gemini Grid 多视图)',
+          enum: ['seedream', 'gemini', 'grid']
+        },
+        prompt: {
+          type: 'string',
+          description: '生成提示词（可选，如不提供则使用分镜描述）'
+        }
+      },
+      required: ['shotId', 'mode']
+    }
+  },
+  {
     name: 'batchGenerateSceneImages',
-    description: '批量生成指定场景的所有镜头图片',
+    description: '批量生成指定场景的所有未生成图片的分镜',
     parameters: {
       type: 'object',
       properties: {
@@ -97,8 +175,17 @@ export const AGENT_TOOLS: ToolDefinition[] = [
         },
         mode: {
           type: 'string',
-          description: '生成模式：grid (Gemini) 或 seedream (火山引擎)',
-          enum: ['grid', 'seedream']
+          description: '生成模式：seedream (火山引擎单图)、gemini (Gemini 直出)、grid (Gemini Grid 自动分配)',
+          enum: ['seedream', 'gemini', 'grid']
+        },
+        gridSize: {
+          type: 'string',
+          description: 'Grid 模式的网格大小（仅 grid 模式需要）',
+          enum: ['2x2', '3x3']
+        },
+        prompt: {
+          type: 'string',
+          description: '额外的生成要求（可选）'
         }
       },
       required: ['sceneId', 'mode']
@@ -106,14 +193,18 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'batchGenerateProjectImages',
-    description: '批量生成整个项目中所有未生成图片的镜头',
+    description: '批量生成整个项目中所有未生成图片的分镜',
     parameters: {
       type: 'object',
       properties: {
         mode: {
           type: 'string',
-          description: '生成模式：grid (Gemini) 或 seedream (火山引擎)',
-          enum: ['grid', 'seedream']
+          description: '生成模式：seedream (火山引擎单图)、gemini (Gemini 直出)',
+          enum: ['seedream', 'gemini']
+        },
+        prompt: {
+          type: 'string',
+          description: '额外的生成要求（可选）'
         }
       },
       required: ['mode']
@@ -162,13 +253,24 @@ export const AGENT_TOOLS: ToolDefinition[] = [
 ];
 
 /**
+ * Store update callbacks interface
+ */
+export interface StoreCallbacks {
+  updateShot: (shotId: string, updates: Partial<Shot>) => void;
+  addGenerationHistory: (shotId: string, item: GenerationHistoryItem) => void;
+  addGridHistory: (sceneId: string, item: GridHistoryItem) => void;
+}
+
+/**
  * Execute tool calls with project context
  */
 export class AgentToolExecutor {
   private project: Project | null;
+  private storeCallbacks?: StoreCallbacks;
 
-  constructor(project: Project | null) {
+  constructor(project: Project | null, storeCallbacks?: StoreCallbacks) {
     this.project = project;
+    this.storeCallbacks = storeCallbacks;
   }
 
   /**
@@ -189,10 +291,32 @@ export class AgentToolExecutor {
         case 'getShotDetails':
           return this.getShotDetails(toolCall.arguments.shotId);
 
+        case 'generateShotImage':
+          return await this.generateShotImage(
+            toolCall.arguments.shotId,
+            toolCall.arguments.mode,
+            toolCall.arguments.prompt
+          );
+
+        case 'batchGenerateSceneImages':
+          return await this.batchGenerateSceneImages(
+            toolCall.arguments.sceneId,
+            toolCall.arguments.mode,
+            toolCall.arguments.gridSize,
+            toolCall.arguments.prompt
+          );
+
+        case 'batchGenerateProjectImages':
+          return await this.batchGenerateProjectImages(
+            toolCall.arguments.mode,
+            toolCall.arguments.prompt
+          );
+
         default:
           return {
             tool: toolCall.name,
             result: null,
+            success: false,
             error: `Unknown tool: ${toolCall.name}`
           };
       }
@@ -200,6 +324,7 @@ export class AgentToolExecutor {
       return {
         tool: toolCall.name,
         result: null,
+        success: false,
         error: error.message || '工具执行失败'
       };
     }
@@ -399,6 +524,404 @@ export class AgentToolExecutor {
         generationHistory: shot.generationHistory?.length || 0
       }
     };
+  }
+
+  /**
+   * Generate image for a single shot
+   */
+  private async generateShotImage(
+    shotId: string,
+    mode: 'seedream' | 'gemini' | 'grid',
+    prompt?: string
+  ): Promise<ToolResult> {
+    if (!this.project) {
+      return {
+        tool: 'generateShotImage',
+        result: null,
+        success: false,
+        error: '项目不存在'
+      };
+    }
+
+    const shot = this.project.shots.find(s => s.id === shotId);
+    if (!shot) {
+      return {
+        tool: 'generateShotImage',
+        result: null,
+        success: false,
+        error: `镜头 ${shotId} 不存在`
+      };
+    }
+
+    const volcanoService = new VolcanoEngineService();
+    const promptText = prompt || shot.description || '生成分镜图片';
+    const aspectRatio = this.project.settings.aspectRatio;
+
+    try {
+      let imageUrl: string;
+      let modelName: string;
+
+      // Enrich prompt with assets
+      const { enrichedPrompt } = enrichPromptWithAssets(
+        promptText,
+        this.project,
+        shot.description
+      );
+
+      if (mode === 'seedream') {
+        // SeeDream mode with retry/backoff to handle upstream overload
+        imageUrl = await this.generateSeedreamWithRetry(volcanoService, enrichedPrompt, aspectRatio);
+        modelName = 'SeeDream 4.5';
+      } else if (mode === 'gemini') {
+        // Gemini direct output (requires existing image to edit)
+        if (!shot.referenceImage) {
+          return {
+            tool: 'generateShotImage',
+            result: null,
+            success: false,
+            error: 'Gemini 直出模式需要先有参考图片，请先使用 SeeDream 生成'
+          };
+        }
+        imageUrl = await editImageWithGemini(shot.referenceImage, enrichedPrompt, aspectRatio);
+        modelName = 'Gemini Image Edit';
+      } else {
+        return {
+          tool: 'generateShotImage',
+          result: null,
+          success: false,
+          error: 'Grid 模式请使用 batchGenerateSceneImages 批量生成'
+        };
+      }
+
+      // Update shot via store callback
+      if (this.storeCallbacks) {
+        this.storeCallbacks.updateShot(shotId, {
+          referenceImage: imageUrl,
+          status: 'done',
+        });
+
+        // Add to generation history
+        const historyItem: GenerationHistoryItem = {
+          id: `gen_${Date.now()}`,
+          type: 'image',
+          timestamp: new Date(),
+          result: imageUrl,
+          prompt: promptText,
+          parameters: {
+            model: modelName,
+            aspectRatio: aspectRatio,
+          },
+          status: 'success',
+        };
+        this.storeCallbacks.addGenerationHistory(shotId, historyItem);
+      }
+
+      return {
+        tool: 'generateShotImage',
+        result: {
+          shotId,
+          imageUrl,
+          model: modelName,
+          prompt: promptText,
+        },
+        success: true,
+      };
+    } catch (error: any) {
+      return {
+        tool: 'generateShotImage',
+        result: null,
+        success: false,
+        error: error.message || '图片生成失败'
+      };
+    }
+  }
+
+  /**
+   * SeeDream 生成，带重试和退避，避免 ServerOverloaded
+   */
+  private async generateSeedreamWithRetry(
+    volcanoService: VolcanoEngineService,
+    prompt: string,
+    aspectRatio?: string
+  ): Promise<string> {
+    let attempt = 0;
+    let delay = SEEDREAM_RETRY_DELAY_MS;
+
+    // 只在明显的过载/限流时重试；其他错误直接抛出
+    const isOverload = (msg: string) => /serveroverloaded|overload|too many|limit/i.test(msg || '');
+
+    while (attempt <= SEEDREAM_MAX_RETRIES) {
+      try {
+        return await volcanoService.generateSingleImage(prompt, aspectRatio);
+      } catch (error: any) {
+        attempt++;
+        const msg = error?.message || '';
+        if (attempt > SEEDREAM_MAX_RETRIES || !isOverload(msg)) {
+          throw error;
+        }
+        await sleep(delay);
+        delay = Math.min(delay * 1.5, 8000);
+      }
+    }
+    throw new Error('SeeDream 生成失败');
+  }
+
+  /**
+   * Batch generate images for a scene
+   */
+  private async batchGenerateSceneImages(
+    sceneId: string,
+    mode: 'seedream' | 'gemini' | 'grid',
+    gridSize?: '2x2' | '3x3',
+    prompt?: string
+  ): Promise<ToolResult> {
+    if (!this.project) {
+      return {
+        tool: 'batchGenerateSceneImages',
+        result: null,
+        success: false,
+        error: '项目不存在'
+      };
+    }
+
+    const scene = this.project.scenes.find(s => s.id === sceneId);
+    if (!scene) {
+      return {
+        tool: 'batchGenerateSceneImages',
+        result: null,
+        success: false,
+        error: `场景 ${sceneId} 不存在`
+      };
+    }
+
+    const sceneShots = this.project.shots.filter(s => s.sceneId === sceneId);
+    const unassignedShots = sceneShots.filter(shot => !shot.referenceImage);
+
+    if (unassignedShots.length === 0) {
+      return {
+        tool: 'batchGenerateSceneImages',
+        result: {
+          sceneId,
+          message: '该场景所有分镜都已有图片'
+        },
+        success: true,
+      };
+    }
+
+    try {
+      if (mode === 'grid') {
+        // Grid mode with auto-assignment
+        return await this.generateSceneGrid(sceneId, scene, unassignedShots, gridSize || '2x2', prompt);
+      } else {
+        // SeeDream or Gemini mode - generate with concurrency pool
+        const results = await runWithConcurrency(
+          unassignedShots,
+          IMAGE_CONCURRENCY,
+          async (shot) => this.generateShotImage(shot.id, mode, prompt)
+        );
+
+        const successCount = results.filter(r => r.success).length;
+        return {
+          tool: 'batchGenerateSceneImages',
+          result: {
+            sceneId,
+            totalShots: unassignedShots.length,
+            successCount,
+            failedCount: unassignedShots.length - successCount,
+            results,
+          },
+          success: successCount > 0,
+        };
+      }
+    } catch (error: any) {
+      return {
+        tool: 'batchGenerateSceneImages',
+        result: null,
+        success: false,
+        error: error.message || '批量生成失败'
+      };
+    }
+  }
+
+  /**
+   * Generate Grid and auto-assign to shots
+   */
+  private async generateSceneGrid(
+    sceneId: string,
+    scene: Scene,
+    targetShots: Shot[],
+    gridSize: '2x2' | '3x3',
+    prompt?: string
+  ): Promise<ToolResult> {
+    const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
+    const totalSlices = rows * cols;
+    const aspectRatio = this.project!.settings.aspectRatio;
+
+    // Build enhanced prompt
+    let enhancedPrompt = '';
+    if (scene.description) {
+      enhancedPrompt += `场景：${scene.description}\n`;
+    }
+    if (this.project!.metadata.artStyle) {
+      enhancedPrompt += `画风：${this.project!.metadata.artStyle}\n`;
+    }
+
+    // Add shot descriptions
+    const shotsToUse = targetShots.slice(0, totalSlices);
+    if (shotsToUse.length > 0) {
+      enhancedPrompt += `\n分镜要求（${shotsToUse.length} 个镜头）：\n`;
+      shotsToUse.forEach((shot, idx) => {
+        enhancedPrompt += `${idx + 1}. ${shot.shotSize} - ${shot.cameraMovement}`;
+        if (shot.description) {
+          const briefDesc = gridSize === '3x3' && shot.description.length > 50
+            ? shot.description.substring(0, 50) + '...'
+            : shot.description;
+          enhancedPrompt += ` - ${briefDesc}`;
+        }
+        enhancedPrompt += '\n';
+      });
+    }
+
+    if (prompt) {
+      enhancedPrompt += `\n额外要求：${prompt}`;
+    }
+
+    // Enrich with assets
+    const { enrichedPrompt: finalPrompt, referenceImageUrls } = enrichPromptWithAssets(
+      enhancedPrompt,
+      this.project!
+    );
+
+    // Get reference images
+    const refImages = await urlsToReferenceImages(referenceImageUrls);
+
+    // Generate Grid
+    const result = await generateMultiViewGrid(
+      finalPrompt,
+      rows,
+      cols,
+      aspectRatio,
+      ImageSize.K4,
+      refImages
+    );
+
+    // Auto-assign slices to shots
+    const assignments: Record<string, string> = {};
+    shotsToUse.forEach((shot, idx) => {
+      if (idx < result.slices.length) {
+        assignments[shot.id] = result.slices[idx];
+
+        // Update shot
+        if (this.storeCallbacks) {
+          this.storeCallbacks.updateShot(shot.id, {
+            referenceImage: result.slices[idx],
+            status: 'done',
+          });
+
+          // Add to generation history
+          const historyItem: GenerationHistoryItem = {
+            id: `gen_${Date.now()}_${idx}`,
+            type: 'image',
+            timestamp: new Date(),
+            result: result.slices[idx],
+            prompt: prompt || enhancedPrompt,
+            parameters: {
+              model: 'Gemini Grid',
+              gridSize: gridSize,
+              aspectRatio: aspectRatio,
+              fullGridUrl: result.fullImage,
+            },
+            status: 'success',
+          };
+          this.storeCallbacks.addGenerationHistory(shot.id, historyItem);
+        }
+      }
+    });
+
+    // Save Grid history
+    if (this.storeCallbacks) {
+      const gridHistory: GridHistoryItem = {
+        id: `grid_${Date.now()}`,
+        timestamp: new Date(),
+        fullGridUrl: result.fullImage,
+        slices: result.slices,
+        gridSize,
+        prompt: prompt || enhancedPrompt,
+        aspectRatio,
+        assignments,
+      };
+      this.storeCallbacks.addGridHistory(sceneId, gridHistory);
+    }
+
+    return {
+      tool: 'batchGenerateSceneImages',
+      result: {
+        sceneId,
+        mode: 'grid',
+        gridSize,
+        totalSlices: result.slices.length,
+        assignedShots: Object.keys(assignments).length,
+        fullGridUrl: result.fullImage,
+        assignments,
+      },
+      success: true,
+    };
+  }
+
+  /**
+   * Batch generate images for all shots in project
+   */
+  private async batchGenerateProjectImages(
+    mode: 'seedream' | 'gemini',
+    prompt?: string
+  ): Promise<ToolResult> {
+    if (!this.project) {
+      return {
+        tool: 'batchGenerateProjectImages',
+        result: null,
+        success: false,
+        error: '项目不存在'
+      };
+    }
+
+    const unassignedShots = this.project.shots.filter(shot => !shot.referenceImage);
+
+    if (unassignedShots.length === 0) {
+      return {
+        tool: 'batchGenerateProjectImages',
+        result: {
+          message: '所有分镜都已有图片'
+        },
+        success: true,
+      };
+    }
+
+    try {
+      const results = await runWithConcurrency(
+        unassignedShots,
+        IMAGE_CONCURRENCY,
+        async (shot) => this.generateShotImage(shot.id, mode, prompt)
+      );
+
+      const successCount = results.filter(r => r.success).length;
+      return {
+        tool: 'batchGenerateProjectImages',
+        result: {
+          totalShots: unassignedShots.length,
+          successCount,
+          failedCount: unassignedShots.length - successCount,
+          results,
+        },
+        success: successCount > 0,
+      };
+    } catch (error: any) {
+      return {
+        tool: 'batchGenerateProjectImages',
+        result: null,
+        success: false,
+        error: error.message || '批量生成失败'
+      };
+    }
   }
 }
 

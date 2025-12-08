@@ -252,6 +252,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
   };
 
   return (
+    <>
     <div className="h-full flex flex-col bg-light-bg dark:bg-cine-dark">
       {/* Header */}
       <div className="border-b border-light-border dark:border-cine-border p-4">
@@ -800,5 +801,6 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
         </div>
       </div>
     )}
+    </>
   );
 }

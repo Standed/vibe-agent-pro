@@ -8,7 +8,7 @@
  * - 支持并行调用多个 Gemini API
  */
 
-import { ToolCall } from './agentTools';
+import { ToolCall, StoreCallbacks } from './agentTools';
 import { AgentToolExecutor, ToolResult } from './agentTools';
 import { Project } from '@/types/project';
 
@@ -87,6 +87,7 @@ export function analyzeToolDependencies(toolCalls: ToolCall[]): ExecutionPlan {
 export async function executeToolsInParallel(
   toolCalls: ToolCall[],
   project: Project | null,
+  storeCallbacks?: StoreCallbacks,
   onProgress?: (progress: ExecutionProgress) => void
 ): Promise<ToolResult[]> {
   const { independent, dependent } = analyzeToolDependencies(toolCalls);
@@ -105,7 +106,7 @@ export async function executeToolsInParallel(
     });
   };
 
-  const executor = new AgentToolExecutor(project);
+  const executor = new AgentToolExecutor(project, storeCallbacks);
 
   // Phase 1: Execute independent tools in parallel
   if (independent.length > 0) {
@@ -113,7 +114,7 @@ export async function executeToolsInParallel(
 
     const independentPromises = independent.map(async (tool) => {
       try {
-        const result = await executor.executeTool(tool);
+        const result = await executor.execute(tool);
         completed++;
         updateProgress(`已完成: ${tool.name}`);
         return result;
@@ -123,6 +124,7 @@ export async function executeToolsInParallel(
         updateProgress(`失败: ${tool.name}`);
         return {
           tool: tool.name,
+          result: null,
           success: false,
           error: error.message,
         };
@@ -140,7 +142,7 @@ export async function executeToolsInParallel(
 
     for (const tool of group) {
       try {
-        const result = await executor.executeTool(tool);
+        const result = await executor.execute(tool);
         completed++;
         allResults.push(result);
         updateProgress(`已完成: ${tool.name}`);
@@ -149,6 +151,7 @@ export async function executeToolsInParallel(
         errors.push({ tool: tool.name, error: error.message });
         allResults.push({
           tool: tool.name,
+          result: null,
           success: false,
           error: error.message,
         });
@@ -167,10 +170,16 @@ export async function executeToolsInParallel(
  */
 export class ParallelExecutor {
   private project: Project | null;
+  private storeCallbacks?: StoreCallbacks;
   private onProgress?: (progress: ExecutionProgress) => void;
 
-  constructor(project: Project | null, onProgress?: (progress: ExecutionProgress) => void) {
+  constructor(
+    project: Project | null,
+    storeCallbacks?: StoreCallbacks,
+    onProgress?: (progress: ExecutionProgress) => void
+  ) {
     this.project = project;
+    this.storeCallbacks = storeCallbacks;
     this.onProgress = onProgress;
   }
 
@@ -181,13 +190,14 @@ export class ParallelExecutor {
 
     if (toolCalls.length === 1) {
       // Single tool, execute directly
-      const executor = new AgentToolExecutor(this.project);
+      const executor = new AgentToolExecutor(this.project, this.storeCallbacks);
       try {
-        const result = await executor.executeTool(toolCalls[0]);
+        const result = await executor.execute(toolCalls[0]);
         return [result];
       } catch (error: any) {
         return [{
           tool: toolCalls[0].name,
+          result: null,
           success: false,
           error: error.message,
         }];
@@ -195,6 +205,6 @@ export class ParallelExecutor {
     }
 
     // Multiple tools, use parallel execution
-    return executeToolsInParallel(toolCalls, this.project, this.onProgress);
+    return executeToolsInParallel(toolCalls, this.project, this.storeCallbacks, this.onProgress);
   }
 }
