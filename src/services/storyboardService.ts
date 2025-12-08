@@ -4,9 +4,22 @@
 import type { Shot, Scene } from '@/types/project';
 import { securePromptExecution, filterAIOutput } from '@/utils/promptSecurity';
 
-const MODEL_FULL = 'gemini-3-pro-preview'; // 拆剧本/Agent 底层
-const MODEL_FAST = 'gemini-2.5-flash'; // 快速文本处理
+const MODEL_FULL = 'gemini-3-pro-preview'; // 所有功能统一使用 Pro 模型以确保质量
 const GEMINI_ROUTE = '/api/gemini-generate';
+
+export interface CharacterDesign {
+  name: string;
+  summary: string;
+  style: string;
+  genderAgeOccupation: string;
+  bodyShape: string;
+  faceFeatures: string;
+  hair: string;
+  outfit: string;
+  expressionMood: string;
+  pose: string;
+  negative?: string;
+}
 
 const postGemini = async (payload: any, model: string = MODEL_FULL): Promise<any> => {
   const resp = await fetch(GEMINI_ROUTE, {
@@ -350,7 +363,7 @@ ${script}
           }
         ]
       },
-      MODEL_FAST
+      MODEL_FULL
     );
 
     const text = extractText(data) || '';
@@ -371,6 +384,112 @@ ${script}
       throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');
     }
     throw error;
+  }
+}
+
+/**
+ * 专门的角色设定生成（与分镜独立的一次对话）
+ * 聚焦角色视觉形象，不输出分镜/剧情
+ */
+export async function generateCharacterDesigns(params: {
+  script: string;
+  characterNames: string[];
+  artStyle?: string;
+}): Promise<Record<string, CharacterDesign>> {
+  const { script, characterNames, artStyle } = params;
+  if (!characterNames || characterNames.length === 0) return {};
+
+  // 限制脚本长度，避免提示过长
+  const trimmedScript = script?.length > 3000 ? `${script.slice(0, 3000)}...` : script || '';
+  const styleLine = artStyle?.trim() || '保持项目统一画风';
+  const namesLine = characterNames.join('、');
+
+  const prompt = `你是一位资深的视觉角色设定师，请基于以下信息为每个角色输出一份角色形象设计。绝对不要描述分镜/场景/剧情，只写角色外观与气质。
+
+项目画风：${styleLine}
+角色列表：${namesLine}
+剧本参考（可用于理解人物性格与时代背景）：${trimmedScript}
+
+为每个角色输出 JSON 数组，字段保持精简但具体，务必覆盖下面 8 个要素：
+\`\`\`json
+[
+  {
+    "name": "角色名",
+    "summary": "一句话角色定位，2-3 句内",
+    "style": "画风与风格定位（必须与项目画风一致，可再细化）",
+    "gender_age_occupation": "性别、年龄、职业/身份",
+    "body_shape": "身材与整体比例",
+    "face_features": "脸型与五官特征",
+    "hair": "发型与发色",
+    "outfit": "服装与主要配饰",
+    "expression_mood": "表情与气质",
+    "pose": "典型姿态/动作",
+    "negative": "需要避免的元素（可选）"
+  }
+]
+\`\`\`
+
+硬性规则：
+- 只写角色视觉与气质，不写场景/分镜/剧情。
+- style 字段务必包含项目画风，不要输出“无法确定”。
+- 每个字段一句话到两句话内，精炼明确。`;
+
+  try {
+    const aiResult = await postGemini(
+      {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }]
+          }
+        ]
+      },
+      MODEL_FULL
+    );
+
+    const rawText = extractText(aiResult) || '';
+    const text = filterAIOutput(rawText);
+    const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
+    let jsonStr = jsonMatch ? jsonMatch[1] : text;
+
+    jsonStr = jsonStr
+      .replace(/,\s*}/g, '}')
+      .replace(/,\s*\]/g, ']')
+      .replace(/\/\/.*/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .trim();
+
+    const parsed = JSON.parse(jsonStr);
+    if (!Array.isArray(parsed)) {
+      return {};
+    }
+
+    const designs: Record<string, CharacterDesign> = {};
+    const normalize = (val: any) => (typeof val === 'string' ? val.trim() : '');
+
+    parsed.forEach((item: any) => {
+      const name = normalize(item.name || item.character || item.role);
+      if (!name) return;
+
+      designs[name] = {
+        name,
+        summary: normalize(item.summary || item.overview) || `角色定位：${name}`,
+        style: normalize(item.style) || `画风与风格定位：${styleLine}`,
+        genderAgeOccupation: normalize(item.gender_age_occupation || item.gender_age_role),
+        bodyShape: normalize(item.body_shape),
+        faceFeatures: normalize(item.face_features || item.face),
+        hair: normalize(item.hair) || normalize(item.hair_style),
+        outfit: normalize(item.outfit) || normalize(item.clothes),
+        expressionMood: normalize(item.expression_mood || item.expression || item.mood),
+        pose: normalize(item.pose) || normalize(item.posture),
+        negative: normalize(item.negative || item.avoid),
+      };
+    });
+
+    return designs;
+  } catch (error) {
+    console.error('Character design generation error:', error);
+    return {};
   }
 }
 
@@ -396,7 +515,7 @@ export async function enhanceShotDescription(
           }
         ]
       },
-      MODEL_FAST
+      MODEL_FULL
     );
 
     return extractText(data) || description;
@@ -444,7 +563,7 @@ ${shotsInfo}
           }
         ]
       },
-      MODEL_FAST
+      MODEL_FULL
     );
 
     const text = extractText(data) || '';

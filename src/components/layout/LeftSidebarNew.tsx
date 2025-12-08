@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
-import { generateStoryboardFromScript, analyzeScript, groupShotsIntoScenes } from '@/services/storyboardService';
+import { generateStoryboardFromScript, analyzeScript, groupShotsIntoScenes, generateCharacterDesigns, CharacterDesign } from '@/services/storyboardService';
 import { batchDownloadAssets } from '@/utils/batchDownload';
 import AddShotDialog from '@/components/shot/AddShotDialog';
 import ShotListItem from '@/components/shot/ShotListItem';
@@ -328,43 +328,87 @@ export default function LeftSidebarNew() {
         });
       });
 
-      // 5. 根据分镜推断主要角色/场景并创建资源占位，方便后续上传图片
-      const characterSet = new Map<string, string>(); // name -> description
-      const locationSet = new Map<string, string>(); // name -> description
+      // 5. 根据分镜/剧本收集角色名单，并单独向 Gemini 生成角色设定
+      const characterCandidates = new Set<string>();
+
+      // 从分镜中提取角色
       generatedShots.forEach((shot) => {
         (shot.mainCharacters || []).forEach((name) => {
-          if (!characterSet.has(name)) {
-            characterSet.set(name, shot.description || '');
-          }
-        });
-        (shot.mainScenes || []).forEach((name) => {
-          if (!locationSet.has(name)) {
-            locationSet.set(name, shot.description || '');
+          if (name && name.trim()) {
+            characterCandidates.add(name.trim());
           }
         });
       });
 
-      characterSet.forEach((desc, name) => {
-        const exists = project.characters.some((c) => c.name === name);
-        if (!exists) {
-          addCharacter({
-            id: `char_${Date.now()}_${name}`,
-            name,
-            description: desc || '待补充角色描述',
-            referenceImages: [],
-            appearance: '',
-          });
+      // 使用剧本分析结果补充角色名单
+      (analysis?.characters || []).forEach((name: string) => {
+        if (name && name.trim()) {
+          characterCandidates.add(name.trim());
         }
       });
 
-      locationSet.forEach((desc, name) => {
-        const exists = project.locations.some((l) => l.name === name);
+      let characterDesigns: Record<string, CharacterDesign> = {};
+      if (characterCandidates.size > 0) {
+        try {
+          characterDesigns = await generateCharacterDesigns({
+            script: project.script,
+            characterNames: Array.from(characterCandidates),
+            artStyle: project.metadata.artStyle,
+          });
+        } catch (err) {
+          console.error('AI 角色设定生成失败，使用占位模板：', err);
+        }
+      }
+
+      // 统一的角色形象模板，默认包含项目画风占位
+      const buildCharacterTemplate = () => {
+        const style = project.metadata.artStyle?.trim();
+        const baseStyle = style ? `画风与风格定位：${style}` : '画风与风格定位：保持项目统一画风';
+        const parts = [
+          baseStyle,
+          '性别、年龄、职业/身份：',
+          '身材与整体比例：',
+          '脸型与五官特征：',
+          '发型与发色：',
+          '服装与主要配饰：',
+          '表情与气质：',
+          '姿态/动作：'
+        ];
+        const sentence = parts.filter(Boolean).join('。');
+        return sentence.endsWith('。') ? sentence : `${sentence}。`;
+      };
+
+      characterCandidates.forEach((name) => {
+        const exists = project.characters.some((c) => c.name === name);
         if (!exists) {
-          addLocation({
-            id: `loc_${Date.now()}_${name}`,
+          const design = characterDesigns[name];
+          const template = buildCharacterTemplate();
+          const appearance = design
+            ? (() => {
+              const parts = [
+                design.style,
+                design.genderAgeOccupation,
+                design.bodyShape,
+                design.faceFeatures,
+                design.hair,
+                design.outfit,
+                design.expressionMood,
+                design.pose,
+              ].filter(Boolean);
+              const sentence = parts.join('。');
+              return sentence.endsWith('。') ? sentence : `${sentence}。`;
+            })()
+            : template;
+
+          const description = design?.summary
+            ? design.summary
+            : `角色 "${name}" 的形象设计草稿：${template}（请按项补充具体信息）`;
+
+          addCharacter({
+            id: `char_${Date.now()}_${name}`,
             name,
-            description: desc || '待补充场景描述',
-            type: 'interior',
+            description,
+            appearance,
             referenceImages: [],
           });
         }
@@ -617,22 +661,10 @@ export default function LeftSidebarNew() {
             {/* Scene List */}
               <div className="space-y-3">
                 {scenes.map((scene) => {
-                // Get shots - try scene.shotIds first for correct order, fallback to filter
-                let sceneShots: Shot[];
-                if (scene.shotIds && scene.shotIds.length > 0) {
-                  // Use scene.shotIds for correct drag-and-drop order
-                  sceneShots = scene.shotIds
-                    .map(shotId => shots.find(s => s.id === shotId))
-                    .filter((shot): shot is Shot => shot !== undefined);
-
-                  // 如果通过 shotIds 没找到任何 shot，fallback 到 sceneId
-                  if (sceneShots.length === 0) {
-                    sceneShots = shots.filter(s => s.sceneId === scene.id);
-                  }
-                } else {
-                  // Fallback: filter by sceneId (for scenes where shotIds isn't maintained)
-                  sceneShots = shots.filter(s => s.sceneId === scene.id);
-                }
+                // 直接按 sceneId 取镜头，避免 shotIds 异常导致数量不一致，再按 order 排序
+                const sceneShots: Shot[] = shots
+                  .filter(s => s.sceneId === scene.id)
+                  .sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
                 const isCollapsed = collapsedScenes.has(scene.id);
 
                 return (
@@ -825,8 +857,8 @@ export default function LeftSidebarNew() {
                         <div className="font-medium text-sm text-light-text dark:text-white">
                           {character.name}
                         </div>
-                        <div className="text-[11px] text-light-text-muted dark:text-cine-text-muted mt-0.5">
-                          {character.appearance || character.description.slice(0, 30) || '角色'}
+                        <div className="text-[11px] text-light-text-muted dark:text-cine-text-muted mt-0.5 line-clamp-2">
+                          {character.description || '角色描述'}
                         </div>
                       </div>
                       <div className="flex gap-1">
@@ -850,9 +882,6 @@ export default function LeftSidebarNew() {
                           <Trash2 size={14} />
                         </button>
                       </div>
-                    </div>
-                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 line-clamp-2">
-                      {character.description}
                     </div>
                     {/* Reference Images */}
                     {character.referenceImages && character.referenceImages.length > 0 && (
