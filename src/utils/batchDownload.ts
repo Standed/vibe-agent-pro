@@ -25,6 +25,39 @@ export async function batchDownloadAssets(project: Project) {
   let videoCount = 0;
   let audioCount = 0;
 
+  const base64ToBlob = (base64: string, mimeType = 'image/png') => {
+    const byteCharacters = atob(base64);
+    const byteArrays = [];
+    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+      const slice = byteCharacters.slice(offset, offset + 512);
+      const byteNumbers = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) {
+        byteNumbers[i] = slice.charCodeAt(i);
+      }
+      byteArrays.push(new Uint8Array(byteNumbers));
+    }
+    return new Blob(byteArrays, { type: mimeType });
+  };
+
+  const fetchImageBlob = async (url: string): Promise<Blob | null> => {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(resp.statusText);
+      return await resp.blob();
+    } catch (err) {
+      // 尝试后端代理，避免 CORS 或过期链接问题
+      try {
+        const proxyResp = await fetch(`/api/fetch-image?url=${encodeURIComponent(url)}`);
+        if (!proxyResp.ok) throw new Error('proxy failed');
+        const data = await proxyResp.json();
+        return base64ToBlob(data.data, data.mimeType || 'image/png');
+      } catch (proxyErr) {
+        console.error('Failed to fetch image (skip):', url, proxyErr);
+        return null;
+      }
+    }
+  };
+
   // 使用 Set 跟踪已下载的 URL，避免重复下载
   const downloadedUrls = new Set<string>();
 
@@ -34,14 +67,11 @@ export async function batchDownloadAssets(project: Project) {
 
     // 1. 下载已选参考图片到 selected
     if (shot.referenceImage && !downloadedUrls.has(shot.referenceImage)) {
-      try {
-        const response = await fetch(shot.referenceImage);
-        const blob = await response.blob();
+      const blob = await fetchImageBlob(shot.referenceImage);
+      if (blob) {
         selectedFolder.file(`${shotName}_selected.png`, blob);
         downloadedUrls.add(shot.referenceImage);
         imageCount++;
-      } catch (error) {
-        console.error(`Failed to download reference image for shot ${shot.order}:`, error);
       }
     }
 
@@ -49,14 +79,11 @@ export async function batchDownloadAssets(project: Project) {
     if (shot.gridImages && shot.gridImages.length > 0) {
       for (let i = 0; i < shot.gridImages.length; i++) {
         if (!downloadedUrls.has(shot.gridImages[i])) {
-          try {
-            const response = await fetch(shot.gridImages[i]);
-            const blob = await response.blob();
+          const blob = await fetchImageBlob(shot.gridImages[i]);
+          if (blob) {
             historyFolder.file(`${shotName}_grid_slice_${i + 1}.png`, blob);
             downloadedUrls.add(shot.gridImages[i]);
             imageCount++;
-          } catch (error) {
-            console.error(`Failed to download grid slice ${i + 1} for shot ${shot.order}:`, error);
           }
         }
       }
@@ -64,17 +91,13 @@ export async function batchDownloadAssets(project: Project) {
 
     // 3. 下载完整 Grid 图（历史，去重）
     if (shot.fullGridUrl && !downloadedUrls.has(shot.fullGridUrl)) {
-      try {
-        const response = await fetch(shot.fullGridUrl);
-        const blob = await response.blob();
-        // 使用场景信息命名，避免重复
+      const blob = await fetchImageBlob(shot.fullGridUrl);
+      if (blob) {
         const scene = project.scenes.find((s) => s.shotIds.includes(shot.id));
         const sceneName = scene?.name.replace(/[^\w\u4e00-\u9fa5]/g, '_') || 'scene';
         historyFolder.file(`${sceneName}_full_grid.png`, blob);
         downloadedUrls.add(shot.fullGridUrl);
         imageCount++;
-      } catch (error) {
-        console.error(`Failed to download full grid for shot ${shot.order}:`, error);
       }
     }
 
@@ -94,22 +117,28 @@ export async function batchDownloadAssets(project: Project) {
     if (shot.generationHistory) {
       for (let i = 0; i < shot.generationHistory.length; i++) {
         const history = shot.generationHistory[i];
-        try {
-          const response = await fetch(history.result);
-          const blob = await response.blob();
+        if (history.type === 'image') {
+          // 已下载（或与 referenceImage 相同）则跳过
+          if (downloadedUrls.has(history.result)) continue;
 
-          if (history.type === 'image') {
-            const isSelected = history.result === shot.referenceImage;
-            const targetFolder = isSelected ? selectedFolder : historyFolder;
-            const prefix = isSelected ? 'selected_history' : 'history';
-            targetFolder.file(`${shotName}_${prefix}_${i + 1}.png`, blob);
-            imageCount++;
-          } else if (history.type === 'video') {
+          const blob = await fetchImageBlob(history.result);
+          if (!blob) continue;
+
+          const isSelected = history.result === shot.referenceImage;
+          const targetFolder = isSelected ? selectedFolder : historyFolder;
+          const prefix = isSelected ? 'selected_history' : 'history';
+          targetFolder.file(`${shotName}_${prefix}_${i + 1}.png`, blob);
+          downloadedUrls.add(history.result);
+          imageCount++;
+        } else if (history.type === 'video') {
+          try {
+            const response = await fetch(history.result);
+            const blob = await response.blob();
             videosFolder.file(`${shotName}_history_${i + 1}.mp4`, blob);
             videoCount++;
+          } catch (error) {
+            console.error(`Failed to download history video ${i + 1} for shot ${shot.order}:`, error);
           }
-        } catch (error) {
-          console.error(`Failed to download history item ${i + 1} for shot ${shot.order}:`, error);
         }
       }
     }
@@ -140,8 +169,8 @@ export async function batchDownloadAssets(project: Project) {
       if (character.referenceImages) {
         for (let i = 0; i < character.referenceImages.length; i++) {
           try {
-            const response = await fetch(character.referenceImages[i]);
-            const blob = await response.blob();
+            const blob = await fetchImageBlob(character.referenceImages[i]);
+            if (!blob) continue;
             const characterName = character.name.replace(/[^\w\u4e00-\u9fa5]/g, '_');
             charactersFolder.file(`${characterName}_${i + 1}.png`, blob);
             imageCount++;
@@ -158,8 +187,8 @@ export async function batchDownloadAssets(project: Project) {
       if (location.referenceImages) {
         for (let i = 0; i < location.referenceImages.length; i++) {
           try {
-            const response = await fetch(location.referenceImages[i]);
-            const blob = await response.blob();
+            const blob = await fetchImageBlob(location.referenceImages[i]);
+            if (!blob) continue;
             const locationName = location.name.replace(/[^\w\u4e00-\u9fa5]/g, '_');
             locationsFolder.file(`${locationName}_${i + 1}.png`, blob);
             imageCount++;

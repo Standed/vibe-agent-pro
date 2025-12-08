@@ -142,7 +142,9 @@ export default function InfiniteCanvas() {
   };
 
   const sceneGroups = project?.scenes.map((scene) => {
-    const sceneShots = project.shots.filter((shot) => shot.sceneId === scene.id);
+    const sceneShots = project.shots
+      .filter((shot) => shot.sceneId === scene.id)
+      .sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
     return {
       scene,
       shots: sceneShots,
