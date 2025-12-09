@@ -348,6 +348,11 @@ export default function ChatPanelWithHistory() {
       return;
     }
 
+    // 🔒 捕获当前上下文，防止异步操作期间切换镜头导致消息错乱
+    const capturedShotId = selectedShotId || null;
+    const capturedSceneId = currentSceneId || null;
+    const capturedContextKey = contextKey;
+
     // Convert uploaded images to data URLs for display
     const imageDataUrls = await Promise.all(
       uploadedImages.map(file => fileToDataURL(file))
@@ -361,6 +366,8 @@ export default function ChatPanelWithHistory() {
       timestamp: new Date(),
       images: imageDataUrls,
       model: selectedModel,
+      shotId: capturedShotId || undefined,
+      sceneId: capturedSceneId || undefined,
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -375,18 +382,18 @@ export default function ChatPanelWithHistory() {
     // Generate based on selected model（只锁定当前上下文）
     setPendingState((prev) => ({
       ...prev,
-      [contextKey]: { loading: true, message: '正在生成...' }
+      [capturedContextKey]: { loading: true, message: '正在生成...' }
     }));
     try {
       switch (selectedModel) {
         case 'seedream':
-          await handleSeeDreamGeneration(promptText, imageFiles);
+          await handleSeeDreamGeneration(promptText, imageFiles, capturedShotId, capturedSceneId, capturedContextKey);
           break;
         case 'gemini-direct':
-          await handleGeminiDirectGeneration(promptText, imageFiles);
+          await handleGeminiDirectGeneration(promptText, imageFiles, capturedShotId, capturedSceneId, capturedContextKey);
           break;
         case 'gemini-grid':
-          await handleGeminiGridGeneration(promptText, imageFiles);
+          await handleGeminiGridGeneration(promptText, imageFiles, capturedShotId, capturedSceneId, capturedContextKey);
           break;
       }
     } catch (error: any) {
@@ -396,15 +403,22 @@ export default function ChatPanelWithHistory() {
         role: 'assistant',
         content: `生成失败: ${error.message || '未知错误'}`,
         timestamp: new Date(),
+        shotId: capturedShotId || undefined,
+        sceneId: capturedSceneId || undefined,
       };
-      setMessages(prev => [...prev, errorMessage]);
+
+      // 只在消息属于当前上下文时才添加到显示列表
+      if (contextKey === capturedContextKey) {
+        setMessages(prev => [...prev, errorMessage]);
+      }
+
       toast.error('生成失败', {
         description: error.message
       });
     } finally {
       setPendingState((prev) => {
         const next = { ...prev };
-        if (contextKey) delete next[contextKey];
+        if (capturedContextKey) delete next[capturedContextKey];
         return next;
       });
       setManualReferenceUrls([]); // 清空临时参考 URL
@@ -412,7 +426,13 @@ export default function ChatPanelWithHistory() {
   };
 
   // SeeDream generation
-  const handleSeeDreamGeneration = async (prompt: string, imageFiles: File[]) => {
+  const handleSeeDreamGeneration = async (
+    prompt: string,
+    imageFiles: File[],
+    capturedShotId: string | null,
+    capturedSceneId: string | null,
+    capturedContextKey: string
+  ) => {
     const volcanoService = new VolcanoEngineService();
 
     const skipAssetRefs = imageFiles.length > 0;
@@ -445,12 +465,13 @@ export default function ChatPanelWithHistory() {
     } else {
       const assetUrlSet = new Set<string>(referenceImageUrls);
       // 兼容没有 @ 的明文角色/场景名：从镜头主角色/场景取参考图
-      if (selectedShot) {
-        selectedShot.mainCharacters?.forEach(name => {
+      if (capturedShotId) {
+        const shot = shots.find(s => s.id === capturedShotId);
+        shot?.mainCharacters?.forEach(name => {
           const c = project?.characters.find(ch => ch.name === name);
           c?.referenceImages?.forEach(u => assetUrlSet.add(u));
         });
-        selectedShot.mainScenes?.forEach(name => {
+        shot?.mainScenes?.forEach(name => {
           const l = project?.locations.find(loc => loc.name === name);
           l?.referenceImages?.forEach(u => assetUrlSet.add(u));
         });
@@ -508,8 +529,8 @@ export default function ChatPanelWithHistory() {
     }
 
     // Update shot if selected
-    if (selectedShotId) {
-      updateShot(selectedShotId, {
+    if (capturedShotId) {
+      updateShot(capturedShotId, {
         referenceImage: imageUrl,
         status: 'done',
       });
@@ -527,7 +548,7 @@ export default function ChatPanelWithHistory() {
         },
         status: 'success',
       };
-      addGenerationHistory(selectedShotId, historyItem);
+      addGenerationHistory(capturedShotId, historyItem);
     }
 
     // Add assistant message with result
@@ -538,14 +559,26 @@ export default function ChatPanelWithHistory() {
       timestamp: new Date(),
       images: [imageUrl],
       model: 'seedream',
+      shotId: capturedShotId || undefined,
+      sceneId: capturedSceneId || undefined,
     };
-    setMessages(prev => [...prev, assistantMessage]);
+
+    // 只在消息属于当前上下文时才添加到显示列表
+    if (contextKey === capturedContextKey) {
+      setMessages(prev => [...prev, assistantMessage]);
+    }
 
     toast.success('SeeDream 生成成功！');
   };
 
   // Gemini direct generation (single image without grid)
-  const handleGeminiDirectGeneration = async (prompt: string, imageFiles: File[]) => {
+  const handleGeminiDirectGeneration = async (
+    prompt: string,
+    imageFiles: File[],
+    capturedShotId: string | null,
+    capturedSceneId: string | null,
+    capturedContextKey: string
+  ) => {
     const skipAssetRefs = imageFiles.length > 0;
     const { promptForModel, referenceImageUrls, usedCharacters, usedLocations } = buildPromptWithReferences(prompt, { skipAssetRefs });
 
@@ -608,8 +641,8 @@ export default function ChatPanelWithHistory() {
     );
 
     // Update shot if selected
-    if (selectedShotId) {
-      updateShot(selectedShotId, {
+    if (capturedShotId) {
+      updateShot(capturedShotId, {
         referenceImage: imageUrl,
         status: 'done',
       });
@@ -627,7 +660,7 @@ export default function ChatPanelWithHistory() {
         },
         status: 'success',
       };
-      addGenerationHistory(selectedShotId, historyItem);
+      addGenerationHistory(capturedShotId, historyItem);
     }
 
     // Add assistant message with result
@@ -638,21 +671,33 @@ export default function ChatPanelWithHistory() {
       timestamp: new Date(),
       images: [imageUrl],
       model: 'gemini-direct',
+      shotId: capturedShotId || undefined,
+      sceneId: capturedSceneId || undefined,
     };
-    setMessages(prev => [...prev, assistantMessage]);
+
+    // 只在消息属于当前上下文时才添加到显示列表
+    if (contextKey === capturedContextKey) {
+      setMessages(prev => [...prev, assistantMessage]);
+    }
 
     toast.success('Gemini 直出成功！');
   };
 
   // Gemini Grid generation
-  const handleGeminiGridGeneration = async (prompt: string, imageFiles: File[]) => {
+  const handleGeminiGridGeneration = async (
+    prompt: string,
+    imageFiles: File[],
+    capturedShotId: string | null,
+    capturedSceneId: string | null,
+    capturedContextKey: string
+  ) => {
     // 🎬 场景级别 Grid 生成：自动聚合场景的镜头描述
 
     // Find current scene FIRST (before prompt building)
-    const currentScene = currentSceneId
-      ? scenes.find(s => s.id === currentSceneId)
-      : selectedShot
-        ? scenes.find(s => s.shotIds.includes(selectedShotId!))
+    const currentScene = capturedSceneId
+      ? scenes.find(s => s.id === capturedSceneId)
+      : capturedShotId
+        ? scenes.find(s => s.shotIds.includes(capturedShotId))
         : null;
 
     let enhancedPrompt = '';
@@ -848,7 +893,7 @@ export default function ChatPanelWithHistory() {
     const { enrichedPrompt, referenceImageUrls: enrichedRefUrls, referenceImageMap, usedCharacters, usedLocations } = enrichPromptWithAssets(
       [enhancedPrompt, assetNameHints].filter(Boolean).join('\n'),
       project,
-      currentScene ? undefined : selectedShot?.description
+      currentScene ? undefined : (capturedShotId ? shots.find(s => s.id === capturedShotId)?.description : undefined)
     );
     const finalPrompt = enrichedPrompt;
     enrichedRefUrls.forEach((url) => refUrlSet.add(url));
@@ -890,7 +935,7 @@ export default function ChatPanelWithHistory() {
     const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
     setPendingState((prev) => ({
       ...prev,
-      [contextKey]: { loading: true, message: `正在生成 ${gridSize} Grid (${rows * cols} 张切片)...` }
+      [capturedContextKey]: { loading: true, message: `正在生成 ${gridSize} Grid (${rows * cols} 张切片)...` }
     }));
     let result;
     try {
@@ -940,6 +985,8 @@ export default function ChatPanelWithHistory() {
       timestamp: new Date(),
       images: [result.fullImage],
       model: 'gemini-grid',
+      shotId: capturedShotId || undefined,
+      sceneId: capturedSceneId || undefined,
       gridData: {
         fullImage: result.fullImage,
         slices: result.slices,
@@ -951,7 +998,11 @@ export default function ChatPanelWithHistory() {
         gridSize: gridSize,
       },
     };
-    setMessages(prev => [...prev, assistantMessage]);
+
+    // 只在消息属于当前上下文时才添加到显示列表
+    if (contextKey === capturedContextKey) {
+      setMessages(prev => [...prev, assistantMessage]);
+    }
 
     // success toast removed; inline消息和pending提示即可
   };

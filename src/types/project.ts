@@ -96,6 +96,8 @@ export interface ChatMessage {
     result: any;
     error?: string;
   }>; // Tool execution results
+  shotId?: string; // 标识消息属于哪个镜头
+  sceneId?: string; // 标识消息属于哪个场景
 }
 
 export interface GenerationHistoryItem {
