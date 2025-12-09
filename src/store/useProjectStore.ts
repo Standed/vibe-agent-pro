@@ -49,6 +49,7 @@ interface ProjectStore {
   selectScene: (id: string) => void;
   addGridHistory: (sceneId: string, gridHistory: GridHistoryItem) => void;
   saveFavoriteSlices: (sceneId: string, slices: string[]) => void;
+  renumberScenesAndShots: () => void;
 
   // Shot Actions
   addShot: (shot: Shot) => void;
@@ -113,6 +114,16 @@ export const useProjectStore = create<ProjectStore>()(
         normalizeSceneOrder(project);
         recalcShotOrders(project);
         return { project };
+      }),
+
+    renumberScenesAndShots: () =>
+      set((state) => {
+        if (!state.project) return;
+        normalizeSceneOrder(state.project);
+        recalcShotOrders(state.project);
+        // 触发深度更新
+        state.project.scenes = [...state.project.scenes];
+        state.project.shots = [...state.project.shots];
       }),
 
     saveProject: async () => {
@@ -219,6 +230,9 @@ export const useProjectStore = create<ProjectStore>()(
         );
         normalizeSceneOrder(state.project);
         recalcShotOrders(state.project);
+        // 触发深度更新
+        state.project.scenes = [...state.project.scenes];
+        state.project.shots = [...state.project.shots];
       });
       // 自动保存
       get().saveProject();
@@ -288,6 +302,8 @@ export const useProjectStore = create<ProjectStore>()(
           track.clips = track.clips.filter((clip) => clip.shotId !== id);
         });
         recalcShotOrders(state.project);
+        // 触发深度更新
+        state.project.shots = [...state.project.shots];
       });
       // 自动保存
       get().saveProject();

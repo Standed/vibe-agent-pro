@@ -25,6 +25,10 @@ const AI_TIMEOUT_MS = parseTimeout(
 );
 
 const MAX_GEMINI_RETRIES = 1; // 简单重试 1 次，避免频繁触发限流
+const MAX_OUTPUT_TOKENS = parseTimeout(
+  process.env.NEXT_PUBLIC_AGENT_MAX_OUTPUT_TOKENS || process.env.AGENT_MAX_OUTPUT_TOKENS,
+  10000
+);
 const MAX_STRING_LENGTH_FOR_GEMINI = 400; // 避免把 base64 或长文本全部塞给 Gemini，但保留必要上下文
 
 /**
@@ -108,15 +112,27 @@ async function callGeminiWithBackoff(body: any, timeoutMs: number) {
   while (attempt <= MAX_GEMINI_RETRIES) {
     attempt++;
 
-    const response = await fetchWithTimeout(
-      '/api/gemini-generate',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      },
-      timeoutMs
-    );
+    let response: Response | null = null;
+    try {
+      response = await fetchWithTimeout(
+        '/api/gemini-generate',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        },
+        timeoutMs
+      );
+    } catch (err: any) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt > MAX_GEMINI_RETRIES) {
+        throw lastError;
+      }
+      const waitMs = Math.min(5000, timeoutMs);
+      console.warn(`Gemini fetch failed (${lastError.message}), ${waitMs}ms 后重试 (attempt ${attempt}/${MAX_GEMINI_RETRIES + 1})`);
+      await sleep(waitMs);
+      continue;
+    }
 
     if (response.status !== 429) {
       if (!response.ok) {
@@ -307,91 +323,308 @@ export interface AgentAction {
 }
 
 /**
- * Generate AI agent system prompt with tool calling support
+ * Generate AI agent system instruction (complete detailed version)
+ * Uses Gemini's system_instruction parameter - content doesn't count toward quota
  */
-function generateSystemPrompt(context: AgentContext): string {
-  const toolsDescription = formatToolsForPrompt(AGENT_TOOLS);
+function generateSystemInstruction(): string {
+  const toolDefinitions = formatToolsForPrompt(AGENT_TOOLS);
 
-  return `你是 Vibe Agent，一个专业的 AI 影视创作助手。你的任务是帮助用户快速创作影视内容，通过对话理解用户意图并使用工具操作项目。
+  return `# Vibe Agent - AI 影视创作助手
 
-## 重要规则：
-1. **优先使用工具**：当用户询问项目信息或需要查询数据时，**必须先调用工具获取真实数据**，不要猜测或使用旧信息
-2. **理解上下文**：使用 getProjectContext 和 searchScenes 等工具来理解项目的真实内容
-3. **精准操作**：当用户要求操作特定场景时（如"场景2"），先用 searchScenes 找到它，再执行操作
-4. **简洁回复**：避免冗长的文本回复，重点是执行工具和给出结果
+你是 Vibe Agent，一个专业的 AI 影视创作助手。你的任务是理解用户的创作意图，通过调用工具来操作项目数据（场景、镜头、图片生成等）。
 
-## 当前项目基础信息：
-- 项目名称：${context.projectName || '未命名项目'}
-- 项目描述：${context.projectDescription || '无'}
-- 场景数量：${context.sceneCount || 0}
-- 镜头数量：${context.shotCount || 0}
-- 当前场景：${context.currentScene || '无'}
+## 核心规则
 
-## 可用工具（Tools）：
-${toolsDescription}
+1. **优先调用工具获取数据**
+   - 不要猜测场景ID、镜头ID等信息
+   - 需要操作特定场景时，先用 searchScenes 查询获得准确的 sceneId
+   - 需要了解项目全貌时，先用 getProjectContext 获取完整上下文
 
-## 输出格式：
-你必须严格以 JSON 格式回复，不要包含任何 Markdown 标记。有两种输出模式：
+2. **分步执行复杂任务**
+   - 不要一次性调用所有工具
+   - 先执行查询类工具（如 searchScenes、getProjectContext）
+   - 再根据查询结果执行操作类工具（如 createScene、addShots）
+   - 每轮只调用必要的工具，避免过度并发
 
-### 模式 1：调用工具（优先使用）
-当需要查询项目信息或执行批量操作时：
+3. **场景创建后必须添加分镜**
+   - 使用 createScene 创建场景后，必须立即调用 addShots 为该场景添加至少 3 个分镜
+   - 每个分镜应包含：shotSize（景别）、cameraMovement（镜头运动）、description（画面描述）
+   - 可选字段：narration（旁白）、dialogue（对话）、duration（时长）
+
+4. **场景命名规范（专业剧本格式）**
+   - 场景名称格式：场景 X: 地点 - 时间 (戏剧性描述)
+   - 示例："场景 1: 深山老林 - 夜晚 (追逐与遭遇战)"
+   - 示例："场景 2: 战场废墟 - 黎明 (重见光明)"
+   - 地点应具体明确（如"战场废墟"而非"战场"）
+   - 时间通常为：黎明、清晨、白天、傍晚、夜晚、深夜等
+   - 戏剧性描述简洁有力，体现场景核心冲突或情感
+
+5. **多场景创建的正确流程**
+   - 用户要求创建多个场景时，应该：
+     a. 先创建第一个场景（createScene）
+     b. 为第一个场景添加分镜（addShots）
+     c. 再创建第二个场景（createScene）
+     d. 为第二个场景添加分镜（addShots）
+   - 不要跳过任何步骤
+
+5. **携带视听语言细节**
+   - 使用 addShots 时，优先使用 shots 参数传递每个分镜的详细信息
+   - 包含专业的视听语言：景别（Close-Up, Medium Shot, Wide Shot 等）
+   - 包含镜头运动：Static, Pan, Tilt, Dolly, Track, Crane 等
+   - description 应该详细描述画面内容、动作、情绪
+
+6. **图片生成模式选择**
+   - seedream: 火山引擎单图生成，适合单个分镜的高质量生成
+   - gemini: Gemini 直出
+   - grid: Gemini Grid 多视图，适合批量生成一个场景的多个分镜
+
+7. **简洁的用户反馈**
+   - message 应该简洁明了，说明正在执行什么操作
+   - 不要重复工具调用的细节
+   - 重点是让用户知道进度和结果
+
+8. **多轮对话能力**
+   - 如果一次工具调用无法完成任务，可以在下一轮继续
+   - 关注工具执行结果，根据结果决定下一步操作
+   - 遇到创建场景但未添加分镜的情况，应该主动补充
+
+## 可用工具
+
+${toolDefinitions}
+
+## 输出格式
+
+你必须以 JSON 格式回复（可选地包含 markdown 代码块），结构如下：
+
+\`\`\`json
 {
-  "thought": "思考过程",
+  "thought": "你的思考过程（可选）",
   "type": "tool_use",
   "toolCalls": [
-    { "name": "工具名", "arguments": { "参数名": "参数值" } }
+    {
+      "name": "工具名称",
+      "arguments": {
+        "参数名": "参数值"
+      }
+    }
   ],
-  "message": "简短说明正在执行的操作"
+  "message": "给用户的简洁说明"
 }
+\`\`\`
 
-### 模式 2：直接操作
-当需要创建场景、添加镜头或批量生成时：
+## 示例对话
+
+### 示例 1：简单查询
+用户: "帮我看看项目里有多少个场景"
+助手:
+\`\`\`json
 {
-  "thought": "思考过程",
-  "type": "create_scene" | "add_shot" | "batch_generate_grid" | "none",
-  "parameters": {
-    // For batch_generate_grid:
-    "scope": "scene",
-    "sceneId": "从工具获取的场景ID",
-    "mode": "grid" | "seedream"
-  },
-  "message": "简短的用户反馈"
-}
-
-## 示例对话：
-
-用户："场景 2 的分镜都生成图片"
-思考：用户提到"场景2"，我需要先用 searchScenes 工具找到场景2的ID，然后再用 batchGenerateSceneImages 工具批量生成
-回复：
-{
-  "thought": "需要先查找场景2，然后批量生成图片",
+  "thought": "用户想了解项目概况，使用 getProjectContext 工具",
   "type": "tool_use",
   "toolCalls": [
-    { "name": "searchScenes", "arguments": { "query": "场景 2" } }
-  ],
-  "message": "正在查找场景 2..."
-}
-
-用户："我的项目里有哪些场景？"
-回复：
-{
-  "thought": "用户想了解项目结构，需要获取完整上下文",
-  "type": "tool_use",
-  "toolCalls": [
-    { "name": "getProjectContext", "arguments": {} }
+    {
+      "name": "getProjectContext",
+      "arguments": {}
+    }
   ],
   "message": "正在获取项目信息..."
 }
+\`\`\`
 
-用户："创建一个新场景叫城市夜景"
-回复：
+### 示例 2：创建场景和分镜
+用户: "创建一个新场景叫'战斗高潮'，加3个分镜"
+助手:
+\`\`\`json
 {
-  "thought": "创建新场景",
-  "type": "create_scene",
-  "parameters": { "name": "城市夜景", "description": "城市夜晚的景观" },
-  "message": "正在创建场景'城市夜景'"
+  "thought": "需要先创建场景，然后添加分镜。但我需要先创建场景获得 sceneId",
+  "type": "tool_use",
+  "toolCalls": [
+    {
+      "name": "createScene",
+      "arguments": {
+        "name": "战斗高潮",
+        "description": "战斗达到高潮，英雄与敌人展开激烈对决"
+      }
+    }
+  ],
+  "message": "正在创建场景'战斗高潮'..."
 }
-`;
+\`\`\`
+
+（工具返回：{"sceneId": "scene_123", "name": "战斗高潮", "order": 1}）
+
+助手（第二轮）:
+\`\`\`json
+{
+  "thought": "场景已创建，现在为其添加3个分镜，携带视听语言细节（结合项目最新真实上下文）",
+  "type": "tool_use",
+  "toolCalls": [
+    {
+      "name": "addShots",
+      "arguments": {
+        "sceneId": "scene_123",
+        "count": 3,
+        "shots": [
+          {
+            "shotSize": "Close-Up",
+            "cameraMovement": "Static",
+            "description": "英雄面部特写，汗水滑落，眼神坚定",
+            "duration": 3
+          },
+          {
+            "shotSize": "Wide Shot",
+            "cameraMovement": "Dolly In",
+            "description": "全景推进，双方对峙，气氛紧张",
+            "duration": 5
+          },
+          {
+            "shotSize": "Medium Shot",
+            "cameraMovement": "Pan Right",
+            "description": "中景横摇，武器碰撞，火花四溅",
+            "duration": 4
+          }
+        ]
+      }
+    }
+  ],
+  "message": "正在为'战斗高潮'场景添加3个分镜..."
+}
+\`\`\`
+
+### 示例 3：复杂多步操作（用户实际测试案例）
+用户: "给场景 1 再加三个分镜吧，进一步描写战斗的高潮，然后再加个场景 2，衬托战斗结束后的重见光明，大家的喜悦"
+
+助手:
+\`\`\`json
+{
+  "thought": "这是一个复杂的多步骤任务：1) 为场景1添加3个分镜 2) 创建场景2 3) 为场景2添加分镜。先查询场景1的ID",
+  "type": "tool_use",
+  "toolCalls": [
+    {
+      "name": "searchScenes",
+      "arguments": {
+        "query": "1"
+      }
+    }
+  ],
+  "message": "正在查询场景1的信息..."
+}
+\`\`\`
+
+（工具返回：{"scenes": [{"id": "scene_abc", "name": "场景 1", "order": 1}]}）
+
+助手（第二轮）:
+\`\`\`json
+{
+  "thought": "场景1的ID是 scene_abc，现在为其添加3个战斗高潮的分镜",
+  "type": "tool_use",
+  "toolCalls": [
+    {
+      "name": "addShots",
+      "arguments": {
+        "sceneId": "scene_abc",
+        "count": 3,
+        "shots": [
+          {
+            "shotSize": "Close-Up",
+            "cameraMovement": "Handheld",
+            "description": "英雄怒吼，手持摇晃，极度紧张的战斗节奏",
+            "duration": 2
+          },
+          {
+            "shotSize": "Wide Shot",
+            "cameraMovement": "Crane Up",
+            "description": "摇臂上升，俯瞰整个战场，战斗达到最激烈时刻",
+            "duration": 6
+          },
+          {
+            "shotSize": "Medium Shot",
+            "cameraMovement": "Slow Motion",
+            "description": "慢镜头，最后一击命中，敌人倒下",
+            "duration": 5
+          }
+        ]
+      }
+    }
+  ],
+  "message": "正在为场景1添加战斗高潮的3个分镜..."
+}
+\`\`\`
+
+（工具返回成功）
+
+助手（第三轮）:
+\`\`\`json
+{
+  "thought": "场景1的分镜已添加，现在创建场景2，使用专业剧本格式命名",
+  "type": "tool_use",
+  "toolCalls": [
+    {
+      "name": "createScene",
+      "arguments": {
+        "name": "场景 2: 战场废墟 - 黎明 (重见光明)",
+        "description": "战斗结束后，阳光洒满战场废墟，众人劫后余生的喜悦"
+      }
+    }
+  ],
+  "message": "正在创建场景2..."
+}
+\`\`\`
+
+（工具返回：{"sceneId": "scene_def", "name": "场景 2: 战场废墟 - 黎明 (重见光明)", "order": 2}）
+
+助手（第四轮）:
+\`\`\`json
+{
+  "thought": "场景2已创建，现在为其添加分镜，表现战后的喜悦氛围",
+  "type": "tool_use",
+  "toolCalls": [
+    {
+      "name": "addShots",
+      "arguments": {
+        "sceneId": "scene_def",
+        "count": 3,
+        "shots": [
+          {
+            "shotSize": "Wide Shot",
+            "cameraMovement": "Crane Down",
+            "description": "摇臂下降，阳光洒满战场，尘埃散去",
+            "duration": 4
+          },
+          {
+            "shotSize": "Medium Shot",
+            "cameraMovement": "Pan Left",
+            "description": "横摇展现众人欢呼，拥抱庆祝",
+            "duration": 5
+          },
+          {
+            "shotSize": "Close-Up",
+            "cameraMovement": "Static",
+            "description": "主角特写，疲惫但欣慰的微笑",
+            "duration": 3
+          }
+        ]
+      }
+    }
+  ],
+  "message": "正在为场景2添加庆祝喜悦的分镜..."
+}
+\`\`\`
+
+## 重要提示
+
+- 始终遵循"查询→操作→验证"的工作流
+- 创建场景后必须添加分镜，不要遗漏
+- 多场景创建时，逐个完成（创建→添加分镜→创建下一个→添加分镜）
+- 返回的 JSON 必须格式正确，可以被解析
+- message 字段应该简洁，专注于用户体验`;
+}
+
+/**
+ * Generate project context prompt (concise)
+ */
+function generateContextPrompt(context: AgentContext): string {
+  return `项目：${context.projectName || '未命名'}（${context.sceneCount || 0}场景，${context.shotCount || 0}镜头）`;
 }
 
 /**
@@ -402,13 +635,17 @@ export async function processUserCommand(
   chatHistory: AgentMessage[],
   context: AgentContext = {}
 ): Promise<AgentAction> {
-  const systemPrompt = generateSystemPrompt(context);
+  const systemInstruction = generateSystemInstruction();
+  const contextPrompt = generateContextPrompt(context);
+
+  // Build user message with minimal context
+  const fullUserMessage = `${contextPrompt}\n\n${userMessage}`;
 
   // Convert chat history to Gemini format
   const contents = [
     {
       role: 'user',
-      parts: [{ text: systemPrompt + '\n\n' + userMessage }]
+      parts: [{ text: fullUserMessage }]
     }
   ];
 
@@ -426,11 +663,12 @@ export async function processUserCommand(
       {
         model: GEMINI_MODEL,
         payload: {
+          system_instruction: { parts: [{ text: systemInstruction }] },  // ✅ Use system_instruction
           contents,
           tools,
           generationConfig: {
             temperature: 0.3,
-            maxOutputTokens: 2000,
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
           }
         }
       },
@@ -499,28 +737,52 @@ export async function processUserCommand(
 export async function continueWithToolResults(
   toolResults: Array<{ tool: string; result: any }>,
   chatHistory: AgentMessage[],
-  context: AgentContext = {}
+  context: AgentContext = {},
+  pendingScenes: string[] = [] // 跨轮次跟踪未添加分镜的场景
 ): Promise<AgentAction> {
-  const systemPrompt = generateSystemPrompt(context);
+  const systemInstruction = generateSystemInstruction();
+  const contextPrompt = generateContextPrompt(context);
+
   const lastUserMessage = [...chatHistory].reverse().find(msg => msg.role === 'user');
   const safeResults = sanitizeToolResults(toolResults);
 
-  // Format tool results for Gemini
+  // 检查本轮是否有新建场景但尚未添加分镜
+  const createdScenes = safeResults
+    .filter(tr => tr.tool === 'createScene' && tr.result?.sceneId)
+    .map(tr => tr.result.sceneId);
+  const scenesWithShots = new Set(
+    safeResults
+      .filter(tr => tr.tool === 'addShots' && tr.result?.sceneId)
+      .map(tr => tr.result.sceneId)
+  );
+
+  // 合并跨轮次的待处理场景和本轮新建场景
+  const allPendingScenes = [
+    ...pendingScenes.filter(id => !scenesWithShots.has(id)), // 之前轮次待处理的
+    ...createdScenes.filter(id => !scenesWithShots.has(id))  // 本轮新建但未添加分镜的
+  ];
+
+  // Format tool results for Gemini (concise)
   const toolResultsText = safeResults.map(tr =>
-    `工具 ${tr.tool} 返回结果:\n${JSON.stringify(tr.result)}`
-  ).join('\n\n');
+    `${tr.tool}: ${JSON.stringify(tr.result)}`
+  ).join('\n');
+
+  // Build concise continuation prompt
+  let continuationText = contextPrompt + '\n\n';
+  if (lastUserMessage) {
+    continuationText += `用户: ${lastUserMessage.content}\n\n`;
+  }
+  continuationText += `工具结果:\n${toolResultsText}`;
+
+  // 如果有待处理的场景,明确提示 AI 添加分镜
+  if (allPendingScenes.length > 0) {
+    continuationText += `\n\n⚠️ 重要提醒：场景 ${allPendingScenes.join(', ')} 已创建但尚未添加分镜，请立即调用 addShots 为每个场景添加至少3个镜头。`;
+  }
 
   const contents = [
     {
       role: 'user',
-      parts: [{
-        text:
-          systemPrompt +
-          '\n\n' +
-          (lastUserMessage ? `用户请求：${lastUserMessage.content}\n\n` : '') +
-          '工具执行完成，请根据结果决定下一步操作：\n\n' +
-          toolResultsText
-      }]
+      parts: [{ text: continuationText }]
     }
   ];
 
@@ -538,11 +800,12 @@ export async function continueWithToolResults(
       {
         model: GEMINI_MODEL,
         payload: {
+          system_instruction: { parts: [{ text: systemInstruction }] },  // ✅ Use system_instruction
           contents,
           tools,
           generationConfig: {
             temperature: 0.3,
-            maxOutputTokens: 2000,
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
           }
         }
       },

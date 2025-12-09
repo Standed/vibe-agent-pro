@@ -44,6 +44,7 @@ export function analyzeToolDependencies(toolCalls: ToolCall[]): ExecutionPlan {
   const writeTools = new Set([
     'createScene',
     'addShot',
+    'addShots',
     'updateShot',
     'batchGenerateSceneImages',
     'generateShotVideo',

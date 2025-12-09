@@ -27,7 +27,19 @@ export interface UseAgentResult {
 }
 
 export function useAgent(): UseAgentResult {
-  const { project, currentSceneId, selectedShotId, updateShot, addGenerationHistory, addGridHistory, clearChatHistory } = useProjectStore();
+  const {
+    project,
+    currentSceneId,
+    selectedShotId,
+    addScene,
+    addShot,
+    updateShot,
+    addGenerationHistory,
+    addGridHistory,
+    renumberScenesAndShots,
+    addChatMessage,
+    clearChatHistory
+  } = useProjectStore();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
@@ -35,6 +47,7 @@ export function useAgent(): UseAgentResult {
   const [sessionManager] = useState(() =>
     new SessionManager(project?.id || 'default')
   );
+  const [lastMessageHash, setLastMessageHash] = useState<string>('');
 
   // Auto-update session manager when project changes
   useEffect(() => {
@@ -68,6 +81,26 @@ export function useAgent(): UseAgentResult {
       return;
     }
 
+    // 防重复提交：计算消息哈希
+    const messageHash = `${message}_${Date.now()}`;
+    const simpleHash = message.trim().toLowerCase();
+
+    // 检查是否在处理中或与上次消息相同（2秒内）
+    if (isProcessing) {
+      toast.warning('正在处理中，请稍候...');
+      return;
+    }
+
+    // 简单的去重：如果上次消息相同且时间间隔小于2秒，忽略
+    const now = Date.now();
+    const lastHash = lastMessageHash.split('_')[0] || '';
+    const lastTime = parseInt(lastMessageHash.split('_')[1] || '0');
+    if (lastHash === simpleHash && now - lastTime < 2000) {
+      toast.warning('请勿重复提交');
+      return;
+    }
+
+    setLastMessageHash(messageHash);
     setIsProcessing(true);
     setThinkingSteps([]);
     setSummary('');
@@ -112,6 +145,14 @@ export function useAgent(): UseAgentResult {
       };
       await sessionManager.addMessage(userMessage);
 
+      // ⭐ 保存用户消息到项目聊天历史
+      addChatMessage({
+        id: `msg_${Date.now()}_user`,
+        role: 'user',
+        content: message,
+        timestamp: new Date(),
+      });
+
       // Step 4: Call AI with enhanced context
       const stepId3 = addStep({
         type: 'thinking',
@@ -132,6 +173,8 @@ export function useAgent(): UseAgentResult {
       let allToolResults: any[] = [];
       let maxIterations = 5;
       let iteration = 0;
+      const allCreatedScenes = new Set<string>(); // 跟踪所有创建的场景
+      const allScenesWithShots = new Set<string>(); // 跟踪所有已添加分镜的场景
 
       while (action.requiresToolExecution && action.toolCalls && iteration < maxIterations) {
         iteration++;
@@ -144,14 +187,21 @@ export function useAgent(): UseAgentResult {
 
         // 准备 Store 回调
         const storeCallbacks: StoreCallbacks = {
+          addScene,
+          addShot,
           updateShot,
           addGenerationHistory,
           addGridHistory,
+          renumberScenesAndShots,
         };
+
+        // ⭐ 关键修复：每次迭代都获取最新的 project 状态
+        // 因为上一轮可能通过 createScene/addShot 等修改了 store
+        const currentProject = useProjectStore.getState().project;
 
         // 使用并行执行器
         const executor = new ParallelExecutor(
-          project,
+          currentProject,
           storeCallbacks,
           (progress: ExecutionProgress) => {
             updateStep(stepId4, {
@@ -164,10 +214,33 @@ export function useAgent(): UseAgentResult {
         const results = await executor.execute(action.toolCalls);
         allToolResults.push(...results);
 
+        // 跟踪创建的场景和已添加分镜的场景
+        results.forEach(r => {
+          if (r.tool === 'createScene' && r.result?.sceneId) {
+            allCreatedScenes.add(r.result.sceneId);
+          }
+          if (r.tool === 'addShots' && r.result?.sceneId) {
+            allScenesWithShots.add(r.result.sceneId);
+          }
+        });
+
+        // 检查是否有失败的工具调用
+        const failedTools = results.filter(r => r.success === false || r.error);
+        if (failedTools.length > 0) {
+          console.error('失败的工具调用:', failedTools);
+          failedTools.forEach(ft => {
+            addStep({
+              type: 'error',
+              content: `工具 ${ft.tool} 失败: ${ft.error || '未知错误'}`,
+              status: 'failed',
+            });
+          });
+        }
+
         updateStep(stepId4, {
           status: 'completed',
           duration: Date.now() - iterationStart,
-          details: `完成 ${results.length} 个工具调用`,
+          details: `完成 ${results.length} 个工具调用${failedTools.length > 0 ? ` (${failedTools.length} 个失败)` : ''}`,
         });
 
         // Continue with tool results
@@ -178,10 +251,21 @@ export function useAgent(): UseAgentResult {
         });
 
         const continueStart = Date.now();
+
+        // 检查是否有未添加分镜的场景
+        const pendingScenes = Array.from(allCreatedScenes).filter(id => !allScenesWithShots.has(id));
+
+        // ⭐ 重新构建最新的上下文，确保 AI 看到最新的项目状态
+        const updatedProject = useProjectStore.getState().project;
+        const updatedSceneId = useProjectStore.getState().currentSceneId;
+        const updatedShotId = useProjectStore.getState().selectedShotId;
+        const updatedContext = buildEnhancedContext(updatedProject, updatedSceneId, updatedShotId);
+
         action = await continueWithToolResults(
           results.map(r => ({ tool: r.tool, result: r.result || r.error })),
           chatHistory,
-          enhancedContext
+          updatedContext,
+          pendingScenes // 传递待处理的场景列表
         );
 
         updateStep(stepId5, {
@@ -223,6 +307,25 @@ export function useAgent(): UseAgentResult {
       };
       await sessionManager.addMessage(assistantMessage);
 
+      // ⭐ 保存 assistant 消息到项目聊天历史（包含思考过程和工具结果）
+      const thinkingStepsSummary = thinkingSteps
+        .filter(step => step.type === 'thinking' || step.type === 'tool')
+        .map(step => step.content)
+        .join(' → ');
+
+      addChatMessage({
+        id: `msg_${Date.now()}_assistant`,
+        role: 'assistant',
+        content: finalSummary,
+        timestamp: new Date(),
+        thought: thinkingStepsSummary || undefined,
+        toolResults: allToolResults.map(r => ({
+          tool: r.tool,
+          result: r.result,
+          error: r.error,
+        })),
+      });
+
       toast.success('处理完成');
 
     } catch (error: any) {
@@ -240,7 +343,23 @@ export function useAgent(): UseAgentResult {
     } finally {
       setIsProcessing(false);
     }
-  }, [project, currentSceneId, selectedShotId, sessionManager, addStep, updateStep, updateShot, addGenerationHistory, addGridHistory]);
+  }, [
+    project,
+    currentSceneId,
+    selectedShotId,
+    sessionManager,
+    addStep,
+    updateStep,
+    addScene,
+    addShot,
+    updateShot,
+    addGenerationHistory,
+    addGridHistory,
+    renumberScenesAndShots,
+    addChatMessage,
+    isProcessing,
+    lastMessageHash,
+  ]);
 
   // Clear session
   const clearSession = useCallback(async () => {
