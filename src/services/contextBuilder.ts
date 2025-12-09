@@ -67,6 +67,12 @@ export interface EnhancedContext extends AgentContext {
   };
 }
 
+const truncate = (text: string | undefined, max = 160) => {
+  if (!text) return '';
+  if (text.length <= max) return text;
+  return text.slice(0, max) + '...';
+};
+
 /**
  * Build enhanced context with all relevant data pre-injected
  */
@@ -97,7 +103,7 @@ export function buildEnhancedContext(
     return {
       id: scene.id,
       name: scene.name,
-      description: scene.description,
+      description: truncate(scene.description),
       shotCount: sceneShots.length,
       shotsWithImages: sceneShots.filter(s => s.referenceImage).length,
       shotsWithVideos: sceneShots.filter(s => s.videoClip).length,
@@ -107,7 +113,7 @@ export function buildEnhancedContext(
 
   // Build recent shots (last 10)
   const recentShots = project.shots
-    .slice(-10)
+    .slice(-6)
     .map(shot => {
       const scene = project.scenes.find(s => s.id === shot.sceneId);
       return {
@@ -115,7 +121,7 @@ export function buildEnhancedContext(
         order: shot.order,
         sceneId: shot.sceneId,
         sceneName: scene?.name || '未知场景',
-        description: shot.description,
+        description: truncate(shot.description),
         hasImage: !!shot.referenceImage,
         hasVideo: !!shot.videoClip,
         status: shot.status || 'draft',
@@ -138,7 +144,7 @@ export function buildEnhancedContext(
       currentSceneDetails = {
         id: scene.id,
         name: scene.name,
-        description: scene.description,
+        description: truncate(scene.description),
         shotIds: scene.shotIds,
         shotCount: scene.shotIds.length,
       };
@@ -153,7 +159,7 @@ export function buildEnhancedContext(
       currentShotDetails = {
         id: shot.id,
         order: shot.order,
-        description: shot.description,
+        description: truncate(shot.description),
         hasImage: !!shot.referenceImage,
         hasVideo: !!shot.videoClip,
         generationHistory: shot.generationHistory?.length || 0,

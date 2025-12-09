@@ -14,11 +14,7 @@ export interface ToolDefinition {
   description: string;
   parameters: {
     type: 'object';
-    properties: Record<string, {
-      type: string;
-      description: string;
-      enum?: string[];
-    }>;
+    properties: Record<string, any>; // Changed to any to support nested structures
     required: string[];
   };
 }
@@ -245,6 +241,22 @@ export const AGENT_TOOLS: ToolDefinition[] = [
         description: {
           type: 'string',
           description: '镜头描述'
+        },
+        shots: {
+          type: 'array',
+          description: '可选：指定每个新镜头的详细要素（推荐携带视听语言）',
+          items: {
+            type: 'object',
+            properties: {
+              shotSize: { type: 'string', description: '镜头景别，如 Medium Shot, Close-Up 等' },
+              cameraMovement: { type: 'string', description: '镜头运动，如 Dolly In, Pan Left 等' },
+              description: { type: 'string', description: '画面/动作/情绪描述，含视听语言细节' },
+              narration: { type: 'string', description: '旁白/内心独白（可选）' },
+              dialogue: { type: 'string', description: '对话（可选）' },
+              duration: { type: 'number', description: '时长（秒，可选）' },
+            },
+            required: ['shotSize', 'cameraMovement', 'description']
+          }
         }
       },
       required: ['sceneId', 'count']
@@ -259,6 +271,9 @@ export interface StoreCallbacks {
   updateShot: (shotId: string, updates: Partial<Shot>) => void;
   addGenerationHistory: (shotId: string, item: GenerationHistoryItem) => void;
   addGridHistory: (sceneId: string, item: GridHistoryItem) => void;
+  addScene?: (scene: Scene) => void;
+  addShot?: (shot: Shot) => void;
+  renumberScenesAndShots?: () => void;
 }
 
 /**
@@ -310,6 +325,15 @@ export class AgentToolExecutor {
           return await this.batchGenerateProjectImages(
             toolCall.arguments.mode,
             toolCall.arguments.prompt
+          );
+        case 'createScene':
+          return this.createScene(toolCall.arguments.name, toolCall.arguments.description);
+        case 'addShots':
+          return this.addShots(
+            toolCall.arguments.sceneId,
+            toolCall.arguments.count,
+            toolCall.arguments.description,
+            toolCall.arguments.shots
           );
 
         default:
@@ -523,6 +547,180 @@ export class AgentToolExecutor {
         status: shot.status,
         generationHistory: shot.generationHistory?.length || 0
       }
+    };
+  }
+
+  /**
+   * Create a new scene
+   */
+  private createScene(name: string, description?: string): ToolResult {
+    if (!this.project) {
+      return {
+        tool: 'createScene',
+        result: null,
+        success: false,
+        error: '项目不存在'
+      };
+    }
+
+    if (!this.storeCallbacks?.addScene) {
+      return {
+        tool: 'createScene',
+        result: null,
+        success: false,
+        error: '缺少 addScene 回调，无法创建场景'
+      };
+    }
+
+    // 名称归一化：尝试提取“场景 X”编号，或前缀匹配，避免重复创建
+    const normalize = (n: string) =>
+      n
+        .trim()
+        .replace(/[:：-].*$/, '') // 去掉冒号后缀
+        .replace(/\s+/g, ' ') // 归一空格
+        .toLowerCase();
+    const baseName = normalize(name || '');
+
+    const extractIndex = (n: string): number | null => {
+      const m = n.match(/场景\s*(\d+)/);
+      return m ? Number(m[1]) : null;
+    };
+    const targetIndex = extractIndex(name || '');
+
+    const existing = this.project.scenes.find(s => {
+      const n = s.name || '';
+      const norm = normalize(n);
+      if (baseName && (norm === baseName || norm.startsWith(baseName))) return true;
+      const idx = extractIndex(n);
+      if (targetIndex !== null && idx === targetIndex) return true;
+      return false;
+    });
+    if (existing) {
+      return {
+        tool: 'createScene',
+        result: {
+          sceneId: existing.id,
+          name: existing.name,
+          order: existing.order,
+          reused: true,
+        },
+        success: true,
+      };
+    }
+
+    const order = this.project.scenes.length + 1;
+    const scene: Scene = {
+      id: `scene_${Date.now()}`,
+      name: name || `场景 ${order}`,
+      location: '',
+      description: description || '',
+      shotIds: [],
+      position: { x: order * 200, y: 100 },
+      order,
+      status: 'draft',
+      created: new Date(),
+      modified: new Date(),
+    };
+
+    this.storeCallbacks.addScene(scene);
+
+    return {
+      tool: 'createScene',
+      result: {
+        sceneId: scene.id,
+        name: scene.name,
+        order: scene.order,
+      },
+      success: true,
+    };
+  }
+
+  /**
+   * Add multiple shots to a scene
+   */
+  private addShots(
+    sceneId: string,
+    count: number,
+    description?: string,
+    shots?: Array<Partial<Shot>>
+  ): ToolResult {
+    if (!this.project) {
+      return {
+        tool: 'addShots',
+        result: null,
+        success: false,
+        error: '项目不存在'
+      };
+    }
+
+    if (!this.storeCallbacks?.addShot) {
+      return {
+        tool: 'addShots',
+        result: null,
+        success: false,
+        error: '缺少 addShot 回调，无法添加分镜'
+      };
+    }
+
+    const scene = this.project.scenes.find(s => s.id === sceneId);
+    if (!scene) {
+      return {
+        tool: 'addShots',
+        result: null,
+        success: false,
+        error: `场景 ${sceneId} 不存在`
+      };
+    }
+
+    const countNum = Number(count);
+    if (!Number.isFinite(countNum) || countNum <= 0) {
+      return {
+        tool: 'addShots',
+        result: null,
+        success: false,
+        error: '镜头数量无效'
+      };
+    }
+
+    const defaultDuration = this.project.settings?.defaultShotDuration || 5;
+    const createdShots: Shot[] = [];
+    const baseIndex = this.project.shots.filter(s => s.sceneId === sceneId).length;
+
+    const providedShots = Array.isArray(shots) && shots.length > 0 ? shots : undefined;
+
+    for (let i = 0; i < countNum; i++) {
+      const spec = providedShots?.[i];
+      const shot: Shot = {
+        id: `shot_${Date.now()}_${i}`,
+        sceneId,
+        order: baseIndex + i + 1,
+        shotSize: (spec?.shotSize as any) || 'Medium Shot',
+        cameraMovement: (spec?.cameraMovement as any) || 'Static',
+        duration: typeof spec?.duration === 'number' && spec.duration > 0 ? spec.duration : defaultDuration,
+        description: spec?.description || description || `分镜 ${baseIndex + i + 1}`,
+        narration: spec?.narration,
+        dialogue: spec?.dialogue,
+        status: 'pending',
+        created: new Date(),
+        modified: new Date(),
+      };
+      this.storeCallbacks.addShot(shot);
+      createdShots.push(shot);
+    }
+
+    // 统一重排场景/镜头编号，确保删除/新增后顺序连续
+    if (this.storeCallbacks?.renumberScenesAndShots) {
+      this.storeCallbacks.renumberScenesAndShots();
+    }
+
+    return {
+      tool: 'addShots',
+      result: {
+        sceneId,
+        added: createdShots.length,
+        shotIds: createdShots.map(s => s.id),
+      },
+      success: true,
     };
   }
 
