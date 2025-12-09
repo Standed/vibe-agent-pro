@@ -202,6 +202,11 @@ export const useProjectStore = create<ProjectStore>()(
         state.project?.scenes.push(scene);
         normalizeSceneOrder(state.project);
         recalcShotOrders(state.project);
+        // 触发深度更新
+        if (state.project) {
+          state.project.scenes = [...state.project.scenes];
+          state.project.shots = [...state.project.shots];
+        }
       });
       // 自动保存
       get().saveProject();
@@ -214,6 +219,11 @@ export const useProjectStore = create<ProjectStore>()(
           Object.assign(scene, updates);
           normalizeSceneOrder(state.project);
           recalcShotOrders(state.project);
+          // 触发深度更新
+          if (state.project) {
+            state.project.scenes = [...state.project.scenes];
+            state.project.shots = [...state.project.shots];
+          }
         }
       });
       // 自动保存
@@ -277,6 +287,10 @@ export const useProjectStore = create<ProjectStore>()(
       set((state) => {
         state.project?.shots.push(shot);
         recalcShotOrders(state.project);
+        // 触发深度更新
+        if (state.project) {
+          state.project.shots = [...state.project.shots];
+        }
       });
       // 自动保存
       get().saveProject();
@@ -327,6 +341,10 @@ export const useProjectStore = create<ProjectStore>()(
         if (scene) {
           scene.shotIds = shotIds;
           recalcShotOrders(state.project);
+          // 触发深度更新
+          if (state.project) {
+            state.project.shots = [...state.project.shots];
+          }
         }
       });
       // 自动保存

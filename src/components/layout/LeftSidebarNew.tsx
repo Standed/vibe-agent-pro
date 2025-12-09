@@ -226,7 +226,8 @@ export default function LeftSidebarNew() {
     const scene = scenes.find(s => s.id === sceneId);
     if (!scene) return;
 
-    const shotCount = scene.shotIds.length;
+    // 直接按 sceneId 统计镜头数量，避免 shotIds 不准确
+    const shotCount = shots.filter(s => s.sceneId === sceneId).length;
     toast.warning(`删除场景 "${sceneName}"？`, {
       description: `该场景包含 ${shotCount} 个镜头，删除后无法恢复`,
       action: {
@@ -762,10 +763,10 @@ export default function LeftSidebarNew() {
                                 e.stopPropagation();
                                 handleDeleteScene(scene.id, scene.name);
                               }}
-                              className="p-1.5 hover:bg-red-500/10 rounded transition-colors flex-shrink-0 group"
+                              className="p-1.5 hover:bg-red-500/10 rounded transition-colors flex-shrink-0"
                               title="删除场景"
                             >
-                              <Trash2 size={14} className="text-light-text-muted dark:text-cine-text-muted group-hover:text-red-500" />
+                              <Trash2 size={14} className="text-light-text-muted dark:text-cine-text-muted hover:text-red-500" />
                             </button>
                           </>
                         )}
