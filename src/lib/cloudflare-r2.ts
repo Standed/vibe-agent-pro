@@ -1,7 +1,7 @@
 /**
  * Cloudflare R2 存储服务
  *
- * 用于存储图片和视频文件（成本更低，无出站流量费用）
+ * 用于存储图片和音频、视频文件（成本更低，无出站流量费用）
  */
 
 export interface R2UploadResult {
