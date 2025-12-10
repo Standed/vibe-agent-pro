@@ -84,7 +84,7 @@ npm list react react-dom next --depth=0
 
 **输出**：
 ```
-vibe-agent-pro@0.1.0
+video-agent-pro@0.1.0
 +-- next@15.5.7
 +-- react-dom@19.2.1  ✅ 修复版本
 `-- react@19.2.1       ✅ 修复版本
@@ -99,7 +99,7 @@ npm list react-server-dom-webpack react-server-dom-parcel react-server-dom-turbo
 
 **输出**：
 ```
-vibe-agent-pro@0.1.0
+video-agent-pro@0.1.0
 `-- (empty)  ✅ 未使用受影响的包
 ```
 

@@ -147,7 +147,7 @@ NEXT_PUBLIC_DOUBAO_MODEL_ID=ep-20250103-xxxxx    # AI 对话
 
 ### 1. 安装依赖
 ```bash
-cd /Users/shitengda/Downloads/docker/n8n/vibeAgent/finalAgent/vibe-agent-pro
+cd /Users/shitengda/Downloads/docker/n8n/vibeAgent/finalAgent/video-agent-pro
 npm install
 ```
 

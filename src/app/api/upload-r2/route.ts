@@ -6,7 +6,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { getCurrentUser } from '@/lib/supabase/auth';
+import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
 
 // 初始化 R2 客户端（兼容 S3 API）
 const r2Client = new S3Client({
@@ -22,12 +23,36 @@ const BUCKET_NAME = process.env.R2_BUCKET_NAME!;
 const PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL!;
 
 /**
+ * 获取当前用户（服务端）
+ */
+async function getServerUser() {
+  const cookieStore = await cookies();
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+      },
+    }
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  return user;
+}
+
+/**
  * POST - 上传文件到 R2
  */
 export async function POST(request: NextRequest) {
   try {
     // 验证用户身份
-    const user = await getCurrentUser();
+    const user = await getServerUser();
     if (!user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
@@ -84,7 +109,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     // 验证用户身份
-    const user = await getCurrentUser();
+    const user = await getServerUser();
     if (!user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }

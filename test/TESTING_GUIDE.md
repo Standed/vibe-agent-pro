@@ -4,7 +4,7 @@
 
 ### 1. 启动开发服务器
 ```bash
-cd /Users/shitengda/Downloads/docker/n8n/vibeAgent/finalAgent/vibe-agent-pro
+cd /Users/shitengda/Downloads/docker/n8n/vibeAgent/finalAgent/video-agent-pro
 npm run dev
 ```
 
