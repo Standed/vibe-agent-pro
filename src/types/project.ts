@@ -85,6 +85,19 @@ export interface GenerationConfig {
   videoPrompt?: string;
 }
 
+export interface GridData {
+  fullImage: string; // 完整 Grid 图片 URL
+  slices: string[]; // 所有切片 URL
+  sceneId?: string; // 关联的场景 ID（场景级 Grid）
+  shotId?: string; // 关联的镜头 ID（单镜头 Grid）
+  gridRows: number; // Grid 行数
+  gridCols: number; // Grid 列数
+  gridSize: '2x2' | '3x3'; // Grid 大小
+  prompt: string; // 生成提示词
+  aspectRatio: string; // 画面比例
+  assignments?: Record<string, number>; // 切片分配记录：shotId -> sliceIndex
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -98,6 +111,9 @@ export interface ChatMessage {
   }>; // Tool execution results
   shotId?: string; // 标识消息属于哪个镜头
   sceneId?: string; // 标识消息属于哪个场景
+  gridData?: GridData; // Grid 生成数据（用于持久化和重新分配）
+  images?: string[]; // 消息附带的图片
+  model?: string; // 使用的模型
 }
 
 export interface GenerationHistoryItem {

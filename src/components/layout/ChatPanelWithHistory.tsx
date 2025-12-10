@@ -21,6 +21,7 @@ import { validateGenerationConfig } from '@/utils/promptSecurity';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
 import MentionInput from '@/components/input/MentionInput';
+import { GridSliceSelector } from '@/components/ui/GridSliceSelector';
 
 // Model types
 type GenerationModel = 'seedream' | 'gemini-direct' | 'gemini-grid';
@@ -84,6 +85,11 @@ export default function ChatPanelWithHistory() {
   // Grid specific state
   const [gridSize, setGridSize] = useState<'2x2' | '3x3'>('2x2');
   const [gridResult, setGridResult] = useState<GridGenerationResult | null>(null);
+  const [sliceSelectorData, setSliceSelectorData] = useState<{
+    gridData: ChatMessage['gridData'];
+    shotId: string;
+    currentSliceIndex?: number;
+  } | null>(null);
   const prevInputContextRef = useRef<string | null>(null);
   const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 45000) => {
     const controller = new AbortController();
@@ -807,18 +813,32 @@ export default function ChatPanelWithHistory() {
       if (targetShots.length > 0) {
         enhancedPrompt += `\n分镜要求（${targetShots.length} 个镜头，按顺序对应 Grid 从左到右、从上到下的位置）：\n`;
         targetShots.forEach((shot, idx) => {
-          // For 3x3 (9张), simplify shot descriptions - keep only core info
+          // For 3x3 (9张), use simplified format but keep shot size & movement
           if (gridSize === '3x3') {
-            // 只保留核心关键信息：序号 + 景别 + 运镜 + 核心描述
-            enhancedPrompt += `Grid位置${idx + 1}（镜头#${shot.order}）: ${shot.shotSize} ${shot.cameraMovement}`;
-            // 如果有描述，只取前30字符的核心内容
-            if (shot.description) {
-              const coreDesc = shot.description.length > 30
-                ? shot.description.substring(0, 30).trim()
-                : shot.description;
-              enhancedPrompt += ` - ${coreDesc}`;
+            // Keep shot size and camera movement - important for composition
+            let simpleLine = `Grid位置${idx + 1}: ${shot.shotSize} ${shot.cameraMovement}`;
+
+            // Add character/scene names if present
+            const assetNames: string[] = [];
+            if (shot.mainCharacters?.length) {
+              assetNames.push(...shot.mainCharacters);
             }
-            enhancedPrompt += '\n';
+            if (shot.mainScenes?.length) {
+              assetNames.push(...shot.mainScenes);
+            }
+            if (assetNames.length > 0) {
+              simpleLine += ` - ${assetNames.join('、')}`;
+            }
+
+            // Add concise description (max 40 chars - balanced)
+            if (shot.description) {
+              const coreDesc = shot.description.length > 40
+                ? shot.description.substring(0, 40).trim() + '...'
+                : shot.description;
+              simpleLine += ` - ${coreDesc}`;
+            }
+
+            enhancedPrompt += simpleLine + '\n';
           } else {
             // For 2x2 (4张), use full description
             enhancedPrompt += `Grid位置${idx + 1}（镜头#${shot.order}）: ${shot.shotSize} - ${shot.cameraMovement}\n`;
@@ -829,20 +849,22 @@ export default function ChatPanelWithHistory() {
         });
       }
 
-      // 生成资产名称提示，便于参考图匹配
-      assetNameHints = targetShots
-        .map((shot) => {
-          const parts: string[] = [];
-          if (shot.mainCharacters?.length) {
-            parts.push(`角色: ${shot.mainCharacters.join(', ')}`);
-          }
-          if (shot.mainScenes?.length) {
-            parts.push(`场景: ${shot.mainScenes.join(', ')}`);
-          }
-          return parts.join(' | ');
-        })
-        .filter(Boolean)
-        .join('\n');
+      // 生成资产名称提示，便于参考图匹配（仅 2x2 使用，3x3 已在上面包含）
+      if (gridSize !== '3x3') {
+        assetNameHints = targetShots
+          .map((shot) => {
+            const parts: string[] = [];
+            if (shot.mainCharacters?.length) {
+              parts.push(`角色: ${shot.mainCharacters.join(', ')}`);
+            }
+            if (shot.mainScenes?.length) {
+              parts.push(`场景: ${shot.mainScenes.join(', ')}`);
+            }
+            return parts.join(' | ');
+          })
+          .filter(Boolean)
+          .join('\n');
+      }
 
       // Add user's specific requirements
       if (prompt.trim()) {
@@ -850,16 +872,40 @@ export default function ChatPanelWithHistory() {
       }
 
       // 聚合参考图：从镜头的 mainCharacters 和 mainScenes
+      // 对于 3x3 Grid，限制每个资产的参考图数量，避免过多参考图导致生成失败
+      const maxRefImagesPerAsset = gridSize === '3x3' ? 1 : 3; // 3x3 每个资产最多1张，2x2 最多3张
+      let totalRefImagesBeforeLimit = 0;
       targetShots.forEach((shot) => {
         shot.mainCharacters?.forEach((name) => {
           const c = project?.characters.find((ch) => ch.name === name);
-          c?.referenceImages?.forEach((url) => refUrlSet.add(url));
+          if (c?.referenceImages) {
+            totalRefImagesBeforeLimit += c.referenceImages.length;
+            // 限制参考图数量
+            const limitedImages = c.referenceImages.slice(0, maxRefImagesPerAsset);
+            limitedImages.forEach((url) => refUrlSet.add(url));
+          }
         });
         shot.mainScenes?.forEach((name) => {
           const l = project?.locations.find((loc) => loc.name === name);
-          l?.referenceImages?.forEach((url) => refUrlSet.add(url));
+          if (l?.referenceImages) {
+            totalRefImagesBeforeLimit += l.referenceImages.length;
+            // 限制参考图数量
+            const limitedImages = l.referenceImages.slice(0, maxRefImagesPerAsset);
+            limitedImages.forEach((url) => refUrlSet.add(url));
+          }
         });
       });
+
+      // 对于 3x3 Grid，限制总参考图数量不超过 8 张（Gemini 限制）
+      if (gridSize === '3x3' && refUrlSet.size > 8) {
+        console.warn(`[ChatPanel] 3x3 Grid 参考图数量过多 (${refUrlSet.size})，截断到 8 张`);
+        const limitedArray = Array.from(refUrlSet).slice(0, 8);
+        refUrlSet.clear();
+        limitedArray.forEach(url => refUrlSet.add(url));
+        toast.warning('参考图数量过多', {
+          description: `已自动限制为 ${refUrlSet.size} 张以确保生成成功`
+        });
+      }
 
       console.log('[ChatPanel Grid Debug] enhancedPrompt:', enhancedPrompt);
       console.log('[ChatPanel Grid Debug] refUrlSet.size:', refUrlSet.size);
@@ -1061,36 +1107,66 @@ export default function ChatPanelWithHistory() {
             {msg.images && msg.images.length > 0 && (
               <div className="mt-3 space-y-2">
                 {msg.images.map((img, idx) => (
-                  <div key={idx} className="relative group">
-                    <img
-                      src={img}
-                      alt={`Result ${idx + 1}`}
-                      className="rounded-lg border border-light-border dark:border-cine-border w-full cursor-pointer hover:border-light-accent dark:hover:border-cine-accent transition-colors"
-                      onClick={() => {
-                        if (msg.gridData?.fullImage && msg.gridData?.slices?.length) {
-                          const rows = msg.gridData.gridRows || (gridSize === '3x3' ? 3 : 2);
-                          const cols = msg.gridData.gridCols || (gridSize === '3x3' ? 3 : 2);
-                          const sceneId = msg.gridData.sceneId || currentSceneId || null;
-                          if (sceneId) {
-                            setGridResult({
-                              fullImage: msg.gridData.fullImage,
-                              slices: msg.gridData.slices,
-                              sceneId,
-                              gridRows: rows,
-                              gridCols: cols,
-                              prompt: msg.gridData.prompt || '',
-                              aspectRatio: msg.gridData.aspectRatio || AspectRatio.WIDE,
-                              gridSize: msg.gridData.gridSize || gridSize,
+                  <div key={idx} className="space-y-2">
+                    <div className="relative group">
+                      <img
+                        src={img}
+                        alt={`Result ${idx + 1}`}
+                        className="rounded-lg border border-light-border dark:border-cine-border w-full cursor-pointer hover:border-light-accent dark:hover:border-cine-accent transition-colors"
+                        onClick={() => {
+                          if (msg.gridData?.fullImage && msg.gridData?.slices?.length) {
+                            const rows = msg.gridData.gridRows || (gridSize === '3x3' ? 3 : 2);
+                            const cols = msg.gridData.gridCols || (gridSize === '3x3' ? 3 : 2);
+                            const sceneId = msg.gridData.sceneId || currentSceneId || null;
+                            if (sceneId) {
+                              setGridResult({
+                                fullImage: msg.gridData.fullImage,
+                                slices: msg.gridData.slices,
+                                sceneId,
+                                gridRows: rows,
+                                gridCols: cols,
+                                prompt: msg.gridData.prompt || '',
+                                aspectRatio: msg.gridData.aspectRatio || AspectRatio.WIDE,
+                                gridSize: msg.gridData.gridSize || gridSize,
+                              });
+                            }
+                          }
+                        }}
+                      />
+                      {msg.gridData && (
+                        <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                          <Grid3x3 size={12} />
+                          Grid {msg.gridData.gridRows && msg.gridData.gridCols ? `${msg.gridData.gridRows}x${msg.gridData.gridCols}` : gridSize}
+                        </div>
+                      )}
+                    </div>
+                    {/* Button to select Grid slice for single-shot */}
+                    {msg.gridData && msg.shotId && msg.gridData.slices && msg.gridData.slices.length > 0 && (
+                      <button
+                        onClick={() => {
+                          const shot = shots.find(s => s.id === msg.shotId);
+                          if (shot && msg.gridData) {
+                            // Find which slice is currently used (if any)
+                            let currentSliceIndex: number | undefined;
+                            if (shot.referenceImage) {
+                              currentSliceIndex = msg.gridData.slices.findIndex(
+                                slice => slice === shot.referenceImage
+                              );
+                              if (currentSliceIndex === -1) currentSliceIndex = undefined;
+                            }
+
+                            setSliceSelectorData({
+                              gridData: msg.gridData,
+                              shotId: msg.shotId,
+                              currentSliceIndex,
                             });
                           }
-                        }
-                      }}
-                    />
-                    {msg.gridData && (
-                      <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
-                        <Grid3x3 size={12} />
-                        Grid {msg.gridData.gridRows && msg.gridData.gridCols ? `${msg.gridData.gridRows}x${msg.gridData.gridCols}` : gridSize}
-                      </div>
+                        }}
+                        className="w-full px-3 py-2 text-sm bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border rounded-lg hover:border-light-accent dark:hover:border-cine-accent transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Grid3x3 size={16} />
+                        选择切片
+                      </button>
                     )}
                   </div>
                 ))}
@@ -1372,6 +1448,57 @@ export default function ChatPanelWithHistory() {
               setGridResult(null);
             }}
             onClose={() => setGridResult(null)}
+          />
+        )}
+
+        {/* Grid Slice Selector for Single Shot */}
+        {sliceSelectorData && sliceSelectorData.gridData && (
+          <GridSliceSelector
+            gridData={{
+              fullImage: sliceSelectorData.gridData.fullImage,
+              slices: sliceSelectorData.gridData.slices,
+              shotId: sliceSelectorData.shotId,
+              gridRows: sliceSelectorData.gridData.gridRows || 2,
+              gridCols: sliceSelectorData.gridData.gridCols || 2,
+              gridSize: sliceSelectorData.gridData.gridSize || '2x2',
+              prompt: sliceSelectorData.gridData.prompt || '',
+              aspectRatio: sliceSelectorData.gridData.aspectRatio || project?.settings.aspectRatio || AspectRatio.WIDE,
+            }}
+            shotId={sliceSelectorData.shotId}
+            currentSliceIndex={sliceSelectorData.currentSliceIndex}
+            onSelectSlice={(sliceIndex) => {
+              const selectedSliceUrl = sliceSelectorData.gridData!.slices[sliceIndex];
+              updateShot(sliceSelectorData.shotId, {
+                referenceImage: selectedSliceUrl,
+                fullGridUrl: sliceSelectorData.gridData!.fullImage,
+                status: 'done',
+              });
+
+              // Add to shot generation history
+              const historyItem: GenerationHistoryItem = {
+                id: `gen_${Date.now()}_${sliceSelectorData.shotId}`,
+                type: 'image',
+                timestamp: new Date(),
+                result: selectedSliceUrl,
+                prompt: sliceSelectorData.gridData!.prompt || '',
+                parameters: {
+                  model: 'Gemini Grid',
+                  gridSize: sliceSelectorData.gridData!.gridSize || '2x2',
+                  aspectRatio: sliceSelectorData.gridData!.aspectRatio || AspectRatio.WIDE,
+                  fullGridUrl: sliceSelectorData.gridData!.fullImage,
+                  sliceIndex,
+                },
+                status: 'success',
+              };
+              addGenerationHistory(sliceSelectorData.shotId, historyItem);
+
+              toast.success(`已选择切片 #${sliceIndex + 1}`, {
+                description: '镜头图片已更新'
+              });
+
+              setSliceSelectorData(null);
+            }}
+            onClose={() => setSliceSelectorData(null)}
           />
         )}
       </div>

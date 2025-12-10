@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ProxyAgent } from 'undici';
+import { ProxyAgent, Agent } from 'undici';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -88,22 +88,57 @@ export async function POST(request: Request) {
 
     if (process.env.HTTP_PROXY) {
       try {
-        // 创建代理 Agent（使用简单的字符串 URI，超时由外层 AbortController 控制）
-        const proxyAgent = new ProxyAgent(process.env.HTTP_PROXY);
+        const proxyAgent = new ProxyAgent({
+          uri: process.env.HTTP_PROXY,
+          connectTimeout: 60000, // 60s connection timeout
+        });
         fetchOptions.dispatcher = proxyAgent;
         console.log('[Gemini Grid] ✅ ProxyAgent created successfully');
       } catch (e) {
         console.error('[Gemini Grid] ❌ Failed to create ProxyAgent:', e);
       }
     } else {
-      console.warn('[Gemini Grid] ⚠️ No HTTP_PROXY found, proceeding without proxy');
+      // Create Agent with extended connection timeout for direct connection
+      try {
+        const agent = new Agent({
+          connectTimeout: 60000, // 60s connection timeout
+          headersTimeout: 130000, // 130s headers timeout (longer than AbortController)
+          bodyTimeout: 130000, // 130s body timeout
+        });
+        fetchOptions.dispatcher = agent;
+        console.log('[Gemini Grid] ✅ Agent created with extended timeouts');
+      } catch (e) {
+        console.error('[Gemini Grid] ❌ Failed to create Agent:', e);
+      }
     }
+
+    // 📊 诊断信息：记录请求详情
+    const bodySize = (fetchOptions.body.length / 1024).toFixed(2);
+    const refImageCount = safeRefs.length;
+    const promptLength = prompt.length;
+    const totalViews = gridRows * gridCols;
+
+    const startTime = Date.now();
+    console.log('[Gemini Grid] 🚀 Request started');
+    console.log('[Gemini Grid] 📊 Diagnostics:', {
+      timestamp: new Date().toISOString(),
+      bodySize: `${bodySize} KB`,
+      refImageCount,
+      promptLength,
+      gridSize: `${gridRows}x${gridCols}`,
+      totalViews,
+      aspectRatio,
+      proxy: process.env.HTTP_PROXY ? 'enabled' : 'disabled'
+    });
 
     const resp = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
       fetchOptions
     );
     clearTimeout(timeout);
+
+    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`[Gemini Grid] ✅ Request completed in ${elapsedTime}s`);
 
     if (!resp.ok) {
       const text = await resp.text();
@@ -117,6 +152,10 @@ export async function POST(request: Request) {
       console.error('[Gemini Grid parse error]', requestId, data);
       return NextResponse.json({ error: 'no image returned', requestId }, { status: 500 });
     }
+
+    // 📊 记录响应数据大小
+    const responseSize = (uri.length / 1024).toFixed(2);
+    console.log('[Gemini Grid] 📊 Response size:', `${responseSize} KB (base64)`);
 
     return NextResponse.json({ fullImage: `data:image/png;base64,${uri}`, requestId });
   } catch (error: any) {
