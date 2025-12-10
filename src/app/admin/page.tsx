@@ -61,16 +61,17 @@ export default function AdminPage() {
     }
 
     try {
+      const adminNote = note || null;
       const { data, error } = await supabase.rpc('grant_credits', {
         p_user_id: selectedUser.id,
         p_amount: amount,
         p_admin_id: profile.id,
-        p_admin_note: note || null,
-      });
+        p_admin_note: adminNote,
+      } as any);
 
       if (error) {
         toast.error('充值失败: ' + error.message);
-      } else if (data && data.success) {
+      } else if (data && (data as any).success) {
         toast.success(`成功为 ${selectedUser.email} 充值 ${amount} 积分`);
         setSelectedUser(null);
         setGrantAmount('');
@@ -86,9 +87,10 @@ export default function AdminPage() {
 
   // 封禁/解封用户
   const toggleUserStatus = async (user: User) => {
-    const { error } = await supabase
+    const updates: any = { is_active: !user.is_active };
+    const { error } = await (supabase as any)
       .from('profiles')
-      .update({ is_active: !user.is_active })
+      .update(updates)
       .eq('id', user.id);
 
     if (error) {

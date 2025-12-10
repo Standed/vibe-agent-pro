@@ -48,14 +48,10 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
   const shot = project?.shots.find((s) => s.id === shotId);
   const scene = project?.scenes.find((sc) => sc.shotIds.includes(shotId));
 
-  if (!shot) return null;
-
-  const hasImage = shot.referenceImage || (shot.gridImages && shot.gridImages.length > 0);
-  const hasVideo = !!shot.videoClip;
-
-  const handleFieldUpdate = (field: keyof Shot, value: any) => {
-    updateShot(shotId, { [field]: value });
-  };
+  const hasImage = Boolean(
+    shot?.referenceImage || (shot?.gridImages && shot.gridImages.length > 0)
+  );
+  const hasVideo = Boolean(shot?.videoClip);
 
   const shotHistoryImages = useMemo(() => {
     if (!shot) return [];
@@ -76,6 +72,18 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
       setSelectedHistoryImage(null);
     }
   }, [shot?.referenceImage, shotId]);
+
+  if (!shot) {
+    return (
+      <div className="h-full flex items-center justify-center text-sm text-light-text-muted dark:text-cine-text-muted">
+        分镜不存在或已被删除。
+      </div>
+    );
+  }
+
+  const handleFieldUpdate = (field: keyof Shot, value: any) => {
+    updateShot(shotId, { [field]: value });
+  };
 
   const handleRegenerate = () => {
     // 获取最后一次生成的提示词
@@ -461,7 +469,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                     />
                   ) : (
                     <div className="text-sm text-light-text dark:text-white bg-light-panel dark:bg-cine-panel p-3 rounded-lg">
-                      "{shot.dialogue}"
+                      &ldquo;{shot.dialogue}&rdquo;
                     </div>
                   )}
                 </div>

@@ -182,7 +182,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGc...      # 从步骤 1.2 获取（保密！）
 # ===================================
 # Cloudflare R2 配置
 # ===================================
-R2_BUCKET_NAME=vibe-agent-media
+R2_BUCKET_NAME=video-agent-media
 R2_ACCESS_KEY_ID=xxx                      # 从步骤 2.4 获取
 R2_SECRET_ACCESS_KEY=xxx                  # 从步骤 2.4 获取
 R2_ENDPOINT=https://xxx.r2.cloudflarestorage.com  # 从步骤 2.4 获取

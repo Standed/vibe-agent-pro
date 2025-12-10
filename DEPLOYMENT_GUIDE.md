@@ -2,7 +2,7 @@
 
 ## 📋 总览
 
-本指南将帮助你将 Vibe Agent Pro 部署为 SaaS 服务，使用以下技术栈：
+本指南将帮助你将 Video Agent Pro 部署为 SaaS 服务，使用以下技术栈：
 - **数据库**: Supabase (PostgreSQL)
 - **部署**: Vercel (前端 + API Routes)
 - **CDN/域名**: Cloudflare (可选)

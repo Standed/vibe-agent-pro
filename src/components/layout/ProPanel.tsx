@@ -1570,7 +1570,7 @@ export default function ProPanel() {
               <div className="mt-3 pt-3 border-t border-light-border dark:border-cine-border">
                 <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-1">对话:</div>
                 <div className="text-xs text-light-text dark:text-white bg-light-bg dark:bg-cine-black/50 p-2 rounded leading-relaxed">
-                  "{selectedShot.dialogue}"
+                  &ldquo;{selectedShot.dialogue}&rdquo;
                 </div>
               </div>
             )}

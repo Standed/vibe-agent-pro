@@ -1,12 +1,12 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Project, Asset } from '@/types/project';
 
-class VibeAgentDatabase extends Dexie {
+class VideoAgentDatabase extends Dexie {
   projects!: EntityTable<Project, 'id'>;
   assets!: EntityTable<Asset, 'id'>;
 
   constructor() {
-    super('VibeAgentDB');
+    super('VideoAgentDB');
 
     this.version(1).stores({
       projects: 'id, metadata.modified, metadata.title',
@@ -15,7 +15,7 @@ class VibeAgentDatabase extends Dexie {
   }
 }
 
-export const db = new VibeAgentDatabase();
+export const db = new VideoAgentDatabase();
 
 // 辅助函数
 export async function saveProject(project: Project): Promise<void> {

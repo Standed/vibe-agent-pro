@@ -34,6 +34,8 @@ interface ChatMessage {
   images?: string[]; // User uploaded images or generated images
   referenceImages?: string[]; // Reference images used
   model?: GenerationModel;
+  shotId?: string; // Associated shot ID
+  sceneId?: string; // Associated scene ID
   gridData?: {
     fullImage: string;
     slices: string[];
@@ -87,7 +89,7 @@ export default function ChatPanelWithHistory() {
   const [gridResult, setGridResult] = useState<GridGenerationResult | null>(null);
   const [sliceSelectorData, setSliceSelectorData] = useState<{
     gridData: ChatMessage['gridData'];
-    shotId: string;
+    shotId?: string;
     currentSliceIndex?: number;
   } | null>(null);
   const prevInputContextRef = useRef<string | null>(null);
@@ -1468,21 +1470,23 @@ export default function ChatPanelWithHistory() {
             currentSliceIndex={sliceSelectorData.currentSliceIndex}
             onSelectSlice={(sliceIndex) => {
               const selectedSliceUrl = sliceSelectorData.gridData!.slices[sliceIndex];
-              updateShot(sliceSelectorData.shotId, {
-                referenceImage: selectedSliceUrl,
-                fullGridUrl: sliceSelectorData.gridData!.fullImage,
-                status: 'done',
-              });
 
-              // Add to shot generation history
-              const historyItem: GenerationHistoryItem = {
-                id: `gen_${Date.now()}_${sliceSelectorData.shotId}`,
-                type: 'image',
-                timestamp: new Date(),
-                result: selectedSliceUrl,
-                prompt: sliceSelectorData.gridData!.prompt || '',
-                parameters: {
-                  model: 'Gemini Grid',
+              if (sliceSelectorData.shotId) {
+                updateShot(sliceSelectorData.shotId, {
+                  referenceImage: selectedSliceUrl,
+                  fullGridUrl: sliceSelectorData.gridData!.fullImage,
+                  status: 'done',
+                });
+
+                // Add to shot generation history
+                const historyItem: GenerationHistoryItem = {
+                  id: `gen_${Date.now()}_${sliceSelectorData.shotId}`,
+                  type: 'image',
+                  timestamp: new Date(),
+                  result: selectedSliceUrl,
+                  prompt: sliceSelectorData.gridData!.prompt || '',
+                  parameters: {
+                    model: 'Gemini Grid',
                   gridSize: sliceSelectorData.gridData!.gridSize || '2x2',
                   aspectRatio: sliceSelectorData.gridData!.aspectRatio || AspectRatio.WIDE,
                   fullGridUrl: sliceSelectorData.gridData!.fullImage,
@@ -1490,11 +1494,12 @@ export default function ChatPanelWithHistory() {
                 },
                 status: 'success',
               };
-              addGenerationHistory(sliceSelectorData.shotId, historyItem);
+                addGenerationHistory(sliceSelectorData.shotId, historyItem);
 
-              toast.success(`已选择切片 #${sliceIndex + 1}`, {
-                description: '镜头图片已更新'
-              });
+                toast.success(`已选择切片 #${sliceIndex + 1}`, {
+                  description: '镜头图片已更新'
+                });
+              }
 
               setSliceSelectorData(null);
             }}

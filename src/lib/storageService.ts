@@ -234,7 +234,7 @@ class StorageService {
    */
   isR2URL(url: string): boolean {
     const r2Domain = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || '';
-    return r2Domain && url.startsWith(r2Domain);
+    return !!r2Domain && url.startsWith(r2Domain);
   }
 
   /**

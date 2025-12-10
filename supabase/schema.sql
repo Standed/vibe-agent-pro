@@ -1,4 +1,4 @@
--- Vibe Agent Pro - Supabase Database Schema
+-- Video Agent Pro - Supabase Database Schema
 -- =============================================
 -- 此文件用于在 Supabase SQL Editor 中执行，创建所有必要的表和策略
 

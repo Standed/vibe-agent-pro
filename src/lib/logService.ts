@@ -122,7 +122,7 @@ class LogService {
       // 只在生产环境存储
       if (this.isDevelopment) return;
 
-      await supabase.from('application_logs').insert({
+      await (supabase as any).from('application_logs').insert({
         level: entry.level,
         category: entry.category,
         message: entry.message,

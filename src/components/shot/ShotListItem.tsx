@@ -66,7 +66,7 @@ export default function ShotListItem({
             {/* 显示对白（如果有） */}
             {shot.dialogue && (
               <p className="text-xs text-light-accent dark:text-cine-accent mt-1 line-clamp-1 italic">
-                💬 "{shot.dialogue}"
+                💬 &ldquo;{shot.dialogue}&rdquo;
               </p>
             )}
           </div>

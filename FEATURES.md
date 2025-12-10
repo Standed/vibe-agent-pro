@@ -1,4 +1,4 @@
-# Vibe Agent Pro - 功能实现清单
+# Video Agent Pro - 功能实现清单
 
 ## 🎯 核心功能状态
 

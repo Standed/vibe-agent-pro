@@ -494,7 +494,7 @@ Add to your PR template:
 - Review documentation with same rigor as code
 - Delete or update outdated documentation immediately
 
-# Vibe Agent Pro - Claude 项目管理文档
+# Video Agent Pro - Claude 项目管理文档
 
 > 本文档用于 Claude Code 加载项目上下文、追踪开发进度、记录技术决策
 
@@ -502,7 +502,7 @@ Add to your PR template:
 
 ## 📋 项目概述
 
-**项目名称**: Vibe Agent Pro
+**项目名称**: Video Agent Pro
 **版本**: v0.3.0
 **技术栈**: Next.js 15.5.6 + React 19 + TypeScript 5.8.2 + Zustand + Tailwind CSS
 **AI 服务**: Google Gemini 2.0 Flash + Volcano Engine (SeeDream, SeeDance, Doubao)

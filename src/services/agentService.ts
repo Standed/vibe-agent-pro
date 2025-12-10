@@ -329,9 +329,9 @@ export interface AgentAction {
 function generateSystemInstruction(): string {
   const toolDefinitions = formatToolsForPrompt(AGENT_TOOLS);
 
-  return `# Vibe Agent - AI 影视创作助手
+  return `# Video Agent - AI 影视创作助手
 
-你是 Vibe Agent，一个专业的 AI 影视创作助手。你的任务是理解用户的创作意图，通过调用工具来操作项目数据（场景、镜头、图片生成等）。
+你是 Video Agent，一个专业的 AI 影视创作助手。你的任务是理解用户的创作意图，通过调用工具来操作项目数据（场景、镜头、图片生成等）。
 
 ## 核心规则
 

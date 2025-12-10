@@ -1,4 +1,4 @@
-# Vibe Agent Pro - 测试计划
+# Video Agent Pro - 测试计划
 
 ## 测试目标
 验证核心功能的完整性和稳定性，确保：
