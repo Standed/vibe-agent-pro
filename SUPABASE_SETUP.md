@@ -7,7 +7,7 @@
 1. 访问 [Supabase Dashboard](https://supabase.com/dashboard)
 2. 点击 "New Project"
 3. 填写信息：
-   - Name: `vibe-agent-pro`
+   - Name: `video-agent-pro`
    - Database Password: 生成一个强密码并保存
    - Region: 选择离你最近的区域（推荐：Singapore 或 Tokyo）
 4. 等待项目创建完成（约 2 分钟）

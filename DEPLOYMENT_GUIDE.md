@@ -87,7 +87,7 @@ NEXT_PUBLIC_DOUBAO_MODEL_ID=ep-xxxxx
 
 部署成功后，你会得到一个 URL，例如：
 ```
-https://vibe-agent-pro.vercel.app
+https://video-agent-pro.vercel.app
 ```
 
 ### 阶段 3: Cloudflare 配置（可选）

@@ -1,5 +1,5 @@
 {
-  "name": "vibe-agent-pro",
+  "name": "video-agent-pro",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
@@ -85,7 +85,7 @@
     "publish": {
       "provider": "github",
       "owner": "vibe-agent",
-      "repo": "vibe-agent-pro"
+      "repo": "video-agent-pro"
     }
   }
 }

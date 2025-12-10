@@ -459,7 +459,7 @@ _[待填写]_
 ### 测试环境配置
 ```bash
 # 启动开发服务器
-cd /Users/shitengda/Downloads/docker/n8n/vibeAgent/finalAgent/vibe-agent-pro
+cd /Users/shitengda/Downloads/docker/n8n/vibeAgent/finalAgent/video-agent-pro
 npm run dev
 
 # 访问地址

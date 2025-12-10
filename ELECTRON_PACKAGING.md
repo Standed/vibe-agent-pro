@@ -94,7 +94,7 @@ npm run dist -- --mac --win --linux
     "publish": {
       "provider": "github",
       "owner": "your-github-username",
-      "repo": "vibe-agent-pro"
+      "repo": "video-agent-pro"
     }
   }
 }

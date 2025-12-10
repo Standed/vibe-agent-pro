@@ -86,7 +86,7 @@ Vibe Agent Pro is an AI-powered video storyboard generation and editing tool bui
 ### 1. Install Dependencies
 
 ```bash
-cd finalAgent/vibe-agent-pro
+cd finalAgent/video-agent-pro
 npm install
 ```
 

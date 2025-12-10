@@ -20,7 +20,7 @@
 1. 访问 [Supabase Dashboard](https://supabase.com/dashboard)
 2. 点击 "New Project"
 3. 填写项目信息：
-   - **Project Name**: `vibe-agent-pro`
+   - **Project Name**: `video-agent-pro`
    - **Database Password**: 设置一个强密码（请妥善保存）
    - **Region**: 选择离你最近的区域（推荐：Tokyo 或 Singapore）
    - **Pricing Plan**: Free（免费版）
@@ -93,7 +93,7 @@ RLS 策略已在 `schema.sql` 中定义，执行后自动生效。验证方法�
 
 1. 在 R2 页面，点击 "Create bucket"
 2. 填写 Bucket 信息：
-   - **Bucket Name**: `vibe-agent-media`
+   - **Bucket Name**: `video-agent-media`
    - **Location**: Automatic（自动选择最优位置）
 3. 点击 "Create bucket"
 
@@ -117,17 +117,17 @@ RLS 策略已在 `schema.sql` 中定义，执行后自动生效。验证方法�
 ]
 ```
 
-> **生产环境注意**: 将 `AllowedOrigins` 改为你的实际域名，例如 `["https://your-domain.com"]`
+> **生产环境注意**: 将 `AllowedOrigins` 改为你的实际域名，例如 `["https://xysaiai.com"]`
 
 ### 2.4 生成 R2 API Token
 
 1. 回到 R2 首页，点击右上角 "Manage R2 API Tokens"
 2. 点击 "Create API Token"
 3. 填写 Token 信息：
-   - **Token Name**: `vibe-agent-api`
+   - **Token Name**: `video-agent-api`
    - **Permissions**: Object Read & Write
    - **TTL**: Never expires（永不过期）
-   - **Apply to specific buckets only**: 选择 `vibe-agent-media`
+   - **Apply to specific buckets only**: 选择 `video-agent-media`
 4. 点击 "Create API Token"
 5. **重要**: 复制并保存以下信息（关闭后无法再查看）：
    - **Access Key ID**: `xxx`
