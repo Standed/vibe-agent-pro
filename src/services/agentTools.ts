@@ -151,6 +151,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           description: '生成模式：seedream (火山引擎单图)、gemini (Gemini 直出)、grid (Gemini Grid 多视图)',
           enum: ['seedream', 'gemini', 'grid']
         },
+        gridSize: {
+          type: 'string',
+          description: 'Grid 模式的网格大小（仅 grid 模式需要，默认 2x2）',
+          enum: ['2x2', '3x3']
+        },
         prompt: {
           type: 'string',
           description: '生成提示词（可选，如不提供则使用分镜描述）'
@@ -195,8 +200,13 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       properties: {
         mode: {
           type: 'string',
-          description: '生成模式：seedream (火山引擎单图)、gemini (Gemini 直出)',
-          enum: ['seedream', 'gemini']
+          description: '生成模式：seedream (火山引擎单图)、gemini (Gemini 直出)、grid (Gemini Grid 按场景分组)',
+          enum: ['seedream', 'gemini', 'grid']
+        },
+        gridSize: {
+          type: 'string',
+          description: 'Grid 模式的网格大小（仅 grid 模式需要，默认 2x2）',
+          enum: ['2x2', '3x3']
         },
         prompt: {
           type: 'string',
@@ -310,6 +320,7 @@ export class AgentToolExecutor {
           return await this.generateShotImage(
             toolCall.arguments.shotId,
             toolCall.arguments.mode,
+            toolCall.arguments.gridSize,
             toolCall.arguments.prompt
           );
 
@@ -324,6 +335,7 @@ export class AgentToolExecutor {
         case 'batchGenerateProjectImages':
           return await this.batchGenerateProjectImages(
             toolCall.arguments.mode,
+            toolCall.arguments.gridSize,
             toolCall.arguments.prompt
           );
         case 'createScene':
@@ -730,6 +742,7 @@ export class AgentToolExecutor {
   private async generateShotImage(
     shotId: string,
     mode: 'seedream' | 'gemini' | 'grid',
+    gridSize?: '2x2' | '3x3',
     prompt?: string
   ): Promise<ToolResult> {
     if (!this.project) {
@@ -782,16 +795,83 @@ export class AgentToolExecutor {
         }
         imageUrl = await editImageWithGemini(shot.referenceImage, enrichedPrompt, aspectRatio);
         modelName = 'Gemini Image Edit';
+      } else if (mode === 'grid') {
+        // Grid mode for single shot - generate Grid and return slices
+        const size = gridSize || '2x2';
+        const [rows, cols] = size === '2x2' ? [2, 2] : [3, 3];
+
+        // Enrich with assets
+        const { enrichedPrompt: finalPrompt, referenceImageUrls } = enrichPromptWithAssets(
+          enrichedPrompt,
+          this.project,
+          shot.description
+        );
+
+        // Get reference images
+        const refImages = await urlsToReferenceImages(referenceImageUrls);
+
+        // Generate Grid
+        const gridResult = await generateMultiViewGrid(
+          finalPrompt,
+          rows,
+          cols,
+          aspectRatio,
+          ImageSize.K4,
+          refImages
+        );
+
+        // Use the first slice as the main image
+        imageUrl = gridResult.slices[0];
+        modelName = `Gemini Grid ${size}`;
+
+        // Store full grid and all slices in generation history
+        if (this.storeCallbacks) {
+          this.storeCallbacks.updateShot(shotId, {
+            referenceImage: imageUrl,
+            status: 'done',
+          });
+
+          const historyItem: GenerationHistoryItem = {
+            id: `gen_${Date.now()}`,
+            type: 'image',
+            timestamp: new Date(),
+            result: imageUrl,
+            prompt: promptText,
+            parameters: {
+              model: modelName,
+              gridSize: size,
+              aspectRatio: aspectRatio,
+              fullGridUrl: gridResult.fullImage,
+              allSlices: gridResult.slices,
+            },
+            status: 'success',
+          };
+          this.storeCallbacks.addGenerationHistory(shotId, historyItem);
+        }
+
+        return {
+          tool: 'generateShotImage',
+          result: {
+            shotId,
+            imageUrl,
+            model: modelName,
+            prompt: promptText,
+            gridSize: size,
+            fullGridUrl: gridResult.fullImage,
+            allSlices: gridResult.slices,
+          },
+          success: true,
+        };
       } else {
         return {
           tool: 'generateShotImage',
           result: null,
           success: false,
-          error: 'Grid 模式请使用 batchGenerateSceneImages 批量生成'
+          error: `Unknown mode: ${mode}`
         };
       }
 
-      // Update shot via store callback
+      // Update shot via store callback (for seedream and gemini modes)
       if (this.storeCallbacks) {
         this.storeCallbacks.updateShot(shotId, {
           referenceImage: imageUrl,
@@ -915,7 +995,7 @@ export class AgentToolExecutor {
         const results = await runWithConcurrency(
           unassignedShots,
           IMAGE_CONCURRENCY,
-          async (shot) => this.generateShotImage(shot.id, mode, prompt)
+          async (shot) => this.generateShotImage(shot.id, mode, undefined, prompt)
         );
 
         const successCount = results.filter(r => r.success).length;
@@ -1070,7 +1150,8 @@ export class AgentToolExecutor {
    * Batch generate images for all shots in project
    */
   private async batchGenerateProjectImages(
-    mode: 'seedream' | 'gemini',
+    mode: 'seedream' | 'gemini' | 'grid',
+    gridSize?: '2x2' | '3x3',
     prompt?: string
   ): Promise<ToolResult> {
     if (!this.project) {
@@ -1095,23 +1176,55 @@ export class AgentToolExecutor {
     }
 
     try {
-      const results = await runWithConcurrency(
-        unassignedShots,
-        IMAGE_CONCURRENCY,
-        async (shot) => this.generateShotImage(shot.id, mode, prompt)
-      );
+      if (mode === 'grid') {
+        // Grid mode: Generate grids by scene
+        const sceneResults: any[] = [];
+        for (const scene of this.project.scenes) {
+          const sceneShots = unassignedShots.filter(s => s.sceneId === scene.id);
+          if (sceneShots.length > 0) {
+            const result = await this.generateSceneGrid(
+              scene.id,
+              scene,
+              sceneShots,
+              gridSize || '2x2',
+              prompt
+            );
+            sceneResults.push(result);
+          }
+        }
 
-      const successCount = results.filter(r => r.success).length;
-      return {
-        tool: 'batchGenerateProjectImages',
-        result: {
-          totalShots: unassignedShots.length,
-          successCount,
-          failedCount: unassignedShots.length - successCount,
-          results,
-        },
-        success: successCount > 0,
-      };
+        const successCount = sceneResults.filter(r => r.success).length;
+        return {
+          tool: 'batchGenerateProjectImages',
+          result: {
+            mode: 'grid',
+            totalScenes: sceneResults.length,
+            successCount,
+            failedCount: sceneResults.length - successCount,
+            sceneResults,
+          },
+          success: successCount > 0,
+        };
+      } else {
+        // SeeDream or Gemini mode
+        const results = await runWithConcurrency(
+          unassignedShots,
+          IMAGE_CONCURRENCY,
+          async (shot) => this.generateShotImage(shot.id, mode, undefined, prompt)
+        );
+
+        const successCount = results.filter(r => r.success).length;
+        return {
+          tool: 'batchGenerateProjectImages',
+          result: {
+            totalShots: unassignedShots.length,
+            successCount,
+            failedCount: unassignedShots.length - successCount,
+            results,
+          },
+          success: successCount > 0,
+        };
+      }
     } catch (error: any) {
       return {
         tool: 'batchGenerateProjectImages',

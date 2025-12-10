@@ -776,44 +776,61 @@ export default function LeftSidebarNew() {
                     {/* Shot List */}
                     {!isCollapsed && (
                       <div className="px-3 pb-3 space-y-2">
-                        {sceneShots
-                          .slice()
-                          .sort((a, b) => (a.order || 0) - (b.order || 0))
-                          .map((shot, idx) => (
-                            <div key={shot.id} className="relative group overflow-visible">
-                              <div className="absolute -top-3 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAddShotClick(scene.id, idx);
-                                  }}
-                                  className="w-6 h-6 rounded-full bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent text-xs flex items-center justify-center shadow-sm z-20"
-                                  title="在此处插入镜头"
-                                >
-                                  <Plus size={12} />
-                                </button>
+                        {sceneShots.length === 0 ? (
+                          // 空状态：没有分镜时显示添加按钮
+                          <div className="text-center py-6">
+                            <p className="text-xs text-light-text-muted dark:text-cine-text-muted mb-3">
+                              该场景还没有分镜
+                            </p>
+                            <button
+                              onClick={() => handleAddShotClick(scene.id, 0)}
+                              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-light-accent/10 dark:bg-cine-accent/10 text-light-accent dark:text-cine-accent border border-light-accent/30 dark:border-cine-accent/30 rounded-lg hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
+                            >
+                              <Plus size={14} />
+                              <span>添加第一个分镜</span>
+                            </button>
+                          </div>
+                        ) : (
+                          // 有分镜时正常显示列表
+                          sceneShots
+                            .slice()
+                            .sort((a, b) => (a.order || 0) - (b.order || 0))
+                            .map((shot, idx) => (
+                              <div key={shot.id} className="relative group overflow-visible">
+                                <div className="absolute -top-3 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAddShotClick(scene.id, idx);
+                                    }}
+                                    className="w-6 h-6 rounded-full bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent text-xs flex items-center justify-center shadow-sm z-20"
+                                    title="在此处插入镜头"
+                                  >
+                                    <Plus size={12} />
+                                  </button>
+                                </div>
+                                <ShotListItem
+                                  shot={shot}
+                                  isSelected={selectedShotId === shot.id}
+                                  onSelect={() => handleShotClick(shot.id)}
+                                  onEdit={() => openShotEditor(shot)}
+                                  onDelete={() => handleDeleteShot(shot.id, shot.order, scene.name)}
+                                />
+                                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAddShotClick(scene.id, idx + 1);
+                                    }}
+                                    className="w-6 h-6 rounded-full bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent text-xs flex items-center justify-center shadow-sm z-20"
+                                    title="在此处插入镜头"
+                                  >
+                                    <Plus size={12} />
+                                  </button>
+                                </div>
                               </div>
-                              <ShotListItem
-                                shot={shot}
-                                isSelected={selectedShotId === shot.id}
-                                onSelect={() => handleShotClick(shot.id)}
-                                onEdit={() => openShotEditor(shot)}
-                                onDelete={() => handleDeleteShot(shot.id, shot.order, scene.name)}
-                              />
-                              <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAddShotClick(scene.id, idx + 1);
-                                  }}
-                                  className="w-6 h-6 rounded-full bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent text-xs flex items-center justify-center shadow-sm z-20"
-                                  title="在此处插入镜头"
-                                >
-                                  <Plus size={12} />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
+                            ))
+                        )}
                       </div>
                     )}
                   </div>

@@ -7,10 +7,10 @@ const parseTimeout = (val: string | undefined, fallback: number) => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
-// 默认 180s，可通过环境变量覆盖
+// 默认 240s（通过代理时数据传输较慢），可通过环境变量覆盖
 const GEMINI_TIMEOUT_MS = parseTimeout(
   process.env.NEXT_PUBLIC_GEMINI_IMG_TIMEOUT_MS || process.env.GEMINI_IMG_TIMEOUT_MS,
-  180000
+  240000
 );
 
 const postJson = async <T>(url: string, body: any, timeoutMs: number = GEMINI_TIMEOUT_MS): Promise<T> => {
@@ -123,6 +123,15 @@ export const generateMultiViewGrid = async (
   const totalViews = gridRows * gridCols;
   const gridType = `${gridRows}x${gridCols}`;
 
+  // Determine panel orientation based on aspect ratio
+  const isPortrait = aspectRatio === '9:16' || aspectRatio === '3:4' || aspectRatio === '2:3';
+  const isLandscape = aspectRatio === '16:9' || aspectRatio === '4:3' || aspectRatio === '3:2';
+  const orientationInstruction = isPortrait
+    ? 'Each panel MUST be in PORTRAIT orientation (vertical/竖屏), taller than it is wide.'
+    : isLandscape
+    ? 'Each panel MUST be in LANDSCAPE orientation (horizontal/横屏), wider than it is tall.'
+    : 'Each panel should maintain a square or near-square aspect ratio.';
+
   // STRICT prompt engineering for storyboard grid generation
   const gridPrompt = `MANDATORY LAYOUT: Create a precise ${gridType} GRID containing exactly ${totalViews} distinct storyboard panels.
   - The output image MUST be a single image divided into a ${gridRows} (rows) by ${gridCols} (columns) matrix.
@@ -130,6 +139,12 @@ export const generateMultiViewGrid = async (
   - Each panel must be completely separated by a thin, distinct, solid black line.
   - DO NOT create a collage. DO NOT overlap images. DO NOT create random sizes.
   - The grid structure must be perfectly aligned for slicing.
+
+  PANEL ASPECT RATIO REQUIREMENT (CRITICAL):
+  - ${orientationInstruction}
+  - The aspect ratio for EACH individual panel should be ${aspectRatio}.
+  - This means the OVERALL grid image will be ${aspectRatio === '9:16' ? 'portrait/vertical' : aspectRatio === '16:9' ? 'landscape/horizontal' : aspectRatio}.
+  - Ensure each panel maintains the ${aspectRatio} aspect ratio when the grid is sliced.
 
   STORYBOARD CONTENT (Create ${totalViews} DIFFERENT shots based on these descriptions):
 
@@ -147,7 +162,8 @@ ${prompt}
   - Professional color grading and composition.
   - No text, no captions, no UI elements.
   - No watermarks.
-  - No broken grid lines.`;
+  - No broken grid lines.
+  - REMEMBER: Each panel is ${aspectRatio} ${isPortrait ? '(portrait/竖屏)' : isLandscape ? '(landscape/横屏)' : ''}.`;
 
   // 🔍 调试：输出最终的 Grid 提示词
   console.log('[geminiService Grid Debug] ========== START ==========');

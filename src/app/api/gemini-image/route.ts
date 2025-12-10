@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ProxyAgent } from 'undici';
+import { ProxyAgent, Agent } from 'undici';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,18 +57,51 @@ export async function POST(request: Request) {
     // Proxy support (align with grid route)
     if (process.env.HTTP_PROXY) {
       try {
-        const proxyAgent = new ProxyAgent(process.env.HTTP_PROXY);
+        const proxyAgent = new ProxyAgent({
+          uri: process.env.HTTP_PROXY,
+          connectTimeout: 60000, // 60s connection timeout
+        });
         fetchOptions.dispatcher = proxyAgent;
         console.log('[Gemini Image] ✅ ProxyAgent created successfully');
       } catch (e) {
         console.error('[Gemini Image] ❌ Failed to create ProxyAgent:', e);
       }
     } else {
-      console.warn('[Gemini Image] ⚠️ No HTTP_PROXY found, proceeding without proxy');
+      // Create Agent with extended connection timeout for direct connection
+      try {
+        const agent = new Agent({
+          connectTimeout: 60000, // 60s connection timeout
+          headersTimeout: 130000, // 130s headers timeout (longer than AbortController)
+          bodyTimeout: 130000, // 130s body timeout
+        });
+        fetchOptions.dispatcher = agent;
+        console.log('[Gemini Image] ✅ Agent created with extended timeouts');
+      } catch (e) {
+        console.error('[Gemini Image] ❌ Failed to create Agent:', e);
+      }
     }
+
+    // 📊 诊断信息：记录请求详情
+    const bodySize = (fetchOptions.body.length / 1024).toFixed(2);
+    const refImageCount = referenceImages.length;
+    const promptLength = prompt.length;
+
+    const startTime = Date.now();
+    console.log('[Gemini Image] 🚀 Request started');
+    console.log('[Gemini Image] 📊 Diagnostics:', {
+      timestamp: new Date().toISOString(),
+      bodySize: `${bodySize} KB`,
+      refImageCount,
+      promptLength,
+      aspectRatio,
+      proxy: process.env.HTTP_PROXY ? 'enabled' : 'disabled'
+    });
 
     const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, fetchOptions);
     clearTimeout(timeout);
+
+    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`[Gemini Image] ✅ Request completed in ${elapsedTime}s`);
 
     if (!resp.ok) {
       const text = await resp.text();
@@ -80,6 +113,10 @@ export async function POST(request: Request) {
     if (!uri) {
       return NextResponse.json({ error: 'no image returned' }, { status: 500 });
     }
+
+    // 📊 记录响应数据大小
+    const responseSize = (uri.length / 1024).toFixed(2);
+    console.log('[Gemini Image] 📊 Response size:', `${responseSize} KB (base64)`);
 
     // Return data URL
     return NextResponse.json({ url: `data:image/png;base64,${uri}` });
