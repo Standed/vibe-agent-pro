@@ -2,7 +2,7 @@
  * 文件存储服务
  *
  * 支持三种存储方式：
- * 1. Cloudflare R2（推荐，图片/视频，成本低，无流量费）
+ * 1. Cloudflare R2（推荐，图片/视频/音频，成本低，无流量费）
  * 2. Supabase Storage（备选，小文件）
  * 3. Base64 Data URL（本地存储，用于 IndexedDB）
  */

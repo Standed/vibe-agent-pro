@@ -14,7 +14,7 @@ import type {
   ChatMessage,
   GenerationHistoryItem,
 } from '@/types/project';
-import { db, saveProject as saveProjectToDB } from '@/lib/db';
+import { dataService } from '@/lib/dataService';
 import { recalcShotOrders, normalizeSceneOrder } from '@/utils/shotOrder';
 
 interface ProjectStore {
@@ -139,7 +139,7 @@ export const useProjectStore = create<ProjectStore>()(
       };
 
       set({ project: updatedProject });
-      await saveProjectToDB(updatedProject);
+      await dataService.saveProject(updatedProject);
     },
 
     createNewProject: (title, description, artStyle = '', aspectRatio = '9:16') => {

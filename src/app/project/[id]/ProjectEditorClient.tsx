@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
-import { loadProject } from '@/lib/db';
+import { dataService } from '@/lib/dataService';
 import LeftSidebarNew from '@/components/layout/LeftSidebarNew';
 import InfiniteCanvas from '@/components/canvas/InfiniteCanvas';
 import RightPanel from '@/components/layout/RightPanel';
@@ -20,11 +20,11 @@ export function ProjectEditorClient() {
         const loadOrCreateProject = async () => {
             const projectId = params.id as string;
 
-            // 直接从 IndexedDB 加载项目
-            const loadedProject = await loadProject(projectId);
+            // 从数据库加载项目（自动选择 IndexedDB 或 Supabase）
+            const loadedProject = await dataService.loadProject(projectId);
             if (loadedProject) {
                 loadProjectToStore(loadedProject);
-                console.log('✅ 项目已从 IndexedDB 加载:', projectId);
+                console.log('✅ 项目已加载:', projectId);
             } else {
                 // 项目不存在，返回首页
                 console.warn('⚠️ 项目不存在，返回首页');

@@ -12,6 +12,9 @@ import ShotGenerationHistory from '@/components/shot/ShotGenerationHistory';
 import { toast } from 'sonner';
 import { validateGenerationConfig } from '@/utils/promptSecurity';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
+import { consumeCredits, getUserCredits, getGridCost } from '@/lib/supabase/credits';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { logger } from '@/lib/logService';
 
 type GenerationType = 'grid' | 'single' | 'video' | 'edit' | 'batch' | null;
 type EditModel = 'seedream' | 'gemini';
@@ -26,6 +29,7 @@ interface GridGenerationResult {
 }
 
 export default function ProPanel() {
+  const { user } = useAuth();
   const { project, currentSceneId, selectedShotId, updateShot, addGridHistory, saveFavoriteSlices, addGenerationHistory } = useProjectStore();
   const [generationType, setGenerationType] = useState<GenerationType>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -188,6 +192,26 @@ export default function ProPanel() {
     if (!selectedSceneId) {
       toast.warning('请先选择一个场景');
       return;
+    }
+
+    // 💰 积分检查（仅对已登录用户）
+    if (user) {
+      const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
+      const requiredCredits = getGridCost(rows, cols);
+      const currentCredits = await getUserCredits();
+
+      if (currentCredits < requiredCredits) {
+        toast.error('积分不足', {
+          description: `生成 ${gridSize} Grid 需要 ${requiredCredits} 积分，当前余额：${currentCredits} 积分`,
+          duration: 5000,
+        });
+        return;
+      }
+
+      // 提示用户即将消耗积分
+      toast.info(`将消耗 ${requiredCredits} 积分`, {
+        description: `当前余额：${currentCredits} 积分`,
+      });
     }
 
     setIsGenerating(true);
@@ -402,6 +426,32 @@ export default function ProPanel() {
         aspectRatio,
       });
 
+      // 💰 消费积分（仅对已登录用户）
+      if (user) {
+        const creditsConsumed = getGridCost(rows, cols);
+        const consumeResult = await consumeCredits({
+          amount: creditsConsumed,
+          operationType: `generate-grid-${rows}x${cols}`,
+          description: `生成 ${gridSize} Grid - ${targetScene.name}`,
+        });
+
+        if (consumeResult.success) {
+          toast.success(`已消耗 ${creditsConsumed} 积分`, {
+            description: `剩余积分：${consumeResult.creditsAfter}`,
+          });
+
+          // 记录日志
+          await logger.logAIGeneration(
+            `grid-${rows}x${cols}`,
+            creditsConsumed,
+            true,
+            { sceneId: targetScene.id, sceneName: targetScene.name }
+          );
+        } else {
+          console.warn('Credit consumption failed:', consumeResult.error);
+        }
+      }
+
       // Show Grid preview modal for manual assignment
       setGridResult({
         fullImage: result.fullImage,
@@ -413,6 +463,19 @@ export default function ProPanel() {
     } catch (error: any) {
       console.error('Grid generation error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Grid 生成失败';
+
+      // 记录失败日志
+      if (user) {
+        const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
+        const creditsConsumed = getGridCost(rows, cols);
+        await logger.logAIGeneration(
+          `grid-${rows}x${cols}`,
+          creditsConsumed,
+          false,
+          { error: errorMessage, sceneId: selectedSceneId }
+        );
+      }
+
       toast.error('Grid 生成失败', {
         description: `${errorMessage}\n\n请检查：\n1. Gemini API 配置是否正确\n2. 提示词是否完整\n3. API 密钥是否有效`
       });
@@ -528,6 +591,25 @@ export default function ProPanel() {
       return;
     }
 
+    // 💰 积分检查（仅对已登录用户）
+    if (user) {
+      const requiredCredits = 20; // 视频生成需要 20 积分
+      const currentCredits = await getUserCredits();
+
+      if (currentCredits < requiredCredits) {
+        toast.error('积分不足', {
+          description: `生成视频需要 ${requiredCredits} 积分，当前余额：${currentCredits} 积分`,
+          duration: 5000,
+        });
+        return;
+      }
+
+      // 提示用户即将消耗积分
+      toast.info(`将消耗 ${requiredCredits} 积分`, {
+        description: `当前余额：${currentCredits} 积分`,
+      });
+    }
+
     setIsGenerating(true);
     const loadingToast = toast.loading('正在提交视频生成任务，预计需要 2-3 分钟...');
 
@@ -577,15 +659,48 @@ export default function ProPanel() {
       };
       addGenerationHistory(selectedShotId!, historyItem);
 
+      // 💰 消费积分（仅对已登录用户）
+      if (user) {
+        const creditsConsumed = 20;
+        const consumeResult = await consumeCredits({
+          amount: creditsConsumed,
+          operationType: 'generate-video',
+          description: `生成视频 - ${selectedShot.shotSize}`,
+        });
+
+        if (consumeResult.success) {
+          // 记录日志
+          await logger.logAIGeneration(
+            'video',
+            creditsConsumed,
+            true,
+            { shotId: selectedShotId, shotSize: selectedShot.shotSize }
+          );
+        } else {
+          console.warn('Credit consumption failed:', consumeResult.error);
+        }
+      }
+
       toast.success('视频生成成功！', {
         id: loadingToast,
-        description: `视频已保存到镜头`
+        description: user ? `视频已保存到镜头 | 已消耗 20 积分` : '视频已保存到镜头'
       });
     } catch (error) {
       console.error('Video generation error:', error);
       updateShot(selectedShotId!, { status: 'error' });
 
       const errorMessage = error instanceof Error ? error.message : '未知错误';
+
+      // 记录失败日志
+      if (user) {
+        await logger.logAIGeneration(
+          'video',
+          20,
+          false,
+          { error: errorMessage, shotId: selectedShotId }
+        );
+      }
+
       toast.error('视频生成失败', {
         id: loadingToast,
         description: `${errorMessage}\n\n请检查：\n1. Volcano Engine API 配置是否正确\n2. 模型 endpoint_id 是否已创建\n3. API 密钥是否有效`

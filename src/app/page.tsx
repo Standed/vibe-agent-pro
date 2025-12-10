@@ -9,7 +9,8 @@ import { SettingsPanel } from '@/components/settings/SettingsPanel';
 import { useI18n } from '@/components/providers/I18nProvider';
 import NewProjectDialog from '@/components/project/NewProjectDialog';
 import { useProjectStore } from '@/store/useProjectStore';
-import { saveProject, getAllProjects, deleteProject } from '@/lib/db';
+import { dataService } from '@/lib/dataService';
+import { MigrationPrompt } from '@/components/migration/MigrationPrompt';
 import type { Project } from '@/types/project';
 
 export default function Home() {
@@ -28,7 +29,7 @@ export default function Home() {
   const loadProjects = async () => {
     setIsLoading(true);
     try {
-      const allProjects = await getAllProjects();
+      const allProjects = await dataService.getAllProjects();
       setProjects(allProjects);
       console.log('✅ 已加载项目列表:', allProjects.length);
     } catch (error) {
@@ -48,12 +49,12 @@ export default function Home() {
     createNewProject(title, description, artStyle, aspectRatio);
     setShowNewProjectDialog(false);
 
-    // 2. 立即保存到 IndexedDB（使用 setTimeout 确保 store 已更新）
+    // 2. 立即保存到数据库（使用 setTimeout 确保 store 已更新）
     setTimeout(async () => {
       const currentProject = useProjectStore.getState().project;
       if (currentProject) {
-        await saveProject(currentProject);
-        console.log('✅ 项目已保存到 IndexedDB:', currentProject.id);
+        await dataService.saveProject(currentProject);
+        console.log('✅ 项目已保存:', currentProject.id);
         // 3. 跳转到项目编辑页（使用实际的项目 ID）
         router.push(`/project/${currentProject.id}`);
       }
@@ -66,7 +67,7 @@ export default function Home() {
 
     if (confirm('确定要删除这个项目吗？此操作不可恢复。')) {
       try {
-        await deleteProject(projectId);
+        await dataService.deleteProject(projectId);
         console.log('✅ 项目已删除:', projectId);
         // 重新加载项目列表
         loadProjects();
@@ -201,6 +202,9 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* Migration Prompt */}
+      <MigrationPrompt onComplete={loadProjects} />
 
       {/* New Project Dialog */}
       {showNewProjectDialog && (
