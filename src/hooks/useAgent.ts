@@ -259,7 +259,11 @@ export function useAgent(): UseAgentResult {
         const updatedProject = useProjectStore.getState().project;
         const updatedSceneId = useProjectStore.getState().currentSceneId;
         const updatedShotId = useProjectStore.getState().selectedShotId;
-        const updatedContext = buildEnhancedContext(updatedProject, updatedSceneId, updatedShotId);
+        const updatedContext = buildEnhancedContext(
+          updatedProject,
+          updatedSceneId ?? undefined,
+          updatedShotId ?? undefined
+        );
 
         action = await continueWithToolResults(
           results.map(r => ({ tool: r.tool, result: r.result || r.error })),

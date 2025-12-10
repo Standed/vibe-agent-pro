@@ -56,8 +56,8 @@
     "dist": "npm run build:electron && electron-builder"
   },
   "build": {
-    "appId": "com.vibe.agent.pro",
-    "productName": "Vibe Agent Pro",
+    "appId": "com.video.agent.pro",
+    "productName": "Video Agent Pro",
     "directories": {
       "output": "dist"
     },

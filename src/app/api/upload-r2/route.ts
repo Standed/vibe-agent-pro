@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 
 // 初始化 R2 客户端（兼容 S3 API）
@@ -27,21 +27,21 @@ const PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL!;
  */
 async function getServerUser() {
   const cookieStore = await cookies();
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-      },
-    }
-  );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // 获取所有 Supabase 相关的 cookies
+  const allCookies = cookieStore.getAll();
+  const accessToken = allCookies.find(c => c.name.includes('auth-token'))?.value;
+
+  if (!accessToken) {
+    return null;
+  }
+
+  // 使用 admin client 验证 token 并获取用户
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+  if (error || !user) {
+    return null;
+  }
 
   return user;
 }

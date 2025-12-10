@@ -2,7 +2,7 @@
 
 ## 📦 概述
 
-Vibe Agent Pro 已配置为 Electron 桌面应用，支持 macOS、Windows 和 Linux 平台。本指南将帮助您构建、打包和发布应用。
+Video Agent Pro 已配置为 Electron 桌面应用，支持 macOS、Windows 和 Linux 平台。本指南将帮助您构建、打包和发布应用。
 
 ## ✅ 已配置功能
 
@@ -61,22 +61,22 @@ npm run dist
 npm run dist -- --mac
 ```
 生成文件:
-- `dist/Vibe Agent Pro-{version}.dmg` (安装镜像)
-- `dist/Vibe Agent Pro-{version}-mac.zip` (ZIP 压缩包)
+- `dist/Video Agent Pro-{version}.dmg` (安装镜像)
+- `dist/Video Agent Pro-{version}-mac.zip` (ZIP 压缩包)
 
 ### Windows
 ```bash
 npm run dist -- --win
 ```
 生成文件:
-- `dist/Vibe Agent Pro Setup {version}.exe` (NSIS 安装程序)
+- `dist/Video Agent Pro Setup {version}.exe` (NSIS 安装程序)
 
 ### Linux
 ```bash
 npm run dist -- --linux
 ```
 生成文件:
-- `dist/Vibe-Agent-Pro-{version}.AppImage`
+- `dist/Video-Agent-Pro-{version}.AppImage`
 
 ### 构建所有平台
 ```bash
@@ -140,9 +140,9 @@ npm run dist -- --publish always
 
 用户的项目数据（IndexedDB）存储在以下位置：
 
-- **macOS**: `~/Library/Application Support/Vibe Agent Pro/`
-- **Windows**: `%APPDATA%\Vibe Agent Pro\`
-- **Linux**: `~/.config/Vibe Agent Pro/`
+- **macOS**: `~/Library/Application Support/Video Agent Pro/`
+- **Windows**: `%APPDATA%\Video Agent Pro\`
+- **Linux**: `~/.config/Video Agent Pro/`
 
 这些数据在应用更新时**不会被删除**，确保用户项目的持久性。
 
@@ -233,11 +233,11 @@ npm version major  # 0.2.0 -> 1.0.0
 **生产模式**:
 ```bash
 # macOS/Linux
-~/Library/Logs/Vibe Agent Pro/main.log
-~/.config/Vibe Agent Pro/logs/main.log
+~/Library/Logs/Video Agent Pro/main.log
+~/.config/Video Agent Pro/logs/main.log
 
 # Windows
-%USERPROFILE%\AppData\Roaming\Vibe Agent Pro\logs\main.log
+%USERPROFILE%\AppData\Roaming\Video Agent Pro\logs\main.log
 ```
 
 ### 常见问题

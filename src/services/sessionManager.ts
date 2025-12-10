@@ -24,7 +24,7 @@ export interface AgentSession {
   };
 }
 
-const DB_NAME = 'vibe-agent-sessions';
+const DB_NAME = 'video-agent-sessions';
 const STORE_NAME = 'sessions';
 const DB_VERSION = 1;
 

@@ -24,7 +24,7 @@ export interface AuthResponse {
  * 用户注册
  */
 export async function signUp(data: SignUpData): Promise<AuthResponse> {
-  const { data: authData, error } = await supabase.auth.signUp({
+  const { data: authData, error } = await (supabase as any).auth.signUp({
     email: data.email,
     password: data.password,
     options: {
@@ -45,14 +45,14 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
  * 用户登录
  */
 export async function signIn(data: SignInData): Promise<AuthResponse> {
-  const { data: authData, error } = await supabase.auth.signInWithPassword({
+  const { data: authData, error } = await (supabase as any).auth.signInWithPassword({
     email: data.email,
     password: data.password,
   });
 
   // 更新最后登录时间
   if (authData.user) {
-    await supabase
+    await (supabase as any)
       .from('profiles')
       .update({ last_login_at: new Date().toISOString() })
       .eq('id', authData.user.id);
@@ -69,7 +69,7 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
  * 用户登出
  */
 export async function signOut(): Promise<{ error: AuthError | null }> {
-  const { error } = await supabase.auth.signOut();
+  const { error } = await (supabase as any).auth.signOut();
   return { error };
 }
 
@@ -110,7 +110,7 @@ export function onAuthStateChange(
 export async function resetPassword(
   email: string
 ): Promise<{ error: AuthError | null }> {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+  const { error } = await (supabase as any).auth.resetPasswordForEmail(email, {
     redirectTo: `${window.location.origin}/auth/reset-password`,
   });
   return { error };
@@ -122,7 +122,7 @@ export async function resetPassword(
 export async function updatePassword(
   newPassword: string
 ): Promise<{ error: AuthError | null }> {
-  const { error } = await supabase.auth.updateUser({
+  const { error } = await (supabase as any).auth.updateUser({
     password: newPassword,
   });
   return { error };
@@ -144,7 +144,7 @@ export async function updateProfile(data: {
   if (data.fullName !== undefined) updates.full_name = data.fullName;
   if (data.avatarUrl !== undefined) updates.avatar_url = data.avatarUrl;
 
-  const { error } = await supabase
+  const { error } = await (supabase as any)
     .from('profiles')
     .update(updates)
     .eq('id', user.id);
@@ -161,7 +161,7 @@ export async function getUserProfile(userId?: string) {
     return { data: null, error: new Error('User not found') };
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('profiles')
     .select('*')
     .eq('id', uid)

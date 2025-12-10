@@ -38,7 +38,7 @@ export default function RegisterPage() {
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-white mb-2">
-            Vibe Agent Pro
+            Video Agent Pro
           </h1>
           <p className="text-zinc-400">创建新账号</p>
         </div>

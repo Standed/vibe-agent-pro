@@ -4,7 +4,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│                  Vibe Agent Pro                       │
+│                  Video Agent Pro                       │
 └────────────────┬─────────────────────────────────────┘
                  │
       ┌──────────┴──────────┐
@@ -118,7 +118,7 @@ Pro版: 8 GB 数据库 (¥180/月)
 
 **文件组织结构：**
 ```
-vibe-agent-media/  (R2 Bucket)
+video-agent-media/  (R2 Bucket)
 ├── {userId}/
 │   ├── projects/{projectId}/
 │   │   ├── images/
@@ -390,7 +390,7 @@ Cloudflare R2: ¥3.5/月
 
 - [ ] 注册 Cloudflare 账号
 - [ ] 启用 R2
-- [ ] 创建 bucket: `vibe-agent-media`
+- [ ] 创建 bucket: `video-agent-media`
 - [ ] 生成 R2 API Token
   - 权限：Object Read & Write
 - [ ] 配置自定义域名（可选）

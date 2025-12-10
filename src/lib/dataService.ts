@@ -180,7 +180,7 @@ class SupabaseBackend implements DataBackend {
 
   async saveProject(project: Project): Promise<void> {
     // 将 Project 数据分解为 Supabase 表结构
-    const { data: projectData, error: projectError } = await supabase
+    const { data: projectData, error: projectError } = await (supabase as any)
       .from('projects')
       .upsert({
         id: project.id,
@@ -227,7 +227,7 @@ class SupabaseBackend implements DataBackend {
 
   async loadProject(id: string): Promise<Project | undefined> {
     // 加载项目基本信息
-    const { data: projectData, error: projectError } = await supabase
+    const { data: projectData, error: projectError } = await (supabase as any)
       .from('projects')
       .select('*')
       .eq('id', id)
@@ -236,19 +236,19 @@ class SupabaseBackend implements DataBackend {
     if (projectError || !projectData) return undefined;
 
     // 加载场景
-    const { data: scenesData } = await supabase
+    const { data: scenesData } = await (supabase as any)
       .from('scenes')
       .select('*')
       .eq('project_id', id)
       .order('order_index');
 
     // 加载镜头
-    const { data: shotsData } = await supabase
+    const { data: shotsData } = await (supabase as any)
       .from('shots')
       .select('*')
       .order('order_index');
 
-    const scenes: Scene[] = (scenesData || []).map(s => ({
+    const scenes: Scene[] = (scenesData || []).map((s: any) => ({
       id: s.id,
       name: s.name,
       location: s.description || '',
@@ -266,8 +266,8 @@ class SupabaseBackend implements DataBackend {
     // 过滤属于当前项目场景的镜头
     const sceneIds = scenes.map(s => s.id);
     const shots: Shot[] = (shotsData || [])
-      .filter(shot => sceneIds.includes(shot.scene_id))
-      .map(s => ({
+      .filter((shot: any) => sceneIds.includes(shot.scene_id))
+      .map((s: any) => ({
         id: s.id,
         sceneId: s.scene_id,
         order: s.order_index,
@@ -292,12 +292,12 @@ class SupabaseBackend implements DataBackend {
     });
 
     // 加载角色
-    const { data: charactersData } = await supabase
+    const { data: charactersData } = await (supabase as any)
       .from('characters')
       .select('*')
       .eq('project_id', id);
 
-    const characters: Character[] = (charactersData || []).map(c => ({
+    const characters: Character[] = (charactersData || []).map((c: any) => ({
       id: c.id,
       name: c.name,
       description: c.description || '',
@@ -306,12 +306,12 @@ class SupabaseBackend implements DataBackend {
     }));
 
     // 加载音频资源
-    const { data: audioData } = await supabase
+    const { data: audioData } = await (supabase as any)
       .from('audio_assets')
       .select('*')
       .eq('project_id', id);
 
-    const audioAssets: AudioAsset[] = (audioData || []).map(a => ({
+    const audioAssets: AudioAsset[] = (audioData || []).map((a: any) => ({
       id: a.id,
       name: a.name,
       type: a.category as any,
@@ -345,7 +345,7 @@ class SupabaseBackend implements DataBackend {
   }
 
   async getAllProjects(): Promise<Project[]> {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('projects')
       .select('*')
       .eq('user_id', this.userId)
@@ -355,7 +355,7 @@ class SupabaseBackend implements DataBackend {
 
     // 只返回项目列表的基本信息，不加载完整数据
     // 完整数据通过 loadProject 按需加载
-    const projects: Project[] = (data || []).map(p => ({
+    const projects: Project[] = (data || []).map((p: any) => ({
       id: p.id,
       metadata: {
         title: p.title,
@@ -380,7 +380,7 @@ class SupabaseBackend implements DataBackend {
 
   async deleteProject(id: string): Promise<void> {
     // Supabase 的级联删除会自动删除相关的 scenes, shots 等
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('projects')
       .delete()
       .eq('id', id)
@@ -390,7 +390,7 @@ class SupabaseBackend implements DataBackend {
   }
 
   async saveScene(projectId: string, scene: Scene): Promise<void> {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('scenes')
       .upsert({
         id: scene.id,
@@ -411,7 +411,7 @@ class SupabaseBackend implements DataBackend {
   }
 
   async deleteScene(sceneId: string): Promise<void> {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('scenes')
       .delete()
       .eq('id', sceneId);
@@ -420,7 +420,7 @@ class SupabaseBackend implements DataBackend {
   }
 
   async saveShot(sceneId: string, shot: Shot): Promise<void> {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('shots')
       .upsert({
         id: shot.id,
@@ -449,7 +449,7 @@ class SupabaseBackend implements DataBackend {
   }
 
   async deleteShot(shotId: string): Promise<void> {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('shots')
       .delete()
       .eq('id', shotId);
@@ -458,7 +458,7 @@ class SupabaseBackend implements DataBackend {
   }
 
   async saveCharacter(projectId: string, character: Character): Promise<void> {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('characters')
       .upsert({
         id: character.id,
@@ -473,7 +473,7 @@ class SupabaseBackend implements DataBackend {
   }
 
   async deleteCharacter(characterId: string): Promise<void> {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('characters')
       .delete()
       .eq('id', characterId);
@@ -482,7 +482,7 @@ class SupabaseBackend implements DataBackend {
   }
 
   async saveAudioAsset(projectId: string, audio: AudioAsset): Promise<void> {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('audio_assets')
       .upsert({
         id: audio.id,
@@ -497,7 +497,7 @@ class SupabaseBackend implements DataBackend {
   }
 
   async deleteAudioAsset(audioId: string): Promise<void> {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('audio_assets')
       .delete()
       .eq('id', audioId);

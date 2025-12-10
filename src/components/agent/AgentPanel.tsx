@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Send, Loader2, User, Bot, Trash2, Sparkles, Image as ImageIcon, Grid3x3 } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { ChatMessage } from '@/types/project';
@@ -14,7 +14,10 @@ export default function AgentPanel() {
 
   const { isProcessing, thinkingSteps, summary, sendMessage, clearSession } = useAgent();
 
-  const chatHistory = project?.chatHistory || [];
+  const chatHistory = useMemo(
+    () => project?.chatHistory ?? [],
+    [project?.chatHistory]
+  );
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -87,7 +90,7 @@ export default function AgentPanel() {
             <p className="text-sm max-w-md">
               我可以帮助你创建场景、添加镜头、批量生成图片等操作。
               <br />
-              试试说："帮我创建3个场景"
+              试试说：&quot;帮我创建3个场景&quot;
             </p>
           </div>
         ) : (

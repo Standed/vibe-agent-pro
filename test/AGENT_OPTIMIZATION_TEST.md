@@ -116,7 +116,7 @@
 #### 测试步骤
 1. 在 Agent 中进行对话："帮我创建一个场景"
 2. 打开浏览器 DevTools > Application > IndexedDB
-3. 查看 `vibe-agent-sessions` 数据库
+3. 查看 `video-agent-sessions` 数据库
 
 #### 预期结果
 - [ ] 看到 `sessions` 表

@@ -466,7 +466,7 @@ npm run dev
 http://localhost:3000
 
 # 检查 IndexedDB
-# Chrome DevTools > Application > IndexedDB > vibe-agent-sessions
+# Chrome DevTools > Application > IndexedDB > video-agent-sessions
 ```
 
 ### 预设命令参考

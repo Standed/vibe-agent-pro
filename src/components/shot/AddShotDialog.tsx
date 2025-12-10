@@ -191,7 +191,7 @@ export default function AddShotDialog({
               className="w-full h-20 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
             />
             <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
-              只填写台词内容，不要加"XX说："前缀
+              只填写台词内容，不要加&quot;XX说：&quot;前缀
             </p>
           </div>
 

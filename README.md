@@ -1,4 +1,4 @@
-# Vibe Agent Pro
+# Video Agent Pro
 
 <div align="center">
 
@@ -17,7 +17,7 @@
 
 ## 🎬 Introduction
 
-Vibe Agent Pro is an AI-powered video storyboard generation and editing tool built with Next.js 15 and multiple AI models (Gemini + Volcano Engine). It provides both conversational AI and fine-grained control modes to help creators produce videos from script to final cut.
+Video Agent Pro is an AI-powered video storyboard generation and editing tool built with Next.js 15 and multiple AI models (Gemini + Volcano Engine). It provides both conversational AI and fine-grained control modes to help creators produce videos from script to final cut.
 
 ---
 

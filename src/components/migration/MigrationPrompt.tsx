@@ -24,7 +24,7 @@ export function MigrationPrompt({ onComplete }: MigrationPromptProps) {
       if (!user) return;
 
       try {
-        const count = await migrationService.countLocalProjects();
+        const count = await migrationService.getLocalProjectCount();
         setLocalProjectCount(count);
 
         // 如果有本地项目，显示迁移提示
@@ -47,8 +47,8 @@ export function MigrationPrompt({ onComplete }: MigrationPromptProps) {
     setIsMigrating(true);
 
     try {
-      await migrationService.migrateToCloud((current, total) => {
-        setMigrationProgress({ current, total });
+      await migrationService.migrateToCloud((progress) => {
+        setMigrationProgress({ current: progress.current, total: progress.total });
       });
 
       setMigrationComplete(true);

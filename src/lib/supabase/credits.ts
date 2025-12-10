@@ -37,7 +37,7 @@ export async function consumeCredits(
     }
 
     // 调用 RPC 函数
-    const { data, error } = await supabase.rpc('consume_credits', {
+    const { data, error } = await (supabase as any).rpc('consume_credits', {
       p_user_id: user.id,
       p_amount: params.amount,
       p_operation_type: params.operationType,
@@ -88,7 +88,7 @@ export async function getUserCredits(): Promise<number> {
       return 0;
     }
 
-    const { data } = await supabase.rpc('get_user_credits', {
+    const { data } = await (supabase as any).rpc('get_user_credits', {
       p_user_id: user.id,
     });
 
@@ -120,7 +120,7 @@ export async function getCreditTransactions(limit = 50) {
       return { data: [], error: new Error('Not authenticated') };
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('credit_transactions')
       .select('*')
       .eq('user_id', user.id)

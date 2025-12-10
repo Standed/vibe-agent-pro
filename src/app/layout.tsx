@@ -18,7 +18,7 @@ import { Toaster } from 'sonner';
 // });
 
 export const metadata: Metadata = {
-  title: 'Vibe Agent Pro - 西羊石 AI 影视创作工具',
+  title: 'Video Agent Pro - 西羊石 AI 影视创作工具',
   description: 'AI-powered video production tool',
 };
 

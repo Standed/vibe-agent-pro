@@ -124,8 +124,8 @@ export const generateMultiViewGrid = async (
   const gridType = `${gridRows}x${gridCols}`;
 
   // Determine panel orientation based on aspect ratio
-  const isPortrait = aspectRatio === '9:16' || aspectRatio === '3:4' || aspectRatio === '2:3';
-  const isLandscape = aspectRatio === '16:9' || aspectRatio === '4:3' || aspectRatio === '3:2';
+  const isPortrait = aspectRatio === AspectRatio.MOBILE || aspectRatio === AspectRatio.PORTRAIT;
+  const isLandscape = aspectRatio === AspectRatio.WIDE || aspectRatio === AspectRatio.STANDARD || aspectRatio === AspectRatio.CINEMA;
   const orientationInstruction = isPortrait
     ? 'Each panel MUST be in PORTRAIT orientation (vertical/竖屏), taller than it is wide.'
     : isLandscape
