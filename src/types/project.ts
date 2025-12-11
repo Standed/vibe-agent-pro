@@ -165,6 +165,7 @@ export interface Shot {
   error?: string;
   created?: Date;
   modified?: Date;
+  globalOrder?: number; // 项目内的全局序号（供排序/跟踪），显示使用局部 order
 }
 
 export interface GridHistoryItem {

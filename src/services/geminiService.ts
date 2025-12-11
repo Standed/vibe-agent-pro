@@ -1,6 +1,7 @@
 'use client';
 
 import { AspectRatio, ImageSize } from '@/types/project';
+import { authenticatedFetch } from '@/lib/api-client';
 
 const parseTimeout = (val: string | undefined, fallback: number) => {
   const n = Number(val);
@@ -17,9 +18,9 @@ const postJson = async <T>(url: string, body: any, timeoutMs: number = GEMINI_TI
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const resp = await fetch(url, {
+    // 使用认证的 fetch，自动添加 Authorization header
+    const resp = await authenticatedFetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       signal: controller.signal
     });
@@ -113,12 +114,19 @@ export const generateMultiViewGrid = async (
   imageSize: ImageSize,
   referenceImages: ReferenceImageData[] = []
 ): Promise<{ fullImage: string; slices: string[] }> => {
-  // 过多参考图会拖慢生成或触发超时，这里做上限截断
-  const MAX_REF_IMAGES = 8;
+  // 过多参考图会触发 FUNCTION_PAYLOAD_TOO_LARGE 错误，限制数量；压缩处理在 optimizeDataUrl
+  const MAX_REF_IMAGES = 10;
+
+  // 去重：根据 data 内容去重，避免上传重复图片
+  const uniqueReferenceImages = Array.from(
+    new Map(referenceImages.map(img => [img.data, img])).values()
+  );
+
+  // 限制数量
   const safeReferenceImages =
-    referenceImages.length > MAX_REF_IMAGES
-      ? referenceImages.slice(0, MAX_REF_IMAGES)
-      : referenceImages;
+    uniqueReferenceImages.length > MAX_REF_IMAGES
+      ? uniqueReferenceImages.slice(0, MAX_REF_IMAGES)
+      : uniqueReferenceImages;
 
   const totalViews = gridRows * gridCols;
   const gridType = `${gridRows}x${gridCols}`;
@@ -168,7 +176,9 @@ ${prompt}
   // 🔍 调试：输出最终的 Grid 提示词
   console.log('[geminiService Grid Debug] ========== START ==========');
   console.log('[geminiService Grid Debug] Input prompt:', prompt);
-  console.log('[geminiService Grid Debug] referenceImages.length:', referenceImages.length);
+  console.log('[geminiService Grid Debug] Original referenceImages.length:', referenceImages.length);
+  console.log('[geminiService Grid Debug] After deduplication:', uniqueReferenceImages.length);
+  console.log('[geminiService Grid Debug] Final safeReferenceImages.length:', safeReferenceImages.length);
   console.log('[geminiService Grid Debug] Final gridPrompt:', gridPrompt);
   console.log('[geminiService Grid Debug] ========== END ==========');
 
@@ -339,20 +349,64 @@ Do NOT write full sentences. Do NOT describe the subject again if the user alrea
   }
 };
 
+const MAX_REF_IMAGE_DIMENSION = 1400;
+const OPTIMIZED_JPEG_QUALITY = 0.82;
+
 /**
- * Convert File to base64 string (without data URL prefix)
+ * Downscale and compress a data URL to reduce payload size
  */
-export const fileToBase64 = (file: File): Promise<string> => {
+const optimizeDataUrl = (dataUrl: string, mimeHint?: string): Promise<ReferenceImageData> => {
   return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const { width, height } = img;
+      const maxDim = Math.max(width, height);
+      const targetMime = mimeHint && mimeHint.startsWith('image/') ? mimeHint : 'image/jpeg';
+
+      if (maxDim <= MAX_REF_IMAGE_DIMENSION) {
+        const [, data] = dataUrl.split(',');
+        resolve({
+          mimeType: targetMime,
+          data: data || '',
+        });
+        return;
+      }
+
+      const scale = MAX_REF_IMAGE_DIMENSION / maxDim;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('无法获取画布上下文'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const optimized = canvas.toDataURL(targetMime === 'image/png' ? 'image/png' : 'image/jpeg', OPTIMIZED_JPEG_QUALITY);
+      const [, data] = optimized.split(',');
+      resolve({
+        mimeType: optimized.match(/^data:([^;]+)/)?.[1] || targetMime,
+        data: data || '',
+      });
+    };
+    img.onerror = () => reject(new Error('参考图加载失败'));
+    img.src = dataUrl;
+  });
+};
+
+/**
+ * Convert File to base64 string (without data URL prefix), with compression
+ */
+export const fileToBase64 = async (file: File): Promise<string> => {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.split(',')[1];
-      resolve(base64);
-    };
+    reader.onload = () => resolve(reader.result as string);
     reader.onerror = (error) => reject(error);
   });
+
+  const optimized = await optimizeDataUrl(dataUrl, file.type);
+  return optimized.data;
 };
 
 /**
@@ -363,10 +417,8 @@ export const urlToReferenceImageData = async (imageUrl: string): Promise<Referen
   if (imageUrl.startsWith('data:')) {
     const matches = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
     if (matches) {
-      return {
-        mimeType: matches[1],
-        data: matches[2],
-      };
+      const optimized = await optimizeDataUrl(imageUrl, matches[1]);
+      return optimized;
     }
     throw new Error('无效的 data URL 格式');
   }
@@ -377,16 +429,14 @@ export const urlToReferenceImageData = async (imageUrl: string): Promise<Referen
     const blob = await response.blob();
     const mimeType = blob.type || 'image/png';
 
-    return new Promise((resolve, reject) => {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        const base64 = dataUrl.split(',')[1];
-        resolve({ mimeType, data: base64 });
-      };
+      reader.onload = () => resolve(reader.result as string);
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+
+    return await optimizeDataUrl(dataUrl, mimeType);
   };
 
   try {

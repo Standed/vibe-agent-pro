@@ -622,7 +622,7 @@ export class AgentToolExecutor {
 
     const order = this.project.scenes.length + 1;
     const scene: Scene = {
-      id: `scene_${Date.now()}`,
+      id: crypto.randomUUID(),
       name: name || `场景 ${order}`,
       location: '',
       description: description || '',
@@ -703,7 +703,7 @@ export class AgentToolExecutor {
     for (let i = 0; i < countNum; i++) {
       const spec = providedShots?.[i];
       const shot: Shot = {
-        id: `shot_${Date.now()}_${i}`,
+        id: crypto.randomUUID(),
         sceneId,
         order: baseIndex + i + 1,
         shotSize: (spec?.shotSize as any) || 'Medium Shot',

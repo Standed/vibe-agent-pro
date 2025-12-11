@@ -9,6 +9,7 @@ interface ShotListItemProps {
   onSelect: () => void;
   onDelete: () => void;
   onEdit?: () => void;
+  label?: string;
 }
 
 export default function ShotListItem({
@@ -17,6 +18,7 @@ export default function ShotListItem({
   onSelect,
   onDelete,
   onEdit,
+  label,
 }: ShotListItemProps) {
   return (
     <div
@@ -48,7 +50,7 @@ export default function ShotListItem({
           <div className="flex-1 min-w-0 pr-8">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-bold text-light-accent dark:text-cine-accent">
-                #{shot.order}
+                {label || `#${shot.order}`}
               </span>
               <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
                 {shot.shotSize}

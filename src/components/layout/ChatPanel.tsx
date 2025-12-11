@@ -19,6 +19,8 @@ import { toast } from 'sonner';
 import { validateGenerationConfig } from '@/utils/promptSecurity';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { formatShotLabel } from '@/utils/shotOrder';
 
 // Model types
 type GenerationModel = 'seedream' | 'gemini-direct' | 'gemini-grid';
@@ -72,7 +74,25 @@ export default function ChatPanel() {
   const shots = project?.shots || [];
   const scenes = project?.scenes || [];
   const selectedShot = shots.find((s) => s.id === selectedShotId);
+  const selectedScene = scenes.find((s) => s.id === (selectedShot?.sceneId || currentSceneId));
+  const selectedShotLabel = selectedShot ? formatShotLabel(selectedScene?.order, selectedShot.order, selectedShot.globalOrder) : undefined;
   const projectId = project?.id || 'default';
+  const { user } = useAuth();
+
+  const requireAuthForAI = () => {
+    if (!user) {
+      toast.error('请先登录以使用 AI 功能', {
+        action: {
+          label: '去登录',
+          onClick: () => {
+            window.location.href = '/auth/login';
+          },
+        },
+      });
+      return false;
+    }
+    return true;
+  };
 
   const contextKey = useMemo(() => {
     if (selectedShotId) return `pro-chat:${projectId}:shot:${selectedShotId}`;
@@ -157,6 +177,8 @@ export default function ChatPanel() {
       });
       return;
     }
+
+    if (!requireAuthForAI()) return;
 
     // Convert uploaded images to data URLs for display
     const imageDataUrls = await Promise.all(
@@ -573,7 +595,7 @@ export default function ChatPanel() {
         </h2>
         <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
           {selectedShotId
-            ? `当前镜头: ${selectedShot?.order || '未知'}`
+            ? `当前镜头: ${selectedShotLabel || '未知'}`
             : currentSceneId
               ? `当前场景: ${scenes.find(s => s.id === currentSceneId)?.name || '未知'}`
               : '未选择镜头或场景'}
@@ -719,6 +741,7 @@ export default function ChatPanel() {
           fullGridUrl={gridResult.fullImage}
           gridImages={gridResult.slices}
           sceneId={gridResult.sceneId}
+          sceneOrder={scenes.find((s) => s.id === gridResult.sceneId)?.order}
           shots={shots}
           gridRows={gridResult.gridRows}
           gridCols={gridResult.gridCols}

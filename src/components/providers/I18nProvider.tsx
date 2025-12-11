@@ -29,19 +29,28 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   // Load locale from localStorage on mount
   useEffect(() => {
     setMounted(true);
-    const savedLocale = localStorage.getItem('locale') as Locale;
-    if (savedLocale && locales[savedLocale]) {
-      setLocaleState(savedLocale);
-      setMessages(locales[savedLocale]);
-      // Update HTML lang attribute
-      document.documentElement.lang = savedLocale;
+    try {
+      const savedLocale = localStorage.getItem('locale') as Locale;
+      if (savedLocale && locales[savedLocale]) {
+        setLocaleState(savedLocale);
+        setMessages(locales[savedLocale]);
+        // Update HTML lang attribute
+        document.documentElement.lang = savedLocale;
+      }
+    } catch (err) {
+      // Storage access blocked - use default locale
+      console.warn('[I18nProvider] 无法访问 localStorage，使用默认语言:', err);
     }
   }, []);
 
   const setLocale = (newLocale: Locale) => {
     setLocaleState(newLocale);
     setMessages(locales[newLocale]);
-    localStorage.setItem('locale', newLocale);
+    try {
+      localStorage.setItem('locale', newLocale);
+    } catch (err) {
+      console.warn('[I18nProvider] 无法保存语言设置到 localStorage:', err);
+    }
     // Update HTML lang attribute
     document.documentElement.lang = newLocale;
   };

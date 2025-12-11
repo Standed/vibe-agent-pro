@@ -40,25 +40,27 @@ export function recalcShotOrders(project: Project | null | undefined): void {
   const shotMap = new Map(allShots.map((s) => [s.id, s]));
 
   scenesSorted.forEach((scene) => {
-    let shotIds: string[] = [];
-    if (scene.shotIds && scene.shotIds.length > 0) {
-      shotIds = scene.shotIds.filter((id) => shotMap.has(id));
-    }
-    if (shotIds.length === 0) {
-      shotIds = allShots
-        .filter((s) => s.sceneId === scene.id)
-        .sort((a, b) => (a.order || 0) - (b.order || 0))
-        .map((s) => s.id);
-    }
+    // 根据镜头自身的 order / created 排序，避免依赖可能失真的 shotIds
+    const sceneShots = allShots.filter((s) => s.sceneId === scene.id);
+    const sortedShots = [...sceneShots].sort((a, b) => {
+      const orderA = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
+      const orderB = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
+      const createdA = a.created ? new Date(a.created).getTime() : Number.MAX_SAFE_INTEGER;
+      const createdB = b.created ? new Date(b.created).getTime() : Number.MAX_SAFE_INTEGER;
+      if (createdA !== createdB) return createdA - createdB;
+      return a.id.localeCompare(b.id);
+    });
 
+    const shotIds = sortedShots.map((s) => s.id);
     scene.shotIds = shotIds;
-    shotIds.forEach((id) => {
-      const shot = shotMap.get(id);
-      if (shot) {
-        globalOrder += 1;
-        shot.order = globalOrder;
-        shot.sceneId = scene.id;
-      }
+    let localOrder = 0;
+    sortedShots.forEach((shot) => {
+      localOrder += 1;
+      globalOrder += 1;
+      shot.order = localOrder; // 场景内序号
+      (shot as any).globalOrder = globalOrder; // 全局序号
+      shot.sceneId = scene.id;
     });
   });
 
@@ -68,5 +70,28 @@ export function recalcShotOrders(project: Project | null | undefined): void {
     .forEach((shot) => {
       globalOrder += 1;
       shot.order = globalOrder;
+      (shot as any).globalOrder = globalOrder;
     });
+}
+
+export function formatShotCode(sceneOrder?: number, shotOrder?: number): string {
+  const scenePart = sceneOrder && sceneOrder > 0 ? String(sceneOrder).padStart(2, '0') : '??';
+  const shotPart = shotOrder && shotOrder > 0 ? String(shotOrder).padStart(2, '0') : '??';
+  return `S${scenePart}_${shotPart}`;
+}
+
+export function formatGlobalShot(globalOrder?: number): string {
+  if (!globalOrder || globalOrder <= 0) return '#???';
+  return `#${String(globalOrder).padStart(3, '0')}`;
+}
+
+export function formatShotLabel(sceneOrder?: number, shotOrder?: number, globalOrder?: number): string {
+  // 若全局序号缺失，则退化为局部序号（保持可读）
+  const globalPart =
+    globalOrder && globalOrder > 0
+      ? `#${String(globalOrder).padStart(3, '0')}`
+      : shotOrder && shotOrder > 0
+        ? `#${String(shotOrder).padStart(3, '0')}`
+        : '#???';
+  return `${formatShotCode(sceneOrder, shotOrder)} · ${globalPart}`;
 }

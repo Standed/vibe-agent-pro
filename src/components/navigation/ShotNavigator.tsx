@@ -3,6 +3,7 @@
 import { ChevronLeft, ChevronRight, Film } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { useMemo } from 'react';
+import { formatShotLabel } from '@/utils/shotOrder';
 
 /**
  * Shot Navigator - Global navigation for quickly switching between shots
@@ -105,7 +106,7 @@ export default function ShotNavigator() {
           className="w-full bg-light-bg dark:bg-cine-black border border-light-border dark:border-cine-border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
         >
           {allShotsWithContext.map(({ shot, scene }, index) => {
-            const shotNumber = String(shot.order).padStart(3, '0');
+            const shotNumber = formatShotLabel(scene.order, shot.order, shot.globalOrder);
             const statusEmoji =
               shot.status === 'done' ? '✓' :
               shot.status === 'processing' ? '⏳' :
@@ -114,7 +115,7 @@ export default function ShotNavigator() {
 
             return (
               <option key={shot.id} value={shot.id}>
-                {statusEmoji} 镜头 #{shotNumber} - {scene.name} - {shot.shotSize} - {shot.cameraMovement}
+                {statusEmoji} 镜头 {shotNumber} - {scene.name} - {shot.shotSize} - {shot.cameraMovement}
               </option>
             );
           })}

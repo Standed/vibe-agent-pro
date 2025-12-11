@@ -22,6 +22,8 @@ import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
 import MentionInput from '@/components/input/MentionInput';
 import { GridSliceSelector } from '@/components/ui/GridSliceSelector';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { formatShotLabel } from '@/utils/shotOrder';
 
 // Model types
 type GenerationModel = 'seedream' | 'gemini-direct' | 'gemini-grid';
@@ -87,6 +89,22 @@ export default function ChatPanelWithHistory() {
   // Grid specific state
   const [gridSize, setGridSize] = useState<'2x2' | '3x3'>('2x2');
   const [gridResult, setGridResult] = useState<GridGenerationResult | null>(null);
+  const { user } = useAuth();
+
+  const requireAuthForAI = () => {
+    if (!user) {
+      toast.error('请先登录以使用 AI 功能', {
+        action: {
+          label: '去登录',
+          onClick: () => {
+            window.location.href = '/auth/login';
+          },
+        },
+      });
+      return false;
+    }
+    return true;
+  };
   const [sliceSelectorData, setSliceSelectorData] = useState<{
     gridData: ChatMessage['gridData'];
     shotId?: string;
@@ -118,6 +136,8 @@ export default function ChatPanelWithHistory() {
   const shots = project?.shots || [];
   const scenes = project?.scenes || [];
   const selectedShot = shots.find((s) => s.id === selectedShotId);
+  const selectedScene = scenes.find((s) => s.id === (selectedShot?.sceneId || currentSceneId));
+  const selectedShotLabel = selectedShot ? formatShotLabel(selectedScene?.order, selectedShot.order, selectedShot.globalOrder) : undefined;
   const generationHistory = selectedShot?.generationHistory || [];
   const projectId = project?.id || 'default';
 
@@ -355,6 +375,8 @@ export default function ChatPanelWithHistory() {
       });
       return;
     }
+
+    if (!requireAuthForAI()) return;
 
     // 🔒 捕获当前上下文，防止异步操作期间切换镜头导致消息错乱
     const capturedShotId = selectedShotId || null;
@@ -1262,7 +1284,7 @@ export default function ChatPanelWithHistory() {
               </h2>
               <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
                 {selectedShotId
-                  ? `当前镜头: ${selectedShot?.order || '未知'}`
+                  ? `当前镜头: ${selectedShotLabel || '未知'}`
                   : currentSceneId
                     ? `当前场景: ${scenes.find(s => s.id === currentSceneId)?.name || '未知'}`
                     : '未选择镜头或场景'}
@@ -1419,6 +1441,7 @@ export default function ChatPanelWithHistory() {
             fullGridUrl={gridResult.fullImage}
             gridImages={gridResult.slices}
             sceneId={gridResult.sceneId}
+            sceneOrder={scenes.find((s) => s.id === gridResult.sceneId)?.order}
             shots={shots}
             gridRows={gridResult.gridRows}
             gridCols={gridResult.gridCols}

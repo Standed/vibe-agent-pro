@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ProxyAgent, Agent } from 'undici';
+import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
+import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,11 +23,29 @@ const toSafeImages = (refs: any) =>
     : [];
 
 export async function POST(request: Request) {
+  // 1. 验证用户身份
+  const authResult = await authenticateRequest(request);
+  if ('error' in authResult) {
+    return authResult.error;
+  }
+  const { user } = authResult;
+
+  // 2. 计算所需积分（考虑用户角色）
+  const requiredCredits = calculateCredits('GEMINI_GRID', user.role);
+  const operationDesc = getOperationDescription('GEMINI_GRID');
+
+  // 3. 检查积分
+  const creditsCheck = checkCredits(user, requiredCredits);
+  if ('error' in creditsCheck) {
+    return creditsCheck.error;
+  }
+
   if (!GEMINI_API_KEY) {
     return NextResponse.json({ error: 'gemini api key not configured' }, { status: 500 });
   }
 
   const requestId = `grid-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}, credits: ${user.credits}, cost: ${requiredCredits}`);
 
   try {
     const body = await request.json();
@@ -156,6 +176,24 @@ export async function POST(request: Request) {
     // 📊 记录响应数据大小
     const responseSize = (uri.length / 1024).toFixed(2);
     console.log('[Gemini Grid] 📊 Response size:', `${responseSize} KB (base64)`);
+
+    // 4. 消耗积分
+    const consumeResult = await consumeCredits(
+      user.id,
+      requiredCredits,
+      'generate-grid',
+      `${operationDesc} (${gridRows}x${gridCols})`
+    );
+
+    if (!consumeResult.success) {
+      console.error('[Gemini Grid] 💳 Failed to consume credits:', consumeResult.error);
+      return NextResponse.json(
+        { error: '积分扣除失败: ' + consumeResult.error },
+        { status: 500 }
+      );
+    }
+
+    console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
 
     return NextResponse.json({ fullImage: `data:image/png;base64,${uri}`, requestId });
   } catch (error: any) {

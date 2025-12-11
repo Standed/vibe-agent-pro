@@ -298,7 +298,7 @@ export async function generateStoryboardFromScript(
 
     // Convert to Shot type
     return shots.map((shot: any, index: number) => ({
-      id: `shot_${Date.now()}_${index}`,
+      id: crypto.randomUUID(),
       sceneId: '', // Will be set by the caller
       order: shot.order_index || index + 1,
       shotSize: shot.shot_size || 'Medium Shot',

@@ -58,6 +58,21 @@ export default function ProPanel() {
     scene.shotIds.includes(selectedShotId || '')
   );
 
+  const requireAuthForAI = () => {
+    if (!user) {
+      toast.error('请先登录以使用 AI 功能', {
+        action: {
+          label: '去登录',
+          onClick: () => {
+            window.location.href = '/auth/login';
+          },
+        },
+      });
+      return false;
+    }
+    return true;
+  };
+
   // Sync selected scene ID safely
   useEffect(() => {
     if (currentScene && selectedSceneId !== currentScene.id) {
@@ -92,6 +107,8 @@ export default function ProPanel() {
       toast.error('请输入提示词');
       return;
     }
+
+    if (!requireAuthForAI()) return;
 
     // 🔒 安全验证：检查提示词是否安全
     const validation = validateGenerationConfig({ prompt });
@@ -174,6 +191,8 @@ export default function ProPanel() {
     console.log('[ProPanel] ========== handleGenerateGrid CALLED ==========');
     console.log('[ProPanel] prompt:', prompt);
     console.log('[ProPanel] selectedSceneId:', selectedSceneId);
+
+    if (!requireAuthForAI()) return;
 
     if (!prompt.trim()) {
       toast.error('请输入提示词');
@@ -322,17 +341,17 @@ export default function ProPanel() {
         dialogue: s.dialogue
       })));
       // 🔍 资产提示词增强：把 mainCharacters/mainScenes 也写入文本，方便匹配参考图
-      const assetNameHints = targetShots
-        .map((shot) => {
-          const parts: string[] = [];
-          if (shot.mainCharacters?.length) {
-            parts.push(`角色: ${shot.mainCharacters.join(', ')}`);
-          }
-          if (shot.mainScenes?.length) {
-            parts.push(`场景: ${shot.mainScenes.join(', ')}`);
-          }
-          return parts.join(' | ');
-        })
+      // 角色/场景提示去重，避免重复行撑大 prompt
+      const assetCharacters = new Set<string>();
+      const assetScenes = new Set<string>();
+      targetShots.forEach((shot) => {
+        shot.mainCharacters?.forEach((c) => assetCharacters.add(c));
+        shot.mainScenes?.forEach((s) => assetScenes.add(s));
+      });
+      const assetNameHints = [
+        assetCharacters.size ? `角色: ${Array.from(assetCharacters).join(', ')}` : '',
+        assetScenes.size ? `场景: ${Array.from(assetScenes).join(', ')}` : '',
+      ]
         .filter(Boolean)
         .join('\n');
 
@@ -375,7 +394,10 @@ export default function ProPanel() {
 
       const refUrlSet = new Set<string>();
       const addUrls = (urls?: string[]) => {
-        urls?.forEach((u) => refUrlSet.add(u));
+        if (urls && urls.length > 0) {
+          // 只取该角色/场景的第一张参考图，避免重复
+          refUrlSet.add(urls[0]);
+        }
       };
 
       targetShots.forEach((shot) => {
@@ -395,7 +417,8 @@ export default function ProPanel() {
       // 参考图顺序保持与 referenceImageMap 一致，避免编号错位
       const orderedAssetUrls = referenceImageMap.map((ref) => ref.imageUrl);
       const extraUrls = Array.from(refUrlSet).filter((url) => !orderedAssetUrls.includes(url));
-      const finalAssetUrls = [...orderedAssetUrls, ...extraUrls];
+      const MAX_ASSET_URLS = 10; // 避免参考图过多导致请求体过大
+      const finalAssetUrls = [...orderedAssetUrls, ...extraUrls].slice(0, MAX_ASSET_URLS);
       const refImagesFromAssets = await urlsToReferenceImages(finalAssetUrls);
 
       // 先放资产参考图（与编号对应），再放用户上传的补充图
@@ -559,6 +582,8 @@ export default function ProPanel() {
   };
 
   const handleGenerateVideo = async () => {
+    if (!requireAuthForAI()) return;
+
     if (!prompt.trim()) {
       toast.error('请输入提示词');
       return;
@@ -1646,6 +1671,7 @@ export default function ProPanel() {
           fullGridUrl={gridResult.fullImage}
           shots={shots}
           sceneId={gridResult.sceneId}
+          sceneOrder={scenes.find((s) => s.id === gridResult.sceneId)?.order}
           gridRows={gridResult.gridRows}
           gridCols={gridResult.gridCols}
           onAssign={handleGridAssignment}

@@ -13,6 +13,8 @@ const config: Config = {
         // Dark theme colors (Cinema Dark)
         'cine-black': '#09090b',
         'cine-dark': '#0c0c0e',
+        'cine-bg': '#0c0c0e', // alias for ease of use
+        'cine-bg-secondary': '#18181b',
         'cine-panel': '#18181b',
         'cine-border': '#27272a',
         'cine-accent': '#a855f7',
@@ -21,6 +23,7 @@ const config: Config = {
 
         // Light theme colors (Cinema Light)
         'light-bg': '#ffffff',
+        'light-bg-secondary': '#f8f9fa',
         'light-surface': '#f8f9fa',
         'light-panel': '#f1f3f5',
         'light-border': '#e9ecef',

@@ -7,6 +7,7 @@ export interface SignUpData {
   email: string;
   password: string;
   fullName?: string;
+  phone?: string;
 }
 
 export interface SignInData {
@@ -20,6 +21,42 @@ export interface AuthResponse {
   error: AuthError | null;
 }
 
+const SESSION_COOKIE_NAME = 'supabase-session';
+
+export const setSessionCookie = (session?: Session | null) => {
+  if (typeof document === 'undefined') return;
+  if (session?.access_token && session?.refresh_token) {
+    const payload = JSON.stringify({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+    });
+    // 设置 7 天过期时间，避免页面刷新后丢失
+    const expires = new Date();
+    expires.setDate(expires.getDate() + 7);
+    document.cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(payload)}; path=/; expires=${expires.toUTCString()}; SameSite=Lax`;
+  } else {
+    document.cookie = `${SESSION_COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+  }
+};
+
+export const readSessionCookie = (): { access_token: string; refresh_token: string } | null => {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.split('; ').find((row) => row.startsWith(`${SESSION_COOKIE_NAME}=`));
+  if (!match) return null;
+  try {
+    const value = decodeURIComponent(match.split('=')[1]);
+    const parsed = JSON.parse(value);
+    if (parsed.access_token && parsed.refresh_token) {
+      return { access_token: parsed.access_token, refresh_token: parsed.refresh_token };
+    }
+  } catch (err) {
+    console.warn('[Auth] 解析会话 cookie 失败，已清理:', err);
+  }
+  // 清理损坏的 cookie
+  document.cookie = `${SESSION_COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+  return null;
+};
+
 /**
  * 用户注册
  */
@@ -30,6 +67,7 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
     options: {
       data: {
         full_name: data.fullName || '',
+        phone: data.phone || '',
       },
     },
   });
@@ -45,18 +83,44 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
  * 用户登录
  */
 export async function signIn(data: SignInData): Promise<AuthResponse> {
+  console.log('[Auth] 🔐 开始登录流程...');
+
   const { data: authData, error } = await (supabase as any).auth.signInWithPassword({
     email: data.email,
     password: data.password,
   });
 
+  console.log('[Auth] ✅ signInWithPassword 完成, error:', error, 'user:', authData?.user?.email);
+
   // 更新最后登录时间
   if (authData.user) {
-    await (supabase as any)
-      .from('profiles')
-      .update({ last_login_at: new Date().toISOString() })
-      .eq('id', authData.user.id);
+    try {
+      console.log('[Auth] 📝 更新 last_login_at...');
+      const { error: updateError } = await (supabase as any)
+        .from('profiles')
+        .update({ last_login_at: new Date().toISOString() })
+        .eq('id', authData.user.id);
+
+      if (updateError) {
+        console.warn('[Auth] ⚠️ 更新 last_login_at 失败（不影响登录）:', updateError);
+      } else {
+        console.log('[Auth] ✅ last_login_at 更新成功');
+      }
+    } catch (err) {
+      console.warn('[Auth] ⚠️ 更新 last_login_at 异常（不影响登录）:', err);
+    }
+
+    // 手动设置认证 cookie 供 middleware 使用，并写入会话 token 兜底
+    if (typeof window !== 'undefined' && authData.session) {
+      const expires = new Date();
+      expires.setDate(expires.getDate() + 7); // 7 天过期
+      document.cookie = `supabase-auth-token=true; path=/; expires=${expires.toUTCString()}; SameSite=Lax`;
+      setSessionCookie(authData.session as Session);
+      console.log('[Auth] 🍪 已设置认证 cookie + 会话 token');
+    }
   }
+
+  console.log('[Auth] ✅ signIn 函数完成，准备返回结果');
 
   return {
     user: authData.user,
@@ -70,6 +134,14 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
  */
 export async function signOut(): Promise<{ error: AuthError | null }> {
   const { error } = await (supabase as any).auth.signOut();
+
+  // 删除认证 cookie
+  if (typeof window !== 'undefined') {
+    document.cookie = 'supabase-auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    document.cookie = 'supabase-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    console.log('[Auth] 已删除认证 cookie');
+  }
+
   return { error };
 }
 
@@ -77,20 +149,30 @@ export async function signOut(): Promise<{ error: AuthError | null }> {
  * 获取当前用户
  */
 export async function getCurrentUser(): Promise<User | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    return user;
+  } catch (err) {
+    console.warn('[Auth] 获取当前用户失败，可能是存储被禁用，返回 null:', err);
+    return null;
+  }
 }
 
 /**
  * 获取当前会话
  */
 export async function getCurrentSession(): Promise<Session | null> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  return session;
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session;
+  } catch (err) {
+    console.warn('[Auth] 获取 session 失败，可能是存储被禁用，返回 null:', err);
+    return null;
+  }
 }
 
 /**

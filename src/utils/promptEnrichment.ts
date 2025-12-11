@@ -53,17 +53,16 @@ export function enrichPromptWithAssets(
     if (fullText.includes(characterName)) {
       usedCharacters.push(character);
       // Collect reference images with indexing
-      if (character.referenceImages && character.referenceImages.length > 0) {
-        for (const imageUrl of character.referenceImages) {
-          referenceImageIndex++;
-          referenceImageUrls.push(imageUrl);
-          referenceImageMap.push({
-            index: referenceImageIndex,
-            type: 'character',
-            name: character.name,
-            imageUrl,
-          });
-        }
+      const primaryImage = character.referenceImages?.[0];
+      if (primaryImage) {
+        referenceImageIndex++;
+        referenceImageUrls.push(primaryImage);
+        referenceImageMap.push({
+          index: referenceImageIndex,
+          type: 'character',
+          name: character.name,
+          imageUrl: primaryImage,
+        });
       } else {
         missingAssets.push({ type: 'character', name: character.name });
       }
@@ -76,17 +75,16 @@ export function enrichPromptWithAssets(
     if (fullText.includes(locationName)) {
       usedLocations.push(location);
       // Collect reference images with indexing
-      if (location.referenceImages && location.referenceImages.length > 0) {
-        for (const imageUrl of location.referenceImages) {
-          referenceImageIndex++;
-          referenceImageUrls.push(imageUrl);
-          referenceImageMap.push({
-            index: referenceImageIndex,
-            type: 'location',
-            name: location.name,
-            imageUrl,
-          });
-        }
+      const primaryImage = location.referenceImages?.[0];
+      if (primaryImage) {
+        referenceImageIndex++;
+        referenceImageUrls.push(primaryImage);
+        referenceImageMap.push({
+          index: referenceImageIndex,
+          type: 'location',
+          name: location.name,
+          imageUrl: primaryImage,
+        });
       } else {
         missingAssets.push({ type: 'location', name: location.name });
       }
@@ -103,7 +101,8 @@ export function enrichPromptWithAssets(
       .map((char) => {
         let desc = `${char.name}: ${char.description}`;
         if (char.appearance) {
-          desc += `. 外貌：${char.appearance}`;
+          // 避免重复的句号/标点，直接拼接外貌描述
+          desc += ` 外貌：${char.appearance}`;
         }
         // Add reference image markers
         if (char.referenceImages && char.referenceImages.length > 0) {

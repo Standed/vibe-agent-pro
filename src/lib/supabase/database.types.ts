@@ -18,6 +18,7 @@ export interface Database {
           email: string
           full_name: string | null
           avatar_url: string | null
+          phone: string | null
           credits: number
           total_credits_purchased: number
           role: 'user' | 'admin' | 'vip'
@@ -32,6 +33,7 @@ export interface Database {
           email: string
           full_name?: string | null
           avatar_url?: string | null
+          phone?: string | null
           credits?: number
           total_credits_purchased?: number
           role?: 'user' | 'admin' | 'vip'
@@ -46,6 +48,7 @@ export interface Database {
           email?: string
           full_name?: string | null
           avatar_url?: string | null
+          phone?: string | null
           credits?: number
           total_credits_purchased?: number
           role?: 'user' | 'admin' | 'vip'

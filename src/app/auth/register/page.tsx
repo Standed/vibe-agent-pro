@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { signUp } from '@/lib/supabase/auth';
+import { supabase } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 
 export default function RegisterPage() {
@@ -11,6 +13,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -18,7 +21,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const { error } = await signUp({ email, password, fullName });
+      const { error } = await signUp({ email, password, fullName, phone });
 
       if (error) {
         toast.error(error.message || '注册失败');
@@ -33,14 +36,31 @@ export default function RegisterPage() {
     }
   };
 
+  // 阶段性限制：未登录用户禁止访问注册页
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        toast.error('当前阶段仅内部账号可注册');
+        router.replace('/');
+      }
+    });
+  }, [router]);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] px-4">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Video Agent Pro
-          </h1>
-          <p className="text-zinc-400">创建新账号</p>
+          <div className="flex items-center justify-center mb-4">
+            <Image
+              src="https://storage.googleapis.com/n8n-bucket-xys/%E7%AB%96%E7%89%88logo%E9%80%8F%E6%98%8E%E5%BA%95.png"
+              alt="Video Agent Pro"
+              width={120}
+              height={120}
+              className="h-16 w-auto"
+            />
+          </div>
+          <h1 className="text-4xl font-bold text-white mb-2">Video Agent Pro</h1>
+          <p className="text-zinc-400">创建新账号（仅内部开放）</p>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-6">
@@ -58,6 +78,24 @@ export default function RegisterPage() {
                 onChange={(e) => setFullName(e.target.value)}
                 className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 placeholder="张三"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="phone" className="block text-sm font-medium text-zinc-300 mb-1">
+                手机号
+              </label>
+              <input
+                id="phone"
+                name="phone"
+                type="tel"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="13800138000"
+                pattern="^1[3-9]\d{9}$"
+                title="请输入有效的中国大陆手机号"
               />
             </div>
 

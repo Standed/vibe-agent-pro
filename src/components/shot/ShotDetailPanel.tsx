@@ -23,6 +23,8 @@ import type { Shot, ShotSize, CameraMovement, GenerationHistoryItem } from '@/ty
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import { toast } from 'sonner';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { formatShotLabel } from '@/utils/shotOrder';
 
 interface ShotDetailPanelProps {
   shotId: string;
@@ -31,6 +33,7 @@ interface ShotDetailPanelProps {
 
 export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProps) {
   const { project, updateShot, selectedShotId, addGenerationHistory } = useProjectStore();
+  const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -47,6 +50,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
 
   const shot = project?.shots.find((s) => s.id === shotId);
   const scene = project?.scenes.find((sc) => sc.shotIds.includes(shotId));
+  const shotLabel = formatShotLabel(scene?.order, shot?.order, shot?.globalOrder);
 
   const hasImage = Boolean(
     shot?.referenceImage || (shot?.gridImages && shot.gridImages.length > 0)
@@ -86,6 +90,18 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
   };
 
   const handleRegenerate = () => {
+    if (!user) {
+      toast.error('请先登录以使用 AI 功能', {
+        action: {
+          label: '去登录',
+          onClick: () => {
+            window.location.href = '/auth/login';
+          },
+        },
+      });
+      return;
+    }
+
     // 获取最后一次生成的提示词
     const lastGeneration = shot.generationHistory?.[0];
     const lastPrompt = lastGeneration?.prompt || shot.description || '';
@@ -274,7 +290,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-light-text dark:text-white">
-              Shot #{shot.order}
+              {shotLabel}
             </h2>
             {scene && (
               <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">

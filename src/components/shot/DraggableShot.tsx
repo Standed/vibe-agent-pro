@@ -13,6 +13,7 @@ interface DraggableShotProps {
   onSelect: () => void;
   onDelete: () => void;
   onMove: (dragIndex: number, hoverIndex: number) => void;
+  label?: string;
 }
 
 interface DragItem {
@@ -30,6 +31,7 @@ export default function DraggableShot({
   onSelect,
   onDelete,
   onMove,
+  label,
 }: DraggableShotProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -135,7 +137,7 @@ export default function DraggableShot({
           <div className="flex-1 min-w-0 pr-8">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-bold text-light-accent dark:text-cine-accent">
-                #{shot.order}
+                {label || `#${shot.order}`}
               </span>
               <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
                 {shot.shotSize}
