@@ -1,170 +1,24 @@
 /**
- * 统一数据服务层
- *
- * 根据用户登录状态自动切换存储后端：
- * - 已登录：使用 Supabase (云端同步)
- * - 未登录：使用 IndexedDB (本地存储)
+ * 统一数据服务层 - 仅使用 Supabase 云端存储
  */
 
 import type { Project, Scene, Shot, Character, AudioAsset } from '@/types/project';
 import { supabase } from './supabase/client';
 import { getCurrentUser } from './supabase/auth';
-import * as indexedDB from './db';
-
-// ========================
-// 存储后端接口
-// ========================
 
 interface DataBackend {
-  // 项目操作
   saveProject(project: Project): Promise<void>;
   loadProject(id: string): Promise<Project | undefined>;
   getAllProjects(): Promise<Project[]>;
   deleteProject(id: string): Promise<void>;
-
-  // 场景操作
   saveScene(projectId: string, scene: Scene): Promise<void>;
   deleteScene(sceneId: string): Promise<void>;
-
-  // 镜头操作
   saveShot(sceneId: string, shot: Shot): Promise<void>;
   deleteShot(shotId: string): Promise<void>;
-
-  // 角色操作
   saveCharacter(projectId: string, character: Character): Promise<void>;
   deleteCharacter(characterId: string): Promise<void>;
-
-  // 音频资源操作
   saveAudioAsset(projectId: string, audio: AudioAsset): Promise<void>;
   deleteAudioAsset(audioId: string): Promise<void>;
-}
-
-// ========================
-// IndexedDB 后端实现
-// ========================
-
-class IndexedDBBackend implements DataBackend {
-  async saveProject(project: Project): Promise<void> {
-    await indexedDB.saveProject(project);
-  }
-
-  async loadProject(id: string): Promise<Project | undefined> {
-    return await indexedDB.loadProject(id);
-  }
-
-  async getAllProjects(): Promise<Project[]> {
-    return await indexedDB.getAllProjects();
-  }
-
-  async deleteProject(id: string): Promise<void> {
-    await indexedDB.deleteProject(id);
-  }
-
-  async saveScene(projectId: string, scene: Scene): Promise<void> {
-    const project = await this.loadProject(projectId);
-    if (project) {
-      const sceneIndex = project.scenes.findIndex(s => s.id === scene.id);
-      if (sceneIndex >= 0) {
-        project.scenes[sceneIndex] = scene;
-      } else {
-        project.scenes.push(scene);
-      }
-      await this.saveProject(project);
-    }
-  }
-
-  async deleteScene(sceneId: string): Promise<void> {
-    // 需要找到包含这个场景的项目
-    const projects = await this.getAllProjects();
-    for (const project of projects) {
-      const sceneIndex = project.scenes.findIndex(s => s.id === sceneId);
-      if (sceneIndex >= 0) {
-        project.scenes.splice(sceneIndex, 1);
-        // 同时删除该场景的所有镜头
-        project.shots = project.shots.filter(shot => shot.sceneId !== sceneId);
-        await this.saveProject(project);
-        break;
-      }
-    }
-  }
-
-  async saveShot(sceneId: string, shot: Shot): Promise<void> {
-    const projects = await this.getAllProjects();
-    for (const project of projects) {
-      if (project.scenes.some(s => s.id === sceneId)) {
-        const shotIndex = project.shots.findIndex(s => s.id === shot.id);
-        if (shotIndex >= 0) {
-          project.shots[shotIndex] = shot;
-        } else {
-          project.shots.push(shot);
-        }
-        await this.saveProject(project);
-        break;
-      }
-    }
-  }
-
-  async deleteShot(shotId: string): Promise<void> {
-    const projects = await this.getAllProjects();
-    for (const project of projects) {
-      const shotIndex = project.shots.findIndex(s => s.id === shotId);
-      if (shotIndex >= 0) {
-        project.shots.splice(shotIndex, 1);
-        await this.saveProject(project);
-        break;
-      }
-    }
-  }
-
-  async saveCharacter(projectId: string, character: Character): Promise<void> {
-    const project = await this.loadProject(projectId);
-    if (project) {
-      const charIndex = project.characters.findIndex(c => c.id === character.id);
-      if (charIndex >= 0) {
-        project.characters[charIndex] = character;
-      } else {
-        project.characters.push(character);
-      }
-      await this.saveProject(project);
-    }
-  }
-
-  async deleteCharacter(characterId: string): Promise<void> {
-    const projects = await this.getAllProjects();
-    for (const project of projects) {
-      const charIndex = project.characters.findIndex(c => c.id === characterId);
-      if (charIndex >= 0) {
-        project.characters.splice(charIndex, 1);
-        await this.saveProject(project);
-        break;
-      }
-    }
-  }
-
-  async saveAudioAsset(projectId: string, audio: AudioAsset): Promise<void> {
-    const project = await this.loadProject(projectId);
-    if (project) {
-      const audioIndex = project.audioAssets.findIndex(a => a.id === audio.id);
-      if (audioIndex >= 0) {
-        project.audioAssets[audioIndex] = audio;
-      } else {
-        project.audioAssets.push(audio);
-      }
-      await this.saveProject(project);
-    }
-  }
-
-  async deleteAudioAsset(audioId: string): Promise<void> {
-    const projects = await this.getAllProjects();
-    for (const project of projects) {
-      const audioIndex = project.audioAssets.findIndex(a => a.id === audioId);
-      if (audioIndex >= 0) {
-        project.audioAssets.splice(audioIndex, 1);
-        await this.saveProject(project);
-        break;
-      }
-    }
-  }
 }
 
 // ========================
@@ -179,6 +33,8 @@ class SupabaseBackend implements DataBackend {
   }
 
   async saveProject(project: Project): Promise<void> {
+    console.log('[SupabaseBackend] 💾 保存项目:', project.id, project.metadata.title);
+
     // 将 Project 数据分解为 Supabase 表结构
     const { data: projectData, error: projectError } = await (supabase as any)
       .from('projects')
@@ -199,163 +55,233 @@ class SupabaseBackend implements DataBackend {
         scene_count: project.scenes.length,
         shot_count: project.shots.length,
       })
-      .select()
-      .single();
+      .select();
 
     if (projectError) throw projectError;
 
     // 保存场景
-    for (const scene of project.scenes) {
-      await this.saveScene(project.id, scene);
+    if (project.scenes.length > 0) {
+      const { error: scenesError } = await (supabase as any)
+        .from('scenes')
+        .upsert(
+          project.scenes.map((scene) => ({
+            id: scene.id,
+            project_id: project.id,
+            name: scene.name,
+            description: scene.description,
+            order_index: scene.order,
+            grid_history: scene.gridHistory as any,
+            saved_grid_slices: scene.savedGridSlices as any,
+            metadata: {
+              location: scene.location,
+              position: scene.position,
+              status: scene.status,
+            } as any,
+          }))
+        );
+
+      if (scenesError) throw scenesError;
     }
 
     // 保存镜头
-    for (const shot of project.shots) {
-      await this.saveShot(shot.sceneId, shot);
+    if (project.shots.length > 0) {
+      const { error: shotsError } = await (supabase as any)
+        .from('shots')
+        .upsert(
+          project.shots.map((shot) => ({
+            id: shot.id,
+            scene_id: shot.sceneId,
+            order_index: shot.order,
+            shot_size: shot.shotSize,
+            camera_movement: shot.cameraMovement,
+            duration: shot.duration,
+            description: shot.description,
+            dialogue: shot.dialogue || null,
+            narration: shot.narration || null,
+            reference_image: shot.referenceImage || null,
+            video_clip: shot.videoClip || null,
+            grid_images: shot.gridImages as any,
+            generation_history: shot.generationHistory as any,
+            status: shot.status,
+            metadata: {
+              mainCharacters: shot.mainCharacters,
+              mainScenes: shot.mainScenes,
+              generationConfig: shot.generationConfig,
+              error: shot.error,
+            } as any,
+          }))
+        );
+
+      if (shotsError) throw shotsError;
     }
 
     // 保存角色
-    for (const character of project.characters) {
-      await this.saveCharacter(project.id, character);
+    if (project.characters.length > 0) {
+      const { error: charactersError } = await (supabase as any)
+        .from('characters')
+        .upsert(
+          project.characters.map((character) => ({
+            id: character.id,
+            project_id: project.id,
+            name: character.name,
+            description: character.description,
+            appearance: character.appearance,
+            reference_images: character.referenceImages as any,
+          }))
+        );
+
+      if (charactersError) throw charactersError;
     }
 
     // 保存音频资源
-    for (const audio of project.audioAssets) {
-      await this.saveAudioAsset(project.id, audio);
+    if (project.audioAssets.length > 0) {
+      const { error: audioError } = await (supabase as any)
+        .from('audio_assets')
+        .upsert(
+          project.audioAssets.map((audio) => ({
+            id: audio.id,
+            project_id: project.id,
+            name: audio.name,
+            category: audio.type,
+            file_url: audio.url,
+            duration: audio.duration,
+          }))
+        );
+
+      if (audioError) throw audioError;
     }
+
+    console.log('[SupabaseBackend] ✅ 项目保存成功');
   }
 
   async loadProject(id: string): Promise<Project | undefined> {
+    console.log('[SupabaseBackend] 📖 加载项目:', id);
+
     // 加载项目基本信息
-    const { data: projectData, error: projectError } = await (supabase as any)
+    const { data: project, error: projectError } = await (supabase as any)
       .from('projects')
       .select('*')
       .eq('id', id)
+      .eq('user_id', this.userId)
       .single();
 
-    if (projectError || !projectData) return undefined;
+    if (projectError || !project) {
+      console.warn('[SupabaseBackend] 项目不存在或无权限:', projectError);
+      return undefined;
+    }
 
     // 加载场景
-    const { data: scenesData } = await (supabase as any)
+    const { data: scenes = [], error: scenesError } = await (supabase as any)
       .from('scenes')
       .select('*')
       .eq('project_id', id)
-      .order('order_index');
+      .order('order_index', { ascending: true });
+
+    if (scenesError) throw scenesError;
 
     // 加载镜头
-    const { data: shotsData } = await (supabase as any)
+    const { data: shots = [], error: shotsError } = await (supabase as any)
       .from('shots')
       .select('*')
-      .order('order_index');
+      .in('scene_id', scenes.map((s: any) => s.id))
+      .order('order_index', { ascending: true });
 
-    const scenes: Scene[] = (scenesData || []).map((s: any) => ({
-      id: s.id,
-      name: s.name,
-      location: s.description || '',
-      description: s.description || '',
-      shotIds: [], // 稍后填充
-      position: (s.metadata as any)?.position || { x: 0, y: 0 },
-      order: s.order_index,
-      status: 'draft' as const,
-      created: new Date(s.created_at),
-      modified: new Date(s.updated_at),
-      gridHistory: (s.grid_history as any) || [],
-      savedGridSlices: (s.saved_grid_slices as any) || [],
-    }));
-
-    // 过滤属于当前项目场景的镜头
-    const sceneIds = scenes.map(s => s.id);
-    const shots: Shot[] = (shotsData || [])
-      .filter((shot: any) => sceneIds.includes(shot.scene_id))
-      .map((s: any) => ({
-        id: s.id,
-        sceneId: s.scene_id,
-        order: s.order_index,
-        shotSize: s.shot_size as any,
-        cameraMovement: s.camera_movement as any,
-        duration: Number(s.duration) || 5,
-        description: s.description || '',
-        narration: s.narration || undefined,
-        dialogue: s.dialogue || undefined,
-        referenceImage: s.reference_image || undefined,
-        videoClip: s.video_clip || undefined,
-        gridImages: (s.grid_images as any) || undefined,
-        generationHistory: (s.generation_history as any) || undefined,
-        status: s.status as any,
-        created: new Date(s.created_at),
-        modified: new Date(s.updated_at),
-      }));
-
-    // 填充 shotIds
-    scenes.forEach(scene => {
-      scene.shotIds = shots.filter(shot => shot.sceneId === scene.id).map(shot => shot.id);
-    });
+    if (shotsError) throw shotsError;
 
     // 加载角色
-    const { data: charactersData } = await (supabase as any)
+    const { data: characters = [], error: charactersError } = await (supabase as any)
       .from('characters')
       .select('*')
       .eq('project_id', id);
 
-    const characters: Character[] = (charactersData || []).map((c: any) => ({
-      id: c.id,
-      name: c.name,
-      description: c.description || '',
-      appearance: c.appearance || '',
-      referenceImages: (c.reference_images as any) || [],
-    }));
+    if (charactersError) throw charactersError;
 
     // 加载音频资源
-    const { data: audioData } = await (supabase as any)
+    const { data: audioAssets = [], error: audioError } = await (supabase as any)
       .from('audio_assets')
       .select('*')
       .eq('project_id', id);
 
-    const audioAssets: AudioAsset[] = (audioData || []).map((a: any) => ({
-      id: a.id,
-      name: a.name,
-      type: a.category as any,
-      url: a.file_url,
-      duration: Number(a.duration) || 0,
-    }));
+    if (audioError) throw audioError;
 
-    // 组装完整的 Project 对象
-    const metadata = projectData.metadata as any;
-    const project: Project = {
-      id: projectData.id,
+    // 组装 Project 对象
+    const result: Project = {
+      id: project.id,
       metadata: {
-        title: projectData.title,
-        description: projectData.description || '',
-        artStyle: projectData.art_style || '',
-        created: new Date(metadata?.created || projectData.created_at),
-        modified: new Date(metadata?.modified || projectData.updated_at),
+        title: project.title,
+        description: project.description || '',
+        artStyle: project.art_style || '',
+        created: new Date(project.created_at),
+        modified: new Date(project.updated_at),
       },
-      characters,
-      locations: [], // TODO: 如果需要单独的 locations 表
-      audioAssets,
-      script: metadata?.script || '',
-      scenes,
-      shots,
-      timeline: metadata?.timeline || [],
-      settings: projectData.settings as any,
-      chatHistory: metadata?.chatHistory || [],
+      settings: project.settings || {},
+      script: project.metadata?.script || '',
+      chatHistory: project.metadata?.chatHistory || [],
+      timeline: project.metadata?.timeline || [],
+      scenes: scenes.map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description || '',
+        order: s.order_index,
+        location: s.metadata?.location || '',
+        position: s.metadata?.position || { x: 0, y: 0 },
+        status: s.metadata?.status || 'draft',
+        gridHistory: s.grid_history || [],
+        savedGridSlices: s.saved_grid_slices || [],
+      })),
+      shots: shots.map((sh: any) => ({
+        id: sh.id,
+        sceneId: sh.scene_id,
+        order: sh.order_index,
+        shotSize: sh.shot_size || 'medium',
+        cameraMovement: sh.camera_movement || 'static',
+        duration: sh.duration || 3,
+        description: sh.description || '',
+        dialogue: sh.dialogue || undefined,
+        narration: sh.narration || undefined,
+        referenceImage: sh.reference_image || undefined,
+        videoClip: sh.video_clip || undefined,
+        gridImages: sh.grid_images || [],
+        generationHistory: sh.generation_history || [],
+        status: sh.status || 'draft',
+        mainCharacters: sh.metadata?.mainCharacters || [],
+        mainScenes: sh.metadata?.mainScenes || [],
+        generationConfig: sh.metadata?.generationConfig || undefined,
+        error: sh.metadata?.error || undefined,
+      })),
+      characters: characters.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        description: c.description || '',
+        appearance: c.appearance || '',
+        referenceImages: c.reference_images || [],
+      })),
+      audioAssets: audioAssets.map((a: any) => ({
+        id: a.id,
+        type: a.category,
+        name: a.name,
+        url: a.file_url,
+        duration: a.duration || 0,
+      })),
     };
 
-    return project;
+    console.log('[SupabaseBackend] ✅ 项目加载成功');
+    return result;
   }
 
   async getAllProjects(): Promise<Project[]> {
-    const { data, error } = await (supabase as any)
+    console.log('[SupabaseBackend] 📋 获取所有项目');
+
+    const { data: projects = [], error } = await (supabase as any)
       .from('projects')
-      .select('*')
+      .select('id, title, description, art_style, created_at, updated_at, scene_count, shot_count, metadata')
       .eq('user_id', this.userId)
       .order('updated_at', { ascending: false });
 
     if (error) throw error;
 
-    // 只返回项目列表的基本信息，不加载完整数据
-    // 完整数据通过 loadProject 按需加载
-    const projects: Project[] = (data || []).map((p: any) => ({
+    // 简化版项目列表，不加载完整的 scenes/shots/characters
+    const result = projects.map((p: any) => ({
       id: p.id,
       metadata: {
         title: p.title,
@@ -364,22 +290,24 @@ class SupabaseBackend implements DataBackend {
         created: new Date(p.created_at),
         modified: new Date(p.updated_at),
       },
-      characters: [],
-      locations: [],
-      audioAssets: [],
+      settings: {},
       script: '',
+      chatHistory: [],
+      timeline: [],
       scenes: [],
       shots: [],
-      timeline: [],
-      settings: p.settings as any,
-      chatHistory: [],
+      characters: [],
+      audioAssets: [],
     }));
 
-    return projects;
+    console.log('[SupabaseBackend] ✅ 获取到', result.length, '个项目');
+    return result;
   }
 
   async deleteProject(id: string): Promise<void> {
-    // Supabase 的级联删除会自动删除相关的 scenes, shots 等
+    console.log('[SupabaseBackend] 🗑️ 删除项目:', id);
+
+    // Supabase RLS + CASCADE 会自动删除关联的 scenes, shots, characters, audio_assets
     const { error } = await (supabase as any)
       .from('projects')
       .delete()
@@ -387,6 +315,8 @@ class SupabaseBackend implements DataBackend {
       .eq('user_id', this.userId);
 
     if (error) throw error;
+
+    console.log('[SupabaseBackend] ✅ 项目删除成功');
   }
 
   async saveScene(projectId: string, scene: Scene): Promise<void> {
@@ -515,110 +445,136 @@ class UnifiedDataService {
   private currentUserId: string | null = null;
 
   /**
-   * 初始化数据服务（根据用户登录状态选择后端）
+   * 初始化数据服务（仅使用 Supabase）
+   * @param userId 可选：直接提供用户ID，避免重新获取
    */
-  async initialize(): Promise<void> {
-    const user = await getCurrentUser();
+  async initialize(userId?: string): Promise<void> {
+    console.log('[DataService] 🔄 正在初始化...');
 
-    if (user) {
-      // 已登录：使用 Supabase
-      this.currentUserId = user.id;
-      this.backend = new SupabaseBackend(user.id);
-    } else {
-      // 未登录：使用 IndexedDB
-      this.currentUserId = null;
-      this.backend = new IndexedDBBackend();
+    let user = null;
+
+    // 如果提供了 userId，直接使用
+    if (userId) {
+      console.log('[DataService] ✅ 使用提供的用户ID:', userId);
+      this.currentUserId = userId;
+      this.backend = new SupabaseBackend(userId);
+      console.log('[DataService] ☁️ 使用 Supabase 后端');
+      return;
     }
+
+    // 否则尝试多次获取用户（应对内存存储延迟问题）
+    const maxRetries = 5;
+    const retryDelay = 1000; // 1秒
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        console.log(`[DataService] 尝试获取用户 (${i + 1}/${maxRetries})...`);
+
+        // 每次尝试设置较短的超时（5秒）
+        const getUserPromise = getCurrentUser();
+        const timeoutPromise = new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('超时')), 5000)
+        );
+
+        user = await Promise.race([getUserPromise, timeoutPromise]);
+
+        if (user) {
+          console.log('[DataService] ✅ 成功获取用户:', user.email);
+          break;
+        }
+
+        // 如果返回 null（未登录），直接抛出错误
+        throw new Error('用户未登录');
+
+      } catch (err) {
+        const isLastRetry = i === maxRetries - 1;
+
+        if (isLastRetry) {
+          console.error('[DataService] ❌ 所有重试均失败:', err);
+          throw new Error('获取用户失败，请重新登录');
+        }
+
+        // 非最后一次重试，等待后继续
+        console.warn(`[DataService] ⚠️ 第 ${i + 1} 次尝试失败，${retryDelay}ms 后重试...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+    }
+
+    if (!user) {
+      console.error('[DataService] ❌ 用户未登录');
+      throw new Error('用户未登录，请先登录');
+    }
+
+    // 已登录：使用 Supabase
+    this.currentUserId = user.id;
+    this.backend = new SupabaseBackend(user.id);
+    console.log('[DataService] ☁️ 使用 Supabase 后端');
   }
 
-  /**
-   * 获取当前后端（自动初始化）
-   */
-  private async getBackend(): Promise<DataBackend> {
+  private async ensureInitialized(userId?: string): Promise<void> {
     if (!this.backend) {
-      await this.initialize();
+      await this.initialize(userId);
     }
-    return this.backend!;
   }
 
-  /**
-   * 检查是否使用云端存储
-   */
-  async isCloudMode(): Promise<boolean> {
-    if (!this.backend) {
-      await this.initialize();
-    }
-    return this.backend instanceof SupabaseBackend;
+  async saveProject(project: Project, userId?: string): Promise<void> {
+    await this.ensureInitialized(userId);
+    return this.backend!.saveProject(project);
   }
 
-  // ===== 项目操作 =====
-
-  async saveProject(project: Project): Promise<void> {
-    const backend = await this.getBackend();
-    return backend.saveProject(project);
+  async loadProject(id: string, userId?: string): Promise<Project | undefined> {
+    await this.ensureInitialized(userId);
+    return this.backend!.loadProject(id);
   }
 
-  async loadProject(id: string): Promise<Project | undefined> {
-    const backend = await this.getBackend();
-    return backend.loadProject(id);
-  }
-
-  async getAllProjects(): Promise<Project[]> {
-    const backend = await this.getBackend();
-    return backend.getAllProjects();
+  async getAllProjects(userId?: string): Promise<Project[]> {
+    await this.ensureInitialized(userId);
+    return this.backend!.getAllProjects();
   }
 
   async deleteProject(id: string): Promise<void> {
-    const backend = await this.getBackend();
-    return backend.deleteProject(id);
+    await this.ensureInitialized();
+    return this.backend!.deleteProject(id);
   }
 
-  // ===== 场景操作 =====
-
   async saveScene(projectId: string, scene: Scene): Promise<void> {
-    const backend = await this.getBackend();
-    return backend.saveScene(projectId, scene);
+    await this.ensureInitialized();
+    return this.backend!.saveScene(projectId, scene);
   }
 
   async deleteScene(sceneId: string): Promise<void> {
-    const backend = await this.getBackend();
-    return backend.deleteScene(sceneId);
+    await this.ensureInitialized();
+    return this.backend!.deleteScene(sceneId);
   }
 
-  // ===== 镜头操作 =====
-
   async saveShot(sceneId: string, shot: Shot): Promise<void> {
-    const backend = await this.getBackend();
-    return backend.saveShot(sceneId, shot);
+    await this.ensureInitialized();
+    return this.backend!.saveShot(sceneId, shot);
   }
 
   async deleteShot(shotId: string): Promise<void> {
-    const backend = await this.getBackend();
-    return backend.deleteShot(shotId);
+    await this.ensureInitialized();
+    return this.backend!.deleteShot(shotId);
   }
 
-  // ===== 角色操作 =====
-
   async saveCharacter(projectId: string, character: Character): Promise<void> {
-    const backend = await this.getBackend();
-    return backend.saveCharacter(projectId, character);
+    await this.ensureInitialized();
+    return this.backend!.saveCharacter(projectId, character);
   }
 
   async deleteCharacter(characterId: string): Promise<void> {
-    const backend = await this.getBackend();
-    return backend.deleteCharacter(characterId);
+    await this.ensureInitialized();
+    return this.backend!.deleteCharacter(characterId);
   }
 
-  // ===== 音频资源操作 =====
-
   async saveAudioAsset(projectId: string, audio: AudioAsset): Promise<void> {
-    const backend = await this.getBackend();
-    return backend.saveAudioAsset(projectId, audio);
+    await this.ensureInitialized();
+    return this.backend!.saveAudioAsset(projectId, audio);
   }
 
   async deleteAudioAsset(audioId: string): Promise<void> {
-    const backend = await this.getBackend();
-    return backend.deleteAudioAsset(audioId);
+    await this.ensureInitialized();
+    return this.backend!.deleteAudioAsset(audioId);
   }
 }
 

@@ -157,7 +157,7 @@ export const useProjectStore = create<ProjectStore>()(
 
       set({
         project: {
-          id: `project_${Date.now()}`,
+          id: crypto.randomUUID(),
           metadata: {
             title,
             description,
@@ -372,7 +372,22 @@ export const useProjectStore = create<ProjectStore>()(
     // Character Actions
     addCharacter: (character) => {
       set((state) => {
-        state.project?.characters.push(character);
+        const project = state.project;
+        if (!project) return;
+        const incomingName = character.name.trim();
+        const existing = project.characters.find(
+          (c) => c.name.trim().toLowerCase() === incomingName.toLowerCase()
+        );
+        if (existing) {
+          // 仅补充缺失字段，避免重复条目
+          existing.description = existing.description || character.description;
+          existing.appearance = existing.appearance || character.appearance;
+          existing.referenceImages = existing.referenceImages?.length
+            ? existing.referenceImages
+            : character.referenceImages || [];
+        } else {
+          project.characters.push({ ...character, name: incomingName });
+        }
       });
       get().saveProject();
     },
@@ -400,7 +415,21 @@ export const useProjectStore = create<ProjectStore>()(
     // Location Actions
     addLocation: (location) => {
       set((state) => {
-        state.project?.locations.push(location);
+        const project = state.project;
+        if (!project) return;
+        const incomingName = location.name.trim();
+        const existing = project.locations.find(
+          (l) => l.name.trim().toLowerCase() === incomingName.toLowerCase()
+        );
+        if (existing) {
+          existing.description = existing.description || location.description;
+          existing.type = existing.type || location.type;
+          existing.referenceImages = existing.referenceImages?.length
+            ? existing.referenceImages
+            : location.referenceImages || [];
+        } else {
+          project.locations.push({ ...location, name: incomingName });
+        }
       });
       get().saveProject();
     },

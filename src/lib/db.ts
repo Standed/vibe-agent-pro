@@ -15,7 +15,28 @@ class VideoAgentDatabase extends Dexie {
   }
 }
 
-export const db = new VideoAgentDatabase();
+// 懒加载数据库实例，避免浏览器阻止storage时出错
+let dbInstance: VideoAgentDatabase | null = null;
+
+function getDB(): VideoAgentDatabase {
+  if (!dbInstance) {
+    try {
+      dbInstance = new VideoAgentDatabase();
+    } catch (err) {
+      console.warn('[DB] 无法创建 IndexedDB 实例，存储可能被阻止:', err);
+      throw new Error('IndexedDB 不可用');
+    }
+  }
+  return dbInstance;
+}
+
+export const db = new Proxy({} as VideoAgentDatabase, {
+  get(target, prop) {
+    const instance = getDB();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});
 
 // 辅助函数
 export async function saveProject(project: Project): Promise<void> {

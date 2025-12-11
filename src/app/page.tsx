@@ -4,14 +4,15 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Film, Clock, Trash2 } from 'lucide-react';
+import { Plus, Film, Clock, Trash2, LogOut } from 'lucide-react';
 import { SettingsPanel } from '@/components/settings/SettingsPanel';
 import { useI18n } from '@/components/providers/I18nProvider';
 import NewProjectDialog from '@/components/project/NewProjectDialog';
 import { useProjectStore } from '@/store/useProjectStore';
 import { dataService } from '@/lib/dataService';
-import { MigrationPrompt } from '@/components/migration/MigrationPrompt';
 import type { Project } from '@/types/project';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { toast } from 'sonner';
 
 export default function Home() {
   const { t } = useI18n();
@@ -20,20 +21,59 @@ export default function Home() {
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [hasAuthCookie, setHasAuthCookie] = useState(false);
+  const { user, signOut } = useAuth();
 
-  // 加载所有项目
+  // 加载所有项目（当用户状态变化时重新加载）
   useEffect(() => {
     loadProjects();
+  }, [user]); // 依赖user，登录/退出时重新加载
+
+  // 监测标记 cookie，便于提示“有登录标记但无会话”的情况
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const updateCookieState = () => {
+      setHasAuthCookie(document.cookie.includes('supabase-auth-token=true'));
+    };
+    updateCookieState();
+    const id = setInterval(updateCookieState, 2000);
+    return () => clearInterval(id);
   }, []);
 
   const loadProjects = async () => {
+    console.log('[HomePage] 🔄 开始加载项目列表...');
     setIsLoading(true);
+    setLoadError(null);
+
+    // 如果用户未登录，直接显示空列表
+    if (!user) {
+      console.log('[HomePage] ℹ️ 用户未登录，显示空项目列表');
+      setProjects([]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const allProjects = await dataService.getAllProjects();
+      // 传递 userId 给 dataService，避免重新获取用户超时
+      const allProjects = await dataService.getAllProjects(user.id);
       setProjects(allProjects);
-      console.log('✅ 已加载项目列表:', allProjects.length);
+      console.log('[HomePage] ✅ 已加载项目列表:', allProjects.length, '个项目');
     } catch (error) {
-      console.error('❌ 加载项目失败:', error);
+      console.error('[HomePage] ❌ 加载项目失败:', error);
+      const errorMessage = error instanceof Error ? error.message : '加载失败';
+      setLoadError(errorMessage);
+
+      // 如果是认证失败，提示用户重新登录
+      if (errorMessage.includes('认证') || errorMessage.includes('登录')) {
+        toast.error('认证失败', {
+          description: '请重新登录以访问云端项目',
+        });
+      } else {
+        toast.error('加载项目失败', {
+          description: errorMessage,
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -45,20 +85,40 @@ export default function Home() {
     artStyle: string,
     aspectRatio: string
   ) => {
-    // 1. 在 store 中创建项目
-    createNewProject(title, description, artStyle, aspectRatio);
-    setShowNewProjectDialog(false);
+    console.log('[HomePage] 📝 创建新项目:', { title, description, artStyle, aspectRatio });
 
-    // 2. 立即保存到数据库（使用 setTimeout 确保 store 已更新）
-    setTimeout(async () => {
+    try {
+      // 1. 在 store 中创建项目
+      createNewProject(title, description, artStyle, aspectRatio);
+      setShowNewProjectDialog(false);
+
+      // 2. 等待下一个事件循环，确保 store 已更新
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // 3. 获取新创建的项目
       const currentProject = useProjectStore.getState().project;
-      if (currentProject) {
-        await dataService.saveProject(currentProject);
-        console.log('✅ 项目已保存:', currentProject.id);
-        // 3. 跳转到项目编辑页（使用实际的项目 ID）
-        router.push(`/project/${currentProject.id}`);
+      console.log('[HomePage] 当前项目状态:', currentProject);
+
+      if (!currentProject) {
+        console.error('[HomePage] ❌ 项目创建失败：currentProject 为空');
+        toast.error('项目创建失败');
+        return;
       }
-    }, 0);
+
+      // 4. 保存项目到数据库（等待保存完成）
+      console.log('[HomePage] 💾 保存项目到数据库:', currentProject.id);
+      await dataService.saveProject(currentProject, user?.id);
+      console.log('[HomePage] ✅ 项目已保存:', currentProject.id);
+
+      // 5. 跳转到项目编辑页
+      const targetUrl = `/project/${currentProject.id}`;
+      console.log('[HomePage] 🔄 准备跳转到:', targetUrl);
+      router.push(targetUrl);
+      console.log('[HomePage] ✅ router.push 已执行');
+    } catch (error) {
+      console.error('[HomePage] ❌ 创建项目失败:', error);
+      toast.error('创建项目失败，请重试');
+    }
   };
 
   const handleDeleteProject = async (projectId: string, e: React.MouseEvent) => {
@@ -88,6 +148,73 @@ export default function Home() {
     });
   };
 
+  const handleSignOut = async () => {
+    try {
+      console.log('[HomePage] 开始退出登录...');
+
+      // 直接清除所有认证相关的 cookies 和存储，不等待 Supabase signOut()
+      // 因为 signOut() 在使用内存存储时可能会挂起
+      if (typeof document !== 'undefined') {
+        // 清除认证 cookies
+        document.cookie = 'supabase-auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        document.cookie = 'supabase-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        console.log('[HomePage] ✅ 已清除认证 cookies');
+      }
+
+      // 尝试异步调用 signOut（但不等待它完成）
+      signOut().catch(err => {
+        console.warn('[HomePage] signOut() 异步调用失败（已忽略）:', err);
+      });
+
+      toast.info('已退出登录');
+
+      // 立即跳转到登录页
+      console.log('[HomePage] 退出完成，跳转到登录页');
+      setTimeout(() => {
+        window.location.href = '/auth/login';
+      }, 200);
+    } catch (err) {
+      console.error('[HomePage] 退出失败:', err);
+      toast.error('退出失败，请重试');
+      // 即使出错也尝试跳转
+      setTimeout(() => {
+        window.location.href = '/auth/login';
+      }, 500);
+    }
+  };
+
+  const clearLocalAuth = async () => {
+    try {
+      if (typeof document !== 'undefined') {
+        document.cookie = 'supabase-auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      }
+      if (typeof window !== 'undefined') {
+        try {
+          const { supabase } = await import('@/lib/supabase/client');
+          await supabase.auth.signOut();
+        } catch (err) {
+          console.warn('[HomePage] 清理 Supabase 会话失败，忽略:', err);
+        }
+        try {
+          window.localStorage?.clear?.();
+          window.sessionStorage?.clear?.();
+        } catch (err) {
+          console.warn('[HomePage] 清理 Storage 失败（可能被阻止），忽略:', err);
+        }
+        try {
+          window.indexedDB.deleteDatabase('VideoAgentDB');
+        } catch (err) {
+          console.warn('[HomePage] 删除 IndexedDB 失败，忽略:', err);
+        }
+      }
+      toast.success('已清理本地缓存，请重新登录');
+      router.push('/auth/login');
+    } catch (err) {
+      console.error('[HomePage] 清理本地缓存失败:', err);
+      toast.error('清理本地缓存失败，请手动刷新后重试');
+    }
+  };
+
   return (
     <main className="min-h-screen bg-light-bg dark:bg-cine-black p-8">
       <div className="max-w-7xl mx-auto">
@@ -112,12 +239,32 @@ export default function Home() {
               </p>
             </div>
             {/* Settings Button */}
-            <SettingsPanel />
+            <div className="flex items-center gap-3">
+              {!user && (
+                <button
+                  onClick={() => router.push('/auth/login')}
+                  className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:border-light-accent dark:hover:border-cine-accent transition-colors"
+                >
+                  <LogOut size={16} />
+                  登录
+                </button>
+              )}
+              {user && (
+                <button
+                  onClick={handleSignOut}
+                  className="inline-flex items-center gap-2 text-sm text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white px-3 py-2 rounded-lg border border-transparent hover:border-light-border dark:hover:border-cine-border transition-colors"
+                >
+                  <LogOut size={16} />
+                  退出
+                </button>
+              )}
+              <SettingsPanel />
+            </div>
           </div>
         </header>
 
         {/* Create New Project Button */}
-        <div className="mb-8">
+        <div className="mb-8 flex items-center gap-3 flex-wrap">
           <button
             onClick={() => setShowNewProjectDialog(true)}
             className="inline-flex items-center gap-2 bg-light-accent dark:bg-cine-accent text-white dark:text-cine-black px-6 py-3 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent/90 transition-colors"
@@ -125,7 +272,44 @@ export default function Home() {
             <Plus size={20} />
             {t('home.createProject')}
           </button>
+          {!user && (
+            <div className="flex flex-wrap items-center gap-2 text-sm px-3 py-2 rounded-lg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted">
+              <span>当前为本地模式，登录后可同步到云端</span>
+              <button
+                className="text-light-accent dark:text-cine-accent underline"
+                onClick={() => router.push('/auth/login')}
+              >
+                去登录
+              </button>
+              {hasAuthCookie && (
+                <button
+                  className="ml-2 text-light-accent dark:text-cine-accent underline"
+                  onClick={clearLocalAuth}
+                >
+                  清理并重新登录
+                </button>
+              )}
+            </div>
+          )}
         </div>
+
+        {!user && hasAuthCookie && (
+          <div className="mb-6 p-3 rounded-lg border border-amber-300/60 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+            检测到历史登录标记但未获取到会话，可能浏览器禁用存储或会话过期。
+            <button
+              className="ml-2 underline"
+              onClick={() => router.push('/auth/login')}
+            >
+              重新登录
+            </button>
+            <button
+              className="ml-3 underline"
+              onClick={clearLocalAuth}
+            >
+              清理本地缓存
+            </button>
+          </div>
+        )}
 
         {/* Projects Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -134,6 +318,37 @@ export default function Home() {
             <div className="col-span-full text-center py-20">
               <div className="text-light-text-muted dark:text-cine-text-muted">
                 加载中...
+              </div>
+              <button
+                onClick={loadProjects}
+                className="mt-4 inline-flex items-center gap-2 text-sm px-4 py-2 rounded-lg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent transition-colors"
+              >
+                重试
+              </button>
+            </div>
+          ) : loadError ? (
+            <div className="col-span-full text-center py-20 border-2 border-dashed border-red-400/50 dark:border-red-500/50 rounded-lg">
+              <h3 className="text-xl font-bold mb-2 text-light-text dark:text-white">
+                项目加载失败
+              </h3>
+              <p className="text-light-text-muted dark:text-cine-text-muted mb-4">
+                {loadError}
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={loadProjects}
+                  className="px-4 py-2 bg-light-accent dark:bg-cine-accent text-white rounded-lg hover:bg-light-accent-hover dark:hover:bg-cine-accent/90 transition-colors"
+                >
+                  重试加载
+                </button>
+                {user && (
+                  <button
+                    onClick={handleSignOut}
+                    className="px-4 py-2 border border-light-border dark:border-cine-border rounded-lg text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent transition-colors"
+                  >
+                    退出登录
+                  </button>
+                )}
               </div>
             </div>
           ) : projects.length === 0 ? (
@@ -203,8 +418,9 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Migration Prompt */}
-      <MigrationPrompt onComplete={loadProjects} />
+      <div className="mt-12 text-center text-xs text-light-text-muted dark:text-cine-text-muted">
+        Copyright ©2026 xysai.ai All rights reserved.
+      </div>
 
       {/* New Project Dialog */}
       {showNewProjectDialog && (

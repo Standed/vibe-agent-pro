@@ -8,7 +8,7 @@
  * - 思考过程追踪
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { processUserCommand, continueWithToolResults, AgentMessage } from '@/services/agentService';
 import { buildEnhancedContext } from '@/services/contextBuilder';
@@ -17,6 +17,7 @@ import { SessionManager } from '@/services/sessionManager';
 import { ThinkingStep } from '@/components/agent/ThinkingProcess';
 import { StoreCallbacks } from '@/services/agentTools';
 import { toast } from 'sonner';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 export interface UseAgentResult {
   isProcessing: boolean;
@@ -24,6 +25,7 @@ export interface UseAgentResult {
   summary: string;
   sendMessage: (message: string) => Promise<void>;
   clearSession: () => Promise<void>;
+  stop: () => void;
 }
 
 export function useAgent(): UseAgentResult {
@@ -41,6 +43,8 @@ export function useAgent(): UseAgentResult {
     clearChatHistory
   } = useProjectStore();
 
+  const { isAuthenticated } = useAuth();
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
   const [summary, setSummary] = useState('');
@@ -48,6 +52,7 @@ export function useAgent(): UseAgentResult {
     new SessionManager(project?.id || 'default')
   );
   const [lastMessageHash, setLastMessageHash] = useState<string>('');
+  const cancelRef = useRef(false);
 
   // Auto-update session manager when project changes
   useEffect(() => {
@@ -78,6 +83,22 @@ export function useAgent(): UseAgentResult {
   const sendMessage = useCallback(async (message: string) => {
     if (!project) {
       toast.error('请先创建或打开一个项目');
+      return;
+    }
+
+    cancelRef.current = false;
+
+    // 游客模式限制：只允许已登录用户调用 AI
+    if (!isAuthenticated()) {
+      toast.error('请先登录以使用 AI 功能', {
+        duration: 3000,
+        action: {
+          label: '去登录',
+          onClick: () => {
+            window.location.href = '/auth/login';
+          },
+        },
+      });
       return;
     }
 
@@ -123,6 +144,10 @@ export function useAgent(): UseAgentResult {
         details: `场景: ${enhancedContext.sceneCount}, 镜头: ${enhancedContext.shotCount}`,
       });
 
+      if (cancelRef.current) {
+        throw new Error('USER_CANCELLED');
+      }
+
       // Step 2: Get or create session
       const stepId2 = addStep({
         type: 'thinking',
@@ -137,6 +162,10 @@ export function useAgent(): UseAgentResult {
         duration: Date.now() - startTime,
         details: `会话ID: ${session.id.slice(0, 16)}...`,
       });
+
+      if (cancelRef.current) {
+        throw new Error('USER_CANCELLED');
+      }
 
       // Step 3: Add user message to session
       const userMessage: AgentMessage = {
@@ -169,6 +198,10 @@ export function useAgent(): UseAgentResult {
         details: `动作类型: ${action.type}`,
       });
 
+      if (cancelRef.current) {
+        throw new Error('USER_CANCELLED');
+      }
+
       // Step 5: Execute tools if needed (并行执行)
       let allToolResults: any[] = [];
       let maxIterations = 5;
@@ -184,6 +217,10 @@ export function useAgent(): UseAgentResult {
           content: `正在执行工具 (第${iteration}轮): ${action.toolCalls.map(t => t.name).join(', ')}`,
           status: 'running',
         });
+
+        if (cancelRef.current) {
+          throw new Error('USER_CANCELLED');
+        }
 
         // 准备 Store 回调
         const storeCallbacks: StoreCallbacks = {
@@ -212,6 +249,9 @@ export function useAgent(): UseAgentResult {
 
         const iterationStart = Date.now();
         const results = await executor.execute(action.toolCalls);
+        if (cancelRef.current) {
+          throw new Error('USER_CANCELLED');
+        }
         allToolResults.push(...results);
 
         // 跟踪创建的场景和已添加分镜的场景
@@ -285,6 +325,10 @@ export function useAgent(): UseAgentResult {
         status: 'running',
       });
 
+      if (cancelRef.current) {
+        throw new Error('USER_CANCELLED');
+      }
+
       let finalSummary = action.message || '处理完成';
 
       // Add tool execution summary
@@ -333,17 +377,20 @@ export function useAgent(): UseAgentResult {
       toast.success('处理完成');
 
     } catch (error: any) {
-      console.error('Agent error:', error);
+      if (error?.message === 'USER_CANCELLED') {
+        toast.info('已停止当前 AI 处理');
+      } else {
+        console.error('Agent error:', error);
 
-      addStep({
-        type: 'error',
-        content: error.message || '处理失败',
-        status: 'failed',
-      });
+        addStep({
+          type: 'error',
+          content: error.message || '处理失败',
+          status: 'failed',
+        });
 
-      setSummary(`错误: ${error.message}`);
-      toast.error('处理失败: ' + error.message);
-
+        setSummary(`错误: ${error.message}`);
+        toast.error('处理失败: ' + error.message);
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -374,11 +421,19 @@ export function useAgent(): UseAgentResult {
     toast.info('会话已清除');
   }, [sessionManager, clearChatHistory]);
 
+  const stop = useCallback(() => {
+    cancelRef.current = true;
+    setIsProcessing(false);
+    setThinkingSteps([]);
+    setSummary('');
+  }, []);
+
   return {
     isProcessing,
     thinkingSteps,
     summary,
     sendMessage,
     clearSession,
+    stop,
   };
 }

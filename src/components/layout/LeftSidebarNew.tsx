@@ -28,6 +28,7 @@ import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import AddLocationDialog from '@/components/asset/AddLocationDialog';
 import { toast } from 'sonner';
 import type { Shot, ShotSize, CameraMovement, Character, Location } from '@/types/project';
+import { formatShotLabel } from '@/utils/shotOrder';
 
 type Tab = 'script' | 'storyboard' | 'assets';
 
@@ -815,6 +816,7 @@ export default function LeftSidebarNew() {
                                   onSelect={() => handleShotClick(shot.id)}
                                   onEdit={() => openShotEditor(shot)}
                                   onDelete={() => handleDeleteShot(shot.id, shot.order, scene.name)}
+                                  label={formatShotLabel(scene.order, shot.order, shot.globalOrder)}
                                 />
                                 <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                   <button

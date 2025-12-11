@@ -1,18 +1,18 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, Loader2, User, Bot, Trash2, Sparkles, Image as ImageIcon, Grid3x3 } from 'lucide-react';
+import { Send, Loader2, User, Bot, Trash2, Sparkles, Image as ImageIcon, Grid3x3, CircleStop } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { ChatMessage } from '@/types/project';
 import { useAgent } from '@/hooks/useAgent';
 import ThinkingProcess from './ThinkingProcess';
 
 export default function AgentPanel() {
-  const { project, addChatMessage } = useProjectStore();
+  const { project } = useProjectStore();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { isProcessing, thinkingSteps, summary, sendMessage, clearSession } = useAgent();
+  const { isProcessing, thinkingSteps, summary, sendMessage, clearSession, stop } = useAgent();
 
   const chatHistory = useMemo(
     () => project?.chatHistory ?? [],
@@ -28,30 +28,10 @@ export default function AgentPanel() {
     if (!input.trim() || isProcessing) return;
 
     const userContent = input.trim();
-    const userMessage: ChatMessage = {
-      id: `msg_${Date.now()}`,
-      role: 'user',
-      content: userContent,
-      timestamp: new Date(),
-    };
-
-    // Add user message to chat history
-    addChatMessage(userMessage);
     setInput('');
 
     // Send to agent
     await sendMessage(userContent);
-
-    // Add agent response to chat history
-    if (summary) {
-      const assistantMessage: ChatMessage = {
-        id: `msg_${Date.now()}_assistant`,
-        role: 'assistant',
-        content: summary,
-        timestamp: new Date(),
-      };
-      addChatMessage(assistantMessage);
-    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -79,6 +59,16 @@ export default function AgentPanel() {
         >
           <Trash2 size={18} className="text-light-text-muted dark:text-cine-text-muted" />
         </button>
+        {isProcessing && (
+          <button
+            onClick={stop}
+            className="ml-2 px-3 py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-lg transition-colors flex items-center gap-1"
+            title="停止当前 AI 处理"
+          >
+            <CircleStop size={16} />
+            <span className="text-sm">停止</span>
+          </button>
+        )}
       </div>
 
       {/* Messages */}

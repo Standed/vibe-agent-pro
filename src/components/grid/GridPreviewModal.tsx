@@ -3,6 +3,7 @@
 import { X, Check, Star, AlertCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { Shot } from '@/types/project';
+import { formatShotLabel } from '@/utils/shotOrder';
 
 interface GridPreviewModalProps {
   gridImages: string[];
@@ -11,6 +12,7 @@ interface GridPreviewModalProps {
   sceneId: string;
   gridRows?: number;
   gridCols?: number;
+  sceneOrder?: number;
   onAssign: (assignments: Record<string, string>, favoriteSlices?: string[]) => void;
   onClose: () => void;
 }
@@ -22,6 +24,7 @@ export default function GridPreviewModal({
   sceneId,
   gridRows = 2,
   gridCols = 2,
+  sceneOrder,
   onAssign,
   onClose,
 }: GridPreviewModalProps) {
@@ -285,7 +288,7 @@ export default function GridPreviewModal({
                       {/* Shot Info */}
                       <div className="flex-1">
                         <div className="font-medium text-sm mb-1">
-                          镜头 {shot.order}
+                          镜头 {formatShotLabel(sceneOrder, shot.order, shot.globalOrder)}
                         </div>
                         <div className="text-xs text-cine-text-muted mb-2">
                           {shot.shotSize} - {shot.cameraMovement}

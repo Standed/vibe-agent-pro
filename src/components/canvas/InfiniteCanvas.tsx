@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Edit2 } from 'lucide-react';
 import type { ShotSize, CameraMovement, Shot } from '@/types/project';
+import { formatShotLabel } from '@/utils/shotOrder';
 
 export default function InfiniteCanvas() {
   const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed, updateShot } = useProjectStore();
@@ -57,8 +58,8 @@ export default function InfiniteCanvas() {
   }, [liveEditingShot?.referenceImage, editingShot?.id]);
 
   // Handle image preview
-  const handlePreview = (imageUrl: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handlePreview = (imageUrl: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setImagePreview(imageUrl);
   };
 
@@ -174,6 +175,9 @@ export default function InfiniteCanvas() {
             <button onClick={handleResetZoom} className="text-[10px] text-light-text-muted dark:text-cine-text-muted px-1 hover:text-light-text dark:hover:text-white cursor-pointer">
               {zoom}%
             </button>
+            <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted px-1 select-none">
+              Ctrl+滚轮缩放
+            </span>
             <button onClick={handleZoomIn} className="p-1.5 hover:bg-light-border dark:hover:bg-cine-border rounded text-light-text-muted dark:text-cine-text-muted">
               <ZoomIn className="w-4 h-4" />
             </button>
@@ -297,6 +301,7 @@ export default function InfiniteCanvas() {
               <div className="grid grid-cols-4 gap-3">
                 {sceneShots.map((shot) => {
                   const isShotSelected = selectedShotId === shot.id;
+                  const shotLabel = formatShotLabel(scene.order, shot.order, shot.globalOrder);
 
                   return (
                   <div
@@ -315,6 +320,7 @@ export default function InfiniteCanvas() {
                         ? 'border-2 border-light-accent dark:border-cine-accent shadow-md shadow-cine-accent/30'
                         : 'border border-light-border dark:border-cine-border'
                     }`}
+                    onClick={() => shot.referenceImage && handlePreview(shot.referenceImage)}
                   >
                     {/* Shot Thumbnail */}
                     <div className="aspect-video bg-light-bg dark:bg-cine-black flex items-center justify-center relative">
@@ -322,7 +328,7 @@ export default function InfiniteCanvas() {
                         <>
                           <img
                             src={shot.referenceImage}
-                            alt={`Shot ${shot.order}`}
+                            alt={shotLabel}
                             className="w-full h-full object-cover"
                           />
                           {/* Action Buttons Overlay */}
@@ -361,8 +367,9 @@ export default function InfiniteCanvas() {
                         <>
                           <img
                             src={shot.gridImages[0]}
-                            alt={`Shot ${shot.order}`}
+                            alt={shotLabel}
                             className="w-full h-full object-cover"
+                            onClick={(e) => handlePreview(shot.gridImages![0], e)}
                           />
                           {/* Action Buttons Overlay */}
                           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
@@ -444,7 +451,7 @@ export default function InfiniteCanvas() {
                     <div className="p-2">
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-mono text-light-text-muted dark:text-cine-text-muted">
-                          {`S${String(scene.id.split('_')[2] || '01').padStart(2, '0')}_${String(shot.order).padStart(2, '0')}`}
+                          {shotLabel}
                         </span>
                         <span className="text-light-text-muted dark:text-cine-text-muted">{shot.duration}s</span>
                       </div>

@@ -81,7 +81,7 @@ CREATE INDEX IF NOT EXISTS credit_transactions_created_at_idx ON public.credit_t
 -- =============================================
 CREATE TABLE IF NOT EXISTS public.projects (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
 
   -- 基本信息
   title TEXT NOT NULL,
@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS public.projects (
 -- 索引
 CREATE INDEX IF NOT EXISTS projects_user_id_idx ON public.projects(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS projects_created_at_idx ON public.projects(created_at DESC);
+CREATE INDEX IF NOT EXISTS projects_updated_at_idx ON public.projects(updated_at DESC);
 
 -- =============================================
 -- 5. 场景表
@@ -313,7 +314,8 @@ ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can manage own projects"
   ON public.projects FOR ALL
-  USING (auth.uid() = user_id);
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 -- 场景表
 ALTER TABLE public.scenes ENABLE ROW LEVEL SECURITY;
@@ -608,11 +610,20 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 注意：这个触发器需要在 Supabase Dashboard -> Database -> Triggers 中手动创建
--- 因为 auth.users 表在 auth schema 中
+-- 因为 auth.users 表在 auth schema 中，需要超级用户权限
 --
--- CREATE TRIGGER on_auth_user_created
---   AFTER INSERT ON auth.users
---   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+-- 如果你有超级用户权限，可以直接执行：
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 为现有用户补充 profile 记录
+INSERT INTO public.profiles (id, email, created_at, updated_at)
+SELECT id, email, created_at, NOW()
+FROM auth.users
+WHERE id NOT IN (SELECT id FROM public.profiles)
+ON CONFLICT (id) DO NOTHING;
 
 -- =============================================
 -- 14. 初始管理员账号（可选）
