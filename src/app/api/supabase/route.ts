@@ -21,6 +21,7 @@ const ALLOWED_TABLES = [
   'characters',
   'audio_assets',
   'profiles',
+  'chat_messages', // ✅ 聊天历史消息表
 ] as const;
 
 const ALLOWED_OPERATIONS = [
@@ -60,6 +61,7 @@ const UUID_FIELDS: Record<AllowedTable, string[]> = {
   characters: ['id', 'project_id'],
   audio_assets: ['id', 'project_id'],
   profiles: ['id'],
+  chat_messages: ['id', 'user_id', 'project_id', 'scene_id', 'shot_id'], // ✅ 聊天消息 UUID 字段
 };
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
