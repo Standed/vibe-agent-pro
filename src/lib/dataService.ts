@@ -89,25 +89,45 @@ class SupabaseBackend implements DataBackend {
     };
     single?: boolean;
   }): Promise<any> {
-    const response = await fetch('/api/supabase', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        ...request,
-        userId: this.userId,
-      }),
-    });
+    const maxRetries = 3;
+    let lastError: any;
 
-    const result = await response.json();
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await fetch('/api/supabase', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...request,
+            userId: this.userId,
+          }),
+        });
 
-    if (!response.ok || result.error) {
-      console.error('[SupabaseBackend] ❌ API 错误:', result.error);
-      throw new Error(result.error || 'API 调用失败');
+        const result = await response.json();
+
+        if (!response.ok || result.error) {
+          // 如果是特定的网络错误，抛出异常以触发重试
+          // 这里的 result.error 可能是服务端返回的 "TypeError: fetch failed"
+          throw new Error(result.error || 'API 调用失败');
+        }
+
+        return result.data;
+      } catch (err: any) {
+        console.warn(`[SupabaseBackend] ⚠️ API 调用失败 (尝试 ${i + 1}/${maxRetries}):`, err.message);
+        lastError = err;
+
+        // 如果不是最后一次尝试，等待后重试
+        if (i < maxRetries - 1) {
+          const delay = 1000 * (i + 1); // 1s, 2s, 3s
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
     }
 
-    return result.data;
+    console.error('[SupabaseBackend] ❌ API 错误 (重试失败):', lastError);
+    throw lastError;
   }
 
   async saveProject(project: Project): Promise<void> {
@@ -394,7 +414,7 @@ class SupabaseBackend implements DataBackend {
         filters: {
           eq: { user_id: this.userId },
         },
-        select: 'id, title, description, art_style, created_at, updated_at, scene_count, shot_count, metadata',
+        select: 'id, title, description, art_style, created_at, updated_at, scene_count, shot_count',
         order: {
           column: 'updated_at',
           ascending: false,

@@ -28,23 +28,17 @@ export async function POST(request: Request) {
     console.log('[Gemini Generate] Tools count:', payload.tools?.[0]?.function_declarations?.length || 0);
     console.log('[Gemini Generate] Request payload:', JSON.stringify(payload, null, 2));
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000); // 120s safeguard
+    const requestBody = JSON.stringify(payload);
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 
-    const fetchOptions: any = {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    };
-
-    // Proxy support (align with other Gemini routes)
+    // Build proxy agent (if configured) and fall back when unavailable
     console.log('[Gemini Generate] HTTP_PROXY:', process.env.HTTP_PROXY);
     console.log('[Gemini Generate] HTTPS_PROXY:', process.env.HTTPS_PROXY);
 
+    let proxyAgent: ProxyAgent | undefined;
     if (process.env.HTTP_PROXY) {
       try {
-        const proxyAgent = new ProxyAgent(process.env.HTTP_PROXY);
-        fetchOptions.dispatcher = proxyAgent;
+        proxyAgent = new ProxyAgent(process.env.HTTP_PROXY);
         console.log('[Gemini Generate] ✅ ProxyAgent created successfully');
       } catch (e) {
         console.error('[Gemini Generate] ❌ Failed to create ProxyAgent:', e);
@@ -53,11 +47,73 @@ export async function POST(request: Request) {
       console.warn('[Gemini Generate] ⚠️ No HTTP_PROXY found, proceeding without proxy');
     }
 
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-      fetchOptions
-    );
-    clearTimeout(timeout);
+    const buildOptions = (useProxy: boolean) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120_000); // 120s safeguard
+      const options: any = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: requestBody,
+        signal: controller.signal,
+      };
+      if (useProxy && proxyAgent) {
+        options.dispatcher = proxyAgent;
+      }
+      return { options, timeoutId };
+    };
+
+    const sendRequest = async (useProxy: boolean) => {
+      const { options, timeoutId } = buildOptions(useProxy);
+      try {
+        return await fetch(url, options);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
+
+    const strategies: { useProxy: boolean; label: string }[] = proxyAgent
+      ? [
+          { useProxy: true, label: 'proxy' },
+          { useProxy: false, label: 'direct' },
+        ]
+      : [{ useProxy: false, label: 'direct' }];
+
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    let resp: Response | null = null;
+    let lastError: any = null;
+
+    for (const { useProxy, label } of strategies) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          console.log(`[Gemini Generate] Attempt ${attempt} via ${label}...`);
+          resp = await sendRequest(useProxy);
+          if (resp.ok) break;
+          // For 5xx / 429, retry once with small backoff
+          if (attempt === 1 && (resp.status >= 500 || resp.status === 429)) {
+            console.warn(`[Gemini Generate] ${label} received ${resp.status}, retrying...`);
+            await delay(800);
+            continue;
+          }
+          break;
+        } catch (err: any) {
+          lastError = err;
+          console.warn(`[Gemini Generate] ⚠️ ${label} attempt ${attempt} failed:`, err?.message || err);
+          if (attempt === 1) {
+            await delay(500);
+            continue;
+          }
+        }
+      }
+      if (resp) break;
+    }
+
+    if (!resp) {
+      console.error('[Gemini Generate] ❌ Network request failed after retries:', lastError);
+      const message =
+        lastError?.message ||
+        'failed to reach Gemini API. Please verify network/proxy configuration.';
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
 
     if (!resp.ok) {
       const text = await resp.text();

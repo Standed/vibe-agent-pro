@@ -165,25 +165,40 @@ export default function Home() {
         console.log('[HomePage] ✅ 已清除会话 cookie');
       }
 
-      // 尝试异步调用 signOut（但不等待它完成）
-      signOut().catch(err => {
-        console.warn('[HomePage] signOut() 异步调用失败（已忽略）:', err);
+      // 尝试调用 signOut 并等待完成（最多等待 2 秒）
+      const signOutPromise = signOut();
+      const timeoutPromise = new Promise(resolve => setTimeout(resolve, 2000));
+      await Promise.race([signOutPromise, timeoutPromise]).catch(err => {
+        console.warn('[HomePage] signOut() 调用失败:', err);
       });
+
+      // 双重保障：手动清理 localStorage
+      if (typeof window !== 'undefined') {
+        // 清理 Supabase 相关的 localStorage
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        if (supabaseUrl) {
+          const projectRef = supabaseUrl.split('.')[0].split('//')[1];
+          window.localStorage.removeItem(`sb-${projectRef}-auth-token`);
+        }
+
+        // 清理所有可能相关的项
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('sb-') || key.includes('supabase'))) {
+            localStorage.removeItem(key);
+          }
+        }
+      }
 
       toast.info('已退出登录');
 
-      // 立即跳转到登录页
-      console.log('[HomePage] 退出完成，跳转到登录页');
-      setTimeout(() => {
-        window.location.href = '/auth/login';
-      }, 200);
+      // 强制跳转到登录页
+      window.location.href = '/auth/login';
     } catch (err) {
       console.error('[HomePage] 退出失败:', err);
       toast.error('退出失败，请重试');
-      // 即使出错也尝试跳转
-      setTimeout(() => {
-        window.location.href = '/auth/login';
-      }, 500);
+      // 即使出错也尝试强制跳转
+      window.location.href = '/auth/login';
     }
   };
 
@@ -254,18 +269,20 @@ export default function Home() {
                   登录
                 </button>
               )}
-              {user && profile && (
+              {user && (
                 <>
                   {/* 积分显示 */}
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 dark:border-purple-400/20">
-                    <Coins size={18} className="text-purple-600 dark:text-purple-400" />
-                    <div className="flex flex-col">
-                      <span className="text-xs text-light-text-muted dark:text-cine-text-muted">积分余额</span>
-                      <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                        {profile.credits || 0}
-                      </span>
+                  {profile && (
+                    <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 dark:border-purple-400/20">
+                      <Coins size={18} className="text-purple-600 dark:text-purple-400" />
+                      <div className="flex flex-col">
+                        <span className="text-xs text-light-text-muted dark:text-cine-text-muted">积分余额</span>
+                        <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                          {profile.credits || 0}
+                        </span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <button
                     onClick={handleSignOut}
                     className="inline-flex items-center gap-2 text-sm text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white px-3 py-2 rounded-lg border border-transparent hover:border-light-border dark:hover:border-cine-border transition-colors"

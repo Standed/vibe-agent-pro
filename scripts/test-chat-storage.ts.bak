@@ -1,0 +1,145 @@
+/**
+ * 测试聊天存储功能
+ * 运行方式：在浏览器控制台中执行
+ */
+
+import { dataService } from '@/lib/dataService';
+import { ChatMessage } from '@/types/project';
+import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * 测试聊天存储 API
+ */
+export async function testChatStorage(projectId: string, userId: string) {
+  console.log('🧪 开始测试聊天存储...');
+
+  try {
+    // 1. 保存项目级对话
+    console.log('\n1️⃣ 测试保存项目级对话...');
+    const projectMsg: ChatMessage = {
+      id: uuidv4(),
+      userId,
+      projectId,
+      scope: 'project',
+      role: 'user',
+      content: '测试项目级对话消息',
+      timestamp: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await dataService.saveChatMessage(projectMsg);
+    console.log('✅ 项目级对话保存成功:', projectMsg.id);
+
+    // 2. 保存 AI 回复（带 thought）
+    console.log('\n2️⃣ 测试保存 AI 回复...');
+    const aiMsg: ChatMessage = {
+      id: uuidv4(),
+      userId,
+      projectId,
+      scope: 'project',
+      role: 'assistant',
+      content: '这是 AI 的回复',
+      thought: '我正在思考如何回答...',
+      metadata: {
+        model: 'doubao-pro',
+      },
+      timestamp: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await dataService.saveChatMessage(aiMsg);
+    console.log('✅ AI 回复保存成功:', aiMsg.id);
+
+    // 3. 获取项目级对话
+    console.log('\n3️⃣ 测试获取项目级对话...');
+    const projectMessages = await dataService.getChatMessages({
+      projectId,
+      scope: 'project',
+    });
+    console.log(`✅ 获取到 ${projectMessages.length} 条项目级对话`);
+    console.table(projectMessages.map(m => ({
+      id: m.id.substring(0, 8),
+      role: m.role,
+      content: m.content.substring(0, 30),
+      scope: m.scope,
+    })));
+
+    // 4. 保存场景级对话（如果有场景）
+    console.log('\n4️⃣ 测试保存场景级对话...');
+    const sceneMsg: ChatMessage = {
+      id: uuidv4(),
+      userId,
+      projectId,
+      sceneId: 'test-scene-id', // 替换为真实的场景ID
+      scope: 'scene',
+      role: 'user',
+      content: '测试场景级对话消息',
+      timestamp: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await dataService.saveChatMessage(sceneMsg);
+    console.log('✅ 场景级对话保存成功:', sceneMsg.id);
+
+    // 5. 获取场景级对话
+    console.log('\n5️⃣ 测试获取场景级对话...');
+    const sceneMessages = await dataService.getChatMessages({
+      projectId,
+      sceneId: 'test-scene-id',
+      scope: 'scene',
+    });
+    console.log(`✅ 获取到 ${sceneMessages.length} 条场景级对话`);
+
+    // 6. 测试删除消息
+    console.log('\n6️⃣ 测试删除单条消息...');
+    await dataService.deleteChatMessage(projectMsg.id);
+    console.log('✅ 消息删除成功:', projectMsg.id);
+
+    // 7. 测试清除场景对话
+    console.log('\n7️⃣ 测试清除场景对话历史...');
+    await dataService.clearChatHistory({
+      projectId,
+      sceneId: 'test-scene-id',
+    });
+    console.log('✅ 场景对话历史清除成功');
+
+    // 8. 验证清除结果
+    console.log('\n8️⃣ 验证清除结果...');
+    const afterClear = await dataService.getChatMessages({
+      projectId,
+      sceneId: 'test-scene-id',
+    });
+    console.log(`✅ 场景对话数量: ${afterClear.length}（应该为 0）`);
+
+    console.log('\n🎉 所有测试通过！');
+    return true;
+  } catch (error) {
+    console.error('❌ 测试失败:', error);
+    return false;
+  }
+}
+
+/**
+ * 快速测试（在浏览器控制台运行）
+ */
+export async function quickTest() {
+  // 获取当前项目和用户
+  const project = (window as any).project; // 从全局变量获取
+  const user = (window as any).user;
+
+  if (!project || !user) {
+    console.error('❌ 请先打开一个项目');
+    return;
+  }
+
+  console.log('📋 项目ID:', project.id);
+  console.log('👤 用户ID:', user.id);
+
+  await testChatStorage(project.id, user.id);
+}
+
+// 导出供控制台使用
+if (typeof window !== 'undefined') {
+  (window as any).testChatStorage = testChatStorage;
+  (window as any).quickTest = quickTest;
+}
