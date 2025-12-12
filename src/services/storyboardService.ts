@@ -395,62 +395,105 @@ export async function generateCharacterDesigns(params: {
   script: string;
   characterNames: string[];
   artStyle?: string;
+  projectSummary?: string;
+  shots?: Shot[];
 }): Promise<Record<string, CharacterDesign>> {
-  const { script, characterNames, artStyle } = params;
+  const { script, characterNames, artStyle, projectSummary, shots } = params;
   if (!characterNames || characterNames.length === 0) return {};
 
   // 限制脚本长度，避免提示过长
   const trimmedScript = script?.length > 3000 ? `${script.slice(0, 3000)}...` : script || '';
   const styleLine = artStyle?.trim() || '保持项目统一画风';
   const namesLine = characterNames.join('、');
+  const shotSnippets =
+    shots && shots.length
+      ? shots
+          .slice(0, 12)
+          .map((s, idx) => {
+            const chars = (s.mainCharacters || []).join('、');
+            const scenes = (s.mainScenes || []).join('、');
+            const desc = (s.description || '').slice(0, 160);
+            return `镜头${idx + 1}（${s.shotSize || 'Shot'}，${s.cameraMovement || 'Static'}，${s.duration || 3}s）角色：${chars || '未标注'}；场景：${scenes || '未标注'}；描述：${desc}`;
+          })
+          .join('\n')
+      : '';
+  const projectLine = projectSummary?.trim()
+    ? `项目概要：${projectSummary.trim()}`
+    : '';
 
-  const prompt = `你是一位资深的视觉角色设定师，请基于以下信息为每个角色输出一份角色形象设计。绝对不要描述分镜/场景/剧情，只写角色外观与气质。
+  const buildPrompt = (minimal: boolean) => {
+    if (minimal) {
+      // 精简备选提示，专注字段输出，避免因上下文过长导致解析失败
+      return `你必须严格按照以下JSON格式返回角色设计，不要添加任何额外的文字说明或markdown标记。
 
-项目画风：${styleLine}
 角色列表：${namesLine}
-剧本参考（可用于理解人物性格与时代背景）：${trimmedScript}
+项目画风：${styleLine}
+${projectLine}
 
-为每个角色输出 JSON 数组，字段保持精简但具体，务必覆盖下面 8 个要素：
-\`\`\`json
+请直接输出JSON数组，不要包裹在代码块中：
 [
   {
-    "name": "角色名",
-    "summary": "一句话角色定位，2-3 句内",
-    "style": "画风与风格定位（必须与项目画风一致，可再细化）",
-    "gender_age_occupation": "性别、年龄、职业/身份",
-    "body_shape": "身材与整体比例",
-    "face_features": "脸型与五官特征",
-    "hair": "发型与发色",
-    "outfit": "服装与主要配饰",
-    "expression_mood": "表情与气质",
-    "pose": "典型姿态/动作",
+    "name": "角色名（必须与角色列表中的名称完全一致）",
+    "summary": "一句话角色定位",
+    "style": "${styleLine}",
+    "gender_age_occupation": "性别、年龄、职业",
+    "body_shape": "身材特征",
+    "face_features": "五官特征",
+    "hair": "发型发色",
+    "outfit": "服装配饰",
+    "expression_mood": "表情气质",
+    "pose": "典型姿态",
     "negative": "需要避免的元素（可选）"
   }
 ]
-\`\`\`
 
-硬性规则：
-- 只写角色视觉与气质，不写场景/分镜/剧情。
-- style 字段务必包含项目画风，不要输出“无法确定”。
-- 每个字段一句话到两句话内，精炼明确。`;
+重要规则：
+1. 必须为每个角色都生成设计
+2. 每个字段都要填写实质内容，不要留空
+3. 直接返回JSON数组，不要用markdown代码块包裹`;
+    }
 
-  try {
-    const aiResult = await postGemini(
-      {
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }]
-          }
-        ]
-      },
-      MODEL_FULL
-    );
+    return `你是专业的角色设定师。请为以下角色生成视觉形象设计，以纯JSON数组格式返回，不要添加任何markdown标记。
 
-    const rawText = extractText(aiResult) || '';
-    const text = filterAIOutput(rawText);
+项目画风：${styleLine}
+角色列表：${namesLine}
+${projectLine}
+剧本参考：${trimmedScript}
+
+请直接输出JSON数组：
+[
+  {
+    "name": "角色名（必须与角色列表中的名称完全一致）",
+    "summary": "一句话角色定位",
+    "style": "${styleLine}",
+    "gender_age_occupation": "性别、年龄、职业",
+    "body_shape": "身材特征",
+    "face_features": "五官特征",
+    "hair": "发型发色",
+    "outfit": "服装配饰",
+    "expression_mood": "表情气质",
+    "pose": "典型姿态",
+    "negative": "需要避免的元素（可选）"
+  }
+]
+
+重要规则：
+1. 必须为每个角色都生成设计
+2. 每个字段都要填写实质内容，不要留空或使用占位符
+3. 直接返回JSON数组，不要用\`\`\`json包裹`;
+  };
+
+  const parseDesigns = (rawText: string) => {
+    console.log('🔍 [角色设计解析] 开始解析 AI 返回内容');
+    console.log('📄 [角色设计解析] 原始文本长度:', rawText.length);
+    console.log('📄 [角色设计解析] 原始文本前500字符:', rawText.slice(0, 500));
+
+    const text = filterAIOutput(rawText) || '';
     const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
     let jsonStr = jsonMatch ? jsonMatch[1] : text;
+
+    console.log('📝 [角色设计解析] 提取的JSON字符串长度:', jsonStr.length);
+    console.log('📝 [角色设计解析] 提取的JSON字符串前500字符:', jsonStr.slice(0, 500));
 
     jsonStr = jsonStr
       .replace(/,\s*}/g, '}')
@@ -459,34 +502,109 @@ export async function generateCharacterDesigns(params: {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .trim();
 
-    const parsed = JSON.parse(jsonStr);
-    if (!Array.isArray(parsed)) {
-      return {};
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonStr);
+      console.log('✅ [角色设计解析] JSON解析成功');
+      console.log('📊 [角色设计解析] 解析后的数据类型:', Array.isArray(parsed) ? '数组' : '对象');
+      console.log('📊 [角色设计解析] 解析后的数据:', JSON.stringify(parsed, null, 2));
+    } catch (parseError: any) {
+      console.error('❌ [角色设计解析] JSON解析失败:', parseError.message);
+      console.error('💥 [角色设计解析] 失败的JSON字符串:', jsonStr);
+      throw parseError;
     }
+
+    // 支持意外返回对象（以角色名为 key）的情况
+    const arr = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+    console.log('📋 [角色设计解析] 待处理的角色数量:', arr.length);
 
     const designs: Record<string, CharacterDesign> = {};
     const normalize = (val: any) => (typeof val === 'string' ? val.trim() : '');
 
-    parsed.forEach((item: any) => {
-      const name = normalize(item.name || item.character || item.role);
-      if (!name) return;
+    arr.forEach((item: any, index: number) => {
+      const name = normalize(item?.name || item?.character || item?.role);
+      console.log(`\n🎭 [角色设计解析] 处理第 ${index + 1} 个角色`);
+      console.log(`  角色名: "${name}"`);
 
-      designs[name] = {
+      if (!name) {
+        console.warn(`  ⚠️ 跳过：无法获取角色名称`);
+        return;
+      }
+
+      const design: CharacterDesign = {
         name,
         summary: normalize(item.summary || item.overview) || `角色定位：${name}`,
         style: normalize(item.style) || `画风与风格定位：${styleLine}`,
-        genderAgeOccupation: normalize(item.gender_age_occupation || item.gender_age_role),
-        bodyShape: normalize(item.body_shape),
-        faceFeatures: normalize(item.face_features || item.face),
-        hair: normalize(item.hair) || normalize(item.hair_style),
+        genderAgeOccupation: normalize(item.gender_age_occupation || item.gender_age_role || item.genderAgeOccupation),
+        bodyShape: normalize(item.body_shape || item.bodyShape),
+        faceFeatures: normalize(item.face_features || item.face || item.faceFeatures),
+        hair: normalize(item.hair) || normalize(item.hair_style || item.hairStyle),
         outfit: normalize(item.outfit) || normalize(item.clothes),
-        expressionMood: normalize(item.expression_mood || item.expression || item.mood),
+        expressionMood: normalize(item.expression_mood || item.expression || item.mood || item.expressionMood),
         pose: normalize(item.pose) || normalize(item.posture),
         negative: normalize(item.negative || item.avoid),
       };
+
+      console.log(`  summary: "${design.summary?.slice(0, 50)}${design.summary?.length > 50 ? '...' : ''}"`);
+      console.log(`  style: "${design.style?.slice(0, 50)}${design.style?.length > 50 ? '...' : ''}"`);
+      console.log(`  genderAgeOccupation: "${design.genderAgeOccupation || '(空)'}"`);
+      console.log(`  bodyShape: "${design.bodyShape || '(空)'}"`);
+      console.log(`  faceFeatures: "${design.faceFeatures || '(空)'}"`);
+      console.log(`  hair: "${design.hair || '(空)'}"`);
+      console.log(`  outfit: "${design.outfit || '(空)'}"`);
+      console.log(`  expressionMood: "${design.expressionMood || '(空)'}"`);
+      console.log(`  pose: "${design.pose || '(空)'}"`);
+
+      designs[name] = design;
+      console.log(`  ✅ 已添加角色 "${name}"`);
     });
 
+    console.log(`\n📊 [角色设计解析] 解析完成，共 ${Object.keys(designs).length} 个角色`);
+    console.log(`📊 [角色设计解析] 角色名称列表:`, Object.keys(designs));
+
+    if (Object.keys(designs).length === 0) {
+      console.error('❌ [角色设计解析] 未能解析到任何角色形象数据');
+      throw new Error('未能解析到任何角色形象数据');
+    }
     return designs;
+  };
+
+  try {
+    const prompts = [buildPrompt(false), buildPrompt(true)];
+    let lastError: any = null;
+
+    for (const p of prompts) {
+      try {
+        console.log('\n📤 [角色设计] 发送到 AI 的 Prompt (前1000字符):');
+        console.log(p.slice(0, 1000));
+        console.log('...\n');
+
+        const aiResult = await postGemini(
+          {
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: p }]
+              }
+            ]
+          },
+          MODEL_FULL
+        );
+
+        const rawText = extractText(aiResult) || '';
+        console.log('\n📥 [角色设计] AI 返回的原始文本 (前2000字符):');
+        console.log(rawText.slice(0, 2000));
+        console.log('...\n');
+
+        return parseDesigns(rawText);
+      } catch (err: any) {
+        lastError = err;
+        console.warn('Character design parse attempt failed, retrying with fallback prompt:', err?.message || err);
+      }
+    }
+
+    console.error('Character design generation failed after retries:', lastError);
+    return {};
   } catch (error) {
     console.error('Character design generation error:', error);
     return {};

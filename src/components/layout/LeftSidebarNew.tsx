@@ -34,7 +34,7 @@ type Tab = 'script' | 'storyboard' | 'assets';
 
 export default function LeftSidebarNew() {
   const router = useRouter();
-  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot, deleteShot, deleteScene, updateScene, addCharacter, addLocation, setControlMode, updateShot, reorderShots } = useProjectStore();
+  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot, deleteShot, deleteScene, updateScene, addCharacter, addLocation, setControlMode, updateShot, reorderShots, updateCharacter } = useProjectStore();
   const [activeTab, setActiveTab] = useState<Tab>('storyboard');
   const [collapsedScenes, setCollapsedScenes] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
@@ -52,6 +52,8 @@ export default function LeftSidebarNew() {
   const [shotImagePreview, setShotImagePreview] = useState<string | null>(null);
   const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
   const [shotInsertIndex, setShotInsertIndex] = useState<number | null>(null);
+  const [charactersCollapsed, setCharactersCollapsed] = useState(false);
+  const [locationsCollapsed, setLocationsCollapsed] = useState(false);
   const [shotForm, setShotForm] = useState<{
     description: string;
     narration: string;
@@ -125,6 +127,174 @@ export default function LeftSidebarNew() {
     }
     return Array.from(urls);
   }, [liveEditingShot]);
+
+  const buildCharacterTemplate = () => {
+    const normalizeSegment = (text?: string) =>
+      (text || '').trim().replace(/[。．\.！!？?\s]+$/u, '');
+    const appendPeriod = (text: string) =>
+      text && /[。．.！!？?]$/.test(text) ? text : `${text}。`;
+
+    const style = project?.metadata.artStyle?.trim();
+    const baseStyle = style ? `画风与风格定位：${style}` : '画风与风格定位：保持项目统一画风';
+    const parts = [
+      baseStyle,
+      '性别、年龄、职业/身份：',
+      '身材与整体比例：',
+      '脸型与五官特征：',
+      '发型与发色：',
+      '服装与主要配饰：',
+      '表情与气质：',
+      '姿态/动作：'
+    ]
+      .map(normalizeSegment)
+      .filter(Boolean);
+    const sentence = parts.join('。');
+    return appendPeriod(sentence);
+  };
+
+  const buildAppearanceFromDesign = (design?: CharacterDesign) => {
+    const normalizeSegment = (text?: string) =>
+      (text || '').trim().replace(/[。．\.！!？?\s]+$/u, '');
+    const appendPeriod = (text: string) =>
+      text && /[。．.！!？?]$/.test(text) ? text : `${text}。`;
+
+    if (!design) return buildCharacterTemplate();
+    const parts = [
+      design.style,
+      design.genderAgeOccupation,
+      design.bodyShape,
+      design.faceFeatures,
+      design.hair,
+      design.outfit,
+      design.expressionMood,
+      design.pose,
+    ]
+      .map(normalizeSegment)
+      .filter(Boolean);
+    if (parts.length === 0) return buildCharacterTemplate();
+    const sentence = parts.join('。');
+    return appendPeriod(sentence);
+  };
+
+  const isPlaceholderDescription = (desc?: string) => {
+    if (!desc) return true;
+    const trimmed = desc.trim();
+    if (trimmed.length < 10) return true; // 太短,认为是占位符
+    return trimmed.includes('形象设计草稿') || trimmed.includes('请按项补充具体信息') || trimmed.includes('角色定位：');
+  };
+
+  const isPlaceholderAppearance = (appearance?: string) => {
+    if (!appearance) return true;
+    const normalized = appearance.trim();
+    if (normalized.length < 20) return true; // 太短,认为是占位符
+    // 检查是否包含占位符关键词
+    const hasPlaceholder = normalized.includes('保持项目统一画风') ||
+                          normalized.includes('画风与风格定位：') ||
+                          normalized.includes('性别、年龄、职业/身份：') ||
+                          normalized.includes('请按项补充');
+    return hasPlaceholder;
+  };
+
+  // 简化：只要AI返回了设计对象就直接使用
+  const isCharacterDesignComplete = (design?: CharacterDesign) => {
+    if (!design) {
+      console.log('❌ [角色检查] 设计对象为空');
+      return false;
+    }
+
+    // 只检查是否有name，其他字段有数据就用
+    const hasName = !!design.name;
+    console.log(`🔍 [角色检查] "${design.name}": ${hasName ? '✅ 有效' : '❌ 无效'}`);
+    return hasName;
+  };
+
+  const normalizeNameKey = (value?: string) =>
+    (value || '')
+      .toLowerCase()
+      .replace(/[\\s"'“”、，,。()（）]/g, '')
+      .trim();
+
+  const addCandidateName = (map: Map<string, string>, name?: string) => {
+    if (!name) return;
+    const key = normalizeNameKey(name);
+    if (!key) return;
+    if (!map.has(key)) {
+      map.set(key, name.trim());
+    }
+  };
+
+  const applyCharacterDesigns = (
+    names: string[],
+    designs: Record<string, CharacterDesign> = {}
+  ) => {
+    let updated = 0;
+    const missing: string[] = [];
+
+    console.log(`\n📋 [回填角色设计] 开始处理 ${names.length} 个角色`);
+    console.log(`📋 [回填角色设计] 收到的设计数量: ${Object.keys(designs).length}`);
+
+    // 预构建归一化名称索引，兼容 "多萝西(Dorothy)" vs "dorothy"
+    const designByKey: Record<string, CharacterDesign> = {};
+    Object.entries(designs || {}).forEach(([k, v]) => {
+      const key1 = normalizeNameKey(k);
+      const key2 = normalizeNameKey(v?.name);
+      if (key1) designByKey[key1] = v;
+      if (key2) designByKey[key2] = v;
+    });
+
+    const findDesign = (name: string) => {
+      const key = normalizeNameKey(name);
+      return designs[name] || designByKey[key];
+    };
+
+    names.forEach((name) => {
+      const design = findDesign(name);
+
+      if (!design) {
+        console.warn(`⚠️ 角色 "${name}" 没有找到对应的设计`);
+        missing.push(name);
+        return;
+      }
+
+      console.log(`\n🎭 [处理角色] "${name}"`);
+      console.log(`  设计对象:`, design);
+
+      // 构建appearance和description
+      const appearance = buildAppearanceFromDesign(design);
+      const description = design.summary || `角色 "${name}"`;
+
+      console.log(`  生成的appearance: "${appearance.slice(0, 80)}..."`);
+      console.log(`  生成的description: "${description.slice(0, 80)}..."`);
+
+      const existing = project?.characters.find(
+        (c) => normalizeNameKey(c.name) === normalizeNameKey(name)
+      );
+
+      if (existing) {
+        // 直接更新，不检查是否是占位符
+        updateCharacter(existing.id, {
+          appearance,
+          description,
+        });
+        updated += 1;
+        console.log(`✅ 更新角色 "${name}"`);
+      } else {
+        // 新建角色
+        addCharacter({
+          id: crypto.randomUUID(),
+          name,
+          description,
+          appearance,
+          referenceImages: [],
+        });
+        updated += 1;
+        console.log(`✅ 新建角色 "${name}"`);
+      }
+    });
+
+    console.log(`\n📊 [回填完成] 更新: ${updated}, 缺失: ${missing.length}`);
+    return { updated, missing };
+  };
 
   const toggleSceneCollapse = (sceneId: string) => {
     setCollapsedScenes((prev) => {
@@ -351,38 +521,101 @@ export default function LeftSidebarNew() {
       });
 
       // 5. 根据分镜/剧本收集角色名单，并单独向 Gemini 生成角色设定
-      const characterCandidates = new Set<string>();
-
-      // 从分镜中提取角色
+      // 构建角色候选（归一化去重，优先使用已有角色名称作为主名）
+      const candidateMap = new Map<string, string>();
+      // 1) 已有角色（确保不会生成重复）
+      project.characters.forEach((c) => addCandidateName(candidateMap, c.name));
+      // 2) 分镜 main_characters
       generatedShots.forEach((shot) => {
-        (shot.mainCharacters || []).forEach((name) => {
-          if (name && name.trim()) {
-            characterCandidates.add(name.trim());
-          }
-        });
+        (shot.mainCharacters || []).forEach((name) => addCandidateName(candidateMap, name));
       });
-
-      // 使用剧本分析结果补充角色名单
-      (analysis?.characters || []).forEach((name: string) => {
-        if (name && name.trim()) {
-          characterCandidates.add(name.trim());
-        }
-      });
+      // 3) 剧本分析角色
+      (analysis?.characters || []).forEach((name: string) => addCandidateName(candidateMap, name));
+      const characterCandidates = Array.from(candidateMap.values());
 
       let characterDesigns: Record<string, CharacterDesign> = {};
-      if (characterCandidates.size > 0) {
+      if (characterCandidates.length > 0) {
         try {
           toast.loading('AI 分镜生成中...', {
             id: toastId,
-            description: `第 5/5 步：正在生成角色形象设计（共 ${characterCandidates.size} 个角色）...`,
+            description: `第 5/5 步：正在生成角色形象设计（共 ${characterCandidates.length} 个角色）...`,
           });
+          const allNames = characterCandidates;
           characterDesigns = await generateCharacterDesigns({
             script: project.script,
-            characterNames: Array.from(characterCandidates),
+            characterNames: allNames,
             artStyle: project.metadata.artStyle,
+            projectSummary: `${project.metadata.title || ''} ${project.metadata.description || ''}`.trim(),
+            shots: generatedShots,
           });
+
+          console.log('📋 首次角色设计生成结果:', {
+            请求角色数: allNames.length,
+            返回设计数: Object.keys(characterDesigns).length,
+            角色列表: allNames,
+            设计key: Object.keys(characterDesigns),
+          });
+
+          // 首次回填
+          const firstPass = applyCharacterDesigns(allNames, characterDesigns);
+          console.log('📝 首次回填结果:', {
+            更新数量: firstPass.updated,
+            缺失数量: firstPass.missing.length,
+            缺失角色: firstPass.missing,
+          });
+
+          // 针对缺失的角色进行二次尝试（可能是模型漏写或未覆盖）
+          if (firstPass.missing.length > 0) {
+            console.warn('⚠️ 检测到角色设定缺失，开始二次尝试生成:', firstPass.missing);
+            toast.loading('AI 分镜生成中...', {
+              id: toastId,
+              description: `第 5/5 步：正在补充完善角色设计（剩余 ${firstPass.missing.length} 个角色）...`,
+            });
+
+            try {
+              const retryDesigns = await generateCharacterDesigns({
+                script: project.script,
+                characterNames: firstPass.missing,
+                artStyle: project.metadata.artStyle,
+                projectSummary: `${project.metadata.title || ''} ${project.metadata.description || ''}`.trim(),
+                shots: generatedShots,
+              });
+
+              console.log('📋 二次角色设计生成结果:', {
+                请求角色数: firstPass.missing.length,
+                返回设计数: Object.keys(retryDesigns).length,
+                设计key: Object.keys(retryDesigns),
+              });
+
+              const secondPass = applyCharacterDesigns(firstPass.missing, retryDesigns);
+              console.log('📝 二次回填结果:', {
+                更新数量: secondPass.updated,
+                仍缺失数量: secondPass.missing.length,
+                仍缺失角色: secondPass.missing,
+              });
+
+              // 合并计数
+              firstPass.updated += secondPass.updated;
+              firstPass.missing.splice(0, firstPass.missing.length, ...secondPass.missing);
+
+              // 如果二次尝试后仍有缺失，提示用户
+              if (secondPass.missing.length > 0) {
+                toast.warning(`部分角色设计不完整`, {
+                  id: toastId,
+                  description: `角色 ${secondPass.missing.join('、')} 的设计信息不完整，请在"资源"标签页手动完善`,
+                  duration: 5000,
+                });
+              }
+            } catch (retryErr) {
+              console.error('❌ 角色设定二次生成失败:', retryErr);
+              toast.warning('角色设计补充失败', {
+                description: `部分角色信息可能不完整，请在"资源"标签页手动完善`,
+                duration: 3000,
+              });
+            }
+          }
         } catch (err) {
-          console.error('AI 角色设定生成失败，使用占位模板：', err);
+          console.error('❌ AI 角色设定生成失败，使用占位模板：', err);
           toast.warning('角色形象设计生成失败，已使用默认模板', {
             id: toastId,
             description: '可在"资源"标签页手动完善角色设计',
@@ -391,63 +624,9 @@ export default function LeftSidebarNew() {
         }
       }
 
-      // 统一的角色形象模板，默认包含项目画风占位
-      const buildCharacterTemplate = () => {
-        const style = project.metadata.artStyle?.trim();
-        const baseStyle = style ? `画风与风格定位：${style}` : '画风与风格定位：保持项目统一画风';
-        const parts = [
-          baseStyle,
-          '性别、年龄、职业/身份：',
-          '身材与整体比例：',
-          '脸型与五官特征：',
-          '发型与发色：',
-          '服装与主要配饰：',
-          '表情与气质：',
-          '姿态/动作：'
-        ];
-        const sentence = parts.filter(Boolean).join('。');
-        return sentence.endsWith('。') ? sentence : `${sentence}。`;
-      };
-
-      characterCandidates.forEach((name) => {
-        const exists = project.characters.some((c) => c.name === name);
-        if (!exists) {
-          const design = characterDesigns[name];
-          const template = buildCharacterTemplate();
-          const appearance = design
-            ? (() => {
-              const parts = [
-                design.style,
-                design.genderAgeOccupation,
-                design.bodyShape,
-                design.faceFeatures,
-                design.hair,
-                design.outfit,
-                design.expressionMood,
-                design.pose,
-              ].filter(Boolean);
-              const sentence = parts.join('。');
-              return sentence.endsWith('。') ? sentence : `${sentence}。`;
-            })()
-            : template;
-
-          const description = design?.summary
-            ? design.summary
-            : `角色 "${name}" 的形象设计草稿：${template}（请按项补充具体信息）`;
-
-          addCharacter({
-            id: crypto.randomUUID(),
-            name,
-            description,
-            appearance,
-            referenceImages: [],
-          });
-        }
-      });
-
       toast.success(`AI 分镜生成完成！`, {
         id: toastId,
-        description: `已生成 ${sceneGroups.length} 个场景、${generatedShots.length} 个镜头、${characterCandidates.size} 个角色`,
+        description: `已生成 ${sceneGroups.length} 个场景、${generatedShots.length} 个镜头、${characterCandidates.length} 个角色`,
         duration: 5000,
       });
       // 自动切换到分镜脚本标签页
@@ -890,87 +1069,99 @@ export default function LeftSidebarNew() {
             {/* Characters */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-light-text dark:text-white">
-                  角色 ({project?.characters.length || 0})
-                </h3>
                 <button
-                  onClick={() => setShowAddCharacterDialog(true)}
-                  className="text-xs text-light-accent dark:text-cine-accent hover:text-light-accent-hover dark:hover:text-cine-accent-hover transition-colors flex items-center gap-1"
+                  onClick={() => setCharactersCollapsed((prev) => !prev)}
+                  className="flex items-center gap-2 text-sm font-bold text-light-text dark:text-white"
                 >
-                  <Plus size={14} />
-                  <span>添加</span>
+                  {charactersCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                  <span>角色 ({project?.characters.length || 0})</span>
                 </button>
-              </div>
-              <div className="space-y-2">
-                {project?.characters.map((character) => (
-                  <div
-                    key={character.id}
-                    className="bg-light-bg dark:bg-cine-black/30 rounded-lg p-3 border border-light-border/60 dark:border-cine-border/60"
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowAddCharacterDialog(true)}
+                    className="text-xs text-light-accent dark:text-cine-accent hover:text-light-accent-hover dark:hover:text-cine-accent-hover transition-colors flex items-center gap-1"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="font-medium text-sm text-light-text dark:text-white">
-                          {character.name}
-                        </div>
-                        <div className="text-[11px] text-light-text-muted dark:text-cine-text-muted mt-0.5 line-clamp-2">
-                          {character.description || '角色描述'}
-                        </div>
-                      </div>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => setEditingCharacter(character)}
-                          className="p-1 text-light-text-muted dark:text-cine-text-muted hover:text-light-accent dark:hover:text-cine-accent rounded"
-                          title="编辑角色"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`确定删除角色「${character.name}」？`)) {
-                              useProjectStore.getState().deleteCharacter(character.id);
-                              toast.success('角色已删除');
-                            }
-                          }}
-                          className="p-1 text-light-text-muted dark:text-cine-text-muted hover:text-red-500 rounded"
-                          title="删除角色"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                    {/* Reference Images */}
-                    {character.referenceImages && character.referenceImages.length > 0 && (
-                      <div className="flex gap-1 mt-2 overflow-x-auto">
-                        {character.referenceImages.map((imageUrl, idx) => (
-                          <div
-                            key={idx}
-                            className="flex-shrink-0 w-16 h-16 bg-light-panel dark:bg-cine-panel rounded overflow-hidden"
-                          >
-                            <img
-                              src={imageUrl}
-                              alt={`${character.name} 参考图 ${idx + 1}`}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {(!project?.characters || project.characters.length === 0) && (
-                  <div className="text-xs text-light-text-muted dark:text-cine-text-muted text-center py-4">
-                    暂无角色
-                  </div>
-                )}
+                    <Plus size={14} />
+                    <span>添加</span>
+                  </button>
+                </div>
               </div>
+              {!charactersCollapsed && (
+                <div className="space-y-2">
+                  {project?.characters.map((character) => (
+                    <div
+                      key={character.id}
+                      className="bg-light-bg dark:bg-cine-black/30 rounded-lg p-3 border border-light-border/60 dark:border-cine-border/60"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-medium text-sm text-light-text dark:text-white">
+                            {character.name}
+                          </div>
+                          <div className="text-[11px] text-light-text-muted dark:text-cine-text-muted mt-0.5 line-clamp-2">
+                            {character.description || '角色描述'}
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => setEditingCharacter(character)}
+                            className="p-1 text-light-text-muted dark:text-cine-text-muted hover:text-light-accent dark:hover:text-cine-accent rounded"
+                            title="编辑角色"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`确定删除角色「${character.name}」？`)) {
+                                useProjectStore.getState().deleteCharacter(character.id);
+                                toast.success('角色已删除');
+                              }
+                            }}
+                            className="p-1 text-light-text-muted dark:text-cine-text-muted hover:text-red-500 rounded"
+                            title="删除角色"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      {/* Reference Images */}
+                      {character.referenceImages && character.referenceImages.length > 0 && (
+                        <div className="flex gap-1 mt-2 overflow-x-auto">
+                          {character.referenceImages.map((imageUrl, idx) => (
+                            <div
+                              key={idx}
+                              className="flex-shrink-0 w-16 h-16 bg-light-panel dark:bg-cine-panel rounded overflow-hidden"
+                            >
+                              <img
+                                src={imageUrl}
+                                alt={`${character.name} 参考图 ${idx + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {(!project?.characters || project.characters.length === 0) && (
+                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted text-center py-4">
+                      暂无角色
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Locations */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-light-text dark:text-white">
-                  场景地点 ({project?.locations.length || 0})
-                </h3>
+                <button
+                  onClick={() => setLocationsCollapsed((prev) => !prev)}
+                  className="flex items-center gap-2 text-sm font-bold text-light-text dark:text-white"
+                >
+                  {locationsCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                  <span>场景地点 ({project?.locations.length || 0})</span>
+                </button>
                 <button
                   onClick={() => setShowAddLocationDialog(true)}
                   className="text-xs text-light-accent dark:text-cine-accent hover:text-light-accent-hover dark:hover:text-cine-accent-hover transition-colors flex items-center gap-1"
@@ -979,68 +1170,70 @@ export default function LeftSidebarNew() {
                   <span>添加</span>
                 </button>
               </div>
-              <div className="space-y-2">
-                {project?.locations.map((location) => (
-                  <div
-                    key={location.id}
-                    className="bg-light-bg dark:bg-cine-black/30 rounded-lg p-3 border border-light-border/60 dark:border-cine-border/60"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="font-medium text-sm text-light-text dark:text-white">
-                          {location.name}
-                        </div>
-                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
-                          {location.type === 'interior' ? '室内' : '室外'}
-                        </div>
-                      </div>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => setEditingLocation(location)}
-                          className="p-1 text-light-text-muted dark:text-cine-text-muted hover:text-light-accent dark:hover:text-cine-accent rounded"
-                          title="编辑场景"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`确定删除场景地点「${location.name}」？`)) {
-                              useProjectStore.getState().deleteLocation(location.id);
-                              toast.success('场景地点已删除');
-                            }
-                          }}
-                          className="p-1 text-light-text-muted dark:text-cine-text-muted hover:text-red-500 rounded"
-                          title="删除场景"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                    {/* Reference Images */}
-                    {location.referenceImages && location.referenceImages.length > 0 && (
-                      <div className="flex gap-1 mt-2 overflow-x-auto">
-                        {location.referenceImages.map((imageUrl, idx) => (
-                          <div
-                            key={idx}
-                            className="flex-shrink-0 w-16 h-16 bg-light-panel dark:bg-cine-panel rounded overflow-hidden"
-                          >
-                            <img
-                              src={imageUrl}
-                              alt={`${location.name} 参考图 ${idx + 1}`}
-                              className="w-full h-full object-cover"
-                            />
+              {!locationsCollapsed && (
+                <div className="space-y-2">
+                  {project?.locations.map((location) => (
+                    <div
+                      key={location.id}
+                      className="bg-light-bg dark:bg-cine-black/30 rounded-lg p-3 border border-light-border/60 dark:border-cine-border/60"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-medium text-sm text-light-text dark:text-white">
+                            {location.name}
                           </div>
-                        ))}
+                          <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
+                            {location.type === 'interior' ? '室内' : '室外'}
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => setEditingLocation(location)}
+                            className="p-1 text-light-text-muted dark:text-cine-text-muted hover:text-light-accent dark:hover:text-cine-accent rounded"
+                            title="编辑场景"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`确定删除场景地点「${location.name}」？`)) {
+                                useProjectStore.getState().deleteLocation(location.id);
+                                toast.success('场景地点已删除');
+                              }
+                            }}
+                            className="p-1 text-light-text-muted dark:text-cine-text-muted hover:text-red-500 rounded"
+                            title="删除场景"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ))}
-                {(!project?.locations || project.locations.length === 0) && (
-                  <div className="text-xs text-light-text-muted dark:text-cine-text-muted text-center py-4">
-                    暂无场景地点
-                  </div>
-                )}
-              </div>
+                      {/* Reference Images */}
+                      {location.referenceImages && location.referenceImages.length > 0 && (
+                        <div className="flex gap-1 mt-2 overflow-x-auto">
+                          {location.referenceImages.map((imageUrl, idx) => (
+                            <div
+                              key={idx}
+                              className="flex-shrink-0 w-16 h-16 bg-light-panel dark:bg-cine-panel rounded overflow-hidden"
+                            >
+                              <img
+                                src={imageUrl}
+                                alt={`${location.name} 参考图 ${idx + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {(!project?.locations || project.locations.length === 0) && (
+                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted text-center py-4">
+                      暂无场景地点
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Audio (Coming Soon) */}
