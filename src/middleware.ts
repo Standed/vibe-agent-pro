@@ -31,13 +31,9 @@ export async function middleware(req: NextRequest) {
   }
 
   // 检查是否有认证相关的 cookie
-  // Supabase 可能使用: sb-xxx-auth-token 或其他类似格式
+  // 我们使用 supabase-session 作为认证 cookie（定义在 src/lib/supabase/auth.ts）
   const hasAuthCookie = allCookies.some(cookie => {
-    const name = cookie.name.toLowerCase();
-    // 检查常见的 Supabase auth cookie 模式
-    return (name.includes('sb-') && name.includes('auth-token')) ||
-           name.includes('supabase-auth-token') ||
-           name.includes('supabase.auth.token');
+    return cookie.name === 'supabase-session';
   });
 
   console.log('[Middleware] Has auth cookie:', hasAuthCookie, 'Path:', path);
