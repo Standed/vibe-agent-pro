@@ -22,7 +22,6 @@ export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [hasAuthCookie, setHasAuthCookie] = useState(false);
   const { user, signOut, loading: authLoading } = useAuth();
 
   // 加载所有项目（当用户状态变化时重新加载）
@@ -32,17 +31,6 @@ export default function Home() {
       loadProjects();
     }
   }, [user, authLoading]); // 依赖user和authLoading，登录/退出/初始化完成时重新加载
-
-  // 监测标记 cookie，便于提示“有登录标记但无会话”的情况
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const updateCookieState = () => {
-      setHasAuthCookie(document.cookie.includes('supabase-auth-token=true'));
-    };
-    updateCookieState();
-    const id = setInterval(updateCookieState, 2000);
-    return () => clearInterval(id);
-  }, []);
 
   const loadProjects = async () => {
     console.log('[HomePage] 🔄 开始加载项目列表...');
@@ -172,10 +160,9 @@ export default function Home() {
       // 直接清除所有认证相关的 cookies 和存储，不等待 Supabase signOut()
       // 因为 signOut() 在使用内存存储时可能会挂起
       if (typeof document !== 'undefined') {
-        // 清除认证 cookies
-        document.cookie = 'supabase-auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        // 清除会话 cookie
         document.cookie = 'supabase-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-        console.log('[HomePage] ✅ 已清除认证 cookies');
+        console.log('[HomePage] ✅ 已清除会话 cookie');
       }
 
       // 尝试异步调用 signOut（但不等待它完成）
@@ -203,7 +190,8 @@ export default function Home() {
   const clearLocalAuth = async () => {
     try {
       if (typeof document !== 'undefined') {
-        document.cookie = 'supabase-auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        // 清理正确的 cookie 名称：supabase-session
+        document.cookie = 'supabase-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
       }
       if (typeof window !== 'undefined') {
         try {
@@ -298,35 +286,9 @@ export default function Home() {
               >
                 去登录
               </button>
-              {hasAuthCookie && (
-                <button
-                  className="ml-2 text-light-accent dark:text-cine-accent underline"
-                  onClick={clearLocalAuth}
-                >
-                  清理并重新登录
-                </button>
-              )}
             </div>
           )}
         </div>
-
-        {!user && hasAuthCookie && (
-          <div className="mb-6 p-3 rounded-lg border border-amber-300/60 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
-            检测到历史登录标记但未获取到会话，可能浏览器禁用存储或会话过期。
-            <button
-              className="ml-2 underline"
-              onClick={() => router.push('/auth/login')}
-            >
-              重新登录
-            </button>
-            <button
-              className="ml-3 underline"
-              onClick={clearLocalAuth}
-            >
-              清理本地缓存
-            </button>
-          </div>
-        )}
 
         {/* Projects Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

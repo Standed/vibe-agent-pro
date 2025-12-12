@@ -1,6 +1,342 @@
+# CLAUDE.md
+
+- always response in "简体中文"
+
+# Development Guidelines
+
+## Philosophy
+
+### Core Beliefs
+
+- **Incremental progress over big bangs** - Small changes that compile and pass tests
+- **Learning from existing code** - Study and plan before implementing
+- **Pragmatic over dogmatic** - Adapt to project reality
+- **Clear intent over clever code** - Be boring and obvious
+
+### Simplicity Means
+
+- Single responsibility per function/class
+- Avoid premature abstractions
+- No clever tricks - choose the boring solution
+- If you need to explain it, it's too complex
+
+## Process
+
+### 1. Planning & Staging
+
+Break complex work into 3-5 stages. Document in `IMPLEMENTATION_PLAN.md`:
+
+```markdown
+## Stage N: [Name]
+**Goal**: [Specific deliverable]
+**Success Criteria**: [Testable outcomes]
+**Tests**: [Specific test cases]
+**Status**: [Not Started|In Progress|Complete]
+```
+- Update status as you progress
+- Remove file when all stages are done
+
+### 2. Implementation Flow
+
+1. **Understand** - Study existing patterns in codebase
+2. **Test** - Write test first (red)
+3. **Implement** - Minimal code to pass (green)
+4. **Refactor** - Clean up with tests passing
+5. **Commit** - With clear message linking to plan
+
+### 3. When Stuck (After 3 Attempts)
+
+**CRITICAL**: Maximum 3 attempts per issue, then STOP.
+
+1. **Document what failed**:
+   - What you tried
+   - Specific error messages
+   - Why you think it failed
+
+2. **Research alternatives**:
+   - Find 2-3 similar implementations
+   - Note different approaches used
+
+3. **Question fundamentals**:
+   - Is this the right abstraction level?
+   - Can this be split into smaller problems?
+   - Is there a simpler approach entirely?
+
+4. **Try different angle**:
+   - Different library/framework feature?
+   - Different architectural pattern?
+   - Remove abstraction instead of adding?
+
+## Technical Standards
+
+### Architecture Principles
+
+- **Composition over inheritance** - Use dependency injection
+- **Interfaces over singletons** - Enable testing and flexibility
+- **Explicit over implicit** - Clear data flow and dependencies
+- **Test-driven when possible** - Never disable tests, fix them
+
+### Code Quality
+
+- **Every commit must**:
+  - Compile successfully
+  - Pass all existing tests
+  - Include tests for new functionality
+  - Follow project formatting/linting
+
+- **Before committing**:
+  - Run formatters/linters
+  - Self-review changes
+  - Ensure commit message explains "why"
+
+### Error Handling
+
+- Fail fast with descriptive messages
+- Include context for debugging
+- Handle errors at appropriate level
+- Never silently swallow exceptions
+
+## Decision Framework
+
+When multiple valid approaches exist, choose based on:
+
+1. **Testability** - Can I easily test this?
+2. **Readability** - Will someone understand this in 6 months?
+3. **Consistency** - Does this match project patterns?
+4. **Simplicity** - Is this the simplest solution that works?
+5. **Reversibility** - How hard to change later?
+
+## Project Integration
+
+### Learning the Codebase
+
+- Find 3 similar features/components
+- Identify common patterns and conventions
+- Use same libraries/utilities when possible
+- Follow existing test patterns
+
+### Tooling
+
+- Use project's existing build system
+- Use project's test framework
+- Use project's formatter/linter settings
+- Don't introduce new tools without strong justification
+
+## Quality Gates
+
+### Definition of Done
+
+- [ ] Tests written and passing
+- [ ] Code follows project conventions
+- [ ] No linter/formatter warnings
+- [ ] Commit messages are clear
+- [ ] Implementation matches plan
+- [ ] No TODOs without issue numbers
+
+### Test Guidelines
+
+- Test behavior, not implementation
+- One assertion per test when possible
+- Clear test names describing scenario
+- Use existing test utilities/helpers
+- Tests should be deterministic
+
+## Important Reminders
+
+**NEVER**:
+- Use `--no-verify` to bypass commit hooks
+- Disable tests instead of fixing them
+- Commit code that doesn't compile
+- Make assumptions - verify with existing code
+
+**ALWAYS**:
+- Commit working code incrementally
+- Update plan documentation as you go
+- Learn from existing implementations
+- Stop after 3 failed attempts and reassess
+
+
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Development Guidelines (开发指南)
 
 > **重要提醒**: always response in '简体中文'
+
+---
+
+## 🚀 Quick Reference (快速参考)
+
+### Essential Commands (常用命令)
+
+```bash
+# Development
+npm run dev              # Start Next.js dev server with Turbopack (localhost:3000)
+npm run build            # Build for production
+npm run start            # Start production server
+npm run lint             # Run ESLint
+
+# Electron (Desktop App)
+npm run build:electron   # Build Next.js + compile Electron TypeScript
+npm run dist             # Create distributable packages (dmg/nsis/AppImage)
+```
+
+### Project Architecture (项目架构)
+
+**技术栈核心**:
+- **Framework**: Next.js 15.1.0 + App Router + Turbopack
+- **Frontend**: React 19 + TypeScript 5.8
+- **State**: Zustand (with Immer middleware)
+- **Database**: Supabase (PostgreSQL) + IndexedDB (Dexie) fallback
+- **Styling**: Tailwind CSS + CVA (class-variance-authority)
+
+**关键依赖**:
+- `@google/generative-ai` - Gemini API for Grid generation
+- `@supabase/supabase-js` - Supabase client
+- `dexie` + `dexie-react-hooks` - IndexedDB wrapper
+- `zustand` + `immer` - Global state management
+- `react-dnd` - Drag-and-drop for Timeline
+- `framer-motion` - Animations
+
+**API 路由结构**:
+```
+src/app/api/
+├── gemini-grid/         # Grid multi-view generation (Gemini)
+├── gemini-image/        # Single image generation
+├── gemini-text/         # Text generation
+├── seedream/            # Image generation (Volcano Engine)
+├── seedream-edit/       # Image editing
+├── supabase/            # Unified Supabase gateway
+├── upload-r2/           # File upload to R2
+└── projects/            # Project CRUD operations
+```
+
+**数据流向**:
+```
+User Action → Component → Store Action → dataService
+                                      ↓
+                              Supabase API Gateway
+                                      ↓
+                          PostgreSQL (Cloud) / IndexedDB (Local)
+```
+
+**关键文件位置**:
+- 状态管理: `src/store/useProjectStore.ts` (Zustand store with Immer)
+- 类型定义: `src/types/project.ts` (所有 TypeScript 类型)
+- 数据服务: `src/lib/dataService.ts` (统一数据层,自动切换 Supabase/IndexedDB)
+- AI 服务: `src/services/geminiService.ts`, `volcanoEngineService.ts`
+- 国际化: `src/locales/zh.ts`, `en.ts`
+
+### Working with State (状态管理)
+
+```typescript
+// 使用 Zustand store (带 Immer 自动处理不可变更新)
+import { useProjectStore } from '@/store/useProjectStore';
+
+const { project, updateShot, addScene } = useProjectStore();
+
+// Store actions 会自动触发 debouncedSaveProject()
+updateShot(shotId, { referenceImage: newUrl });
+
+// 复杂更新也通过 Immer 自动处理
+addScene({ name: 'Scene 1', shotIds: [], ... });
+```
+
+### API Authentication (API 认证)
+
+**Supabase**: 使用 `@/lib/api-client.ts` 中的 `authenticatedFetch()` 自动添加 Authorization header
+**Gemini**: API Key 在 `.env.local` 中配置,通过 API 路由代理
+
+```typescript
+// ✅ 正确方式 - 使用 authenticatedFetch
+import { authenticatedFetch } from '@/lib/api-client';
+const resp = await authenticatedFetch('/api/supabase', { method: 'POST', body: ... });
+
+// ❌ 错误方式 - 直接 fetch 会缺少认证
+const resp = await fetch('/api/supabase', { method: 'POST', body: ... });
+```
+
+### Important Design Patterns (重要设计模式)
+
+#### 1. Unified Data Layer (统一数据层)
+所有数据操作通过 `dataService` 进行,自动处理 Supabase/IndexedDB 切换:
+
+```typescript
+// src/lib/dataService.ts
+import { dataService } from '@/lib/dataService';
+
+// dataService 会自动判断用户是否登录
+// - 已登录: 使用 Supabase (云端持久化)
+// - 未登录: 使用 IndexedDB (本地持久化)
+
+await dataService.saveProject(project);
+const project = await dataService.loadProject(id);
+```
+
+**不要直接调用**:
+- ❌ Supabase client 直接操作
+- ❌ Dexie 直接操作
+- ✅ 始终通过 `dataService`
+
+#### 2. Debounced Auto-Save (防抖自动保存)
+Store actions 会自动触发 800ms 防抖保存,避免频繁 I/O:
+
+```typescript
+// src/store/useProjectStore.ts
+const debouncedSaveProject = () => {
+  if (saveDebounceTimer) clearTimeout(saveDebounceTimer);
+  saveDebounceTimer = setTimeout(() => {
+    get().saveProject(); // 800ms 后执行实际保存
+  }, SAVE_DEBOUNCE_DELAY);
+};
+
+// 所有 update/add/delete actions 都会调用
+updateShot(id, updates); // 自动触发防抖保存
+```
+
+#### 3. Grid Generation Workflow (Grid 生成工作流)
+Grid 生成是**场景级别**的操作,不是镜头级别:
+
+```typescript
+// 步骤 1: 选择场景
+const scene = project.scenes.find(s => s.id === selectedSceneId);
+
+// 步骤 2: 生成 Grid (完整图 + 切片)
+const { fullImage, slices } = await generateMultiViewGrid(prompt, 2, 2);
+
+// 步骤 3: 用户手动分配切片到镜头
+// (在 GridPreviewModal 中点击切片)
+
+// 步骤 4: 更新 Shot.referenceImage
+updateShot(shotId, {
+  referenceImage: slices[0],
+  gridImages: slices,
+  fullGridUrl: fullImage
+});
+```
+
+**关键点**:
+- Grid 是场景级资源 (一个场景生成一个 Grid)
+- 切片手动分配给该场景下的镜头
+- 历史记录保存在 `Scene.gridHistory` (待实现)
+
+#### 4. API Route Pattern (API 路由模式)
+所有 AI API 调用通过 Next.js API Routes 代理,避免暴露 Key:
+
+```typescript
+// ❌ 错误 - 直接在客户端调用外部 API
+fetch('https://generativelanguage.googleapis.com/...', {
+  headers: { 'X-API-Key': process.env.NEXT_PUBLIC_GEMINI_API_KEY }
+});
+
+// ✅ 正确 - 通过 API Route 代理
+fetch('/api/gemini-grid', {
+  method: 'POST',
+  body: JSON.stringify({ prompt, gridRows, gridCols })
+});
+
+// src/app/api/gemini-grid/route.ts 会处理实际的外部 API 调用
+```
 
 ---
 
@@ -655,19 +991,73 @@ interface GridHistoryItem {
 
 ---
 
-#### 2. Agent 模式调整为项目级别 ⚠️ 架构问题
-**当前问题**：
-- Agent 模式当前可能关联到具体镜头，应该是项目级别的对话
+#### 2. 聊天存储架构 ✅ 已实现
+**新方案**：
+- ✅ 独立的 `chat_messages` 表（Supabase）
+- ✅ 清晰的三级层级：项目/场景/分镜
+- ✅ 通过 `scope` 字段区分：'project' | 'scene' | 'shot'
+- ✅ 高效的索引查询和自动 CASCADE 删除
+- ✅ 支持分页加载和历史记录管理
 
-**实现方案**：
-- Agent 对话历史存储在 `Project.agentHistory`
-- 不依赖 selectedShotId
-- Agent 可以询问项目信息、批量操作等
-- 移除 Agent 与 Shot 的关联
+**数据库 Schema**：
+```sql
+CREATE TABLE public.chat_messages (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL,
+  project_id UUID NOT NULL,
+  scene_id UUID,               -- 场景级对话
+  shot_id UUID,                -- 分镜级对话
+  scope TEXT NOT NULL,         -- 'project' | 'scene' | 'shot'
+  role TEXT NOT NULL,          -- 'user' | 'assistant' | 'system'
+  content TEXT NOT NULL,
+  thought TEXT,                -- AI 推理过程
+  metadata JSONB DEFAULT '{}', -- gridData, images, model 等
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ
+);
+```
 
-**文件影响**：
-- `src/components/layout/AgentPanel.tsx`
-- `src/types/project.ts` - 添加 Project.agentHistory
+**API 使用**：
+```typescript
+import { dataService } from '@/lib/dataService';
+
+// 保存消息
+await dataService.saveChatMessage({
+  id: uuidv4(),
+  userId: currentUser.id,
+  projectId: project.id,
+  scope: 'project',
+  role: 'user',
+  content: '请帮我生成分镜',
+  // ...
+});
+
+// 获取消息
+const messages = await dataService.getChatMessages({
+  projectId: project.id,
+  scope: 'project',
+});
+
+// 清除历史
+await dataService.clearChatHistory({
+  projectId: project.id,
+});
+```
+
+**详细文档**：
+- 📄 [CHAT_STORAGE_MIGRATION.md](./CHAT_STORAGE_MIGRATION.md) - 完整迁移指南
+- 📄 [supabase/schema.sql](./supabase/schema.sql) - 数据库 Schema（第 9 节）
+
+**旧版本兼容性**：
+- ⚠️ `Project.chatHistory` 字段已标记为 `@deprecated`
+- 保留该字段仅用于向后兼容，新数据存储到独立表
+- 组件应迁移使用新的 `dataService.getChatMessages()` API
+
+**文件改动**：
+- ✅ `supabase/schema.sql` - 添加 chat_messages 表定义
+- ✅ `src/types/project.ts` - 新增 ChatMessage 类型，旧版改名为 LegacyChatMessage
+- ✅ `src/lib/dataService.ts` - 添加聊天消息 CRUD 方法
+- ⏳ `src/components/agent/AgentPanel.tsx` - 待迁移使用新 API
 
 ---
 
@@ -740,6 +1130,89 @@ interface GridHistoryItem {
 ### 4. Timeline 功能不完整
 - UI 已完成，但播放逻辑未实现
 - Clip 拖拽、时长调整未实现
+
+---
+
+## 🧪 Testing & Debugging (测试与调试)
+
+### Development Workflow (开发工作流)
+
+1. **启动开发服务器**:
+```bash
+npm run dev
+# 访问 http://localhost:3000
+# Turbopack 提供快速热重载
+```
+
+2. **检查 TypeScript 类型错误**:
+```bash
+# Next.js build 会自动进行类型检查
+npm run build
+```
+
+3. **调试技巧**:
+- 使用浏览器 DevTools 的 React DevTools 扩展
+- Zustand DevTools: Store 状态可在 React DevTools 中查看
+- 网络请求: 所有 API 调用可在 Network 面板查看
+- IndexedDB: 在 Application > Storage > IndexedDB 查看本地数据
+
+### Common Issues (常见问题)
+
+#### 1. Supabase 认证问题
+**症状**: API 调用返回 401 未授权
+**原因**: 未使用 `authenticatedFetch()` 或会话过期
+**解决**:
+```typescript
+// ✅ 正确
+import { authenticatedFetch } from '@/lib/api-client';
+const resp = await authenticatedFetch('/api/supabase', {...});
+
+// ❌ 错误
+const resp = await fetch('/api/supabase', {...});
+```
+
+#### 2. Gemini API 超时
+**症状**: Grid 生成超时（240秒）
+**原因**: 网络代理速度慢或请求过大
+**解决**:
+- 检查 `.env.local` 中的 `NEXT_PUBLIC_GEMINI_API_KEY`
+- 减小参考图片大小
+- 增加超时时间: 设置 `NEXT_PUBLIC_GEMINI_IMG_TIMEOUT_MS`
+
+#### 3. State 更新不触发 re-render
+**症状**: 修改 state 但 UI 未更新
+**原因**: 直接修改了 state（违反不可变性）
+**解决**: 使用 Store actions (已集成 Immer，自动处理不可变更新)
+```typescript
+// ✅ 正确 - 使用 Store action
+updateShot(shotId, { status: 'done' });
+
+// ❌ 错误 - 直接修改
+project.shots[0].status = 'done'; // 不会触发 re-render
+```
+
+#### 4. IndexedDB 数据丢失
+**症状**: 刷新页面后数据消失
+**原因**: `debouncedSaveProject()` 未完成保存
+**解决**: 等待 800ms 后再刷新页面，或手动调用 `saveProject()`
+
+### Debugging API Routes (调试 API 路由)
+
+所有 API 路由都在 `src/app/api/` 目录:
+```bash
+# 查看 API 日志
+# 在 VSCode 终端中运行 npm run dev 后，所有 console.log 会显示在终端
+
+# 测试 Supabase API
+curl -X POST http://localhost:3000/api/supabase \
+  -H "Content-Type: application/json" \
+  -d '{"table":"projects","operation":"select"}'
+
+# 测试 Gemini Grid 生成
+curl -X POST http://localhost:3000/api/gemini-grid \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"test","gridRows":2,"gridCols":2}'
+```
 
 ---
 

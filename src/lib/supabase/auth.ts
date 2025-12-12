@@ -109,15 +109,6 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
     } catch (err) {
       console.warn('[Auth] ⚠️ 更新 last_login_at 异常（不影响登录）:', err);
     }
-
-    // 手动设置认证 cookie 供 middleware 使用，并写入会话 token 兜底
-    if (typeof window !== 'undefined' && authData.session) {
-      const expires = new Date();
-      expires.setDate(expires.getDate() + 7); // 7 天过期
-      document.cookie = `supabase-auth-token=true; path=/; expires=${expires.toUTCString()}; SameSite=Lax`;
-      setSessionCookie(authData.session as Session);
-      console.log('[Auth] 🍪 已设置认证 cookie + 会话 token');
-    }
   }
 
   console.log('[Auth] ✅ signIn 函数完成，准备返回结果');
@@ -135,12 +126,9 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
 export async function signOut(): Promise<{ error: AuthError | null }> {
   const { error } = await (supabase as any).auth.signOut();
 
-  // 删除认证 cookie
-  if (typeof window !== 'undefined') {
-    document.cookie = 'supabase-auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-    document.cookie = 'supabase-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-    console.log('[Auth] 已删除认证 cookie');
-  }
+  // 清除会话 cookie
+  setSessionCookie(null);
+  console.log('[Auth] 已清除会话 cookie');
 
   return { error };
 }

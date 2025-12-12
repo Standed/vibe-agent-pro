@@ -5,12 +5,13 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { signIn } from '@/lib/supabase/auth';
-import { supabase } from '@/lib/supabase/client';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth(); // 使用 AuthProvider 的状态
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -18,27 +19,19 @@ export default function LoginPage() {
   // 获取重定向参数
   const redirectTo = searchParams.get('redirect') || '/';
 
+  // 监听 user 状态变化，登录成功后自动跳转
   useEffect(() => {
-    // 监听认证状态变化，登录成功后自动跳转
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('🔐 [LoginPage] Auth 状态变化:', event);
+    if (user) {
+      console.log('✅ [LoginPage] 检测到用户已登录，准备跳转到:', redirectTo);
+      toast.success('登录成功，正在跳转...');
 
-      if (event === 'SIGNED_IN' && session) {
-        console.log('✅ [LoginPage] 检测到登录成功，准备跳转到:', redirectTo);
-        toast.success('登录成功，正在跳转...');
-
-        // 短暂延迟确保 cookie 设置完成
-        setTimeout(() => {
-          console.log('🔄 [LoginPage] 执行跳转');
-          window.location.href = redirectTo;
-        }, 500);
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [redirectTo]);
+      // 短暂延迟确保状态同步
+      setTimeout(() => {
+        console.log('🔄 [LoginPage] 执行跳转');
+        router.push(redirectTo);
+      }, 500);
+    }
+  }, [user, redirectTo, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,14 +54,6 @@ export default function LoginPage() {
         console.error('🔐 [Login] 登录失败:', result.error);
         if (result.error.message?.includes('email_not_confirmed')) {
           toast.error('邮箱未验证，请先完成邮箱验证');
-          await supabase.auth.resend({
-            type: 'signup',
-            email,
-            options: {
-              emailRedirectTo: `${window.location.origin}/auth/login`,
-            },
-          });
-          toast.info('已重新发送验证邮件，请检查邮箱');
         } else if (result.error.message?.includes('Failed to fetch')) {
           toast.error('网络较慢或被拦截，正在重试，请稍等或检查网络/VPN');
         } else {
@@ -76,19 +61,8 @@ export default function LoginPage() {
         }
         setLoading(false);
       }
-      // 登录成功的跳转由 onAuthStateChange 处理，不在这里处理
+      // 登录成功后，AuthProvider 会自动设置 user，触发上面的 useEffect 跳转
     } catch (error: any) {
-      // 如果是超时错误，检查是否已经登录成功
-      if (error.message === '登录请求超时') {
-        console.log('⚠️ [Login] 登录请求超时，检查认证状态...');
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          console.log('✅ [Login] 虽然超时，但登录已成功');
-          // 跳转由 onAuthStateChange 处理
-          return;
-        }
-      }
-
       console.error('🔐 [Login] 捕获异常:', error);
       toast.error(error.message || '登录失败，请检查网络/VPN 后重试');
       setLoading(false);

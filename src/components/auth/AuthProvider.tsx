@@ -49,65 +49,80 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 初始化：检查当前会话（防止浏览器禁用存储导致页面卡死）
+  // 初始化：检查当前会话（10秒内完成验证）
   useEffect(() => {
     let isMounted = true;
-    let sessionInitialized = false;
 
     const initSession = async () => {
       try {
-        // 🚨 关键修复：设置 25 秒总超时，确保 loading 最终会变成 false
-        const initTimeout = setTimeout(() => {
-          if (isMounted && !sessionInitialized) {
-            console.warn('[AuthProvider] ⚠️ 初始化超时（25秒），强制结束 loading');
-            setLoading(false);
-          }
-        }, 25000);
-
-        // 0. 优先尝试从 cookie 恢复（最快且绕过 storage 限制）
-        if (!sessionInitialized && typeof window !== 'undefined') {
+        // 检查是否有认证 cookie
+        if (typeof window !== 'undefined') {
           const cookieTokens = readSessionCookie();
-          if (cookieTokens?.access_token && cookieTokens?.refresh_token) {
-            try {
-              console.log('[AuthProvider] 🔄 通过 cookie 恢复会话...');
 
-              // 添加更宽松的 20 秒超时到 setSession（海外网络/代理较慢时避免误判）
-              const setSessionPromise = supabase.auth.setSession({
-                access_token: cookieTokens.access_token,
-                refresh_token: cookieTokens.refresh_token,
-              });
-              const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('setSession 超时')), 20000)
-              );
+          // 如果没有 cookie，立即结束 loading（未登录状态）
+          if (!cookieTokens?.access_token || !cookieTokens?.refresh_token) {
+            console.log('[AuthProvider] ℹ️ 未找到认证 cookie，用户需要登录');
+            if (isMounted) {
+              setLoading(false);
+            }
+            return;
+          }
 
-              const { data, error } = await Promise.race([setSessionPromise, timeoutPromise]) as any;
+          // 🔄 验证会话（10秒超时，确保 user 设置后才结束 loading）
+          console.log('[AuthProvider] 🔄 验证会话...');
 
-              if (!error && data.session) {
+          try {
+            // 添加 10 秒超时（国内网络 Supabase API 可能较慢）
+            const setSessionPromise = supabase.auth.setSession({
+              access_token: cookieTokens.access_token,
+              refresh_token: cookieTokens.refresh_token,
+            });
+            const timeoutPromise = new Promise<any>((_, reject) =>
+              setTimeout(() => reject(new Error('验证超时')), 10000)
+            );
+
+            const { data, error } = await Promise.race([setSessionPromise, timeoutPromise]);
+
+            if (!error && data?.session) {
+              // ✅ 验证成功：先设置 user，再结束 loading
+              if (isMounted) {
                 setSession(data.session);
                 setUser(data.session.user);
-                await fetchProfile(data.session.user.id);
-                sessionInitialized = true;
-                clearTimeout(initTimeout);
-                console.log('[AuthProvider] ✅ 通过 cookie 恢复会话成功');
-                return;
-              } else {
-                console.warn('[AuthProvider] ⚠️ cookie 恢复失败:', error?.message || '未知错误');
+                console.log('[AuthProvider] ✅ 会话验证成功:', data.session.user.email);
+
+                // 异步加载 profile（不阻塞 loading）
+                fetchProfile(data.session.user.id).catch(err =>
+                  console.warn('[AuthProvider] ⚠️ Profile 加载失败:', err)
+                );
+
+                // 确保 user 已设置后再结束 loading
+                setLoading(false);
               }
-            } catch (cookieErr) {
-              console.warn('[AuthProvider] ⚠️ cookie 恢复异常（已超时或出错）:', cookieErr);
+            } else {
+              // ❌ 验证失败：清空状态，结束 loading
+              console.warn('[AuthProvider] ⚠️ 会话验证失败:', error?.message || '未知错误');
+              if (isMounted) {
+                setSession(null);
+                setUser(null);
+                setProfile(null);
+                setLoading(false);
+              }
+            }
+          } catch (verifyErr) {
+            // ⚠️ 验证异常（超时或错误）：清空状态，结束 loading
+            console.warn('[AuthProvider] ⚠️ 会话验证异常:', verifyErr);
+            if (isMounted) {
+              setSession(null);
+              setUser(null);
+              setProfile(null);
+              setLoading(false);
             }
           }
         }
-
-        // 如果 cookie 恢复失败，直接放弃（不再尝试 getSession/getUser，避免挂起）
-        console.log('[AuthProvider] ℹ️ 未从 cookie 恢复到会话，用户需要重新登录');
-        clearTimeout(initTimeout);
       } catch (err) {
         console.warn('[AuthProvider] ⚠️ 初始化过程中发生错误:', err);
-      } finally {
         if (isMounted) {
           setLoading(false);
-          console.log('[AuthProvider] ✅ 认证初始化完成');
         }
       }
     };
