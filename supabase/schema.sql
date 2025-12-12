@@ -154,11 +154,12 @@ CREATE TABLE IF NOT EXISTS public.shots (
   dialogue TEXT,
   narration TEXT,
 
-  -- 媒体资源（存储 Supabase Storage URL）
-  reference_image TEXT,
-  video_clip TEXT,
+  -- 媒体资源（存储 Cloudflare R2 URL）
+  -- 实际文件存储在 Cloudflare R2，数据库仅存储访问 URL
+  reference_image TEXT,      -- 参考图片 URL
+  video_clip TEXT,           -- 生成视频 URL
 
-  -- Grid 图片（可能有多张）
+  -- Grid 图片（URL 数组，存储在 R2）
   grid_images JSONB DEFAULT '[]'::jsonb,
 
   -- 生成历史
@@ -193,9 +194,10 @@ CREATE TABLE IF NOT EXISTS public.characters (
   appearance TEXT,
   personality TEXT,
 
-  -- 角色图片（Supabase Storage URL）
-  turnaround_image TEXT,
-  reference_images JSONB DEFAULT '[]'::jsonb,
+  -- 角色图片（存储 Cloudflare R2 URL）
+  -- 实际文件存储在 Cloudflare R2，数据库仅存储访问 URL
+  turnaround_image TEXT,                    -- 三视图 URL
+  reference_images JSONB DEFAULT '[]'::jsonb,  -- 参考图片 URL 数组
 
   -- 元数据
   metadata JSONB DEFAULT '{}'::jsonb,
@@ -219,10 +221,11 @@ CREATE TABLE IF NOT EXISTS public.audio_assets (
   name TEXT NOT NULL,
   category TEXT CHECK (category IN ('music', 'voice', 'sfx')) NOT NULL,
 
-  -- 文件信息
-  file_url TEXT NOT NULL, -- Supabase Storage URL
-  file_size INTEGER, -- 字节数
-  duration NUMERIC(10, 2), -- 秒数
+  -- 文件信息（存储 Cloudflare R2 URL）
+  -- 实际文件存储在 Cloudflare R2，数据库仅存储访问 URL
+  file_url TEXT NOT NULL,        -- 音频文件 R2 URL
+  file_size INTEGER,             -- 字节数
+  duration NUMERIC(10, 2),       -- 秒数
 
   -- 元数据
   metadata JSONB DEFAULT '{}'::jsonb,
@@ -237,7 +240,47 @@ CREATE INDEX IF NOT EXISTS audio_assets_project_id_idx ON public.audio_assets(pr
 CREATE INDEX IF NOT EXISTS audio_assets_category_idx ON public.audio_assets(category);
 
 -- =============================================
--- 9. 管理员操作日志表
+-- 9. 对话消息表（Chat Messages）
+-- =============================================
+-- 独立存储项目/场景/分镜级别的 AI 对话历史
+CREATE TABLE IF NOT EXISTS public.chat_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+
+  -- 关联关系（三级层级）
+  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
+  scene_id UUID REFERENCES public.scenes(id) ON DELETE CASCADE,  -- 场景级对话
+  shot_id UUID REFERENCES public.shots(id) ON DELETE CASCADE,    -- 分镜级对话
+
+  -- 对话范围标识: 'project'(项目级), 'scene'(场景级), 'shot'(分镜级)
+  scope TEXT NOT NULL CHECK (scope IN ('project', 'scene', 'shot')),
+
+  -- 消息内容
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+  content TEXT NOT NULL,
+
+  -- AI 推理过程（仅 assistant 消息）
+  thought TEXT,
+
+  -- 扩展数据（JSONB 格式）
+  -- 可能包含: gridData, images, model, toolResults 等
+  metadata JSONB DEFAULT '{}'::jsonb,
+
+  -- 时间戳
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+
+-- 索引优化查询性能
+CREATE INDEX IF NOT EXISTS chat_messages_project_idx ON public.chat_messages(project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS chat_messages_scene_idx ON public.chat_messages(scene_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS chat_messages_shot_idx ON public.chat_messages(shot_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS chat_messages_user_idx ON public.chat_messages(user_id);
+CREATE INDEX IF NOT EXISTS chat_messages_scope_idx ON public.chat_messages(scope);
+CREATE INDEX IF NOT EXISTS chat_messages_created_at_idx ON public.chat_messages(created_at DESC);
+
+-- =============================================
+-- 10. 管理员操作日志表
 -- =============================================
 CREATE TABLE IF NOT EXISTS public.admin_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -366,6 +409,19 @@ CREATE POLICY "Users can manage own audio assets"
     EXISTS (
       SELECT 1 FROM public.projects
       WHERE projects.id = audio_assets.project_id
+      AND projects.user_id = auth.uid()
+    )
+  );
+
+-- 对话消息表
+ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own chat messages"
+  ON public.chat_messages FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.projects
+      WHERE projects.id = chat_messages.project_id
       AND projects.user_id = auth.uid()
     )
   );
@@ -589,6 +645,9 @@ CREATE TRIGGER update_characters_updated_at BEFORE UPDATE ON public.characters
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 CREATE TRIGGER update_audio_assets_updated_at BEFORE UPDATE ON public.audio_assets
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_chat_messages_updated_at BEFORE UPDATE ON public.chat_messages
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- =============================================

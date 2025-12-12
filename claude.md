@@ -1057,7 +1057,13 @@ await dataService.clearChatHistory({
 - ✅ `supabase/schema.sql` - 添加 chat_messages 表定义
 - ✅ `src/types/project.ts` - 新增 ChatMessage 类型，旧版改名为 LegacyChatMessage
 - ✅ `src/lib/dataService.ts` - 添加聊天消息 CRUD 方法
-- ⏳ `src/components/agent/AgentPanel.tsx` - 待迁移使用新 API
+- ✅ `src/hooks/useAgent.ts` - 已迁移到云端存储，支持项目级对话
+- ✅ `src/components/agent/AgentPanel.tsx` - 已迁移使用新 API，从云端加载历史
+- ✅ `src/components/layout/ChatPanelWithHistory.tsx` - 已迁移Pro模式，支持shot/scene/project三级scope
+- ✅ `src/store/useProjectStore.ts` - 废弃旧的聊天方法，保留向后兼容
+
+**迁移完成时间**: 2025-12-12
+**最后验证**: 构建成功，无TypeScript错误
 
 ---
 
@@ -1244,6 +1250,83 @@ NEXT_PUBLIC_DOUBAO_MODEL_ID=ep-xxxxxx-xxxxx    # AI 对话
 ---
 
 ## 📝 最近变更日志
+
+### 2025-12-12 v0.4.0 - 聊天历史云端迁移 🚀
+**完整迁移到 Supabase 独立 chat_messages 表**
+
+#### 核心架构变更
+- ✅ **Agent模式迁移**
+  - 从 `project.chatHistory` JSONB字段 → `chat_messages` 独立表
+  - 使用 `scope='project'` 标识项目级对话
+  - 支持云端同步，多设备访问
+  - 保存AI推理过程（thought字段）和工具调用结果（metadata）
+
+- ✅ **Pro模式迁移**
+  - 从浏览器 `localStorage` → `chat_messages` 表
+  - 支持三级scope隔离：`'project' | 'scene' | 'shot'`
+  - 自动根据上下文（selectedShotId/currentSceneId）加载对应消息
+  - Grid生成数据保存到metadata.gridData
+
+#### 技术实现
+**文件改动**：
+- `src/hooks/useAgent.ts` - 集成云端保存和加载，添加timestamp字段
+- `src/components/agent/AgentPanel.tsx` - 使用useEffect从云端加载历史
+- `src/components/layout/ChatPanelWithHistory.tsx` - 实现scope检测和消息格式转换
+- `src/store/useProjectStore.ts` - 废弃旧聊天方法，保留向后兼容
+
+**数据库架构**：
+```sql
+CREATE TABLE chat_messages (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL,
+  project_id UUID NOT NULL,
+  scene_id UUID,        -- 场景级
+  shot_id UUID,         -- 分镜级
+  scope TEXT NOT NULL,  -- 'project' | 'scene' | 'shot'
+  role TEXT NOT NULL,   -- 'user' | 'assistant' | 'system'
+  content TEXT NOT NULL,
+  thought TEXT,         -- AI推理过程
+  metadata JSONB,       -- 扩展数据
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ
+);
+```
+
+**API使用**：
+```typescript
+// 保存消息
+await dataService.saveChatMessage({
+  id: crypto.randomUUID(),
+  userId: user.id,
+  projectId: project.id,
+  scope: 'shot',
+  shotId: selectedShotId,
+  role: 'user',
+  content: '生成Grid',
+  timestamp: new Date(),
+  // ...
+});
+
+// 获取消息（自动按scope过滤）
+const messages = await dataService.getChatMessages({
+  projectId: project.id,
+  scope: 'shot',
+  shotId: selectedShotId,
+});
+```
+
+#### 向后兼容
+- ⚠️ `Project.chatHistory` 标记为 `@deprecated`
+- 旧方法保留但改为no-op + console.warn
+- 新数据全部存储到 `chat_messages` 表
+
+#### 验证状态
+- ✅ TypeScript编译通过
+- ✅ 构建成功（268 kB bundle）
+- ✅ 所有8个类型错误已修复
+- ✅ 代码已提交（commit 6714515）
+
+---
 
 ### 2025-12-03 v0.3.0 - UI/UX 大升级 ⭐️
 **三栏布局重构 + oiioii 风格分镜详情面板**
