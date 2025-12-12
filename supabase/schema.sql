@@ -416,15 +416,11 @@ CREATE POLICY "Users can manage own audio assets"
 -- 对话消息表
 ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
 
+-- 用户可以管理自己的聊天消息（直接检查 user_id）
 CREATE POLICY "Users can manage own chat messages"
   ON public.chat_messages FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.projects
-      WHERE projects.id = chat_messages.project_id
-      AND projects.user_id = auth.uid()
-    )
-  );
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 -- 管理员日志表（只有管理员可以查看）
 ALTER TABLE public.admin_logs ENABLE ROW LEVEL SECURITY;
