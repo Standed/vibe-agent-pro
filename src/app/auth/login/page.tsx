@@ -20,22 +20,15 @@ export default function LoginPage() {
   // 获取重定向参数
   const redirectTo = searchParams.get('redirect') || '/';
 
-  // 监听 user 状态变化，登录成功后自动跳转
+  // 监听 user 状态变化，处理"刷新页面时已登录"的情况
   useEffect(() => {
-    if (user && !hasRedirected.current) {
-      hasRedirected.current = true; // 标记已经开始跳转
-      console.log('✅ [LoginPage] 检测到用户已登录，准备跳转到:', redirectTo);
-      toast.success('登录成功，正在跳转...');
-
-      // 短暂延迟确保状态同步
-      const timer = setTimeout(() => {
-        console.log('🔄 [LoginPage] 执行跳转');
-        router.push(redirectTo);
-      }, 500);
-
-      return () => clearTimeout(timer); // 清理 timer
+    // 只在页面加载时检查一次（不是登录过程中）
+    if (user && !loading && !hasRedirected.current) {
+      hasRedirected.current = true;
+      console.log('✅ [LoginPage] 检测到已登录用户，自动跳转到:', redirectTo);
+      router.replace(redirectTo);
     }
-  }, [user, redirectTo, router]);
+  }, [user, loading, redirectTo, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,16 +37,17 @@ export default function LoginPage() {
     console.log('🔐 [Login] 开始登录...');
 
     try {
-    // 使用 Promise.race 添加超时（海外网络再放宽）
-    const signInPromise = signIn({ email, password });
-    const timeoutMs = 60000; // 60s
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('登录请求超时')), timeoutMs)
-    );
+      // 使用 Promise.race 添加超时（海外网络再放宽）
+      const signInPromise = signIn({ email, password });
+      const timeoutMs = 60000; // 60s
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('登录请求超时')), timeoutMs)
+      );
 
       const result = await Promise.race([signInPromise, timeoutPromise]) as any;
       console.log('🔐 [Login] signIn 返回结果:', result);
 
+      // 处理错误情况
       if (result.error) {
         console.error('🔐 [Login] 登录失败:', result.error);
         if (result.error.message?.includes('email_not_confirmed')) {
@@ -64,8 +58,29 @@ export default function LoginPage() {
           toast.error(result.error.message || '登录失败');
         }
         setLoading(false);
+        return;
       }
-      // 登录成功后，AuthProvider 会自动设置 user，触发上面的 useEffect 跳转
+
+      // ✅ 处理成功情况
+      if (result.user && result.session) {
+        console.log('🔐 [Login] ✅ 登录成功，用户:', result.user.email);
+        toast.success('登录成功！');
+
+        // 等待 AuthProvider 的 onAuthStateChange 事件完成（最多等1秒）
+        // 这样可以确保 user 状态和 cookie 都已更新
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        console.log('🔐 [Login] 🔄 准备跳转到:', redirectTo);
+        setLoading(false);
+
+        // 使用 replace 而不是 push，避免用户按返回键回到登录页
+        router.replace(redirectTo);
+      } else {
+        // 意外情况：没有 error 但也没有 user
+        console.warn('🔐 [Login] ⚠️ 登录返回但没有用户信息');
+        toast.error('登录异常，请重试');
+        setLoading(false);
+      }
     } catch (error: any) {
       console.error('🔐 [Login] 捕获异常:', error);
       toast.error(error.message || '登录失败，请检查网络/VPN 后重试');
