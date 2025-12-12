@@ -24,6 +24,7 @@ import MentionInput from '@/components/input/MentionInput';
 import { GridSliceSelector } from '@/components/ui/GridSliceSelector';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { formatShotLabel } from '@/utils/shotOrder';
+import { dataService } from '@/lib/dataService';
 
 // Model types
 type GenerationModel = 'seedream' | 'gemini-direct' | 'gemini-grid';
@@ -149,27 +150,66 @@ export default function ChatPanelWithHistory() {
   const currentPending = contextKey ? pendingState[contextKey] : undefined;
   const isGenerating = Boolean(currentPending?.loading);
 
-  // Reset chat when上下文切换（按镜头/场景隔离 Pro 历史）
+  // 从云端加载聊天历史（按上下文切换加载对应scope的消息）
   useEffect(() => {
-    try {
-      const saved = contextKey ? localStorage.getItem(contextKey) : null;
-      if (saved) {
-        const parsed: ChatMessage[] = JSON.parse(saved).map((m: any) => ({
-          ...m,
-          timestamp: new Date(m.timestamp),
+    const loadHistory = async () => {
+      if (!project || !user) {
+        setMessages([]);
+        return;
+      }
+
+      try {
+        // 根据上下文确定 scope 和 filters
+        let filters: Parameters<typeof dataService.getChatMessages>[0];
+
+        if (selectedShotId) {
+          filters = {
+            projectId: project.id,
+            scope: 'shot',
+            shotId: selectedShotId,
+          };
+        } else if (currentSceneId) {
+          filters = {
+            projectId: project.id,
+            scope: 'scene',
+            sceneId: currentSceneId,
+          };
+        } else {
+          // 全局级别（无选中镜头或场景）
+          filters = {
+            projectId: project.id,
+            scope: 'project',
+          };
+        }
+
+        const loadedMessages = await dataService.getChatMessages(filters);
+
+        // 转换为组件内部的 ChatMessage 格式
+        const converted: ChatMessage[] = loadedMessages.map((msg) => ({
+          id: msg.id,
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+          timestamp: new Date(msg.createdAt),
+          images: msg.metadata?.images as string[] | undefined,
+          referenceImages: msg.metadata?.referenceImages as string[] | undefined,
+          model: msg.metadata?.model as GenerationModel | undefined,
+          shotId: msg.shotId,
+          sceneId: msg.sceneId,
+          gridData: msg.metadata?.gridData as ChatMessage['gridData'] | undefined,
         }));
-        setMessages(parsed);
-      } else {
+
+        setMessages(converted);
+      } catch (error) {
+        console.error('[ChatPanelWithHistory] 加载聊天历史失败:', error);
         setMessages([]);
       }
-    } catch (e) {
-      console.warn('Failed to load pro chat history', e);
-      setMessages([]);
-    }
+    };
+
+    loadHistory();
     setMentionedAssets({ characters: [], locations: [] });
     setInputText(''); // 避免跨镜头残留提示词
     setManualReferenceUrls([]);
-  }, [contextKey]);
+  }, [project?.id, selectedShotId, currentSceneId, user]);
 
   // 选中未生成图片的镜头时，自动把分镜描述填入输入框，便于直接生成
   useEffect(() => {
@@ -186,20 +226,6 @@ export default function ChatPanelWithHistory() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  // Persist chat history per上下文
-  useEffect(() => {
-    if (!contextKey) return;
-    try {
-      const serializable = messages.map(m => ({
-        ...m,
-        timestamp: m.timestamp.toISOString(),
-      }));
-      localStorage.setItem(contextKey, JSON.stringify(serializable));
-    } catch (e) {
-      console.warn('Failed to save pro chat history', e);
-    }
-  }, [messages, contextKey]);
 
   // 默认模型：镜头选中默认 SeeDream，场景默认 Gemini Grid；仅在上下文切换时切换默认值
   useEffect(() => {
@@ -402,6 +428,31 @@ export default function ChatPanelWithHistory() {
 
     setMessages(prev => [...prev, userMessage]);
 
+    // 保存用户消息到云端
+    if (user && project) {
+      try {
+        await dataService.saveChatMessage({
+          id: userMessage.id,
+          userId: user.id,
+          projectId: project.id,
+          scope: capturedShotId ? 'shot' : capturedSceneId ? 'scene' : 'project',
+          shotId: capturedShotId || undefined,
+          sceneId: capturedSceneId || undefined,
+          role: 'user',
+          content: inputText,
+          timestamp: userMessage.timestamp,
+          metadata: {
+            images: imageDataUrls,
+            model: selectedModel,
+          },
+          createdAt: userMessage.timestamp,
+          updatedAt: userMessage.timestamp,
+        });
+      } catch (error) {
+        console.error('[ChatPanelWithHistory] 保存用户消息失败:', error);
+      }
+    }
+
     // Clear input
     const promptText = inputText;
     const imageFiles = [...uploadedImages];
@@ -598,6 +649,32 @@ export default function ChatPanelWithHistory() {
       setMessages(prev => [...prev, assistantMessage]);
     }
 
+    // ⭐ 保存 assistant 消息到云端
+    if (user && project) {
+      try {
+        await dataService.saveChatMessage({
+          id: assistantMessage.id,
+          userId: user.id,
+          projectId: project.id,
+          scope: capturedShotId ? 'shot' : capturedSceneId ? 'scene' : 'project',
+          shotId: capturedShotId || undefined,
+          sceneId: capturedSceneId || undefined,
+          role: 'assistant',
+          content: assistantMessage.content,
+          timestamp: assistantMessage.timestamp,
+          metadata: {
+            images: [imageUrl],
+            model: 'seedream',
+            referenceImages: !skipAssetRefs ? referenceImageUrls : undefined,
+          },
+          createdAt: assistantMessage.timestamp,
+          updatedAt: assistantMessage.timestamp,
+        });
+      } catch (error) {
+        console.error('[ChatPanelWithHistory] 保存 assistant 消息失败:', error);
+      }
+    }
+
     toast.success('SeeDream 生成成功！');
   };
 
@@ -708,6 +785,32 @@ export default function ChatPanelWithHistory() {
     // 只在消息属于当前上下文时才添加到显示列表
     if (contextKey === capturedContextKey) {
       setMessages(prev => [...prev, assistantMessage]);
+    }
+
+    // ⭐ 保存 assistant 消息到云端
+    if (user && project) {
+      try {
+        await dataService.saveChatMessage({
+          id: assistantMessage.id,
+          userId: user.id,
+          projectId: project.id,
+          scope: capturedShotId ? 'shot' : capturedSceneId ? 'scene' : 'project',
+          shotId: capturedShotId || undefined,
+          sceneId: capturedSceneId || undefined,
+          role: 'assistant',
+          content: assistantMessage.content,
+          timestamp: assistantMessage.timestamp,
+          metadata: {
+            images: [imageUrl],
+            model: 'gemini-direct',
+            referenceImages: !skipAssetRefs ? allReferenceUrls : undefined,
+          },
+          createdAt: assistantMessage.timestamp,
+          updatedAt: assistantMessage.timestamp,
+        });
+      } catch (error) {
+        console.error('[ChatPanelWithHistory] 保存 assistant 消息失败:', error);
+      }
     }
 
     toast.success('Gemini 直出成功！');
@@ -1072,6 +1175,41 @@ export default function ChatPanelWithHistory() {
     // 只在消息属于当前上下文时才添加到显示列表
     if (contextKey === capturedContextKey) {
       setMessages(prev => [...prev, assistantMessage]);
+    }
+
+    // ⭐ 保存 assistant 消息到云端
+    if (user && project) {
+      try {
+        await dataService.saveChatMessage({
+          id: assistantMessage.id,
+          userId: user.id,
+          projectId: project.id,
+          scope: capturedShotId ? 'shot' : capturedSceneId ? 'scene' : 'project',
+          shotId: capturedShotId || undefined,
+          sceneId: capturedSceneId || undefined,
+          role: 'assistant',
+          content: assistantMessage.content,
+          timestamp: assistantMessage.timestamp,
+          metadata: {
+            images: [result.fullImage],
+            model: 'gemini-grid',
+            gridData: {
+              fullImage: result.fullImage,
+              slices: result.slices,
+              sceneId: currentScene?.id,
+              gridRows: rows,
+              gridCols: cols,
+              prompt: finalPrompt,
+              aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
+              gridSize: gridSize,
+            },
+          },
+          createdAt: assistantMessage.timestamp,
+          updatedAt: assistantMessage.timestamp,
+        });
+      } catch (error) {
+        console.error('[ChatPanelWithHistory] 保存 assistant 消息失败:', error);
+      }
     }
 
     // success toast removed; inline消息和pending提示即可

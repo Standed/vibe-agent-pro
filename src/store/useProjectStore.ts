@@ -509,35 +509,24 @@ export const useProjectStore = create<ProjectStore>()(
       get().debouncedSaveProject();
     },
 
-    // Chat Actions
+    // Chat Actions (DEPRECATED - 已迁移到 dataService + chat_messages 表)
+    /**
+     * @deprecated 请使用 dataService.saveChatMessage() 代替
+     * 此方法保留仅用于向后兼容，不再实际执行操作
+     */
     addChatMessage: (message) => {
-      set((state) => {
-        if (!state.project) return;
-        if (!state.project.chatHistory) {
-          state.project.chatHistory = [];
-        }
-
-        // 添加新消息
-        state.project.chatHistory.push(message);
-
-        // 限制历史记录数量（保留最近50条）
-        const MAX_HISTORY = 50;
-        if (state.project.chatHistory.length > MAX_HISTORY) {
-          state.project.chatHistory = state.project.chatHistory.slice(-MAX_HISTORY);
-        }
-      }, false);
-
-      // 自动保存到 IndexedDB
-      get().debouncedSaveProject();
+      // DEPRECATED: 聊天历史已迁移到独立的 chat_messages 表
+      // 不再使用 project.chatHistory 字段
+      console.warn('[useProjectStore] addChatMessage is deprecated, use dataService.saveChatMessage() instead');
     },
 
+    /**
+     * @deprecated 请使用 dataService.clearChatHistory() 代替
+     * 此方法保留仅用于向后兼容，不再实际执行操作
+     */
     clearChatHistory: () => {
-      set((state) => {
-        if (!state.project) return;
-        state.project.chatHistory = [];
-      });
-      // 自动保存到 IndexedDB
-      get().debouncedSaveProject();
+      // DEPRECATED: 聊天历史已迁移到独立的 chat_messages 表
+      console.warn('[useProjectStore] clearChatHistory is deprecated, use dataService.clearChatHistory() instead');
     },
 
     // Timeline Actions
