@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -15,21 +15,25 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const hasRedirected = useRef(false); // 防止重复跳转
 
   // 获取重定向参数
   const redirectTo = searchParams.get('redirect') || '/';
 
   // 监听 user 状态变化，登录成功后自动跳转
   useEffect(() => {
-    if (user) {
+    if (user && !hasRedirected.current) {
+      hasRedirected.current = true; // 标记已经开始跳转
       console.log('✅ [LoginPage] 检测到用户已登录，准备跳转到:', redirectTo);
       toast.success('登录成功，正在跳转...');
 
       // 短暂延迟确保状态同步
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         console.log('🔄 [LoginPage] 执行跳转');
         router.push(redirectTo);
       }, 500);
+
+      return () => clearTimeout(timer); // 清理 timer
     }
   }, [user, redirectTo, router]);
 
