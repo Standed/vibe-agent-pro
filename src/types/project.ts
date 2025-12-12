@@ -98,7 +98,50 @@ export interface GridData {
   assignments?: Record<string, number>; // 切片分配记录：shotId -> sliceIndex
 }
 
+// 对话消息类型（用于新的独立 chat_messages 表）
+export type ChatScope = 'project' | 'scene' | 'shot';
+export type ChatRole = 'user' | 'assistant' | 'system';
+
 export interface ChatMessage {
+  id: string;
+  userId: string;
+
+  // 关联关系（三级层级）
+  projectId: string;
+  sceneId?: string;   // 场景级对话
+  shotId?: string;    // 分镜级对话
+
+  // 对话范围标识
+  scope: ChatScope;   // 'project' | 'scene' | 'shot'
+
+  // 消息内容
+  role: ChatRole;
+  content: string;
+
+  // AI 推理过程（仅 assistant 消息）
+  thought?: string;
+
+  // 扩展数据（存储到 metadata JSONB 字段）
+  metadata?: {
+    gridData?: GridData;
+    images?: string[];
+    model?: string;
+    toolResults?: Array<{
+      tool: string;
+      result: any;
+      error?: string;
+    }>;
+    [key: string]: any;
+  };
+
+  // 时间戳
+  timestamp: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// 旧版 ChatMessage 类型（保留用于兼容性，待迁移）
+export interface LegacyChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
@@ -238,8 +281,10 @@ export interface Project {
   // 设置
   settings: ProjectSettings;
 
-  // AI Agent 对话历史（项目级别）
-  chatHistory?: ChatMessage[];
+  // ⚠️ 已废弃：旧版 AI Agent 对话历史（项目级别）
+  // 请使用独立的 chat_messages 表
+  // 保留此字段仅用于向后兼容，新数据不应存储到这里
+  chatHistory?: LegacyChatMessage[];
 }
 
 // 用于 IndexedDB 存储的资产类型

@@ -9,6 +9,8 @@ import type {
   Character,
   AudioAsset,
   ProjectSettings,
+  ChatMessage,
+  ChatScope,
 } from '@/types/project';
 import { AspectRatio } from '@/types/project';
 import { getCurrentUser } from './supabase/auth';
@@ -26,6 +28,23 @@ interface DataBackend {
   deleteCharacter(characterId: string): Promise<void>;
   saveAudioAsset(projectId: string, audio: AudioAsset): Promise<void>;
   deleteAudioAsset(audioId: string): Promise<void>;
+
+  // 聊天消息 CRUD
+  saveChatMessage(message: ChatMessage): Promise<void>;
+  getChatMessages(filters: {
+    projectId: string;
+    sceneId?: string;
+    shotId?: string;
+    scope?: ChatScope;
+    limit?: number;
+    offset?: number;
+  }): Promise<ChatMessage[]>;
+  deleteChatMessage(messageId: string): Promise<void>;
+  clearChatHistory(filters: {
+    projectId: string;
+    sceneId?: string;
+    shotId?: string;
+  }): Promise<void>;
 }
 
 const DEFAULT_SETTINGS: ProjectSettings = {
@@ -215,14 +234,15 @@ class SupabaseBackend implements DataBackend {
     console.log('[SupabaseBackend] 📖 加载项目 (通过统一 API):', id);
 
     try {
-      // 加载项目基本信息
+      // 加载项目基本信息（限制字段，避免大字段）
       const projects = await this.callSupabaseAPI({
         table: 'projects',
         operation: 'select',
         filters: {
           eq: { id, user_id: this.userId },
         },
-        select: '*',
+        select:
+          'id, user_id, title, description, art_style, created_at, updated_at, settings, metadata',
         single: true,
       });
 
@@ -233,56 +253,66 @@ class SupabaseBackend implements DataBackend {
         return undefined;
       }
 
-      // 加载场景
-      const scenes = await this.callSupabaseAPI({
+      // 并行加载关联数据，镜头依赖场景列表
+      const scenesPromise = this.callSupabaseAPI({
         table: 'scenes',
         operation: 'select',
         filters: {
           eq: { project_id: id },
         },
-        select: '*',
+        select:
+          'id, project_id, name, description, order_index, grid_history, saved_grid_slices, metadata',
         order: {
           column: 'order_index',
           ascending: true,
         },
       });
 
-      // 加载镜头（如果有场景）
-      let shots = [];
-      if (scenes && scenes.length > 0) {
-        shots = await this.callSupabaseAPI({
-          table: 'shots',
-          operation: 'select',
-          filters: {
-            in: { scene_id: scenes.map((s: any) => s.id) },
-          },
-          select: '*',
-          order: {
-            column: 'order_index',
-            ascending: true,
-          },
-        });
-      }
+      const shotsPromise = scenesPromise.then((sceneList) => {
+        if (sceneList && sceneList.length > 0) {
+          return this.callSupabaseAPI({
+            table: 'shots',
+            operation: 'select',
+            filters: {
+              in: { scene_id: sceneList.map((s: any) => s.id) },
+            },
+            // 延迟加载大字段，减少传输体积
+            select:
+              'id, scene_id, order_index, shot_size, camera_movement, duration, description, dialogue, narration, reference_image, video_clip, status, metadata',
+            order: {
+              column: 'order_index',
+              ascending: true,
+            },
+          });
+        }
+        return [];
+      });
 
-      // 加载角色
-      const characters = await this.callSupabaseAPI({
+      const charactersPromise = this.callSupabaseAPI({
         table: 'characters',
         operation: 'select',
         filters: {
           eq: { project_id: id },
         },
-        select: '*',
+        select: 'id, project_id, name, description, appearance, reference_images',
       });
 
-      // 加载音频资源
-      const audioAssets = await this.callSupabaseAPI({
+      const audioAssetsPromise = this.callSupabaseAPI({
         table: 'audio_assets',
         operation: 'select',
         filters: {
           eq: { project_id: id },
         },
-        select: '*',
+        select: 'id, project_id, name, category, file_url, duration',
       });
+
+      // 并行执行所有查询
+      const [scenes, shots, characters, audioAssets] = await Promise.all([
+        scenesPromise,
+        shotsPromise,
+        charactersPromise,
+        audioAssetsPromise,
+      ]);
 
       // 组装 Project 对象
       const result: Project = {
@@ -541,6 +571,127 @@ class SupabaseBackend implements DataBackend {
       },
     });
   }
+
+  // ========================
+  // 聊天消息 CRUD
+  // ========================
+
+  async saveChatMessage(message: ChatMessage): Promise<void> {
+    console.log('[SupabaseBackend] 💬 保存聊天消息:', message.id, message.scope);
+
+    await this.callSupabaseAPI({
+      table: 'chat_messages',
+      operation: 'upsert',
+      data: {
+        id: message.id,
+        user_id: this.userId,
+        project_id: message.projectId,
+        scene_id: message.sceneId || null,
+        shot_id: message.shotId || null,
+        scope: message.scope,
+        role: message.role,
+        content: message.content,
+        thought: message.thought || null,
+        metadata: message.metadata || {},
+      },
+    });
+  }
+
+  async getChatMessages(filters: {
+    projectId: string;
+    sceneId?: string;
+    shotId?: string;
+    scope?: ChatScope;
+    limit?: number;
+    offset?: number;
+  }): Promise<ChatMessage[]> {
+    console.log('[SupabaseBackend] 📖 获取聊天消息:', filters);
+
+    const apiFilters: any = {
+      eq: { project_id: filters.projectId },
+    };
+
+    // 根据 scope 筛选
+    if (filters.scope) {
+      apiFilters.eq.scope = filters.scope;
+    }
+
+    // 根据 sceneId 筛选
+    if (filters.sceneId) {
+      apiFilters.eq.scene_id = filters.sceneId;
+    }
+
+    // 根据 shotId 筛选
+    if (filters.shotId) {
+      apiFilters.eq.shot_id = filters.shotId;
+    }
+
+    const messages = await this.callSupabaseAPI({
+      table: 'chat_messages',
+      operation: 'select',
+      filters: apiFilters,
+      select: '*',
+      order: {
+        column: 'created_at',
+        ascending: true, // 按时间升序（旧到新）
+      },
+    });
+
+    // 转换为前端格式
+    return (messages || []).map((msg: any) => ({
+      id: msg.id,
+      userId: msg.user_id,
+      projectId: msg.project_id,
+      sceneId: msg.scene_id || undefined,
+      shotId: msg.shot_id || undefined,
+      scope: msg.scope,
+      role: msg.role,
+      content: msg.content,
+      thought: msg.thought || undefined,
+      metadata: msg.metadata || {},
+      timestamp: new Date(msg.created_at),
+      createdAt: new Date(msg.created_at),
+      updatedAt: new Date(msg.updated_at),
+    }));
+  }
+
+  async deleteChatMessage(messageId: string): Promise<void> {
+    console.log('[SupabaseBackend] 🗑️ 删除聊天消息:', messageId);
+
+    await this.callSupabaseAPI({
+      table: 'chat_messages',
+      operation: 'delete',
+      filters: {
+        eq: { id: messageId },
+      },
+    });
+  }
+
+  async clearChatHistory(filters: {
+    projectId: string;
+    sceneId?: string;
+    shotId?: string;
+  }): Promise<void> {
+    console.log('[SupabaseBackend] 🧹 清除聊天历史:', filters);
+
+    const apiFilters: any = {
+      eq: { project_id: filters.projectId },
+    };
+
+    if (filters.sceneId) {
+      apiFilters.eq.scene_id = filters.sceneId;
+    }
+
+    if (filters.shotId) {
+      apiFilters.eq.shot_id = filters.shotId;
+    }
+
+    await this.callSupabaseAPI({
+      table: 'chat_messages',
+      operation: 'delete',
+      filters: apiFilters,
+    });
+  }
 }
 
 // ========================
@@ -671,6 +822,41 @@ class UnifiedDataService {
   async deleteAudioAsset(audioId: string): Promise<void> {
     await this.ensureInitialized();
     return this.backend!.deleteAudioAsset(audioId);
+  }
+
+  // ========================
+  // 聊天消息 API
+  // ========================
+
+  async saveChatMessage(message: ChatMessage): Promise<void> {
+    await this.ensureInitialized();
+    return this.backend!.saveChatMessage(message);
+  }
+
+  async getChatMessages(filters: {
+    projectId: string;
+    sceneId?: string;
+    shotId?: string;
+    scope?: ChatScope;
+    limit?: number;
+    offset?: number;
+  }): Promise<ChatMessage[]> {
+    await this.ensureInitialized();
+    return this.backend!.getChatMessages(filters);
+  }
+
+  async deleteChatMessage(messageId: string): Promise<void> {
+    await this.ensureInitialized();
+    return this.backend!.deleteChatMessage(messageId);
+  }
+
+  async clearChatHistory(filters: {
+    projectId: string;
+    sceneId?: string;
+    shotId?: string;
+  }): Promise<void> {
+    await this.ensureInitialized();
+    return this.backend!.clearChatHistory(filters);
   }
 }
 
