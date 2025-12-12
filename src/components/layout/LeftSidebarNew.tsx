@@ -291,20 +291,40 @@ export default function LeftSidebarNew() {
     }
 
     setIsGenerating(true);
+    const toastId = toast.loading('AI 分镜生成中...', {
+      description: '第 1/5 步：正在分析剧本...',
+    });
+
     try {
       // 1. Analyze script for metadata
+      toast.loading('AI 分镜生成中...', {
+        id: toastId,
+        description: '第 1/5 步：正在分析剧本（提取角色、场景、画风）...',
+      });
       const analysis = await analyzeScript(project.script);
 
       // 2. Generate storyboard shots with project art style
+      toast.loading('AI 分镜生成中...', {
+        id: toastId,
+        description: '第 2/5 步：正在生成分镜脚本（根据8大原则拆分镜头）...',
+      });
       const generatedShots = await generateStoryboardFromScript(
         project.script,
         project.metadata.artStyle // 传入用户设置的画风
       );
 
       // 3. Group shots into scenes
+      toast.loading('AI 分镜生成中...', {
+        id: toastId,
+        description: `第 3/5 步：正在组织场景（已生成 ${generatedShots.length} 个镜头）...`,
+      });
       const sceneGroups = await groupShotsIntoScenes(generatedShots);
 
       // 4. Add scenes and shots to store
+      toast.loading('AI 分镜生成中...', {
+        id: toastId,
+        description: `第 4/5 步：正在添加场景和镜头（共 ${sceneGroups.length} 个场景）...`,
+      });
       sceneGroups.forEach((sceneGroup, idx) => {
         const scene = {
           id: crypto.randomUUID(),
@@ -352,6 +372,10 @@ export default function LeftSidebarNew() {
       let characterDesigns: Record<string, CharacterDesign> = {};
       if (characterCandidates.size > 0) {
         try {
+          toast.loading('AI 分镜生成中...', {
+            id: toastId,
+            description: `第 5/5 步：正在生成角色形象设计（共 ${characterCandidates.size} 个角色）...`,
+          });
           characterDesigns = await generateCharacterDesigns({
             script: project.script,
             characterNames: Array.from(characterCandidates),
@@ -359,6 +383,11 @@ export default function LeftSidebarNew() {
           });
         } catch (err) {
           console.error('AI 角色设定生成失败，使用占位模板：', err);
+          toast.warning('角色形象设计生成失败，已使用默认模板', {
+            id: toastId,
+            description: '可在"资源"标签页手动完善角色设计',
+            duration: 3000,
+          });
         }
       }
 
@@ -416,13 +445,19 @@ export default function LeftSidebarNew() {
         }
       });
 
-      toast.success(`成功生成 ${sceneGroups.length} 个场景，${generatedShots.length} 个镜头！`);
+      toast.success(`AI 分镜生成完成！`, {
+        id: toastId,
+        description: `已生成 ${sceneGroups.length} 个场景、${generatedShots.length} 个镜头、${characterCandidates.size} 个角色`,
+        duration: 5000,
+      });
       // 自动切换到分镜脚本标签页
       setActiveTab('storyboard');
     } catch (error: any) {
       console.error('AI分镜失败:', error);
       toast.error('AI分镜生成失败', {
-        description: error.message || '请检查API配置或网络连接'
+        id: toastId,
+        description: error.message || '请检查API配置或网络连接',
+        duration: 5000,
       });
     } finally {
       setIsGenerating(false);

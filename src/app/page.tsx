@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Film, Clock, Trash2, LogOut } from 'lucide-react';
+import { Plus, Film, Clock, Trash2, LogOut, Coins } from 'lucide-react';
 import { SettingsPanel } from '@/components/settings/SettingsPanel';
 import { useI18n } from '@/components/providers/I18nProvider';
 import NewProjectDialog from '@/components/project/NewProjectDialog';
@@ -22,7 +22,7 @@ export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const { user, signOut, loading: authLoading } = useAuth();
+  const { user, profile, signOut, loading: authLoading } = useAuth();
 
   // 加载所有项目（当用户状态变化时重新加载）
   useEffect(() => {
@@ -254,14 +254,26 @@ export default function Home() {
                   登录
                 </button>
               )}
-              {user && (
-                <button
-                  onClick={handleSignOut}
-                  className="inline-flex items-center gap-2 text-sm text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white px-3 py-2 rounded-lg border border-transparent hover:border-light-border dark:hover:border-cine-border transition-colors"
-                >
-                  <LogOut size={16} />
-                  退出
-                </button>
+              {user && profile && (
+                <>
+                  {/* 积分显示 */}
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 dark:border-purple-400/20">
+                    <Coins size={18} className="text-purple-600 dark:text-purple-400" />
+                    <div className="flex flex-col">
+                      <span className="text-xs text-light-text-muted dark:text-cine-text-muted">积分余额</span>
+                      <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                        {profile.credits || 0}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    className="inline-flex items-center gap-2 text-sm text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white px-3 py-2 rounded-lg border border-transparent hover:border-light-border dark:hover:border-cine-border transition-colors"
+                  >
+                    <LogOut size={16} />
+                    退出
+                  </button>
+                </>
               )}
               <SettingsPanel />
             </div>
