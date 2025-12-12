@@ -65,7 +65,7 @@ export async function authenticateRequest(
       .from('profiles')
       .select('id, email, role, credits')
       .eq('id', user.id)
-      .single();
+      .single<{ id: string; email: string; role: 'user' | 'admin' | 'vip'; credits: number }>();
 
     if (profileError || !profile) {
       return {
@@ -128,7 +128,7 @@ export async function consumeCredits(
   description?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { data, error } = await supabaseAdmin.rpc('consume_credits', {
+    const { data, error } = await (supabaseAdmin as any).rpc('consume_credits', {
       p_user_id: userId,
       p_amount: amount,
       p_operation_type: operationType,

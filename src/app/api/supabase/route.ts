@@ -1,0 +1,314 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+// 使用 Service Role Key（服务端安全，绕过 RLS）
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  }
+);
+
+// 允许的表和操作（白名单）
+const ALLOWED_TABLES = [
+  'projects',
+  'scenes',
+  'shots',
+  'characters',
+  'audio_assets',
+  'profiles',
+] as const;
+
+const ALLOWED_OPERATIONS = [
+  'select',
+  'insert',
+  'update',
+  'upsert',
+  'delete',
+] as const;
+
+type AllowedTable = typeof ALLOWED_TABLES[number];
+type AllowedOperation = typeof ALLOWED_OPERATIONS[number];
+
+interface SupabaseRequest {
+  table: string;
+  operation: string;
+  userId: string;
+  data?: any;
+  filters?: {
+    eq?: Record<string, any>;
+    in?: Record<string, any[]>;
+    neq?: Record<string, any>;
+  };
+  select?: string;
+  order?: {
+    column: string;
+    ascending?: boolean;
+  };
+  single?: boolean;
+}
+
+// 需要校验 UUID 的字段映射
+const UUID_FIELDS: Record<AllowedTable, string[]> = {
+  projects: ['id', 'user_id'],
+  scenes: ['id', 'project_id'],
+  shots: ['id', 'scene_id'],
+  characters: ['id', 'project_id'],
+  audio_assets: ['id', 'project_id'],
+  profiles: ['id'],
+};
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isValidUuid = (value: unknown) =>
+  typeof value === 'string' && UUID_REGEX.test(value);
+
+const collectInvalidUuidFields = (
+  table: AllowedTable,
+  data: any,
+  filters?: SupabaseRequest['filters'],
+) => {
+  const invalidFields: string[] = [];
+  const uuidFields = UUID_FIELDS[table] || [];
+
+  const checkObject = (obj: Record<string, any>) => {
+    uuidFields.forEach((field) => {
+      const val = obj?.[field];
+      if (val === undefined || val === null) return;
+
+      const values = Array.isArray(val) ? val : [val];
+      if (!values.every(isValidUuid)) {
+        invalidFields.push(field);
+      }
+    });
+  };
+
+  if (data) {
+    if (Array.isArray(data)) {
+      data.forEach(checkObject);
+    } else {
+      checkObject(data);
+    }
+  }
+
+  if (filters?.eq) {
+    Object.entries(filters.eq).forEach(([key, value]) => {
+      if (uuidFields.includes(key)) {
+        const values = Array.isArray(value) ? value : [value];
+        if (!values.every(isValidUuid)) {
+          invalidFields.push(key);
+        }
+      }
+    });
+  }
+
+  if (filters?.neq) {
+    Object.entries(filters.neq).forEach(([key, value]) => {
+      if (uuidFields.includes(key)) {
+        const values = Array.isArray(value) ? value : [value];
+        if (!values.every(isValidUuid)) {
+          invalidFields.push(key);
+        }
+      }
+    });
+  }
+
+  if (filters?.in) {
+    Object.entries(filters.in).forEach(([key, value]) => {
+      if (uuidFields.includes(key)) {
+        const values = Array.isArray(value) ? value : [];
+        if (!values.every(isValidUuid)) {
+          invalidFields.push(key);
+        }
+      }
+    });
+  }
+
+  return Array.from(new Set(invalidFields));
+};
+
+/**
+ * POST /api/supabase
+ * 统一的 Supabase 操作代理
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const body: SupabaseRequest = await request.json();
+    const { table, operation, userId, data, filters, select, order, single } = body;
+
+    // 1. 验证必需参数
+    if (!table || !operation || !userId) {
+      return NextResponse.json(
+        { error: '缺少必需参数: table, operation, userId' },
+        { status: 400 }
+      );
+    }
+
+    // 2. 验证表和操作是否在白名单中
+    if (!ALLOWED_TABLES.includes(table as AllowedTable)) {
+      return NextResponse.json(
+        { error: `不允许访问表: ${table}` },
+        { status: 403 }
+      );
+    }
+
+    if (!ALLOWED_OPERATIONS.includes(operation as AllowedOperation)) {
+      return NextResponse.json(
+        { error: `不允许的操作: ${operation}` },
+        { status: 403 }
+      );
+    }
+
+    // 校验 userId / 过滤条件中的 UUID，提前阻断 Supabase 的 22P02 错误
+    if (!isValidUuid(userId)) {
+      return NextResponse.json(
+        { error: 'userId 必须是有效的 UUID' },
+        { status: 400 }
+      );
+    }
+
+    const invalidUuidFields = collectInvalidUuidFields(
+      table as AllowedTable,
+      data,
+      filters
+    );
+    if (invalidUuidFields.length > 0) {
+      return NextResponse.json(
+        { error: `无效的 UUID 字段: ${invalidUuidFields.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    console.log('[Supabase API] 📡', operation.toUpperCase(), table, 'userId:', userId);
+
+    // 🔍 详细日志：记录完整的请求数据（用于调试 UUID 错误）
+    if (operation === 'upsert' || operation === 'insert') {
+      console.log('[Supabase API] 📦 完整数据负载:', JSON.stringify(data, null, 2));
+    }
+    if (filters) {
+      console.log('[Supabase API] 🔎 过滤条件:', JSON.stringify(filters, null, 2));
+    }
+
+    // 3. 构建查询
+    // 使用 any 简化后续链式调用的类型约束
+    let query: any = supabaseAdmin.from(table);
+
+    // 4. 执行操作
+    switch (operation) {
+      case 'select':
+        query = query.select(select || '*');
+
+        // 应用过滤条件
+        if (filters?.eq) {
+          Object.entries(filters.eq).forEach(([key, value]) => {
+            query = (query as any).eq(key, value);
+          });
+        }
+        if (filters?.in) {
+          Object.entries(filters.in).forEach(([key, value]) => {
+            query = (query as any).in(key, value);
+          });
+        }
+        if (filters?.neq) {
+          Object.entries(filters.neq).forEach(([key, value]) => {
+            query = (query as any).neq(key, value);
+          });
+        }
+
+        // 应用排序
+        if (order) {
+          query = (query as any).order(order.column, { ascending: order.ascending ?? false });
+        }
+
+        // 单条记录
+        if (single) {
+          query = (query as any).single();
+        }
+        break;
+
+      case 'insert':
+        if (!data) {
+          return NextResponse.json({ error: '缺少 data 参数' }, { status: 400 });
+        }
+        query = (query as any).insert(data).select();
+        break;
+
+      case 'update':
+        if (!data) {
+          return NextResponse.json({ error: '缺少 data 参数' }, { status: 400 });
+        }
+        query = (query as any).update(data);
+
+        // 应用过滤条件（必须有过滤条件）
+        if (filters?.eq) {
+          Object.entries(filters.eq).forEach(([key, value]) => {
+            query = (query as any).eq(key, value);
+          });
+        } else {
+          return NextResponse.json(
+            { error: 'update 操作必须提供 filters.eq' },
+            { status: 400 }
+          );
+        }
+
+        query = (query as any).select();
+        break;
+
+      case 'upsert':
+        if (!data) {
+          return NextResponse.json({ error: '缺少 data 参数' }, { status: 400 });
+        }
+        query = (query as any).upsert(data).select();
+        break;
+
+      case 'delete':
+        // 必须先调用 .delete() 方法
+        query = (query as any).delete();
+
+        // 应用过滤条件（必须有过滤条件，防止误删全表）
+        if (filters?.eq) {
+          Object.entries(filters.eq).forEach(([key, value]) => {
+            query = (query as any).eq(key, value);
+          });
+        } else {
+          return NextResponse.json(
+            { error: 'delete 操作必须提供 filters.eq' },
+            { status: 400 }
+          );
+        }
+        break;
+
+      default:
+        return NextResponse.json(
+          { error: `未知操作: ${operation}` },
+          { status: 400 }
+        );
+    }
+
+    // 5. 执行查询
+    const { data: result, error } = await query;
+
+    if (error) {
+      console.error('[Supabase API] ❌ 操作失败 - 完整错误信息:', JSON.stringify(error, null, 2));
+      console.error('[Supabase API] ❌ 错误代码:', error.code);
+      console.error('[Supabase API] ❌ 错误消息:', error.message);
+      console.error('[Supabase API] ❌ 错误详情:', error.details);
+      console.error('[Supabase API] ❌ 错误提示:', error.hint);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    console.log('[Supabase API] ✅ 操作成功');
+    return NextResponse.json({ success: true, data: result });
+
+  } catch (err) {
+    console.error('[Supabase API] ❌ 服务器错误:', err);
+    return NextResponse.json(
+      { error: '服务器内部错误' },
+      { status: 500 }
+    );
+  }
+}

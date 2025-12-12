@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { dataService } from '@/lib/dataService';
 import { getCurrentUser } from '@/lib/supabase/auth';
+import { migrationService } from '@/lib/migrationService';
 
 export default function SyncDataPage() {
   const router = useRouter();
@@ -38,7 +38,7 @@ export default function SyncDataPage() {
       }
 
       console.log('[Sync Page] 🚀 开始同步...');
-      const syncResult = await dataService.syncLocalToCloud();
+      const syncResult = await migrationService.migrateToCloud();
 
       console.log('[Sync Page] 📊 同步结果:', syncResult);
       setResult({
@@ -66,9 +66,9 @@ export default function SyncDataPage() {
   };
 
   // 页面加载时检查登录状态
-  useState(() => {
+  useEffect(() => {
     checkAuth();
-  });
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center px-4">

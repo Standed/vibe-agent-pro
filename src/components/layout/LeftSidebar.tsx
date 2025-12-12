@@ -84,7 +84,7 @@ export default function LeftSidebar() {
       // 4. Add scenes and shots to store
       sceneGroups.forEach((sceneGroup, idx) => {
         const scene = {
-          id: `scene_${Date.now()}_${idx}`,
+          id: crypto.randomUUID(),
           name: sceneGroup.name,
           location: sceneGroup.location,
           description: '',
@@ -198,7 +198,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
     }
 
     const newCharacter: Character = {
-      id: `character_${Date.now()}`,
+      id: crypto.randomUUID(),
       name: characterForm.name,
       description: characterForm.description,
       appearance: characterForm.appearance,
@@ -267,7 +267,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
         const dataUrl = reader.result as string;
 
         const newAudio = {
-          id: `audio_${Date.now()}`,
+          id: crypto.randomUUID(),
           name: audioForm.name,
           type: audioForm.type,
           url: dataUrl,

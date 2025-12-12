@@ -309,7 +309,7 @@ export async function generateStoryboardFromScript(
       dialogue: shot.dialogue,
       mainCharacters: shot.main_characters || [], // 提取角色信息
       mainScenes: shot.main_scenes || [], // 提取场景信息
-      status: 'pending',
+      status: 'draft',
     }));
   } catch (error: any) {
     console.error('Storyboard generation error:', error);

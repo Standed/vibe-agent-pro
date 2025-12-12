@@ -23,12 +23,15 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hasAuthCookie, setHasAuthCookie] = useState(false);
-  const { user, signOut } = useAuth();
+  const { user, signOut, loading: authLoading } = useAuth();
 
   // 加载所有项目（当用户状态变化时重新加载）
   useEffect(() => {
-    loadProjects();
-  }, [user]); // 依赖user，登录/退出时重新加载
+    // ⚠️ 只在认证初始化完成后才加载项目
+    if (!authLoading) {
+      loadProjects();
+    }
+  }, [user, authLoading]); // 依赖user和authLoading，登录/退出/初始化完成时重新加载
 
   // 监测标记 cookie，便于提示“有登录标记但无会话”的情况
   useEffect(() => {
@@ -90,10 +93,9 @@ export default function Home() {
     try {
       // 1. 在 store 中创建项目
       createNewProject(title, description, artStyle, aspectRatio);
-      setShowNewProjectDialog(false);
 
-      // 2. 等待下一个事件循环，确保 store 已更新
-      await new Promise(resolve => setTimeout(resolve, 0));
+      // 2. 等待 React 更新完成
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // 3. 获取新创建的项目
       const currentProject = useProjectStore.getState().project;
@@ -102,22 +104,37 @@ export default function Home() {
       if (!currentProject) {
         console.error('[HomePage] ❌ 项目创建失败：currentProject 为空');
         toast.error('项目创建失败');
-        return;
+        throw new Error('项目创建失败');
       }
 
-      // 4. 保存项目到数据库（等待保存完成）
+      // 4. 保存项目到数据库
       console.log('[HomePage] 💾 保存项目到数据库:', currentProject.id);
       await dataService.saveProject(currentProject, user?.id);
       console.log('[HomePage] ✅ 项目已保存:', currentProject.id);
 
-      // 5. 跳转到项目编辑页
+      // 5. 保存成功后关闭弹窗
+      setShowNewProjectDialog(false);
+
+      // 6. 使用 window.location.href 强制导航（避免 router.push 失败）
       const targetUrl = `/project/${currentProject.id}`;
       console.log('[HomePage] 🔄 准备跳转到:', targetUrl);
-      router.push(targetUrl);
-      console.log('[HomePage] ✅ router.push 已执行');
+
+      // 先尝试 router.push，如果 500ms 后还没跳转，使用 window.location.href
+      const navigated = router.push(targetUrl);
+      console.log('[HomePage] router.push 返回值:', navigated);
+
+      // 设置一个安全超时，确保导航发生
+      setTimeout(() => {
+        if (window.location.pathname === '/') {
+          console.log('[HomePage] ⚠️ router.push 未生效，使用 window.location.href 强制跳转');
+          window.location.href = targetUrl;
+        }
+      }, 500);
+
     } catch (error) {
       console.error('[HomePage] ❌ 创建项目失败:', error);
       toast.error('创建项目失败，请重试');
+      throw error; // 重新抛出错误，让 NewProjectDialog 处理
     }
   };
 

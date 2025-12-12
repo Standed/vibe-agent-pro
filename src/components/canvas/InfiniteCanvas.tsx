@@ -308,7 +308,12 @@ export default function InfiniteCanvas() {
                     role="button"
                     tabIndex={0}
                     key={shot.id}
-                    onClick={() => selectShot(shot.id)}
+                    onClick={() => {
+                      selectShot(shot.id);
+                      if (shot.referenceImage) {
+                        handlePreview(shot.referenceImage);
+                      }
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
@@ -320,7 +325,6 @@ export default function InfiniteCanvas() {
                         ? 'border-2 border-light-accent dark:border-cine-accent shadow-md shadow-cine-accent/30'
                         : 'border border-light-border dark:border-cine-border'
                     }`}
-                    onClick={() => shot.referenceImage && handlePreview(shot.referenceImage)}
                   >
                     {/* Shot Thumbnail */}
                     <div className="aspect-video bg-light-bg dark:bg-cine-black flex items-center justify-center relative">
