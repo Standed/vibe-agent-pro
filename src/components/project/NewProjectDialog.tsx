@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Check } from 'lucide-react';
+import { X, Check, Loader2 } from 'lucide-react';
 import { AspectRatio } from '@/types/project';
 
 interface NewProjectDialogProps {
@@ -10,7 +10,7 @@ interface NewProjectDialogProps {
     description: string,
     artStyle: string,
     aspectRatio: string
-  ) => void;
+  ) => Promise<void>;
   onClose: () => void;
 }
 
@@ -58,14 +58,24 @@ export default function NewProjectDialog({
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<string>(
     AspectRatio.MOBILE
   );
+  const [isCreating, setIsCreating] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
       alert('请输入项目名称');
       return;
     }
-    onConfirm(title, description, artStyle, selectedAspectRatio);
+
+    setIsCreating(true);
+    try {
+      await onConfirm(title, description, artStyle, selectedAspectRatio);
+      // 成功后由父组件关闭弹窗
+    } catch (error) {
+      console.error('创建项目失败:', error);
+      setIsCreating(false);
+      // 失败后让用户重试
+    }
   };
 
   return (
@@ -75,15 +85,16 @@ export default function NewProjectDialog({
         <div className="sticky top-0 bg-light-bg dark:bg-cine-dark border-b border-light-border dark:border-cine-border p-6 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-light-text dark:text-white">
-              ✨ 创建新项目
+              {isCreating ? '正在创建项目...' : '✨ 创建新项目'}
             </h2>
             <p className="text-sm text-light-text-muted dark:text-cine-text-muted mt-1">
-              设置项目基本信息和画面比例
+              {isCreating ? '请稍候，正在保存项目数据...' : '设置项目基本信息和画面比例'}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-colors"
+            disabled={isCreating}
+            className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X size={24} />
           </button>
@@ -101,7 +112,8 @@ export default function NewProjectDialog({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="例如：《森林奇遇记》"
-              className="w-full px-4 py-3 rounded-lg bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted focus:outline-none focus:ring-2 focus:ring-light-accent dark:focus:ring-cine-accent"
+              disabled={isCreating}
+              className="w-full px-4 py-3 rounded-lg bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted focus:outline-none focus:ring-2 focus:ring-light-accent dark:focus:ring-cine-accent disabled:opacity-50 disabled:cursor-not-allowed"
               required
             />
           </div>
@@ -116,7 +128,8 @@ export default function NewProjectDialog({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="简要描述你的项目内容和主题..."
               rows={3}
-              className="w-full px-4 py-3 rounded-lg bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted focus:outline-none focus:ring-2 focus:ring-light-accent dark:focus:ring-cine-accent resize-none"
+              disabled={isCreating}
+              className="w-full px-4 py-3 rounded-lg bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted focus:outline-none focus:ring-2 focus:ring-light-accent dark:focus:ring-cine-accent resize-none disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -130,7 +143,8 @@ export default function NewProjectDialog({
               value={artStyle}
               onChange={(e) => setArtStyle(e.target.value)}
               placeholder="例如：国风3D动漫、赛博朋克、写实风格"
-              className="w-full px-4 py-3 rounded-lg bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted focus:outline-none focus:ring-2 focus:ring-light-accent dark:focus:ring-cine-accent"
+              disabled={isCreating}
+              className="w-full px-4 py-3 rounded-lg bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted focus:outline-none focus:ring-2 focus:ring-light-accent dark:focus:ring-cine-accent disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-2">
               画风信息将用于生成分镜图片时的提示词
@@ -148,7 +162,8 @@ export default function NewProjectDialog({
                   key={option.value}
                   type="button"
                   onClick={() => setSelectedAspectRatio(option.value)}
-                  className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                  disabled={isCreating}
+                  className={`w-full p-4 rounded-lg border-2 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed ${
                     selectedAspectRatio === option.value
                       ? 'border-light-accent dark:border-cine-accent bg-light-accent/10 dark:bg-cine-accent/10'
                       : 'border-light-border dark:border-cine-border hover:border-light-accent/50 dark:hover:border-cine-accent/50'
@@ -193,16 +208,25 @@ export default function NewProjectDialog({
           <button
             type="button"
             onClick={onClose}
-            className="px-6 py-2.5 rounded-lg bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border text-light-text dark:text-white transition-colors"
+            disabled={isCreating}
+            className="px-6 py-2.5 rounded-lg bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border text-light-text dark:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             取消
           </button>
           <button
             type="submit"
             onClick={handleSubmit}
-            className="px-6 py-2.5 rounded-lg bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white font-bold transition-colors"
+            disabled={isCreating}
+            className="px-6 py-2.5 rounded-lg bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            创建项目 →
+            {isCreating ? (
+              <>
+                <Loader2 className="animate-spin" size={20} />
+                <span>创建中...</span>
+              </>
+            ) : (
+              <>创建项目 →</>
+            )}
           </button>
         </div>
       </div>

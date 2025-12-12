@@ -17,6 +17,10 @@ import type {
 import { dataService } from '@/lib/dataService';
 import { recalcShotOrders, normalizeSceneOrder } from '@/utils/shotOrder';
 
+// 防抖保存计时器
+let saveDebounceTimer: NodeJS.Timeout | null = null;
+const SAVE_DEBOUNCE_DELAY = 800; // 800ms 延迟，平衡用户体验和性能
+
 interface ProjectStore {
   // 状态
   project: Project | null;
@@ -34,6 +38,7 @@ interface ProjectStore {
   // Project Actions
   loadProject: (project: Project) => void;
   saveProject: () => Promise<void>;
+  debouncedSaveProject: () => void; // 防抖保存，用于频繁的数据变更
   createNewProject: (
     title: string,
     description: string,
@@ -45,7 +50,7 @@ interface ProjectStore {
   // Scene Actions
   addScene: (scene: Scene) => void;
   updateScene: (id: string, updates: Partial<Scene>) => void;
-  deleteScene: (id: string) => void;
+  deleteScene: (id: string) => Promise<void>;
   selectScene: (id: string) => void;
   addGridHistory: (sceneId: string, gridHistory: GridHistoryItem) => void;
   saveFavoriteSlices: (sceneId: string, slices: string[]) => void;
@@ -54,7 +59,7 @@ interface ProjectStore {
   // Shot Actions
   addShot: (shot: Shot) => void;
   updateShot: (id: string, updates: Partial<Shot>) => void;
-  deleteShot: (id: string) => void;
+  deleteShot: (id: string) => Promise<void>;
   selectShot: (id: string) => void;
   reorderShots: (sceneId: string, shotIds: string[]) => void;
   addGenerationHistory: (shotId: string, historyItem: GenerationHistoryItem) => void;
@@ -142,6 +147,21 @@ export const useProjectStore = create<ProjectStore>()(
       await dataService.saveProject(updatedProject);
     },
 
+    debouncedSaveProject: () => {
+      // 清除之前的计时器
+      if (saveDebounceTimer) {
+        clearTimeout(saveDebounceTimer);
+      }
+
+      // 设置新的计时器
+      saveDebounceTimer = setTimeout(() => {
+        const { saveProject } = get();
+        saveProject().catch((error) => {
+          console.error('[Store] 自动保存失败:', error);
+        });
+      }, SAVE_DEBOUNCE_DELAY);
+    },
+
     createNewProject: (title, description, artStyle = '', aspectRatio = '9:16') => {
       // 根据画面比例设置分辨率
       const resolutionMap: Record<string, { width: number; height: number }> = {
@@ -193,7 +213,7 @@ export const useProjectStore = create<ProjectStore>()(
         }
       });
       // 自动保存
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     // Scene Actions
@@ -209,7 +229,7 @@ export const useProjectStore = create<ProjectStore>()(
         }
       });
       // 自动保存
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     updateScene: (id, updates) => {
@@ -227,10 +247,21 @@ export const useProjectStore = create<ProjectStore>()(
         }
       });
       // 自动保存
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
-    deleteScene: (id) => {
+    deleteScene: async (id) => {
+      // 先从数据库中删除（立即执行，不等防抖）
+      // Supabase CASCADE 会自动删除关联的 shots
+      try {
+        await dataService.deleteScene(id);
+        console.log('[Store] ✅ 场景已从数据库删除:', id);
+      } catch (error) {
+        console.error('[Store] ❌ 删除场景失败:', error);
+        // 即使数据库删除失败，也继续更新本地状态
+      }
+
+      // 更新本地状态
       set((state) => {
         if (!state.project) return;
         state.project.scenes = state.project.scenes.filter((s) => s.id !== id);
@@ -244,8 +275,6 @@ export const useProjectStore = create<ProjectStore>()(
         state.project.scenes = [...state.project.scenes];
         state.project.shots = [...state.project.shots];
       });
-      // 自动保存
-      get().saveProject();
     },
 
     selectScene: (id) => set({ currentSceneId: id, selectedShotId: null }),
@@ -265,7 +294,7 @@ export const useProjectStore = create<ProjectStore>()(
         }
       });
       // 自动保存到 IndexedDB
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     saveFavoriteSlices: (sceneId, slices) => {
@@ -279,7 +308,7 @@ export const useProjectStore = create<ProjectStore>()(
         }
       });
       // 自动保存到 IndexedDB
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     // Shot Actions
@@ -293,7 +322,7 @@ export const useProjectStore = create<ProjectStore>()(
         }
       });
       // 自动保存
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     updateShot: (id, updates) => {
@@ -304,10 +333,20 @@ export const useProjectStore = create<ProjectStore>()(
         }
       });
       // 自动保存
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
-    deleteShot: (id) => {
+    deleteShot: async (id) => {
+      // 先从数据库中删除（立即执行，不等防抖）
+      try {
+        await dataService.deleteShot(id);
+        console.log('[Store] ✅ 镜头已从数据库删除:', id);
+      } catch (error) {
+        console.error('[Store] ❌ 删除镜头失败:', error);
+        // 即使数据库删除失败，也继续更新本地状态（用户可以看到变化）
+      }
+
+      // 更新本地状态
       set((state) => {
         if (!state.project) return;
         state.project.shots = state.project.shots.filter((s) => s.id !== id);
@@ -319,8 +358,6 @@ export const useProjectStore = create<ProjectStore>()(
         // 触发深度更新
         state.project.shots = [...state.project.shots];
       });
-      // 自动保存
-      get().saveProject();
     },
 
     selectShot: (id) =>
@@ -348,7 +385,7 @@ export const useProjectStore = create<ProjectStore>()(
         }
       });
       // 自动保存
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     addGenerationHistory: (shotId, historyItem) => {
@@ -366,7 +403,7 @@ export const useProjectStore = create<ProjectStore>()(
         }
       });
       // 自动保存到 IndexedDB
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     // Character Actions
@@ -389,7 +426,7 @@ export const useProjectStore = create<ProjectStore>()(
           project.characters.push({ ...character, name: incomingName });
         }
       });
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     updateCharacter: (id, updates) => {
@@ -399,7 +436,7 @@ export const useProjectStore = create<ProjectStore>()(
           Object.assign(character, updates);
         }
       });
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     deleteCharacter: (id) => {
@@ -409,7 +446,7 @@ export const useProjectStore = create<ProjectStore>()(
           (c) => c.id !== id
         );
       });
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     // Location Actions
@@ -431,7 +468,7 @@ export const useProjectStore = create<ProjectStore>()(
           project.locations.push({ ...location, name: incomingName });
         }
       });
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     updateLocation: (id, updates) => {
@@ -441,7 +478,7 @@ export const useProjectStore = create<ProjectStore>()(
           Object.assign(location, updates);
         }
       });
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     deleteLocation: (id) => {
@@ -451,7 +488,7 @@ export const useProjectStore = create<ProjectStore>()(
           (l) => l.id !== id
         );
       });
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     // Audio Actions
@@ -459,7 +496,7 @@ export const useProjectStore = create<ProjectStore>()(
       set((state) => {
         state.project?.audioAssets.push(audio);
       });
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     deleteAudioAsset: (id) => {
@@ -469,7 +506,7 @@ export const useProjectStore = create<ProjectStore>()(
           (a) => a.id !== id
         );
       });
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     // Chat Actions
@@ -491,7 +528,7 @@ export const useProjectStore = create<ProjectStore>()(
       }, false);
 
       // 自动保存到 IndexedDB
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     clearChatHistory: () => {
@@ -500,7 +537,7 @@ export const useProjectStore = create<ProjectStore>()(
         state.project.chatHistory = [];
       });
       // 自动保存到 IndexedDB
-      get().saveProject();
+      get().debouncedSaveProject();
     },
 
     // Timeline Actions

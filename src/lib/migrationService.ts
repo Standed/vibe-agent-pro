@@ -19,6 +19,14 @@ export interface MigrationProgress {
 
 export type MigrationCallback = (progress: MigrationProgress) => void;
 
+export interface MigrationResult {
+  success: boolean;
+  syncedCount: number;
+  skippedCount: number;
+  errors: { projectId: string; error: string }[];
+  error?: string;
+}
+
 class MigrationService {
   /**
    * 检查是否有本地数据需要迁移
@@ -49,17 +57,20 @@ class MigrationService {
    */
   async migrateToCloud(
     onProgress?: MigrationCallback
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<MigrationResult> {
     try {
       // 1. 获取所有本地项目
       const localProjects = await indexedDB.getAllProjects();
 
       if (localProjects.length === 0) {
-        return { success: true };
+        return { success: true, syncedCount: 0, skippedCount: 0, errors: [] };
       }
 
       const totalProjects = localProjects.length;
       let currentProject = 0;
+      let syncedCount = 0;
+      let skippedCount = 0;
+      const errors: { projectId: string; error: string }[] = [];
 
       // 发送初始进度
       onProgress?.({
@@ -79,8 +90,17 @@ class MigrationService {
           status: 'migrating',
         });
 
-        // 迁移项目数据
-        await this.migrateProject(project, onProgress);
+        try {
+          // 迁移项目数据
+          await this.migrateProject(project, onProgress);
+          syncedCount++;
+        } catch (err: any) {
+          console.error('Migration error for project', project.id, err);
+          errors.push({
+            projectId: project.id,
+            error: err?.message || '迁移失败',
+          });
+        }
       }
 
       // 3. 迁移完成
@@ -90,7 +110,12 @@ class MigrationService {
         status: 'completed',
       });
 
-      return { success: true };
+      return {
+        success: errors.length === 0,
+        syncedCount,
+        skippedCount,
+        errors,
+      };
     } catch (error: any) {
       console.error('Migration error:', error);
       onProgress?.({
@@ -102,6 +127,9 @@ class MigrationService {
 
       return {
         success: false,
+        syncedCount: 0,
+        skippedCount: 0,
+        errors: [{ projectId: 'unknown', error: error.message || '迁移失败' }],
         error: error.message || '迁移失败',
       };
     }

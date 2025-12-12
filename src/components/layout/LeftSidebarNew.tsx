@@ -190,10 +190,10 @@ export default function LeftSidebarNew() {
     const order = targetIndex + 1;
 
     const newShot = {
-      id: `shot_${Date.now()}`,
+      id: crypto.randomUUID(),
       ...shotData,
       order,
-      status: 'pending' as const,
+      status: 'draft' as const,
     };
 
     addShot(newShot);
@@ -246,7 +246,7 @@ export default function LeftSidebarNew() {
   const handleAddScene = () => {
     const order = scenes.length + 1;
     const scene = {
-      id: `scene_${Date.now()}`,
+      id: crypto.randomUUID(),
       name: `场景 ${order}`,
       location: '',
       description: '',
@@ -307,7 +307,7 @@ export default function LeftSidebarNew() {
       // 4. Add scenes and shots to store
       sceneGroups.forEach((sceneGroup, idx) => {
         const scene = {
-          id: `scene_${Date.now()}_${idx}`,
+          id: crypto.randomUUID(),
           name: sceneGroup.name,
           location: sceneGroup.location,
           description: '',
@@ -407,7 +407,7 @@ export default function LeftSidebarNew() {
             : `角色 "${name}" 的形象设计草稿：${template}（请按项补充具体信息）`;
 
           addCharacter({
-            id: `char_${Date.now()}_${name}`,
+            id: crypto.randomUUID(),
             name,
             description,
             appearance,

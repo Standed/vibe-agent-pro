@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { ProxyAgent, Agent } from 'undici';
 import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
@@ -22,7 +22,7 @@ const toSafeImages = (refs: any) =>
       }))
     : [];
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   // 1. 验证用户身份
   const authResult = await authenticateRequest(request);
   if ('error' in authResult) {

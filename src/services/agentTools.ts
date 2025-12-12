@@ -712,7 +712,7 @@ export class AgentToolExecutor {
         description: spec?.description || description || `分镜 ${baseIndex + i + 1}`,
         narration: spec?.narration,
         dialogue: spec?.dialogue,
-        status: 'pending',
+        status: 'draft',
         created: new Date(),
         modified: new Date(),
       };

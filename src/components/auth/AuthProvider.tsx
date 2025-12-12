@@ -54,118 +54,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let isMounted = true;
     let sessionInitialized = false;
 
-    const tryGetSession = async (retries = 3, delayMs = 8000): Promise<Session | null> => {
-      for (let i = 0; i < retries; i++) {
-        try {
-          const { data } = await supabase.auth.getSession();
-          if (data?.session) return data.session;
-        } catch (err) {
-          console.warn('[AuthProvider] getSession 失败，重试中...', err);
-        }
-        if (i < retries - 1) {
-          await new Promise((r) => setTimeout(r, delayMs));
-        }
-      }
-      return null;
-    };
-
-    const tryGetUser = async (retries = 3, delayMs = 8000): Promise<User | null> => {
-      for (let i = 0; i < retries; i++) {
-        try {
-          const { data } = await supabase.auth.getUser();
-          if (data?.user) return data.user;
-        } catch (err) {
-          console.warn('[AuthProvider] getUser 失败，重试中...', err);
-        }
-        if (i < retries - 1) {
-          await new Promise((r) => setTimeout(r, delayMs));
-        }
-      }
-      return null;
-    };
-
     const initSession = async () => {
       try {
-        // 0. 优先尝试从 cookie 恢复（绕过 storage 限制）
+        // 🚨 关键修复：设置 25 秒总超时，确保 loading 最终会变成 false
+        const initTimeout = setTimeout(() => {
+          if (isMounted && !sessionInitialized) {
+            console.warn('[AuthProvider] ⚠️ 初始化超时（25秒），强制结束 loading');
+            setLoading(false);
+          }
+        }, 25000);
+
+        // 0. 优先尝试从 cookie 恢复（最快且绕过 storage 限制）
         if (!sessionInitialized && typeof window !== 'undefined') {
           const cookieTokens = readSessionCookie();
           if (cookieTokens?.access_token && cookieTokens?.refresh_token) {
             try {
-              console.log('[AuthProvider] 🔄 通过 cookie 尝试 setSession...');
-              const { data, error } = await supabase.auth.setSession({
+              console.log('[AuthProvider] 🔄 通过 cookie 恢复会话...');
+
+              // 添加更宽松的 20 秒超时到 setSession（海外网络/代理较慢时避免误判）
+              const setSessionPromise = supabase.auth.setSession({
                 access_token: cookieTokens.access_token,
                 refresh_token: cookieTokens.refresh_token,
               });
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('setSession 超时')), 20000)
+              );
+
+              const { data, error } = await Promise.race([setSessionPromise, timeoutPromise]) as any;
+
               if (!error && data.session) {
                 setSession(data.session);
                 setUser(data.session.user);
                 await fetchProfile(data.session.user.id);
                 sessionInitialized = true;
-                console.log('[AuthProvider] ✅ 通过 cookie 恢复会话成功（跳过 storage）');
+                clearTimeout(initTimeout);
+                console.log('[AuthProvider] ✅ 通过 cookie 恢复会话成功');
                 return;
               } else {
-                console.warn('[AuthProvider] ⚠️ cookie 恢复失败，继续尝试 getSession:', error);
+                console.warn('[AuthProvider] ⚠️ cookie 恢复失败:', error?.message || '未知错误');
               }
             } catch (cookieErr) {
-              console.warn('[AuthProvider] ⚠️ cookie 恢复异常，继续尝试 getSession:', cookieErr);
+              console.warn('[AuthProvider] ⚠️ cookie 恢复异常（已超时或出错）:', cookieErr);
             }
           }
         }
 
-        // 1. 尝试多次 getSession（不做短超时，避免海外网络失败）
-        const session = await tryGetSession(5, 7000);
-        if (session) {
-          if (!isMounted) return;
-          setSession(session);
-          setUser(session.user);
-          await fetchProfile(session.user.id);
-          sessionInitialized = true;
-          console.log('[AuthProvider] ✅ 从 getSession 初始化成功');
-          return;
-        }
-
-        // 2. 尝试多次 getUser
-        if (!sessionInitialized) {
-          const user = await tryGetUser(5, 7000);
-          if (user) {
-            if (!isMounted) return;
-            setUser(user);
-            await fetchProfile(user.id);
-            sessionInitialized = true;
-            console.log('[AuthProvider] ✅ 通过 getUser 获取到用户');
-          }
-        }
-
-        // 3. 兜底：cookie 再尝试一次
-        if (!sessionInitialized && typeof window !== 'undefined') {
-          const cookieTokens = readSessionCookie();
-          if (cookieTokens?.access_token && cookieTokens?.refresh_token) {
-            try {
-              console.log('[AuthProvider] 🔄 再次通过 cookie 尝试 setSession...');
-              const { data, error } = await supabase.auth.setSession({
-                access_token: cookieTokens.access_token,
-                refresh_token: cookieTokens.refresh_token,
-              });
-              if (!error && data.session) {
-                setSession(data.session);
-                setUser(data.session.user);
-                await fetchProfile(data.session.user.id);
-                sessionInitialized = true;
-                console.log('[AuthProvider] ✅ 通过 cookie 恢复会话成功（兜底）');
-              } else {
-                console.warn('[AuthProvider] ⚠️ 兜底 cookie 恢复失败:', error);
-              }
-            } catch (cookieErr) {
-              console.warn('[AuthProvider] ⚠️ 兜底 cookie 恢复异常:', cookieErr);
-            }
-          }
-        }
+        // 如果 cookie 恢复失败，直接放弃（不再尝试 getSession/getUser，避免挂起）
+        console.log('[AuthProvider] ℹ️ 未从 cookie 恢复到会话，用户需要重新登录');
+        clearTimeout(initTimeout);
       } catch (err) {
         console.warn('[AuthProvider] ⚠️ 初始化过程中发生错误:', err);
       } finally {
         if (isMounted) {
           setLoading(false);
-          console.log('[AuthProvider] ✅ 认证初始化完成（可能通过事件更新）');
+          console.log('[AuthProvider] ✅ 认证初始化完成');
         }
       }
     };

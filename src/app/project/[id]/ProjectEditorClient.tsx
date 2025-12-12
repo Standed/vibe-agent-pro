@@ -28,9 +28,10 @@ export function ProjectEditorClient() {
 
         // 检查用户是否已登录
         if (!user) {
-            console.warn('[ProjectEditorClient] ⚠️ 用户未登录，重定向到登录页');
+            console.warn('[ProjectEditorClient] ⚠️ 用户未登录，立即重定向到登录页');
             setLoadError('请先登录后访问');
-            setTimeout(() => router.push('/auth/login'), 2000);
+            // 立即重定向，不等待（避免在无痕模式下触发不必要的错误）
+            router.push('/auth/login');
             return;
         }
 
@@ -44,24 +45,24 @@ export function ProjectEditorClient() {
 
             try {
                 // 从数据库加载项目（自动选择 IndexedDB 或 Supabase）
-                const loadedProject = await dataService.loadProject(projectId);
+                const loadedProject = await dataService.loadProject(projectId, user.id);
                 if (loadedProject) {
                     loadProjectToStore(loadedProject);
                     console.log('[ProjectEditorClient] ✅ 项目已加载:', projectId);
                 } else {
-                    // 项目不存在，返回首页
+                    // 项目不存在，立即返回首页
                     console.warn('[ProjectEditorClient] ⚠️ 项目不存在，返回首页');
                     setLoadError('项目不存在');
-                    setTimeout(() => router.push('/'), 2000);
+                    router.push('/');
                 }
             } catch (error) {
                 console.error('[ProjectEditorClient] ❌ 加载项目失败:', error);
                 const errorMessage = error instanceof Error ? error.message : '加载失败';
                 setLoadError(errorMessage);
 
-                // 如果是认证相关错误，重定向到登录页
-                if (errorMessage.includes('认证') || errorMessage.includes('登录')) {
-                    setTimeout(() => router.push('/auth/login'), 3000);
+                // 如果是认证相关错误，立即重定向到登录页
+                if (errorMessage.includes('认证') || errorMessage.includes('登录') || errorMessage.includes('未登录')) {
+                    router.push('/auth/login');
                 }
             } finally {
                 setIsLoadingProject(false);
