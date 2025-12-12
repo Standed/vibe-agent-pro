@@ -6,18 +6,44 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { ChatMessage } from '@/types/project';
 import { useAgent } from '@/hooks/useAgent';
 import ThinkingProcess from './ThinkingProcess';
+import { dataService } from '@/lib/dataService';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 export default function AgentPanel() {
   const { project } = useProjectStore();
+  const { user } = useAuth();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
 
   const { isProcessing, thinkingSteps, summary, sendMessage, clearSession, stop } = useAgent();
 
-  const chatHistory = useMemo(
-    () => project?.chatHistory ?? [],
-    [project?.chatHistory]
-  );
+  // 从云端加载聊天历史
+  useEffect(() => {
+    const loadHistory = async () => {
+      if (!project || !user) {
+        setChatHistory([]);
+        setLoadingHistory(false);
+        return;
+      }
+
+      try {
+        const messages = await dataService.getChatMessages({
+          projectId: project.id,
+          scope: 'project',
+        });
+        setChatHistory(messages);
+      } catch (error) {
+        console.error('加载聊天历史失败:', error);
+        setChatHistory([]);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+
+    loadHistory();
+  }, [project?.id, user]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -32,6 +58,15 @@ export default function AgentPanel() {
 
     // Send to agent
     await sendMessage(userContent);
+
+    // 重新加载聊天历史
+    if (project && user) {
+      const messages = await dataService.getChatMessages({
+        projectId: project.id,
+        scope: 'project',
+      });
+      setChatHistory(messages);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -39,6 +74,11 @@ export default function AgentPanel() {
       e.preventDefault();
       handleSendMessage();
     }
+  };
+
+  const handleClearSession = async () => {
+    await clearSession();
+    setChatHistory([]);
   };
 
   return (
@@ -53,7 +93,7 @@ export default function AgentPanel() {
         </div>
 
         <button
-          onClick={clearSession}
+          onClick={handleClearSession}
           className="p-2 hover:bg-light-bg dark:hover:bg-cine-panel rounded-lg transition-colors"
           title="清除会话"
         >

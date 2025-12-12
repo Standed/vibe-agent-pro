@@ -18,6 +18,8 @@ import { ThinkingStep } from '@/components/agent/ThinkingProcess';
 import { StoreCallbacks } from '@/services/agentTools';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { dataService } from '@/lib/dataService';
+import type { ChatMessage } from '@/types/project';
 
 export interface UseAgentResult {
   isProcessing: boolean;
@@ -39,11 +41,9 @@ export function useAgent(): UseAgentResult {
     addGenerationHistory,
     addGridHistory,
     renumberScenesAndShots,
-    addChatMessage,
-    clearChatHistory
   } = useProjectStore();
 
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
@@ -174,13 +174,20 @@ export function useAgent(): UseAgentResult {
       };
       await sessionManager.addMessage(userMessage);
 
-      // ⭐ 保存用户消息到项目聊天历史
-      addChatMessage({
-        id: `msg_${Date.now()}_user`,
-        role: 'user',
-        content: message,
-        timestamp: new Date(),
-      });
+      // ⭐ 保存用户消息到云端数据库（chat_messages表）
+      if (user && project) {
+        await dataService.saveChatMessage({
+          id: `msg_${Date.now()}_user`,
+          userId: user.id,
+          projectId: project.id,
+          scope: 'project',
+          role: 'user',
+          content: message,
+          timestamp: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
 
       // Step 4: Call AI with enhanced context
       const stepId3 = addStep({
@@ -355,24 +362,33 @@ export function useAgent(): UseAgentResult {
       };
       await sessionManager.addMessage(assistantMessage);
 
-      // ⭐ 保存 assistant 消息到项目聊天历史（包含思考过程和工具结果）
+      // ⭐ 保存 assistant 消息到云端数据库（包含思考过程和工具结果）
       const thinkingStepsSummary = thinkingSteps
         .filter(step => step.type === 'thinking' || step.type === 'tool')
         .map(step => step.content)
         .join(' → ');
 
-      addChatMessage({
-        id: `msg_${Date.now()}_assistant`,
-        role: 'assistant',
-        content: finalSummary,
-        timestamp: new Date(),
-        thought: thinkingStepsSummary || undefined,
-        toolResults: allToolResults.map(r => ({
-          tool: r.tool,
-          result: r.result,
-          error: r.error,
-        })),
-      });
+      if (user && project) {
+        await dataService.saveChatMessage({
+          id: `msg_${Date.now()}_assistant`,
+          userId: user.id,
+          projectId: project.id,
+          scope: 'project',
+          role: 'assistant',
+          content: finalSummary,
+          timestamp: new Date(),
+          thought: thinkingStepsSummary || undefined,
+          metadata: {
+            toolResults: allToolResults.map(r => ({
+              tool: r.tool,
+              result: r.result,
+              error: r.error,
+            })),
+          },
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
 
       toast.success('处理完成');
 
@@ -407,19 +423,26 @@ export function useAgent(): UseAgentResult {
     addGenerationHistory,
     addGridHistory,
     renumberScenesAndShots,
-    addChatMessage,
     isProcessing,
     lastMessageHash,
+    user,
   ]);
 
   // Clear session
   const clearSession = useCallback(async () => {
     await sessionManager.clear();
-    clearChatHistory();
+
+    // 清除云端聊天历史
+    if (project) {
+      await dataService.clearChatHistory({
+        projectId: project.id,
+      });
+    }
+
     setThinkingSteps([]);
     setSummary('');
     toast.info('会话已清除');
-  }, [sessionManager, clearChatHistory]);
+  }, [sessionManager, project]);
 
   const stop = useCallback(() => {
     cancelRef.current = true;
