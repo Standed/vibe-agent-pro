@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
-import { getUserProfile, readSessionCookie, setSessionCookie } from '@/lib/supabase/auth';
+import { getUserProfile, readSessionCookie, setSessionCookie, parseJWT, isTokenExpired } from '@/lib/supabase/auth';
 import type { Database } from '@/lib/supabase/database.types';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
@@ -49,12 +49,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 初始化：检查当前会话（10秒内完成验证）
+  // 初始化：乐观认证策略（先信任 cookie，后台验证）
   useEffect(() => {
     let isMounted = true;
 
     const initSession = async () => {
       try {
+        console.log('[AuthProvider] 🔐 开始初始化...');
+
         // 检查是否有认证 cookie
         if (typeof window !== 'undefined') {
           const cookieTokens = readSessionCookie();
@@ -68,54 +70,103 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
-          // 🔄 验证会话（10秒超时，确保 user 设置后才结束 loading）
-          console.log('[AuthProvider] 🔄 验证会话...');
+          // ✅ 乐观策略：先检查 token 是否过期
+          console.log('[AuthProvider] 🔍 检查 token 是否过期...');
+
+          if (!isTokenExpired(cookieTokens.access_token)) {
+            // Token 未过期，直接从 JWT 提取用户信息
+            const payload = parseJWT(cookieTokens.access_token);
+
+            if (payload && payload.sub) {
+              console.log('[AuthProvider] ✅ Token 有效，立即设置用户状态');
+
+              // 从 JWT 构造 User 对象
+              const user: User = {
+                id: payload.sub,
+                email: payload.email || '',
+                app_metadata: payload.app_metadata || {},
+                user_metadata: payload.user_metadata || {},
+                aud: payload.aud || 'authenticated',
+                created_at: new Date().toISOString(),
+              } as User;
+
+              if (isMounted) {
+                setUser(user);
+                setLoading(false); // 立即结束 loading
+
+                // 异步加载 profile（不阻塞）
+                fetchProfile(user.id).catch(err =>
+                  console.warn('[AuthProvider] ⚠️ Profile 加载失败:', err)
+                );
+              }
+
+              // 🔄 后台验证 session（不阻塞 UI，无超时限制）
+              console.log('[AuthProvider] 🔄 后台验证 session...');
+              supabase.auth.setSession({
+                access_token: cookieTokens.access_token,
+                refresh_token: cookieTokens.refresh_token,
+              }).then(({ data, error }) => {
+                if (!isMounted) return;
+
+                if (!error && data?.session) {
+                  console.log('[AuthProvider] ✅ 后台验证成功，更新 session');
+                  setSession(data.session);
+                  // 如果 token 被 refresh，更新 user
+                  if (data.session.user.id !== user.id) {
+                    setUser(data.session.user);
+                    fetchProfile(data.session.user.id);
+                  }
+                } else {
+                  console.warn('[AuthProvider] ⚠️ 后台验证失败，但保留当前状态:', error?.message);
+                  // 不清空 user，允许用户继续使用（token 可能仍然有效）
+                }
+              }).catch(err => {
+                console.warn('[AuthProvider] ⚠️ 后台验证异常:', err);
+                // 不清空 user，保留当前状态
+              });
+
+              return; // 已处理完毕
+            }
+          }
+
+          // Token 过期或解析失败，尝试完整验证
+          console.log('[AuthProvider] ⚠️ Token 过期或无效，尝试完整验证...');
 
           try {
-            // 添加 10 秒超时（国内网络 Supabase API 可能较慢）
-            const setSessionPromise = supabase.auth.setSession({
+            const { data, error } = await supabase.auth.setSession({
               access_token: cookieTokens.access_token,
               refresh_token: cookieTokens.refresh_token,
             });
-            const timeoutPromise = new Promise<any>((_, reject) =>
-              setTimeout(() => reject(new Error('验证超时')), 10000)
-            );
-
-            const { data, error } = await Promise.race([setSessionPromise, timeoutPromise]);
 
             if (!error && data?.session) {
-              // ✅ 验证成功：先设置 user，再结束 loading
+              console.log('[AuthProvider] ✅ 完整验证成功');
               if (isMounted) {
                 setSession(data.session);
                 setUser(data.session.user);
-                console.log('[AuthProvider] ✅ 会话验证成功:', data.session.user.email);
+                setLoading(false);
 
-                // 异步加载 profile（不阻塞 loading）
                 fetchProfile(data.session.user.id).catch(err =>
                   console.warn('[AuthProvider] ⚠️ Profile 加载失败:', err)
                 );
-
-                // 确保 user 已设置后再结束 loading
-                setLoading(false);
               }
             } else {
-              // ❌ 验证失败：清空状态，结束 loading
-              console.warn('[AuthProvider] ⚠️ 会话验证失败:', error?.message || '未知错误');
+              console.warn('[AuthProvider] ⚠️ 完整验证失败，清除 cookie');
               if (isMounted) {
                 setSession(null);
                 setUser(null);
                 setProfile(null);
                 setLoading(false);
+                setSessionCookie(null); // 清除无效 cookie
               }
             }
-          } catch (verifyErr) {
-            // ⚠️ 验证异常（超时或错误）：清空状态，结束 loading
-            console.warn('[AuthProvider] ⚠️ 会话验证异常:', verifyErr);
+          } catch (verifyErr: any) {
+            console.warn('[AuthProvider] ⚠️ 完整验证异常:', verifyErr?.message || verifyErr);
             if (isMounted) {
               setSession(null);
               setUser(null);
               setProfile(null);
               setLoading(false);
+              setSessionCookie(null); // 清除无效 cookie
             }
           }
         }

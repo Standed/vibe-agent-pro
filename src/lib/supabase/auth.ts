@@ -23,6 +23,34 @@ export interface AuthResponse {
 
 const SESSION_COOKIE_NAME = 'supabase-session';
 
+/**
+ * 解析 JWT token 获取 payload
+ */
+export const parseJWT = (token: string): any | null => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+
+    const payload = parts[1];
+    const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(decoded);
+  } catch (err) {
+    console.warn('[Auth] 解析 JWT 失败:', err);
+    return null;
+  }
+};
+
+/**
+ * 检查 JWT token 是否过期
+ */
+export const isTokenExpired = (token: string): boolean => {
+  const payload = parseJWT(token);
+  if (!payload || !payload.exp) return true;
+
+  const now = Math.floor(Date.now() / 1000);
+  return payload.exp < now;
+};
+
 export const setSessionCookie = (session?: Session | null) => {
   if (typeof document === 'undefined') return;
   if (session?.access_token && session?.refresh_token) {
