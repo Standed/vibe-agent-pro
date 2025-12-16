@@ -36,7 +36,7 @@ yarn-error.log*
 next-env.d.ts
 
 # IDE
-.vscode
+# .vscode
 .idea
 
 # Generated files
