@@ -39,23 +39,104 @@ export async function batchDownloadAssets(project: Project) {
     return new Blob(byteArrays, { type: mimeType });
   };
 
-  const fetchImageBlob = async (url: string): Promise<Blob | null> => {
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error(resp.statusText);
-      return await resp.blob();
-    } catch (err) {
-      // 尝试后端代理，避免 CORS 或过期链接问题
+  /**
+   * 下载图片，带重试机制
+   * @param url 图片 URL
+   * @param retries 最大重试次数（默认 3 次）
+   * @returns Blob 或 null（失败）
+   */
+  const fetchImageBlob = async (url: string, retries = 3): Promise<Blob | null> => {
+    // 检查是否是 R2 公开 URL（不需要代理）
+    const isR2PublicUrl = url.includes('.r2.dev') || url.includes('r2.cloudflarestorage.com');
+
+    for (let attempt = 0; attempt < retries; attempt++) {
       try {
-        const proxyResp = await fetch(`/api/fetch-image?url=${encodeURIComponent(url)}`);
-        if (!proxyResp.ok) throw new Error('proxy failed');
-        const data = await proxyResp.json();
-        return base64ToBlob(data.data, data.mimeType || 'image/png');
-      } catch (proxyErr) {
-        console.error('Failed to fetch image (skip):', url, proxyErr);
-        return null;
+        // 对于 R2 公开 URL，使用 no-cors 模式避免代理干扰
+        const fetchOptions: RequestInit = isR2PublicUrl
+          ? {
+              mode: 'cors',
+              cache: 'no-cache',
+              // 添加随机参数避免缓存
+              headers: { 'Cache-Control': 'no-cache' }
+            }
+          : {};
+
+        const resp = await fetch(url, fetchOptions);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        return await resp.blob();
+      } catch (err: any) {
+        const errorMsg = err?.message || 'unknown error';
+        console.warn(`[Batch Download] 第 ${attempt + 1}/${retries} 次尝试失败: ${url}`, errorMsg);
+
+        // 最后一次尝试，使用后端代理
+        if (attempt === retries - 1) {
+          try {
+            console.log(`[Batch Download] 尝试使用后端代理下载: ${url}`);
+            const proxyResp = await fetch(`/api/fetch-image?url=${encodeURIComponent(url)}`);
+            if (!proxyResp.ok) {
+              const proxyError = await proxyResp.text();
+              throw new Error(`Proxy failed (${proxyResp.status}): ${proxyError}`);
+            }
+            const data = await proxyResp.json();
+            return base64ToBlob(data.data, data.mimeType || 'image/png');
+          } catch (proxyErr: any) {
+            console.error(`[Batch Download] ❌ 所有重试失败（包括代理），跳过: ${url}`, proxyErr.message);
+            return null;
+          }
+        }
+
+        // 指数退避：第1次重试等待1秒，第2次等待2秒
+        if (attempt < retries - 1) {
+          const delay = 1000 * (attempt + 1);
+          console.log(`[Batch Download] ⏳ 等待 ${delay}ms 后重试...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
       }
     }
+
+    return null;
+  };
+
+  /**
+   * 下载视频/音频，带重试机制
+   * @param url 视频/音频 URL
+   * @param type 文件类型（用于日志）
+   * @param retries 最大重试次数（默认 3 次）
+   * @returns Blob 或 null（失败）
+   */
+  const fetchMediaBlob = async (url: string, type: 'video' | 'audio' = 'video', retries = 3): Promise<Blob | null> => {
+    const isR2PublicUrl = url.includes('.r2.dev') || url.includes('r2.cloudflarestorage.com');
+
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const fetchOptions: RequestInit = isR2PublicUrl
+          ? {
+              mode: 'cors',
+              cache: 'no-cache',
+              headers: { 'Cache-Control': 'no-cache' }
+            }
+          : {};
+
+        const resp = await fetch(url, fetchOptions);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        return await resp.blob();
+      } catch (err: any) {
+        const errorMsg = err?.message || 'unknown error';
+        console.warn(`[Batch Download] ${type} 第 ${attempt + 1}/${retries} 次尝试失败: ${url}`, errorMsg);
+
+        // 指数退避
+        if (attempt < retries - 1) {
+          const delay = 1000 * (attempt + 1);
+          console.log(`[Batch Download] ⏳ 等待 ${delay}ms 后重试...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          console.error(`[Batch Download] ❌ ${type} 下载失败，已重试 ${retries} 次: ${url}`, errorMsg);
+          return null;
+        }
+      }
+    }
+
+    return null;
   };
 
   // 使用 Set 跟踪已下载的 URL，避免重复下载
@@ -101,15 +182,12 @@ export async function batchDownloadAssets(project: Project) {
       }
     }
 
-    // 4. 下载视频
+    // 4. 下载视频（使用重试机制）
     if (shot.videoClip) {
-      try {
-        const response = await fetch(shot.videoClip);
-        const blob = await response.blob();
+      const blob = await fetchMediaBlob(shot.videoClip, 'video');
+      if (blob) {
         videosFolder.file(`${shotName}_video.mp4`, blob);
         videoCount++;
-      } catch (error) {
-        console.error(`Failed to download video for shot ${shot.order}:`, error);
       }
     }
 
@@ -131,31 +209,25 @@ export async function batchDownloadAssets(project: Project) {
           downloadedUrls.add(history.result);
           imageCount++;
         } else if (history.type === 'video') {
-          try {
-            const response = await fetch(history.result);
-            const blob = await response.blob();
+          const blob = await fetchMediaBlob(history.result, 'video');
+          if (blob) {
             videosFolder.file(`${shotName}_history_${i + 1}.mp4`, blob);
             videoCount++;
-          } catch (error) {
-            console.error(`Failed to download history video ${i + 1} for shot ${shot.order}:`, error);
           }
         }
       }
     }
   }
 
-  // 收集音频素材
+  // 收集音频素材（使用重试机制）
   if (project.audioAssets) {
     for (let i = 0; i < project.audioAssets.length; i++) {
       const audio = project.audioAssets[i];
-      try {
-        const response = await fetch(audio.url);
-        const blob = await response.blob();
+      const blob = await fetchMediaBlob(audio.url, 'audio');
+      if (blob) {
         const ext = audio.type === 'music' ? 'mp3' : audio.type === 'voice' ? 'wav' : 'mp3';
         audioFolder.file(`${audio.name || `audio_${i + 1}`}.${ext}`, blob);
         audioCount++;
-      } catch (error) {
-        console.error(`Failed to download audio ${audio.name}:`, error);
       }
     }
   }
@@ -168,14 +240,11 @@ export async function batchDownloadAssets(project: Project) {
     for (const character of project.characters) {
       if (character.referenceImages) {
         for (let i = 0; i < character.referenceImages.length; i++) {
-          try {
-            const blob = await fetchImageBlob(character.referenceImages[i]);
-            if (!blob) continue;
+          const blob = await fetchImageBlob(character.referenceImages[i]);
+          if (blob) {
             const characterName = character.name.replace(/[^\w\u4e00-\u9fa5]/g, '_');
             charactersFolder.file(`${characterName}_${i + 1}.png`, blob);
             imageCount++;
-          } catch (error) {
-            console.error(`Failed to download character image for ${character.name}:`, error);
           }
         }
       }
@@ -186,14 +255,11 @@ export async function batchDownloadAssets(project: Project) {
     for (const location of project.locations) {
       if (location.referenceImages) {
         for (let i = 0; i < location.referenceImages.length; i++) {
-          try {
-            const blob = await fetchImageBlob(location.referenceImages[i]);
-            if (!blob) continue;
+          const blob = await fetchImageBlob(location.referenceImages[i]);
+          if (blob) {
             const locationName = location.name.replace(/[^\w\u4e00-\u9fa5]/g, '_');
             locationsFolder.file(`${locationName}_${i + 1}.png`, blob);
             imageCount++;
-          } catch (error) {
-            console.error(`Failed to download location image for ${location.name}:`, error);
           }
         }
       }
