@@ -79,10 +79,10 @@ export default function NewProjectDialog({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-light-bg dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+      <div className="glass-panel rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl ring-1 ring-black/5">
         {/* Header */}
-        <div className="sticky top-0 bg-light-bg dark:bg-cine-dark border-b border-light-border dark:border-cine-border p-6 flex items-center justify-between">
+        <div className="sticky top-0 glass-panel border-b border-black/5 dark:border-white/5 p-6 flex items-center justify-between z-10">
           <div>
             <h2 className="text-xl font-bold text-light-text dark:text-white">
               {isCreating ? '正在创建项目...' : '✨ 创建新项目'}
@@ -113,7 +113,7 @@ export default function NewProjectDialog({
               onChange={(e) => setTitle(e.target.value)}
               placeholder="例如：《森林奇遇记》"
               disabled={isCreating}
-              className="w-full px-4 py-3 rounded-lg bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted focus:outline-none focus:ring-2 focus:ring-light-accent dark:focus:ring-cine-accent disabled:opacity-50 disabled:cursor-not-allowed"
+              className="glass-input w-full px-4 py-3 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
               required
             />
           </div>
@@ -129,7 +129,7 @@ export default function NewProjectDialog({
               placeholder="简要描述你的项目内容和主题..."
               rows={3}
               disabled={isCreating}
-              className="w-full px-4 py-3 rounded-lg bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted focus:outline-none focus:ring-2 focus:ring-light-accent dark:focus:ring-cine-accent resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="glass-input w-full px-4 py-3 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -144,7 +144,7 @@ export default function NewProjectDialog({
               onChange={(e) => setArtStyle(e.target.value)}
               placeholder="例如：国风3D动漫、赛博朋克、写实风格"
               disabled={isCreating}
-              className="w-full px-4 py-3 rounded-lg bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted focus:outline-none focus:ring-2 focus:ring-light-accent dark:focus:ring-cine-accent disabled:opacity-50 disabled:cursor-not-allowed"
+              className="glass-input w-full px-4 py-3 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-2">
               画风信息将用于生成分镜图片时的提示词
@@ -163,53 +163,53 @@ export default function NewProjectDialog({
                   type="button"
                   onClick={() => setSelectedAspectRatio(option.value)}
                   disabled={isCreating}
-                  className={`w-full p-4 rounded-lg border-2 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed ${
-                    selectedAspectRatio === option.value
-                      ? 'border-light-accent dark:border-cine-accent bg-light-accent/10 dark:bg-cine-accent/10'
-                      : 'border-light-border dark:border-cine-border hover:border-light-accent/50 dark:hover:border-cine-accent/50'
-                  }`}
+                  className={`w-full p-4 rounded-xl border transition-all duration-300 text-left disabled:opacity-50 disabled:cursor-not-allowed group ${selectedAspectRatio === option.value
+                    ? 'bg-light-accent/10 dark:bg-cine-accent/10 border-light-accent dark:border-cine-accent shadow-[0_0_20px_rgba(168,85,247,0.15)]'
+                    : 'glass-card border-transparent hover:border-light-accent/30 dark:hover:border-cine-accent/30'
+                    }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-bold text-light-text dark:text-white">
+                        <span className={`font-bold transition-colors ${selectedAspectRatio === option.value ? 'text-light-accent dark:text-cine-accent' : 'text-light-text dark:text-white'}`}>
                           {option.label}
                         </span>
                         {option.recommended && (
-                          <span className="px-2 py-0.5 text-xs rounded-full bg-light-accent dark:bg-cine-accent text-white">
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-light-accent dark:bg-cine-accent text-white dark:text-black shadow-sm">
                             推荐
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-light-text-muted dark:text-cine-text-muted mb-1">
+                      <p className="text-sm text-light-text-muted dark:text-cine-text-muted mb-1 group-hover:text-light-text dark:group-hover:text-gray-300 transition-colors">
                         {option.description}
                       </p>
-                      <p className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                      <p className="text-xs text-light-text-muted dark:text-cine-text-muted opacity-70">
                         分辨率: {option.resolution}
                       </p>
                     </div>
-                    {selectedAspectRatio === option.value && (
-                      <div className="ml-4 bg-light-accent dark:bg-cine-accent text-white rounded-full p-1">
-                        <Check size={16} />
-                      </div>
-                    )}
+                    <div className={`ml-4 rounded-full p-1 transition-all duration-300 ${selectedAspectRatio === option.value
+                      ? 'bg-light-accent dark:bg-cine-accent text-white scale-100'
+                      : 'bg-gray-200 dark:bg-gray-700 text-transparent scale-90'
+                      }`}>
+                      <Check size={16} />
+                    </div>
                   </div>
                 </button>
               ))}
             </div>
-            <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-3">
+            <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-3 pl-1">
               💡 画面比例一旦设置，整个项目的所有分镜都将使用此比例。后续可在项目设置中调整。
             </p>
           </div>
         </form>
 
         {/* Footer Actions */}
-        <div className="sticky bottom-0 bg-light-bg dark:bg-cine-dark border-t border-light-border dark:border-cine-border p-6 flex justify-end gap-3">
+        <div className="sticky bottom-0 glass-panel border-t border-black/5 dark:border-white/5 p-6 flex justify-end gap-3 z-10">
           <button
             type="button"
             onClick={onClose}
             disabled={isCreating}
-            className="px-6 py-2.5 rounded-lg bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border text-light-text dark:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2.5 rounded-lg glass-button text-gray-600 dark:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             取消
           </button>
@@ -217,7 +217,7 @@ export default function NewProjectDialog({
             type="submit"
             onClick={handleSubmit}
             disabled={isCreating}
-            className="px-6 py-2.5 rounded-lg bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="px-6 py-2.5 rounded-lg bg-black dark:bg-white text-white dark:text-black font-bold shadow-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {isCreating ? (
               <>

@@ -162,7 +162,7 @@ export default function AdminPage() {
             placeholder="搜索用户（邮箱或姓名）"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full max-w-md px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full max-w-md px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-white/20"
           />
         </div>
 
@@ -204,7 +204,7 @@ export default function AdminPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="text-purple-400 font-semibold">
+                    <span className="text-white/70 font-semibold">
                       {user.credits}
                     </span>
                   </td>
@@ -213,24 +213,22 @@ export default function AdminPage() {
                   </td>
                   <td className="px-6 py-4">
                     <span
-                      className={`px-2 py-1 text-xs rounded-full ${
-                        user.role === 'admin'
+                      className={`px-2 py-1 text-xs rounded-full ${user.role === 'admin'
                           ? 'bg-red-500/20 text-red-400'
                           : user.role === 'vip'
-                          ? 'bg-yellow-500/20 text-yellow-400'
-                          : 'bg-zinc-700 text-zinc-300'
-                      }`}
+                            ? 'bg-yellow-500/20 text-yellow-400'
+                            : 'bg-zinc-700 text-zinc-300'
+                        }`}
                     >
                       {user.role}
                     </span>
                   </td>
                   <td className="px-6 py-4">
                     <span
-                      className={`px-2 py-1 text-xs rounded-full ${
-                        user.is_active
+                      className={`px-2 py-1 text-xs rounded-full ${user.is_active
                           ? 'bg-green-500/20 text-green-400'
                           : 'bg-red-500/20 text-red-400'
-                      }`}
+                        }`}
                     >
                       {user.is_active ? '正常' : '封禁'}
                     </span>
@@ -242,18 +240,17 @@ export default function AdminPage() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => setSelectedUser(user)}
-                        className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded transition-colors"
+                        className="px-3 py-1 bg-white hover:bg-gray-200 text-black text-sm rounded transition-colors"
                       >
                         充值
                       </button>
                       {user.role !== 'admin' && (
                         <button
                           onClick={() => toggleUserStatus(user)}
-                          className={`px-3 py-1 text-sm rounded transition-colors ${
-                            user.is_active
+                          className={`px-3 py-1 text-sm rounded transition-colors ${user.is_active
                               ? 'bg-red-600 hover:bg-red-700 text-white'
                               : 'bg-green-600 hover:bg-green-700 text-white'
-                          }`}
+                            }`}
                         >
                           {user.is_active ? '封禁' : '解封'}
                         </button>
@@ -282,7 +279,7 @@ export default function AdminPage() {
               <div className="text-sm text-zinc-400 mb-1">用户</div>
               <div className="font-medium">{selectedUser.email}</div>
               <div className="text-sm text-zinc-400">
-                当前积分: <span className="text-purple-400">{selectedUser.credits}</span>
+                当前积分: <span className="text-white/70">{selectedUser.credits}</span>
               </div>
             </div>
 
@@ -294,7 +291,7 @@ export default function AdminPage() {
                 type="number"
                 value={grantAmount}
                 onChange={(e) => setGrantAmount(e.target.value)}
-                className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                 placeholder="例如: 1000"
                 min="1"
               />
@@ -307,7 +304,7 @@ export default function AdminPage() {
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                 placeholder="例如: 微信转账 - 订单号 WX123456"
                 rows={3}
               />
@@ -326,7 +323,7 @@ export default function AdminPage() {
               </button>
               <button
                 onClick={handleGrantCredits}
-                className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded transition-colors"
+                className="flex-1 px-4 py-2 bg-white hover:bg-gray-200 text-black rounded transition-colors"
               >
                 确认充值
               </button>

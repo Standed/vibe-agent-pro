@@ -174,7 +174,7 @@ export default function Timeline() {
                   <div
                     key={clip.id}
                     onClick={() => shot && selectShot(shot.id)}
-                    className="absolute h-20 bg-gradient-to-r from-purple-600/30 to-indigo-600/30 border-2 border-purple-500/50 rounded cursor-pointer hover:border-purple-400 transition-all group"
+                    className="absolute h-20 bg-light-accent/10 dark:bg-cine-accent/10 border-2 border-light-accent/50 dark:border-cine-accent/50 rounded cursor-pointer hover:border-light-accent dark:hover:border-cine-accent transition-all group"
                     style={{
                       left: `${(clip.startTime / totalDuration) * 100}%`,
                       width: `${(clip.duration / totalDuration) * 100}%`,
@@ -197,14 +197,14 @@ export default function Timeline() {
                       <div className="text-[10px] font-bold text-light-text dark:text-white truncate">
                         {shot?.id.split('_').pop() || 'Shot'}
                       </div>
-                      <div className="text-[9px] text-purple-200 font-mono">
+                      <div className="text-[9px] text-light-text-muted dark:text-cine-text-muted font-mono">
                         {clip.duration.toFixed(1)}s
                       </div>
                     </div>
 
                     {/* Resize handles */}
-                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-400 opacity-0 group-hover:opacity-100 cursor-ew-resize"></div>
-                    <div className="absolute right-0 top-0 bottom-0 w-1 bg-purple-400 opacity-0 group-hover:opacity-100 cursor-ew-resize"></div>
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-light-accent dark:bg-cine-accent opacity-0 group-hover:opacity-100 cursor-ew-resize"></div>
+                    <div className="absolute right-0 top-0 bottom-0 w-1 bg-light-accent dark:bg-cine-accent opacity-0 group-hover:opacity-100 cursor-ew-resize"></div>
                   </div>
                 );
               })}

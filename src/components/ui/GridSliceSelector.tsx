@@ -90,13 +90,12 @@ export function GridSliceSelector({
                 return (
                   <div
                     key={index}
-                    className={`relative border-2 rounded-lg overflow-hidden cursor-pointer transition-all ${
-                      isSelected
-                        ? 'border-green-500 ring-2 ring-green-500/50'
+                    className={`relative border-2 rounded-lg overflow-hidden cursor-pointer transition-all ${isSelected
+                        ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/50 dark:ring-cine-accent/50'
                         : isCurrent
-                        ? 'border-blue-500'
-                        : 'border-light-border dark:border-cine-border hover:border-light-accent dark:hover:border-cine-accent'
-                    }`}
+                          ? 'border-gray-500 dark:border-gray-400'
+                          : 'border-light-border dark:border-cine-border hover:border-light-accent dark:hover:border-cine-accent'
+                      }`}
                     onClick={() => shotId && handleSelectSlice(index)}
                   >
                     <img
@@ -112,7 +111,7 @@ export function GridSliceSelector({
 
                     {/* Current Badge */}
                     {isCurrent && !isSelected && (
-                      <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                      <div className="absolute top-2 right-2 bg-gray-500 dark:bg-gray-400 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
                         <Check size={12} />
                         当前
                       </div>
@@ -120,8 +119,8 @@ export function GridSliceSelector({
 
                     {/* Selected Badge */}
                     {isSelected && (
-                      <div className="absolute inset-0 bg-green-500/20 flex items-center justify-center">
-                        <div className="bg-green-500 text-white p-3 rounded-full">
+                      <div className="absolute inset-0 bg-light-accent/20 dark:bg-cine-accent/20 flex items-center justify-center">
+                        <div className="bg-light-accent dark:bg-cine-accent text-white dark:text-black p-3 rounded-full">
                           <Check size={24} />
                         </div>
                       </div>
@@ -129,7 +128,7 @@ export function GridSliceSelector({
 
                     {/* Assignment Info (场景模式) */}
                     {gridData.assignments && Object.entries(gridData.assignments).find(([_, idx]) => idx === index) && (
-                      <div className="absolute bottom-2 left-2 right-2 bg-purple-500/90 text-white text-xs px-2 py-1 rounded truncate">
+                      <div className="absolute bottom-2 left-2 right-2 bg-black/90 dark:bg-white/90 text-white dark:text-black text-xs px-2 py-1 rounded truncate">
                         已分配
                       </div>
                     )}

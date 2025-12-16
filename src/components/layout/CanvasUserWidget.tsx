@@ -44,7 +44,7 @@ export function CanvasUserWidget() {
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.9, y: 20 }}
                         transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                        className="mb-2 p-4 rounded-2xl bg-white/80 dark:bg-black/40 backdrop-blur-xl border border-black/5 dark:border-white/20 shadow-2xl w-64 overflow-hidden"
+                        className="mb-3 p-5 rounded-[2rem] glass-card w-72 overflow-hidden ring-1 ring-black/5"
                     >
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-sm font-bold text-gray-900 dark:text-white">账户信息</h3>
@@ -57,7 +57,7 @@ export function CanvasUserWidget() {
                         </div>
 
                         <div className="flex items-center gap-3 mb-4">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-sm shadow-inner">
+                            <div className="w-10 h-10 rounded-full bg-light-accent dark:bg-cine-accent flex items-center justify-center text-white dark:text-black font-bold text-sm shadow-inner">
                                 {profile?.avatar_url ? (
                                     <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
                                 ) : (
@@ -83,7 +83,7 @@ export function CanvasUserWidget() {
                                 <span className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
                                     {profile?.credits || 0}
                                 </span>
-                                <button className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded-lg transition-colors flex items-center gap-1">
+                                <button className="text-xs bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black px-2 py-1 rounded-lg transition-colors flex items-center gap-1">
                                     <Plus size={12} />
                                     充值
                                 </button>
@@ -100,14 +100,14 @@ export function CanvasUserWidget() {
                 onClick={() => setIsExpanded(!isExpanded)}
                 className={`
           flex items-center gap-2 px-1.5 py-1.5 rounded-full 
-          bg-white/80 dark:bg-black/30 backdrop-blur-md 
-          border border-black/5 dark:border-white/20 shadow-lg 
-          hover:bg-white dark:hover:bg-black/40 hover:border-black/10 dark:hover:border-white/30 
+          glass-button
+          shadow-[0_8px_30px_rgba(0,0,0,0.12)] 
+          hover:scale-105
           transition-all duration-300 group
-          ${isExpanded ? 'bg-white dark:bg-black/50 border-black/10 dark:border-white/40' : ''}
+          ${isExpanded ? 'bg-white/90 dark:bg-black/70 ring-2 ring-light-accent/20 dark:ring-cine-accent/20' : ''}
         `}
             >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-xs shadow-sm group-hover:shadow-md transition-shadow">
+                <div className="w-8 h-8 rounded-full bg-light-accent dark:bg-cine-accent flex items-center justify-center text-white dark:text-black font-bold text-xs shadow-sm group-hover:shadow-md transition-shadow">
                     {profile?.avatar_url ? (
                         <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
                     ) : (

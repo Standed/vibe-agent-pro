@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
 
   const requestId = `grid-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}, credits: ${user.credits}, cost: ${requiredCredits}`);
+  // console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}, credits: ${user.credits}, cost: ${requiredCredits}`);
 
   try {
     const body = await request.json();
@@ -103,8 +103,8 @@ export async function POST(request: NextRequest) {
     };
 
     // 🔍 调试：检查代理配置
-    console.log('[Gemini Grid] HTTP_PROXY:', process.env.HTTP_PROXY);
-    console.log('[Gemini Grid] HTTPS_PROXY:', process.env.HTTPS_PROXY);
+    // console.log('[Gemini Grid] HTTP_PROXY:', process.env.HTTP_PROXY);
+    // console.log('[Gemini Grid] HTTPS_PROXY:', process.env.HTTPS_PROXY);
 
     if (process.env.HTTP_PROXY) {
       try {
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
           connectTimeout: 60000, // 60s connection timeout
         });
         fetchOptions.dispatcher = proxyAgent;
-        console.log('[Gemini Grid] ✅ ProxyAgent created successfully');
+        // console.log('[Gemini Grid] ✅ ProxyAgent created successfully');
       } catch (e) {
         console.error('[Gemini Grid] ❌ Failed to create ProxyAgent:', e);
       }
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
           bodyTimeout: 130000, // 130s body timeout
         });
         fetchOptions.dispatcher = agent;
-        console.log('[Gemini Grid] ✅ Agent created with extended timeouts');
+        // console.log('[Gemini Grid] ✅ Agent created with extended timeouts');
       } catch (e) {
         console.error('[Gemini Grid] ❌ Failed to create Agent:', e);
       }
@@ -139,17 +139,17 @@ export async function POST(request: NextRequest) {
     const totalViews = gridRows * gridCols;
 
     const startTime = Date.now();
-    console.log('[Gemini Grid] 🚀 Request started');
-    console.log('[Gemini Grid] 📊 Diagnostics:', {
-      timestamp: new Date().toISOString(),
-      bodySize: `${bodySize} KB`,
-      refImageCount,
-      promptLength,
-      gridSize: `${gridRows}x${gridCols}`,
-      totalViews,
-      aspectRatio,
-      proxy: process.env.HTTP_PROXY ? 'enabled' : 'disabled'
-    });
+    // console.log('[Gemini Grid] 🚀 Request started');
+    // console.log('[Gemini Grid] 📊 Diagnostics:', {
+    //   timestamp: new Date().toISOString(),
+    //   bodySize: `${bodySize} KB`,
+    //   refImageCount,
+    //   promptLength,
+    //   gridSize: `${gridRows}x${gridCols}`,
+    //   totalViews,
+    //   aspectRatio,
+    //   proxy: process.env.HTTP_PROXY ? 'enabled' : 'disabled'
+    // });
 
     const resp = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
     clearTimeout(timeout);
 
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.log(`[Gemini Grid] ✅ Request completed in ${elapsedTime}s`);
+    // console.log(`[Gemini Grid] ✅ Request completed in ${elapsedTime}s`);
 
     if (!resp.ok) {
       const text = await resp.text();
@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
 
     // 📊 记录响应数据大小
     const responseSize = (uri.length / 1024).toFixed(2);
-    console.log('[Gemini Grid] 📊 Response size:', `${responseSize} KB (base64)`);
+    // console.log('[Gemini Grid] 📊 Response size:', `${responseSize} KB (base64)`);
 
     // 4. 消耗积分
     const consumeResult = await consumeCredits(
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
+    // console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
 
     return NextResponse.json({ fullImage: `data:image/png;base64,${uri}`, requestId });
   } catch (error: any) {

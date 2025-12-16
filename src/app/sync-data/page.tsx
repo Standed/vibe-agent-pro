@@ -90,7 +90,7 @@ export default function SyncDataPage() {
             <p className="text-yellow-400">⚠️ 未检测到登录状态，请先登录</p>
             <button
               onClick={() => router.push('/auth/login')}
-              className="mt-3 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              className="mt-3 px-4 py-2 bg-white text-black rounded-lg hover:bg-gray-200 transition-colors"
             >
               前往登录
             </button>
@@ -100,7 +100,7 @@ export default function SyncDataPage() {
         {userEmail && !syncing && !result && (
           <button
             onClick={handleSync}
-            className="w-full py-4 px-6 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all text-lg"
+            className="w-full py-4 px-6 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-all text-lg"
           >
             开始同步
           </button>
@@ -108,21 +108,19 @@ export default function SyncDataPage() {
 
         {syncing && (
           <div className="text-center py-8">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-purple-500 border-t-transparent mb-4"></div>
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-white/20 border-t-transparent mb-4"></div>
             <p className="text-white text-lg">正在同步中...</p>
             <p className="text-zinc-400 text-sm mt-2">请勿关闭此页面</p>
           </div>
         )}
 
         {result && (
-          <div className={`p-6 rounded-lg border ${
-            result.success
+          <div className={`p-6 rounded-lg border ${result.success
               ? 'bg-green-900/20 border-green-700'
               : 'bg-red-900/20 border-red-700'
-          }`}>
-            <h2 className={`text-xl font-bold mb-3 ${
-              result.success ? 'text-green-400' : 'text-red-400'
             }`}>
+            <h2 className={`text-xl font-bold mb-3 ${result.success ? 'text-green-400' : 'text-red-400'
+              }`}>
               {result.success ? '✅ 同步成功' : '❌ 同步失败'}
             </h2>
             <p className="text-white mb-4">{result.message}</p>
@@ -166,7 +164,7 @@ export default function SyncDataPage() {
               {!result.success && (
                 <button
                   onClick={handleSync}
-                  className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  className="px-6 py-2 bg-white text-black rounded-lg hover:bg-gray-200 transition-colors"
                 >
                   重试
                 </button>

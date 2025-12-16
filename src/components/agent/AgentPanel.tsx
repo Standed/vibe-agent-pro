@@ -14,6 +14,7 @@ export default function AgentPanel() {
   const { user } = useAuth();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
@@ -50,6 +51,14 @@ export default function AgentPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, thinkingSteps]);
 
+  // Auto-resize input
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
+  }, [input]);
+
   const handleSendMessage = async () => {
     if (!input.trim() || isProcessing) return;
 
@@ -82,9 +91,9 @@ export default function AgentPanel() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-light-bg dark:bg-cine-bg">
+    <div className="flex flex-col h-full glass-panel">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-light-border dark:border-cine-border">
+      <div className="flex items-center justify-between p-6 border-b border-black/5 dark:border-white/5">
         <div className="flex items-center gap-2">
           <Bot size={20} className="text-light-accent dark:text-cine-accent" />
           <h2 className="font-semibold text-light-text dark:text-white">
@@ -94,10 +103,10 @@ export default function AgentPanel() {
 
         <button
           onClick={handleClearSession}
-          className="p-2 hover:bg-light-bg dark:hover:bg-cine-panel rounded-lg transition-colors"
+          className="p-2 glass-button rounded-lg"
           title="清除会话"
         >
-          <Trash2 size={18} className="text-light-text-muted dark:text-cine-text-muted" />
+          <Trash2 size={18} className="text-gray-500 dark:text-gray-400" />
         </button>
         {isProcessing && (
           <button
@@ -128,9 +137,8 @@ export default function AgentPanel() {
             {chatHistory.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex gap-3 ${
-                  msg.role === 'user' ? 'justify-end' : 'justify-start'
-                }`}
+                className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'
+                  }`}
               >
                 {msg.role === 'assistant' && (
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-light-accent dark:bg-cine-accent flex items-center justify-center">
@@ -139,20 +147,18 @@ export default function AgentPanel() {
                 )}
 
                 <div
-                  className={`max-w-[80%] rounded-lg p-3 ${
-                    msg.role === 'user'
-                      ? 'bg-light-accent dark:bg-cine-accent text-white'
-                      : 'bg-light-panel dark:bg-cine-panel text-light-text dark:text-white'
-                  }`}
+                  className={`max-w-[80%] rounded-2xl p-4 shadow-sm ${msg.role === 'user'
+                    ? 'bg-black/5 dark:bg-white/10 text-light-text dark:text-white shadow-sm border border-black/5 dark:border-white/5 rounded-tr-sm'
+                    : 'glass-card text-gray-800 dark:text-gray-100 rounded-tl-sm'
+                    }`}
                 >
                   <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
 
                   {/* Timestamp */}
-                  <div className={`text-xs mt-1 ${
-                    msg.role === 'user'
-                      ? 'text-white/70'
-                      : 'text-light-text-muted dark:text-cine-text-muted'
-                  }`}>
+                  <div className={`text-xs mt-1 ${msg.role === 'user'
+                    ? 'text-white/70'
+                    : 'text-light-text-muted dark:text-cine-text-muted'
+                    }`}>
                     {new Date(msg.timestamp).toLocaleTimeString('zh-CN', {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -192,37 +198,37 @@ export default function AgentPanel() {
 
       {/* Quick Presets */}
       {chatHistory.length === 0 && !isProcessing && (
-        <div className="px-4 py-3 border-t border-light-border dark:border-cine-border bg-light-panel/50 dark:bg-cine-panel/50">
-          <p className="text-xs text-light-text-muted dark:text-cine-text-muted mb-2">
+        <div className="px-6 py-4 border-t border-black/5 dark:border-white/5 bg-white/30 dark:bg-black/20 backdrop-blur-sm">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 font-medium">
             快捷操作：
           </p>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setInput('使用 SeeDream 为当前场景所有未生成的分镜生成图片')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200"
             >
-              <Sparkles size={14} />
+              <Sparkles size={14} className="text-light-accent dark:text-cine-accent" />
               SeeDream 批量生成
             </button>
             <button
               onClick={() => setInput('使用 Gemini Grid (2x2) 为当前场景生成多视图并自动分配')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200"
             >
-              <Grid3x3 size={14} />
+              <Grid3x3 size={14} className="text-blue-500" />
               Grid 2x2 自动分配
             </button>
             <button
               onClick={() => setInput('使用 Gemini Grid (3x3) 为当前场景生成多视图并自动分配')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200"
             >
-              <Grid3x3 size={14} />
+              <Grid3x3 size={14} className="text-blue-500" />
               Grid 3x3 自动分配
             </button>
             <button
               onClick={() => setInput('为整个项目的所有未生成分镜使用 SeeDream 生成图片')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200"
             >
-              <ImageIcon size={14} />
+              <ImageIcon size={14} className="text-green-500" />
               全项目批量生成
             </button>
           </div>
@@ -230,32 +236,34 @@ export default function AgentPanel() {
       )}
 
       {/* Input */}
-      <div className="p-4 border-t border-light-border dark:border-cine-border">
+      <div className="p-4 m-4 mt-0 glass-card">
         <div className="flex gap-2">
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
             disabled={isProcessing}
-            className="flex-1 bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent resize-none disabled:opacity-50 disabled:cursor-not-allowed text-light-text dark:text-white"
-            rows={2}
+            className="flex-1 bg-transparent border-none px-2 py-3 text-sm focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 overflow-y-auto"
+            rows={1}
+            style={{ minHeight: '44px', maxHeight: '200px' }}
           />
 
           <button
             onClick={handleSendMessage}
             disabled={!input.trim() || isProcessing}
-            className="flex-shrink-0 w-12 h-12 rounded-lg bg-light-accent dark:bg-cine-accent text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity flex items-center justify-center"
+            className="flex-shrink-0 w-10 h-10 rounded-full bg-black dark:bg-white text-white dark:text-black hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center shadow-md"
           >
             {isProcessing ? (
-              <Loader2 size={20} className="animate-spin" />
+              <Loader2 size={18} className="animate-spin" />
             ) : (
-              <Send size={20} />
+              <Send size={18} />
             )}
           </button>
         </div>
 
-        <div className="mt-2 text-xs text-light-text-muted dark:text-cine-text-muted">
+        <div className="mt-2 text-[10px] text-gray-400 dark:text-gray-500 px-2">
           提示: Agent 会自动使用增强上下文和并行执行，大幅提升处理效率
         </div>
       </div>

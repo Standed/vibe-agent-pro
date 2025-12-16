@@ -6,8 +6,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { supabaseAdmin } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
+import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
+import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 // 初始化 R2 客户端（兼容 S3 API）
 const r2Client = new S3Client({
@@ -23,39 +23,30 @@ const BUCKET_NAME = process.env.R2_BUCKET_NAME!;
 const PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL!;
 
 /**
- * 获取当前用户（服务端）
- */
-async function getServerUser() {
-  const cookieStore = await cookies();
-
-  // 获取所有 Supabase 相关的 cookies
-  const allCookies = cookieStore.getAll();
-  const accessToken = allCookies.find(c => c.name.includes('auth-token'))?.value;
-
-  if (!accessToken) {
-    return null;
-  }
-
-  // 使用 admin client 验证 token 并获取用户
-  const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
-
-  if (error || !user) {
-    return null;
-  }
-
-  return user;
-}
-
-/**
  * POST - 上传文件到 R2
  */
 export async function POST(request: NextRequest) {
+  // 1. 验证用户身份
+  const authResult = await authenticateRequest(request);
+  if ('error' in authResult) {
+    return authResult.error;
+  }
+  const { user } = authResult;
+
+  // 2. 计算所需积分
+  const requiredCredits = calculateCredits('UPLOAD_PROCESS', user.role);
+  const operationDesc = getOperationDescription('UPLOAD_PROCESS');
+
+  // 3. 检查积分
+  const creditsCheck = checkCredits(user, requiredCredits);
+  if ('error' in creditsCheck) {
+    return creditsCheck.error;
+  }
+
+  const requestId = `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}, credits: ${user.credits}, cost: ${requiredCredits}`);
+
   try {
-    // 验证用户身份
-    const user = await getServerUser();
-    if (!user) {
-      return NextResponse.json({ error: '请先登录' }, { status: 401 });
-    }
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -89,13 +80,32 @@ export async function POST(request: NextRequest) {
     // 返回公开 URL
     const url = `${PUBLIC_URL}/${key}`;
 
+    // 4. 消耗积分
+    const consumeResult = await consumeCredits(
+      user.id,
+      requiredCredits,
+      'upload-file',
+      `${operationDesc} (${file.name})`
+    );
+
+    if (!consumeResult.success) {
+      console.error(`[${requestId}] 💳 Failed to consume credits:`, consumeResult.error);
+      return NextResponse.json(
+        { error: '积分扣除失败: ' + consumeResult.error },
+        { status: 500 }
+      );
+    }
+
+    console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
+
     return NextResponse.json({
       url,
       key,
       bucket: BUCKET_NAME,
+      requestId,
     });
   } catch (error: any) {
-    console.error('R2 upload error:', error);
+    console.error(`[${requestId}] ❌ R2 upload error:`, error);
     return NextResponse.json(
       { error: error.message || '上传失败' },
       { status: 500 }
@@ -107,12 +117,14 @@ export async function POST(request: NextRequest) {
  * DELETE - 从 R2 删除文件
  */
 export async function DELETE(request: NextRequest) {
+  // 删除操作不需要验证用户身份和积分,使用简化的认证
+  const authResult = await authenticateRequest(request);
+  if ('error' in authResult) {
+    return authResult.error;
+  }
+  const { user } = authResult;
+
   try {
-    // 验证用户身份
-    const user = await getServerUser();
-    if (!user) {
-      return NextResponse.json({ error: '请先登录' }, { status: 401 });
-    }
 
     const { key } = await request.json();
 

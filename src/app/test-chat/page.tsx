@@ -303,7 +303,7 @@ export default function TestChatPage() {
             <button
               onClick={runFullTest}
               disabled={testing || !userId || !projectId}
-              className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {testing ? '测试中...' : '运行完整测试'}
             </button>

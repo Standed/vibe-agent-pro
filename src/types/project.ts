@@ -46,6 +46,18 @@ export enum GridMode {
   GRID_3x3 = '3x3'
 }
 
+// Grid Generation Result (for modal preview)
+export interface GridGenerationResult {
+  fullImage: string;
+  slices: string[];
+  sceneId: string;
+  gridRows: number;
+  gridCols: number;
+  prompt: string;
+  aspectRatio: AspectRatio;
+  gridSize: '2x2' | '3x3';
+}
+
 export interface ProjectMetadata {
   title: string;
   description: string;

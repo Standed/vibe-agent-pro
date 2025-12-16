@@ -21,6 +21,17 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { dataService } from '@/lib/dataService';
 import type { ChatMessage } from '@/types/project';
 
+const generateMessageId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 export interface UseAgentResult {
   isProcessing: boolean;
   thinkingSteps: ThinkingStep[];
@@ -177,7 +188,7 @@ export function useAgent(): UseAgentResult {
       // ⭐ 保存用户消息到云端数据库（chat_messages表）
       if (user && project) {
         await dataService.saveChatMessage({
-          id: `msg_${Date.now()}_user`,
+          id: generateMessageId(),
           userId: user.id,
           projectId: project.id,
           scope: 'project',
@@ -370,7 +381,7 @@ export function useAgent(): UseAgentResult {
 
       if (user && project) {
         await dataService.saveChatMessage({
-          id: `msg_${Date.now()}_assistant`,
+          id: generateMessageId(),
           userId: user.id,
           projectId: project.id,
           scope: 'project',

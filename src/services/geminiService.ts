@@ -14,29 +14,118 @@ const GEMINI_TIMEOUT_MS = parseTimeout(
   240000
 );
 
-const postJson = async <T>(url: string, body: any, timeoutMs: number = GEMINI_TIMEOUT_MS): Promise<T> => {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    // 使用认证的 fetch，自动添加 Authorization header
-    const resp = await authenticatedFetch(url, {
-      method: 'POST',
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-    clearTimeout(id);
-    if (!resp.ok) {
-      const text = await resp.text();
-      throw new Error(text || resp.statusText);
+// 重试配置
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000; // 2秒
+
+/**
+ * 带重试机制的 POST 请求
+ */
+const postJson = async <T>(
+  url: string,
+  body: any,
+  timeoutMs: number = GEMINI_TIMEOUT_MS,
+  retries: number = MAX_RETRIES
+): Promise<T> => {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      if (attempt > 0) {
+        console.log(`[postJson] 重试 ${attempt}/${retries}...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+      }
+
+      console.log('[postJson] 开始发送请求到:', url, `(尝试 ${attempt + 1}/${retries + 1})`);
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        console.log('[postJson] 准备调用 authenticatedFetch...');
+        const resp = await authenticatedFetch(url, {
+          method: 'POST',
+          body: JSON.stringify(body),
+          signal: controller.signal
+        });
+        console.log('[postJson] authenticatedFetch 返回，状态码:', resp.status);
+        clearTimeout(id);
+
+        if (!resp.ok) {
+          const text = await resp.text();
+
+          // 友好的错误提示
+          if (resp.status === 401) {
+            throw new Error('请先登录后再使用 AI 生成功能');
+          }
+          if (resp.status === 403) {
+            try {
+              const errorData = JSON.parse(text);
+              if (errorData.error?.includes('积分')) {
+                throw new Error(errorData.error);
+              }
+            } catch (e) {
+              // JSON 解析失败，使用默认错误
+            }
+          }
+
+          // 对于 5xx 错误，可以重试；4xx 错误不重试
+          if (resp.status >= 500 && attempt < retries) {
+            lastError = new Error(`服务器错误 (${resp.status}): ${text}`);
+            continue;
+          }
+
+          throw new Error(text || resp.statusText);
+        }
+
+        return resp.json();
+      } catch (error) {
+        clearTimeout(id);
+
+        // 特殊处理未登录错误 - 不重试
+        if ((error as any)?.message?.includes('未登录')) {
+          throw new Error('请先登录后再使用 AI 生成功能');
+        }
+
+        // 积分不足错误 - 不重试
+        if ((error as any)?.message?.includes('积分')) {
+          throw error;
+        }
+
+        // 超时错误 - 可以重试
+        if ((error as any)?.name === 'AbortError') {
+          if (attempt < retries) {
+            lastError = new Error(`请求超时（${timeoutMs / 1000}秒）`);
+            continue;
+          }
+          throw new Error(`请求超时（${timeoutMs / 1000}秒）`);
+        }
+
+        // 网络错误 - 可以重试
+        if ((error as any)?.message?.includes('fetch failed') || (error as any)?.message?.includes('network')) {
+          if (attempt < retries) {
+            lastError = error as Error;
+            continue;
+          }
+        }
+
+        throw error;
+      }
+    } catch (error) {
+      // 对于不应该重试的错误，直接抛出
+      if ((error as any)?.message?.includes('未登录') || (error as any)?.message?.includes('积分')) {
+        throw error;
+      }
+
+      // 最后一次重试仍然失败
+      if (attempt === retries) {
+        throw error;
+      }
+
+      lastError = error as Error;
     }
-    return resp.json();
-  } catch (error) {
-    clearTimeout(id);
-    if ((error as any)?.name === 'AbortError') {
-      throw new Error(`请求超时（${timeoutMs / 1000}秒）`);
-    }
-    throw error;
   }
+
+  throw lastError || new Error('请求失败');
 };
 
 // Helper to slice a grid image into individual images
@@ -181,8 +270,10 @@ ${prompt}
   console.log('[geminiService Grid Debug] Final safeReferenceImages.length:', safeReferenceImages.length);
   console.log('[geminiService Grid Debug] Final gridPrompt:', gridPrompt);
   console.log('[geminiService Grid Debug] ========== END ==========');
+  console.log('[geminiService Grid Debug] 🚀 准备发送 Gemini API 请求...');
 
   try {
+    console.log('[geminiService Grid Debug] 📡 调用 postJson...');
     const data = await postJson<{ fullImage: string }>('/api/gemini-grid', {
       prompt: gridPrompt,
       gridRows,
@@ -190,14 +281,25 @@ ${prompt}
       aspectRatio,
       referenceImages: safeReferenceImages
     });
+    console.log('[geminiService Grid Debug] ✅ API 请求成功');
+    console.log('[geminiService Grid Debug] fullImage 长度:', data.fullImage?.length || 0);
 
     const fullImageBase64 = data.fullImage;
     if (!fullImageBase64) throw new Error('未能生成 Grid 图片');
 
     // Slice the single high-res grid into separate base64 images
+    console.log('[geminiService Grid Debug] 🔪 开始切片 Grid 图片...');
+    console.log('[geminiService Grid Debug] Grid 尺寸:', gridRows, 'x', gridCols);
     const panels = await sliceImageGrid(fullImageBase64, gridRows, gridCols);
-    return { fullImage: fullImageBase64, slices: panels };
+    console.log('[geminiService Grid Debug] ✅ 切片完成，共', panels.length, '个面板');
+
+    const returnValue = { fullImage: fullImageBase64, slices: panels };
+    console.log('[geminiService Grid Debug] 🎉 准备返回结果...');
+    console.log('[geminiService Grid Debug] returnValue.fullImage 长度:', returnValue.fullImage.length);
+    console.log('[geminiService Grid Debug] returnValue.slices 数量:', returnValue.slices.length);
+    return returnValue;
   } catch (error: any) {
+    console.error('[geminiService Grid Debug] ❌ 错误:', error);
     console.error('Grid generation error:', error);
     if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED') || error.message?.includes('leaked') || error.message?.includes('API key not valid') || error.message?.includes('blocked') || error.status === 400 || error.status === 403) {
       throw new Error('Gemini API Key 无效、已失效或服务被封禁 (400/403)。请检查 .env.local 文件中的配置。');

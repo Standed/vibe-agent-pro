@@ -1,7 +1,28 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
+import { calculateCredits, getOperationDescription } from '@/config/credits';
 
-import { NextResponse } from 'next/server';
+export async function POST(request: NextRequest) {
+  // 1. 验证用户身份
+  const authResult = await authenticateRequest(request);
+  if ('error' in authResult) {
+    return authResult.error;
+  }
+  const { user } = authResult;
 
-export async function POST(request: Request) {
+  // 2. 计算所需积分
+  const requiredCredits = calculateCredits('SEEDREAM_EDIT', user.role);
+  const operationDesc = getOperationDescription('SEEDREAM_EDIT');
+
+  // 3. 检查积分
+  const creditsCheck = checkCredits(user, requiredCredits);
+  if ('error' in creditsCheck) {
+    return creditsCheck.error;
+  }
+
+  const requestId = `seedream-edit-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}, credits: ${user.credits}, cost: ${requiredCredits}`);
+
   try {
     const body = await request.json();
     const { imageUrl, prompt, size = '2048x2048', model } = body || {};
@@ -68,12 +89,36 @@ export async function POST(request: Request) {
       const dataUrl = `data:${mimeType};base64,${base64}`;
 
       console.log('✅ SeeDream 编辑图片已转换为 base64 data URL');
-      return NextResponse.json({ url: dataUrl });
+
+      // 4. 消耗积分
+      const consumeResult = await consumeCredits(
+        user.id,
+        requiredCredits,
+        'edit-image',
+        `${operationDesc}`
+      );
+
+      if (!consumeResult.success) {
+        console.error(`[${requestId}] 💳 Failed to consume credits:`, consumeResult.error);
+        return NextResponse.json(
+          { error: '积分扣除失败: ' + consumeResult.error },
+          { status: 500 }
+        );
+      }
+
+      console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
+
+      return NextResponse.json({ url: dataUrl, requestId });
     } catch (downloadError: any) {
       console.warn('Failed to convert edited image to base64, returning original URL:', downloadError);
-      return NextResponse.json({ url });
+
+      // 即使下载失败也消耗积分,因为API调用已成功
+      await consumeCredits(user.id, requiredCredits, 'edit-image', operationDesc);
+
+      return NextResponse.json({ url, requestId });
     }
   } catch (error: any) {
+    console.error(`[${requestId}] ❌ SeeDream Edit failed:`, error);
     return NextResponse.json({ error: error?.message || 'unknown error' }, { status: 500 });
   }
 }

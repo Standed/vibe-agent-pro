@@ -1,5 +1,5 @@
 'use client';
-
+// deprecated
 import {
   Send,
   Image as ImageIcon,
@@ -531,9 +531,9 @@ export default function ChatPanel() {
                 ))}
               </div>
             )}
-            <div className="bg-light-accent dark:bg-cine-accent text-white rounded-2xl rounded-tr-sm px-4 py-3">
-              <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-              <div className="text-xs opacity-70 mt-1">
+            <div className="bg-black/5 dark:bg-white/10 text-light-text dark:text-white rounded-2xl rounded-tr-sm px-5 py-3 backdrop-blur-md border border-black/5 dark:border-white/5">
+              <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+              <div className="text-[10px] opacity-60 mt-1 text-right">
                 {msg.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
@@ -546,8 +546,8 @@ export default function ChatPanel() {
     return (
       <div key={msg.id} className="flex justify-start mb-4">
         <div className="max-w-[70%]">
-          <div className="bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-2xl rounded-tl-sm px-4 py-3">
-            <div className="text-sm text-light-text dark:text-white whitespace-pre-wrap mb-2">
+          <div className="bg-white/80 dark:bg-[#1a1a1a]/80 border border-black/5 dark:border-white/10 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm backdrop-blur-md">
+            <div className="text-sm text-gray-800 dark:text-gray-100 whitespace-pre-wrap mb-2 leading-relaxed">
               {msg.content}
             </div>
             {msg.images && msg.images.length > 0 && (
@@ -587,9 +587,9 @@ export default function ChatPanel() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-light-bg dark:bg-cine-bg">
+    <div className="h-full flex flex-col bg-white/50 dark:bg-[#0a0a0a]/50 backdrop-blur-3xl">
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-light-border dark:border-cine-border px-6 py-4">
+      <div className="flex-shrink-0 px-6 py-4 border-b border-black/5 dark:border-white/5">
         <h2 className="text-lg font-bold text-light-text dark:text-white">
           Pro 模式 - AI 对话生成
         </h2>
@@ -625,7 +625,7 @@ export default function ChatPanel() {
       </div>
 
       {/* Input Area */}
-      <div className="flex-shrink-0 border-t border-light-border dark:border-cine-border p-4 bg-light-panel dark:bg-cine-panel">
+      <div className="flex-shrink-0 p-4 m-4 mt-0 bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-3xl shadow-lg">
         {/* Uploaded Images Preview */}
         {uploadedImages.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-2">
@@ -693,10 +693,10 @@ export default function ChatPanel() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isGenerating}
-            className="flex-shrink-0 p-3 bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border rounded-lg hover:bg-light-border dark:hover:bg-cine-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-shrink-0 p-2.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="上传参考图"
           >
-            <ImageIcon size={20} className="text-light-text dark:text-white" />
+            <ImageIcon size={22} className="text-gray-500 dark:text-gray-400" />
           </button>
 
           {/* Text Input */}
@@ -711,15 +711,16 @@ export default function ChatPanel() {
             }}
             placeholder="输入提示词... (Enter 发送, Shift+Enter 换行)"
             disabled={isGenerating}
-            className="flex-1 bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent resize-none disabled:opacity-50 disabled:cursor-not-allowed"
-            rows={2}
+            className="flex-1 bg-transparent border-none px-2 py-3 text-sm focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
+            rows={1}
+            style={{ minHeight: '44px', maxHeight: '120px' }}
           />
 
           {/* Send Button */}
           <button
             onClick={handleSend}
             disabled={isGenerating || (!inputText.trim() && uploadedImages.length === 0)}
-            className="flex-shrink-0 px-6 bg-light-accent dark:bg-cine-accent text-white rounded-lg font-medium hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-shrink-0 w-10 h-10 bg-black dark:bg-white text-white dark:text-black rounded-full hover:scale-105 active:scale-95 transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
           >
             {isGenerating ? (
               <Loader2 size={20} className="animate-spin" />

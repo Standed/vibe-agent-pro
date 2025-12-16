@@ -15,6 +15,7 @@ import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import { consumeCredits, getUserCredits, getGridCost } from '@/lib/supabase/credits';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { logger } from '@/lib/logService';
+import { dataService } from '@/lib/dataService';
 
 type GenerationType = 'grid' | 'single' | 'video' | 'edit' | 'batch' | null;
 type EditModel = 'seedream' | 'gemini';
@@ -429,6 +430,7 @@ export default function ProPanel() {
       console.log('[ProPanel Grid Debug] referenceImageMap:', referenceImageMap);
       console.log('[ProPanel Grid Debug] refImages.length:', refImages.length);
 
+      console.log('[ProPanel] 🚀 准备调用 generateMultiViewGrid...');
       const result = await generateMultiViewGrid(
         finalPrompt,
         rows,
@@ -436,7 +438,18 @@ export default function ProPanel() {
         aspectRatio,
         ImageSize.K4,
         refImages
-      );
+      ).catch((error) => {
+        console.error('[ProPanel] ❌ generateMultiViewGrid 抛出异常:', error);
+        throw error;
+      });
+
+      console.log('[ProPanel] ✅ generateMultiViewGrid 返回成功');
+      console.log('[ProPanel] fullImage 长度:', result.fullImage?.length || 0);
+      console.log('[ProPanel] slices 数量:', result.slices?.length || 0);
+
+      if (!result || !result.fullImage || !result.slices || result.slices.length === 0) {
+        throw new Error('Grid 生成结果无效');
+      }
 
       // 持久化 Grid 历史（场景级）
       addGridHistory(targetScene.id, {
@@ -475,14 +488,133 @@ export default function ProPanel() {
         }
       }
 
-      // Show Grid preview modal for manual assignment
-      setGridResult({
-        fullImage: result.fullImage,
-        slices: result.slices,
+      // 🔄 尝试上传完整图和切片到 R2（可选，失败时回退到 base64）
+      let fullImageUrl = result.fullImage;
+      let sliceUrls = result.slices;
+
+      console.log('[ProPanel] 📤 开始上传到 R2...');
+      console.log('[ProPanel] 待上传：fullImage 长度', result.fullImage.length, '+ slices 数量', result.slices.length);
+
+      try {
+        toast.info('正在上传图片到云存储...', { duration: 2000 });
+        const { storageService } = await import('@/lib/storageService');
+        const folder = `projects/${project?.id || 'temp'}/grids`; // 修复：处理 project 可能为 null
+
+        console.log('[ProPanel] 开始上传 fullImage...');
+        // 上传完整图
+        fullImageUrl = await storageService.uploadBase64ToR2(
+          result.fullImage,
+          folder,
+          `grid_full_${Date.now()}.png`
+        );
+        console.log('[ProPanel] ✅ fullImage 上传完成:', fullImageUrl.substring(0, 50) + '...');
+
+        console.log('[ProPanel] 开始批量上传 slices...');
+        // 批量上传所有切片
+        sliceUrls = await storageService.uploadBase64ArrayToR2(
+          result.slices,
+          folder
+        );
+        console.log('[ProPanel] ✅ slices 上传完成，数量:', sliceUrls.length);
+
+        toast.success('图片上传成功！');
+        console.log('[ProPanel] ✅ Grid 图片已上传到 R2');
+      } catch (uploadError: any) {
+        console.warn('[ProPanel] ⚠️ R2 upload failed, using base64 fallback:', uploadError);
+        toast.warning('图片上传失败，使用本地存储');
+        // 上传失败时回退到 base64（不影响功能）
+        fullImageUrl = result.fullImage;
+        sliceUrls = result.slices;
+      }
+
+      console.log('[ProPanel] 准备调用 setGridResult...');
+      console.log('[ProPanel] fullImageUrl 长度:', fullImageUrl?.length || 0);
+      console.log('[ProPanel] sliceUrls 数量:', sliceUrls?.length || 0);
+
+      // Show Grid preview modal with URLs (R2 or base64)
+      const gridResultData = {
+        fullImage: fullImageUrl,
+        slices: sliceUrls,
+        sceneId: targetScene.id,
+        gridRows: rows,
+        gridCols: cols,
+      };
+      console.log('[ProPanel] 准备更新 gridResult 状态:', gridResultData);
+
+      // 使用 setTimeout 确保状态更新在下一个事件循环中执行
+      setTimeout(() => {
+        console.log('[ProPanel] 🔄 执行 setGridResult...');
+        setGridResult(gridResultData);
+        console.log('[ProPanel] ✅ setGridResult 执行完成');
+      }, 0);
+
+      console.log('[ProPanel] gridResult 状态已更新为:', {
+        fullImage: fullImageUrl?.substring(0, 50) + '...',
+        slicesCount: sliceUrls?.length,
         sceneId: targetScene.id,
         gridRows: rows,
         gridCols: cols,
       });
+
+      // 💾 保存到聊天历史（Pro 模式）
+      if (user && project) { // 修复：添加 project 检查
+        try {
+          const now = new Date();
+          await dataService.saveChatMessage({
+            id: crypto.randomUUID(),
+            userId: user.id,
+            projectId: project.id,
+            sceneId: targetScene.id,
+            scope: 'scene',
+            role: 'user',
+            content: `生成 ${gridSize} Grid: ${finalPrompt}`,
+            timestamp: now,
+            createdAt: now, // 添加缺失的字段
+            updatedAt: now, // 添加缺失的字段
+            metadata: {
+              gridData: {
+                fullImage: fullImageUrl, // 修复：使用 fullImage 而不是 fullGridUrl
+                slices: sliceUrls, // 修复：使用 slices 而不是 gridImages
+                sceneId: targetScene.id,
+                gridRows: rows,
+                gridCols: cols,
+                gridSize,
+                aspectRatio,
+                prompt: finalPrompt,
+              },
+            },
+          });
+
+          await dataService.saveChatMessage({
+            id: crypto.randomUUID(),
+            userId: user.id,
+            projectId: project.id,
+            sceneId: targetScene.id,
+            scope: 'scene',
+            role: 'assistant',
+            content: `已生成 ${gridSize} Grid，共 ${sliceUrls.length} 个切片。请在预览窗口中分配到分镜。`,
+            timestamp: now,
+            createdAt: now, // 添加缺失的字段
+            updatedAt: now, // 添加缺失的字段
+            metadata: {
+              gridData: {
+                fullImage: fullImageUrl, // 修复：使用 fullImage 而不是 fullGridUrl
+                slices: sliceUrls, // 修复：使用 slices 而不是 gridImages
+                sceneId: targetScene.id,
+                gridRows: rows,
+                gridCols: cols,
+                gridSize,
+                aspectRatio,
+                prompt: finalPrompt,
+              },
+            },
+          });
+
+          console.log('[ProPanel] ✅ 聊天记录已保存');
+        } catch (error) {
+          console.error('[ProPanel] ⚠️ 保存聊天记录失败:', error);
+        }
+      }
     } catch (error: any) {
       console.error('Grid generation error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Grid 生成失败';
@@ -1040,7 +1172,7 @@ export default function ProPanel() {
             } catch (seedreamError: any) {
               // 检测是否为模型未激活错误
               const isModelNotOpen = seedreamError.message?.includes('ModelNotOpen') ||
-                                    seedreamError.message?.includes('404');
+                seedreamError.message?.includes('404');
 
               if (isModelNotOpen) {
                 // 降级到 Gemini Grid
@@ -1171,7 +1303,7 @@ export default function ProPanel() {
                   }`}
                 title="一键为当前场景所有空缺镜头生成图片"
               >
-                <Sparkles size={20} className="mx-auto mb-1 text-purple-400" />
+                <Sparkles size={20} className="mx-auto mb-1 text-light-accent dark:text-cine-accent" />
                 <div className="text-xs">批量生成</div>
               </button>
             </>
@@ -1604,7 +1736,7 @@ export default function ProPanel() {
             {selectedShot.narration && (
               <div className="mt-3 pt-3 border-t border-light-border dark:border-cine-border">
                 <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-1">旁白:</div>
-                <div className="text-xs text-purple-200 bg-purple-900/20 p-2 rounded leading-relaxed italic">
+                <div className="text-xs text-light-text-muted dark:text-cine-text-muted bg-light-bg-secondary dark:bg-cine-bg-secondary p-2 rounded leading-relaxed italic">
                   {selectedShot.narration}
                 </div>
               </div>
