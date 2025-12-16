@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Plus, Film, Clock, Trash2, LogOut, Coins } from 'lucide-react';
 import { SettingsPanel } from '@/components/settings/SettingsPanel';
+import { UserNav } from '@/components/layout/UserNav';
 import { useI18n } from '@/components/providers/I18nProvider';
 import NewProjectDialog from '@/components/project/NewProjectDialog';
 import { useProjectStore } from '@/store/useProjectStore';
@@ -258,42 +259,8 @@ export default function Home() {
                 西羊石 AI 影视创作工具
               </p>
             </div>
-            {/* Settings Button */}
-            <div className="flex items-center gap-3">
-              {!user && (
-                <button
-                  onClick={() => router.push('/auth/login')}
-                  className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:border-light-accent dark:hover:border-cine-accent transition-colors"
-                >
-                  <LogOut size={16} />
-                  登录
-                </button>
-              )}
-              {user && (
-                <>
-                  {/* 积分显示 */}
-                  {profile && (
-                    <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 dark:border-purple-400/20">
-                      <Coins size={18} className="text-purple-600 dark:text-purple-400" />
-                      <div className="flex flex-col">
-                        <span className="text-xs text-light-text-muted dark:text-cine-text-muted">积分余额</span>
-                        <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                          {profile.credits || 0}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  <button
-                    onClick={handleSignOut}
-                    className="inline-flex items-center gap-2 text-sm text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white px-3 py-2 rounded-lg border border-transparent hover:border-light-border dark:hover:border-cine-border transition-colors"
-                  >
-                    <LogOut size={16} />
-                    退出
-                  </button>
-                </>
-              )}
-              <SettingsPanel />
-            </div>
+            {/* User Navigation */}
+            <UserNav />
           </div>
         </header>
 
