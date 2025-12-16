@@ -1,6 +1,8 @@
 // Volcano Engine API Service for video generation
 // Based on long_video_gen/app_250911.py
 
+import { authenticatedFetch } from '@/lib/api-client';
+
 export interface StoryboardScene {
   order_index: number;
   duration: number;
@@ -182,12 +184,9 @@ export class VolcanoEngineService {
 
     const size = aspectRatio && sizeMap[aspectRatio] ? sizeMap[aspectRatio] : '2048x2048';
 
-    // 调用 API 路由，由服务器端处理下载和 base64 转换
-    const response = await fetch('/api/seedream', {
+    // 调用 API 路由，由服务器端处理下载和 base64 转换（使用认证）
+    const response = await authenticatedFetch('/api/seedream', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         prompt,
         size,
@@ -232,12 +231,9 @@ export class VolcanoEngineService {
 
     const size = aspectRatio && sizeMap[aspectRatio] ? sizeMap[aspectRatio] : '2048x2048';
 
-    // 调用 API 路由，由服务器端处理下载和 base64 转换
-    const response = await fetch('/api/seedream-edit', {
+    // 调用 API 路由，由服务器端处理下载和 base64 转换（使用认证）
+    const response = await authenticatedFetch('/api/seedream-edit', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         imageUrl,
         prompt,
