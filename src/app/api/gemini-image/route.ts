@@ -1,10 +1,32 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { ProxyAgent, Agent } from 'undici';
+import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
+import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // 1. 验证用户身份
+  const authResult = await authenticateRequest(request);
+  if ('error' in authResult) {
+    return authResult.error;
+  }
+  const { user } = authResult;
+
+  // 2. 计算所需积分
+  const requiredCredits = calculateCredits('GEMINI_IMAGE', user.role);
+  const operationDesc = getOperationDescription('GEMINI_IMAGE');
+
+  // 3. 检查积分
+  const creditsCheck = checkCredits(user, requiredCredits);
+  if ('error' in creditsCheck) {
+    return creditsCheck.error;
+  }
+
+  const requestId = `image-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  // console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}, credits: ${user.credits}, cost: ${requiredCredits}`);
+
   try {
     const body = await request.json();
     const { prompt, referenceImages = [], aspectRatio = '1:1' } = body || {};
@@ -62,7 +84,7 @@ export async function POST(request: Request) {
           connectTimeout: 60000, // 60s connection timeout
         });
         fetchOptions.dispatcher = proxyAgent;
-        console.log('[Gemini Image] ✅ ProxyAgent created successfully');
+        // console.log('[Gemini Image] ✅ ProxyAgent created successfully');
       } catch (e) {
         console.error('[Gemini Image] ❌ Failed to create ProxyAgent:', e);
       }
@@ -75,7 +97,7 @@ export async function POST(request: Request) {
           bodyTimeout: 130000, // 130s body timeout
         });
         fetchOptions.dispatcher = agent;
-        console.log('[Gemini Image] ✅ Agent created with extended timeouts');
+        // console.log('[Gemini Image] ✅ Agent created with extended timeouts');
       } catch (e) {
         console.error('[Gemini Image] ❌ Failed to create Agent:', e);
       }
@@ -87,21 +109,21 @@ export async function POST(request: Request) {
     const promptLength = prompt.length;
 
     const startTime = Date.now();
-    console.log('[Gemini Image] 🚀 Request started');
-    console.log('[Gemini Image] 📊 Diagnostics:', {
-      timestamp: new Date().toISOString(),
-      bodySize: `${bodySize} KB`,
-      refImageCount,
-      promptLength,
-      aspectRatio,
-      proxy: process.env.HTTP_PROXY ? 'enabled' : 'disabled'
-    });
+    // console.log('[Gemini Image] 🚀 Request started');
+    // console.log('[Gemini Image] 📊 Diagnostics:', {
+    //   timestamp: new Date().toISOString(),
+    //   bodySize: `${bodySize} KB`,
+    //   refImageCount,
+    //   promptLength,
+    //   aspectRatio,
+    //   proxy: process.env.HTTP_PROXY ? 'enabled' : 'disabled'
+    // });
 
     const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, fetchOptions);
     clearTimeout(timeout);
 
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.log(`[Gemini Image] ✅ Request completed in ${elapsedTime}s`);
+    // console.log(`[Gemini Image] ✅ Request completed in ${elapsedTime}s`);
 
     if (!resp.ok) {
       const text = await resp.text();
@@ -116,11 +138,32 @@ export async function POST(request: Request) {
 
     // 📊 记录响应数据大小
     const responseSize = (uri.length / 1024).toFixed(2);
-    console.log('[Gemini Image] 📊 Response size:', `${responseSize} KB (base64)`);
+    // console.log('[Gemini Image] 📊 Response size:', `${responseSize} KB (base64)`);
+
+    // 4. 消耗积分
+    const consumeResult = await consumeCredits(
+      user.id,
+      requiredCredits,
+      'generate-image',
+      `${operationDesc}`
+    );
+
+    if (!consumeResult.success) {
+      console.error('[Gemini Image] 💳 Failed to consume credits:', consumeResult.error);
+      return NextResponse.json(
+        { error: '积分扣除失败: ' + consumeResult.error },
+        { status: 500 }
+      );
+    }
+
+    // console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
 
     // Return data URL
-    return NextResponse.json({ url: `data:image/png;base64,${uri}` });
+    return NextResponse.json({ url: `data:image/png;base64,${uri}`, requestId });
   } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'unknown error' }, { status: 500 });
+    console.error('[Gemini Image fetch failed]', requestId, error);
+    const message =
+      error?.name === 'AbortError' ? 'Gemini image request timeout' : error?.message || 'unknown error';
+    return NextResponse.json({ error: message, requestId }, { status: 500 });
   }
 }

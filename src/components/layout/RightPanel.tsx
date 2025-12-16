@@ -35,58 +35,59 @@ export default function RightPanel() {
 
   return (
     <div
-      className={`bg-light-panel dark:bg-cine-dark border-l border-light-border dark:border-cine-border flex flex-col transition-all duration-300 ${rightSidebarCollapsed ? 'w-12' : ''}`}
+      className={`glass-panel border-l flex flex-col transition-all duration-300 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[-4px_0_24px_rgba(0,0,0,0.2)] z-20 ${rightSidebarCollapsed ? 'w-16' : ''}`}
       style={rightSidebarCollapsed ? {} : { width: panelWidth }}
     >
       {rightSidebarCollapsed ? (
         /* Collapsed State */
-        <div className="flex flex-col items-center h-full">
+        <div className="flex flex-col items-center h-full py-6">
           <button
             onClick={toggleRightSidebar}
-            className="p-3 hover:bg-light-bg dark:hover:bg-cine-panel transition-colors mt-4"
+            className="p-3 glass-button rounded-xl group"
             title="展开侧边栏"
           >
-            <ChevronLeft size={20} className="text-light-text-muted dark:text-cine-text-muted" />
+            <ChevronLeft size={20} className="text-gray-500 dark:text-gray-400 group-hover:text-black dark:group-hover:text-white" />
           </button>
         </div>
       ) : (
         /* Agent/Pro Mode */
         <>
           {/* Mode Toggle */}
-          <div className="flex border-b border-light-border dark:border-cine-border relative">
-            <button
-              onClick={() => setControlMode('agent')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 transition-colors ${
-                controlMode === 'agent'
-                  ? 'bg-light-panel dark:bg-cine-panel text-light-accent dark:text-cine-accent border-b-2 border-light-accent dark:border-cine-accent'
-                  : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-bg/50 dark:hover:bg-cine-panel/50'
-              }`}
-            >
-              <Bot size={18} />
-              <span className="text-sm font-medium">Agent 模式</span>
-            </button>
-            <button
-              onClick={() => setControlMode('pro')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 transition-colors ${
-                controlMode === 'pro'
-                  ? 'bg-light-panel dark:bg-cine-panel text-light-accent dark:text-cine-accent border-b-2 border-light-accent dark:border-cine-accent'
-                  : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-bg/50 dark:hover:bg-cine-panel/50'
-              }`}
-            >
-              <Sliders size={18} />
-              <span className="text-sm font-medium">Pro 模式</span>
-            </button>
+          {/* Mode Toggle */}
+          <div className="p-6 pb-2 relative">
+            <div className="flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
+              <button
+                onClick={() => setControlMode('agent')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${controlMode === 'agent'
+                  ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
+                  }`}
+              >
+                <Bot size={16} />
+                <span>Agent</span>
+              </button>
+              <button
+                onClick={() => setControlMode('pro')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${controlMode === 'pro'
+                  ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
+                  }`}
+              >
+                <Sliders size={16} />
+                <span>Pro</span>
+              </button>
+            </div>
             {/* Collapse Button */}
             <button
               onClick={toggleRightSidebar}
-              className="absolute left-2 top-3 p-1 hover:bg-light-bg dark:hover:bg-cine-panel rounded transition-colors"
+              className="absolute left-2 top-8 p-1 glass-button rounded-lg hidden" // Hidden in expanded mode for cleaner look, or move it
               title="收起侧边栏"
             >
-              <ChevronRight size={16} className="text-light-text-muted dark:text-cine-text-muted" />
+              <ChevronRight size={16} className="text-gray-500 dark:text-gray-400" />
             </button>
             {!rightSidebarCollapsed && (
               <div
-                className={`absolute -left-1 top-0 h-full w-1 cursor-col-resize ${resizing ? 'bg-light-accent/30 dark:bg-cine-accent/30' : 'bg-transparent hover:bg-light-border dark:hover:bg-cine-border'}`}
+                className={`absolute -left-1 top-0 h-full w-1 cursor-col-resize ${resizing ? 'bg-light-accent/50 dark:bg-cine-accent/50' : 'bg-transparent hover:bg-black/10 dark:hover:bg-white/10'}`}
                 onMouseDown={startResize}
                 title="拖拽调整宽度"
               />

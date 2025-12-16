@@ -66,7 +66,7 @@ export default function ThinkingProcess({
   const progressPercent = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
 
   return (
-    <div className="border border-light-border dark:border-cine-border rounded-lg p-4 bg-light-panel/50 dark:bg-cine-panel/50">
+    <div className="glass-card p-4 shadow-sm">
       {/* Header - Always visible */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -109,13 +109,13 @@ export default function ThinkingProcess({
         {steps.length > 0 && (
           <button
             onClick={toggleExpand}
-            className="flex-shrink-0 p-1 hover:bg-light-bg dark:hover:bg-cine-bg rounded transition-colors"
+            className="flex-shrink-0 p-1 glass-button rounded"
             title={isExpanded ? '折叠详情' : '展开详情'}
           >
             {isExpanded ? (
-              <ChevronDown size={18} className="text-light-text-muted dark:text-cine-text-muted" />
+              <ChevronDown size={18} className="text-gray-500 dark:text-gray-400" />
             ) : (
-              <ChevronRight size={18} className="text-light-text-muted dark:text-cine-text-muted" />
+              <ChevronRight size={18} className="text-gray-500 dark:text-gray-400" />
             )}
           </button>
         )}

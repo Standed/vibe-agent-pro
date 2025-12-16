@@ -134,27 +134,11 @@ export async function getCreditTransactions(limit = 50) {
 }
 
 /**
- * 获取积分定价信息（根据操作类型）
- */
-export function getCreditCost(operationType: string): number {
-  const pricing: Record<string, number> = {
-    'generate-grid-2x2': 5, // 2x2 Grid 生成
-    'generate-grid-3x3': 10, // 3x3 Grid 生成
-    'generate-grid-3x2': 8, // 3x2 Grid 生成
-    'generate-grid-2x3': 8, // 2x3 Grid 生成
-    'generate-video': 20, // 视频生成
-    'generate-character': 5, // 角色生成
-    'chat-message': 0.5, // AI 对话（每条）
-    'enhance-prompt': 0.5, // 提示词优化
-    'analyze-asset': 1, // 资源分析
-  };
-
-  return pricing[operationType] || 1;
-}
-
-/**
- * 根据 Grid 尺寸获取积分消耗
+ * @deprecated 使用 @/config/credits.ts 中的统一价格配置
+ * 此函数仅为向后兼容保留,请使用 getGridCreditsCost 替代
  */
 export function getGridCost(gridRows: number, gridCols: number): number {
-  return getCreditCost(`generate-grid-${gridRows}x${gridCols}`);
+  // 重新导出统一的价格函数,避免破坏现有调用
+  const { getGridCreditsCost } = require('@/config/credits');
+  return getGridCreditsCost(gridRows, gridCols);
 }

@@ -28,6 +28,15 @@ export default function GridPreviewModal({
   onAssign,
   onClose,
 }: GridPreviewModalProps) {
+  console.log('[GridPreviewModal] 组件已渲染，props:', {
+    gridImagesCount: gridImages?.length,
+    fullGridUrlLength: fullGridUrl?.length,
+    shotsCount: shots?.length,
+    sceneId,
+    gridRows,
+    gridCols,
+  });
+
   // 防御空值：保证 slices/shots 不为 undefined
   const initialSlices = Array.isArray(gridImages) ? gridImages : [];
   const safeShots = Array.isArray(shots) ? shots : [];

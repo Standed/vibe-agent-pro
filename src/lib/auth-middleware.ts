@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
+import { getUserRoleByEmail, getInitialCredits } from '@/config/users';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -67,12 +68,49 @@ export async function authenticateRequest(
       .eq('id', user.id)
       .single<{ id: string; email: string; role: 'user' | 'admin' | 'vip'; credits: number }>();
 
+    // 🔧 如果 profile 不存在，自动创建一个（根据邮箱判断角色并分配对应积分）
     if (profileError || !profile) {
+      console.log('[Auth Middleware] Profile 不存在，正在自动创建...', user.id);
+
+      // 根据邮箱判断用户角色
+      const userEmail = user.email || '';
+      const userRole = getUserRoleByEmail(userEmail);
+      const initialCredits = getInitialCredits(userRole);
+
+      console.log(`[Auth Middleware] 用户邮箱: ${userEmail}, 角色: ${userRole}, 初始积分: ${initialCredits}`);
+
+      const { data: newProfile, error: createError } = await (supabaseAdmin as any)
+        .from('profiles')
+        .insert({
+          id: user.id,
+          email: userEmail,
+          role: userRole,
+          credits: initialCredits,
+          full_name: user.user_metadata?.full_name || null,
+          avatar_url: user.user_metadata?.avatar_url || null,
+        })
+        .select('id, email, role, credits')
+        .single();
+
+      if (createError || !newProfile) {
+        console.error('[Auth Middleware] 创建 Profile 失败:', createError);
+        return {
+          error: NextResponse.json(
+            { error: '用户信息初始化失败，请联系管理员' },
+            { status: 500 }
+          ),
+        };
+      }
+
+      console.log('[Auth Middleware] ✅ Profile 创建成功:', newProfile);
+
       return {
-        error: NextResponse.json(
-          { error: '用户信息获取失败' },
-          { status: 500 }
-        ),
+        user: {
+          id: newProfile.id,
+          email: newProfile.email,
+          role: newProfile.role as 'user' | 'admin' | 'vip',
+          credits: newProfile.credits,
+        },
       };
     }
 

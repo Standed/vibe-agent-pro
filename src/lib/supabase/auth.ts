@@ -111,35 +111,42 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
  * 用户登录
  */
 export async function signIn(data: SignInData): Promise<AuthResponse> {
-  console.log('[Auth] 🔐 开始登录流程...');
+  // console.log('[Auth] 🔐 开始登录流程...');
 
   const { data: authData, error } = await (supabase as any).auth.signInWithPassword({
     email: data.email,
     password: data.password,
   });
 
-  console.log('[Auth] ✅ signInWithPassword 完成, error:', error, 'user:', authData?.user?.email);
+  // console.log('[Auth] ✅ signInWithPassword 完成, error:', error, 'user:', authData?.user?.email);
 
-  // 更新最后登录时间
-  if (authData.user) {
-    try {
-      console.log('[Auth] 📝 更新 last_login_at...');
-      const { error: updateError } = await (supabase as any)
-        .from('profiles')
-        .update({ last_login_at: new Date().toISOString() })
-        .eq('id', authData.user.id);
-
-      if (updateError) {
-        console.warn('[Auth] ⚠️ 更新 last_login_at 失败（不影响登录）:', updateError);
-      } else {
-        console.log('[Auth] ✅ last_login_at 更新成功');
-      }
-    } catch (err) {
-      console.warn('[Auth] ⚠️ 更新 last_login_at 异常（不影响登录）:', err);
-    }
+  // ✅ 立即保存 session cookie（不等待 onAuthStateChange 事件）
+  if (authData.session && !error) {
+    // console.log('[Auth] 💾 立即保存 session cookie...');
+    setSessionCookie(authData.session);
+    // console.log('[Auth] ✅ Session cookie 已保存');
   }
 
-  console.log('[Auth] ✅ signIn 函数完成，准备返回结果');
+  // ✅ 后台异步更新 last_login_at（不阻塞登录流程）
+  if (authData.user) {
+    // 使用 Promise 但不 await，让它在后台执行
+    (supabase as any)
+      .from('profiles')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', authData.user.id)
+      .then(({ error: updateError }: any) => {
+        if (updateError) {
+          console.warn('[Auth] ⚠️ 后台更新 last_login_at 失败:', updateError);
+        } else {
+          // console.log('[Auth] ✅ 后台更新 last_login_at 成功');
+        }
+      })
+      .catch((err: any) => {
+        console.warn('[Auth] ⚠️ 后台更新 last_login_at 异常:', err);
+      });
+  }
+
+  // console.log('[Auth] ✅ signIn 函数完成，准备返回结果');
 
   return {
     user: authData.user,
@@ -156,7 +163,7 @@ export async function signOut(): Promise<{ error: AuthError | null }> {
 
   // 清除会话 cookie
   setSessionCookie(null);
-  console.log('[Auth] 已清除会话 cookie');
+  // console.log('[Auth] 已清除会话 cookie');
 
   return { error };
 }

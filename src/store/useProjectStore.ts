@@ -13,6 +13,7 @@ import type {
   GridHistoryItem,
   ChatMessage,
   GenerationHistoryItem,
+  GridGenerationResult,
 } from '@/types/project';
 import { dataService } from '@/lib/dataService';
 import { recalcShotOrders, normalizeSceneOrder } from '@/utils/shotOrder';
@@ -34,6 +35,7 @@ interface ProjectStore {
   controlMode: ControlMode;
   leftSidebarCollapsed: boolean;
   rightSidebarCollapsed: boolean;
+  gridResult: GridGenerationResult | null; // Grid 生成结果（用于显示 Modal）
 
   // Project Actions
   loadProject: (project: Project) => void;
@@ -98,6 +100,8 @@ interface ProjectStore {
   setControlMode: (mode: ControlMode) => void;
   toggleLeftSidebar: () => void;
   toggleRightSidebar: () => void;
+  setGridResult: (result: GridGenerationResult | null) => void;
+  clearGridResult: () => void;
 }
 
 export const useProjectStore = create<ProjectStore>()(
@@ -112,6 +116,7 @@ export const useProjectStore = create<ProjectStore>()(
     controlMode: 'agent',
     leftSidebarCollapsed: false,
     rightSidebarCollapsed: false,
+    gridResult: null, // Grid 生成结果初始为 null
 
     // Project Actions
     loadProject: (project) =>
@@ -566,5 +571,15 @@ export const useProjectStore = create<ProjectStore>()(
     setControlMode: (mode) => set({ controlMode: mode }),
     toggleLeftSidebar: () => set((state) => ({ leftSidebarCollapsed: !state.leftSidebarCollapsed })),
     toggleRightSidebar: () => set((state) => ({ rightSidebarCollapsed: !state.rightSidebarCollapsed })),
+
+    // Grid Result Actions
+    setGridResult: (result) => {
+      console.log('[Store] setGridResult 被调用:', result ? '有数据' : 'null');
+      set({ gridResult: result });
+    },
+    clearGridResult: () => {
+      console.log('[Store] clearGridResult 被调用');
+      set({ gridResult: null });
+    },
   }))
 );

@@ -263,21 +263,21 @@ export default function InfiniteCanvas() {
     >
       {/* Floating Toolbar */}
       <div className="absolute top-4 left-4 z-10 flex items-center gap-2 interactive">
-        <div className="flex gap-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border p-1 rounded-lg shadow-xl backdrop-blur-sm">
-          <button className="p-1.5 hover:bg-light-border dark:hover:bg-cine-border rounded text-light-text-muted dark:text-cine-text-muted">
+        <div className="flex gap-1 glass-panel p-1.5 rounded-2xl shadow-lg ring-1 ring-black/5">
+          <button className="p-2 glass-button rounded-xl text-gray-600 dark:text-gray-300">
             <MousePointer2 className="w-4 h-4" />
           </button>
-          <button className="p-1.5 bg-cine-border text-light-text dark:text-white rounded">
+          <button className="p-2 glass-button-active rounded-xl">
             <LayoutGrid className="w-4 h-4" />
           </button>
-          <div className="w-px bg-cine-border mx-1"></div>
-          <button onClick={() => setScale(s => Math.max(s - 0.1, 0.1))} className="p-1.5 hover:bg-light-border dark:hover:bg-cine-border rounded text-light-text-muted dark:text-cine-text-muted">
+          <div className="w-px bg-black/5 dark:bg-white/10 mx-1 my-1"></div>
+          <button onClick={() => setScale(s => Math.max(s - 0.1, 0.1))} className="p-2 glass-button rounded-xl text-gray-600 dark:text-gray-300">
             <ZoomOut className="w-4 h-4" />
           </button>
-          <button onClick={() => { setScale(1); setPosition({ x: 0, y: 0 }); }} className="text-[10px] text-light-text-muted dark:text-cine-text-muted px-1 hover:text-light-text dark:hover:text-white cursor-pointer min-w-[32px] text-center">
+          <button onClick={() => { setScale(1); setPosition({ x: 0, y: 0 }); }} className="text-[10px] font-medium text-gray-600 dark:text-gray-300 px-2 hover:text-black dark:hover:text-white cursor-pointer min-w-[40px] text-center">
             {Math.round(scale * 100)}%
           </button>
-          <button onClick={() => setScale(s => Math.min(s + 0.1, 5))} className="p-1.5 hover:bg-light-border dark:hover:bg-cine-border rounded text-light-text-muted dark:text-cine-text-muted">
+          <button onClick={() => setScale(s => Math.min(s + 0.1, 5))} className="p-2 glass-button rounded-xl text-gray-600 dark:text-gray-300">
             <ZoomIn className="w-4 h-4" />
           </button>
         </div>
@@ -321,9 +321,9 @@ export default function InfiniteCanvas() {
                 return (
                   <div
                     key={scene.id}
-                    className={`bg-light-panel dark:bg-cine-dark rounded-lg p-4 min-w-[600px] max-w-4xl transition-all interactive ${isSceneSelected
-                        ? 'border-2 border-light-accent dark:border-cine-accent shadow-lg shadow-cine-accent/20'
-                        : 'border border-light-border dark:border-cine-border'
+                    className={`glass-card p-6 min-w-[600px] max-w-4xl interactive ${isSceneSelected
+                      ? 'border-2 border-light-accent/50 dark:border-cine-accent/50 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] ring-1 ring-light-accent/20 dark:ring-cine-accent/20'
+                      : 'shadow-xl'
                       }`}
                     style={{
                       marginLeft: scene.position.x,
@@ -364,9 +364,9 @@ export default function InfiniteCanvas() {
                                   handlePreview(shot.referenceImage);
                                 }
                               }}
-                              className={`group bg-light-bg dark:bg-cine-panel rounded overflow-hidden hover:border-light-accent dark:border-cine-accent transition-all ${isShotSelected
-                                  ? 'border-2 border-light-accent dark:border-cine-accent shadow-md shadow-cine-accent/30'
-                                  : 'border border-light-border dark:border-cine-border'
+                              className={`group bg-white/40 dark:bg-black/40 rounded-2xl overflow-hidden hover:border-light-accent/50 dark:hover:border-cine-accent/50 transition-all duration-300 ${isShotSelected
+                                ? 'border-2 border-light-accent dark:border-cine-accent shadow-lg shadow-light-accent/20 dark:shadow-cine-accent/20 scale-[1.02]'
+                                : 'border border-white/20 dark:border-white/5 hover:shadow-lg'
                                 }`}
                             >
                               {/* Shot Thumbnail */}
@@ -462,8 +462,8 @@ export default function InfiniteCanvas() {
       )}
 
       {editingShot && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 interactive">
-          <div className="bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-xl shadow-xl w-[900px] max-w-[96vw] max-h-[88vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 interactive">
+          <div className="bg-white/90 dark:bg-[#1a1a1a]/90 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-3xl shadow-2xl w-[900px] max-w-[96vw] max-h-[88vh] overflow-hidden flex flex-col ring-1 ring-black/5">
             <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-cine-border">
               <div className="flex items-center gap-2">
                 <Edit2 size={16} className="text-light-accent dark:text-cine-accent" />
@@ -473,33 +473,33 @@ export default function InfiniteCanvas() {
             </div>
             <div className="grid grid-cols-2 gap-4 p-4 overflow-auto">
               <div className="space-y-3">
-                <label className="text-xs text-light-text-muted dark:text-cine-text-muted">镜头描述</label>
-                <textarea value={shotForm.description} onChange={(e) => setShotForm((prev) => ({ ...prev, description: e.target.value }))} className="w-full h-40 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white" />
-                <label className="text-xs text-light-text-muted dark:text-cine-text-muted">旁白</label>
-                <textarea value={shotForm.narration} onChange={(e) => setShotForm((prev) => ({ ...prev, narration: e.target.value }))} className="w-full h-24 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white" />
+                <label className="text-xs text-gray-500 dark:text-gray-400 font-medium ml-1 mb-1 block">镜头描述</label>
+                <textarea value={shotForm.description} onChange={(e) => setShotForm((prev) => ({ ...prev, description: e.target.value }))} className="glass-input w-full h-40 rounded-xl p-3 text-sm resize-none text-gray-800 dark:text-gray-100 placeholder-gray-400" placeholder="描述镜头画面内容..." />
+                <label className="text-xs text-gray-500 dark:text-gray-400 font-medium ml-1 mb-1 block mt-3">旁白</label>
+                <textarea value={shotForm.narration} onChange={(e) => setShotForm((prev) => ({ ...prev, narration: e.target.value }))} className="glass-input w-full h-24 rounded-xl p-3 text-sm resize-none text-gray-800 dark:text-gray-100 placeholder-gray-400" placeholder="旁白内容..." />
               </div>
               <div className="space-y-3">
-                <label className="text-xs text-light-text-muted dark:text-cine-text-muted">对白</label>
-                <textarea value={shotForm.dialogue} onChange={(e) => setShotForm((prev) => ({ ...prev, dialogue: e.target.value }))} className="w-full h-24 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white" />
+                <label className="text-xs text-gray-500 dark:text-gray-400 font-medium ml-1 mb-1 block">对白</label>
+                <textarea value={shotForm.dialogue} onChange={(e) => setShotForm((prev) => ({ ...prev, dialogue: e.target.value }))} className="glass-input w-full h-24 rounded-xl p-3 text-sm resize-none text-gray-800 dark:text-gray-100 placeholder-gray-400" placeholder="角色对白..." />
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-light-text-muted dark:text-cine-text-muted">镜头景别</label>
-                    <select value={shotForm.shotSize} onChange={(e) => setShotForm((prev) => ({ ...prev, shotSize: e.target.value as ShotSize }))} className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm text-light-text dark:text-white">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 font-medium ml-1 mb-1 block">镜头景别</label>
+                    <select value={shotForm.shotSize} onChange={(e) => setShotForm((prev) => ({ ...prev, shotSize: e.target.value as ShotSize }))} className="glass-input w-full mt-1 rounded-xl p-2 text-sm text-gray-800 dark:text-gray-100">
                       <option value="">选择景别</option>
                       {shotSizeOptions.map((size) => <option key={size} value={size}>{size}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-light-text-muted dark:text-cine-text-muted">镜头运动</label>
-                    <select value={shotForm.cameraMovement} onChange={(e) => setShotForm((prev) => ({ ...prev, cameraMovement: e.target.value as CameraMovement }))} className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm text-light-text dark:text-white">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 font-medium ml-1 mb-1 block">镜头运动</label>
+                    <select value={shotForm.cameraMovement} onChange={(e) => setShotForm((prev) => ({ ...prev, cameraMovement: e.target.value as CameraMovement }))} className="glass-input w-full mt-1 rounded-xl p-2 text-sm text-gray-800 dark:text-gray-100">
                       <option value="">选择运动</option>
                       {cameraMovementOptions.map((move) => <option key={move} value={move}>{move}</option>)}
                     </select>
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs text-light-text-muted dark:text-cine-text-muted">时长 (秒)</label>
-                  <input type="number" min={1} value={shotForm.duration} onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))} className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm text-light-text dark:text-white" />
+                  <label className="text-xs text-gray-500 dark:text-gray-400 font-medium ml-1 mb-1 block">时长 (秒)</label>
+                  <input type="number" min={1} value={shotForm.duration} onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))} className="glass-input w-full mt-1 rounded-xl p-2 text-sm text-gray-800 dark:text-gray-100" />
                 </div>
               </div>
             </div>
@@ -515,8 +515,8 @@ export default function InfiniteCanvas() {
               </div>
             </div>
             <div className="flex justify-end gap-2 px-4 py-3 border-t border-light-border dark:border-cine-border">
-              <button onClick={() => setEditingShot(null)} className="px-3 py-2 text-sm rounded-lg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted">取消</button>
-              <button onClick={saveShotEdit} className="px-3 py-2 text-sm rounded-lg bg-light-accent dark:bg-cine-accent text-white">保存并应用</button>
+              <button onClick={() => setEditingShot(null)} className="px-4 py-2 text-sm rounded-xl glass-button text-gray-600 dark:text-gray-300">取消</button>
+              <button onClick={saveShotEdit} className="px-4 py-2 text-sm rounded-xl bg-black dark:bg-white text-white dark:text-black font-medium shadow-md hover:scale-105 transition-transform">保存并应用</button>
             </div>
           </div>
         </div>

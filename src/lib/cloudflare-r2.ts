@@ -4,6 +4,8 @@
  * 用于存储图片和音频、视频文件（成本更低，无出站流量费用）
  */
 
+import { authenticatedFetch } from './api-client';
+
 export interface R2UploadResult {
   url: string;
   key: string;
@@ -33,7 +35,7 @@ class CloudflareR2Service {
     formData.append('folder', folder);
     formData.append('userId', userId);
 
-    const response = await fetch('/api/upload-r2', {
+    const response = await authenticatedFetch('/api/upload-r2', {
       method: 'POST',
       body: formData,
     });
@@ -65,7 +67,7 @@ class CloudflareR2Service {
    * 删除文件
    */
   async deleteFile(key: string): Promise<void> {
-    const response = await fetch('/api/upload-r2', {
+    const response = await authenticatedFetch('/api/upload-r2', {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',

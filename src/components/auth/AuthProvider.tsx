@@ -23,8 +23,8 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   profile: null,
   loading: true,
-  signOut: async () => {},
-  refreshProfile: async () => {},
+  signOut: async () => { },
+  refreshProfile: async () => { },
   isAuthenticated: () => false,
 });
 
@@ -35,17 +35,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   // 获取用户 profile
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string, userEmail?: string) => {
     const { data } = await getUserProfile(userId);
     if (data) {
-      setProfile(data);
+      // 如果没有头像，生成默认头像并保存
+      if (!data.avatar_url && userEmail) {
+        const defaultAvatar = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userEmail)}&backgroundColor=000000,ffffff&textColor=ffffff,000000`;
+        // console.log('[AuthProvider] 👤 生成默认头像:', defaultAvatar);
+
+        // 乐观更新本地状态
+        const updatedProfile = { ...data, avatar_url: defaultAvatar };
+        setProfile(updatedProfile);
+
+        // 异步更新数据库
+        (supabase as any).from('profiles').update({ avatar_url: defaultAvatar }).eq('id', userId).then(({ error }: any) => {
+          if (error) console.error('[AuthProvider] ❌ 保存默认头像失败:', error);
+          // else console.log('[AuthProvider] ✅ 默认头像已保存');
+        });
+      } else {
+        setProfile(data);
+      }
     }
   };
 
   // 刷新 profile
   const refreshProfile = async () => {
     if (user) {
-      await fetchProfile(user.id);
+      await fetchProfile(user.id, user.email);
     }
   };
 
@@ -55,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initSession = async () => {
       try {
-        console.log('[AuthProvider] 🔐 开始初始化...');
+        // console.log('[AuthProvider] 🔐 开始初始化...');
 
         // 检查是否有认证 cookie
         if (typeof window !== 'undefined') {
@@ -63,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           // 如果没有 cookie，立即结束 loading（未登录状态）
           if (!cookieTokens?.access_token || !cookieTokens?.refresh_token) {
-            console.log('[AuthProvider] ℹ️ 未找到认证 cookie，用户需要登录');
+            // console.log('[AuthProvider] ℹ️ 未找到认证 cookie，用户需要登录');
             if (isMounted) {
               setLoading(false);
             }
@@ -71,14 +87,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           // ✅ 乐观策略：先检查 token 是否过期
-          console.log('[AuthProvider] 🔍 检查 token 是否过期...');
+          // console.log('[AuthProvider] 🔍 检查 token 是否过期...');
 
           if (!isTokenExpired(cookieTokens.access_token)) {
             // Token 未过期，直接从 JWT 提取用户信息
             const payload = parseJWT(cookieTokens.access_token);
 
             if (payload && payload.sub) {
-              console.log('[AuthProvider] ✅ Token 有效，立即设置用户状态');
+              // console.log('[AuthProvider] ✅ Token 有效，立即设置用户状态');
 
               // 从 JWT 构造 User 对象
               const user: User = {
@@ -95,13 +111,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setLoading(false); // 立即结束 loading
 
                 // 异步加载 profile（不阻塞）
-                fetchProfile(user.id).catch(err =>
+                fetchProfile(user.id, user.email).catch(err =>
                   console.warn('[AuthProvider] ⚠️ Profile 加载失败:', err)
                 );
               }
 
               // 🔄 后台验证 session（不阻塞 UI，无超时限制）
-              console.log('[AuthProvider] 🔄 后台验证 session...');
+              // console.log('[AuthProvider] 🔄 后台验证 session...');
               supabase.auth.setSession({
                 access_token: cookieTokens.access_token,
                 refresh_token: cookieTokens.refresh_token,
@@ -109,12 +125,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (!isMounted) return;
 
                 if (!error && data?.session) {
-                  console.log('[AuthProvider] ✅ 后台验证成功，更新 session');
+                  // console.log('[AuthProvider] ✅ 后台验证成功，更新 session');
                   setSession(data.session);
                   // 如果 token 被 refresh，更新 user
                   if (data.session.user.id !== user.id) {
                     setUser(data.session.user);
-                    fetchProfile(data.session.user.id);
+                    fetchProfile(data.session.user.id, data.session.user.email);
                   }
                 } else {
                   console.warn('[AuthProvider] ⚠️ 后台验证失败，但保留当前状态:', error?.message);
@@ -130,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           // Token 过期或解析失败，尝试完整验证
-          console.log('[AuthProvider] ⚠️ Token 过期或无效，尝试完整验证...');
+          // console.log('[AuthProvider] ⚠️ Token 过期或无效，尝试完整验证...');
 
           try {
             const { data, error } = await supabase.auth.setSession({
@@ -139,13 +155,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             });
 
             if (!error && data?.session) {
-              console.log('[AuthProvider] ✅ 完整验证成功');
+              // console.log('[AuthProvider] ✅ 完整验证成功');
               if (isMounted) {
                 setSession(data.session);
                 setUser(data.session.user);
                 setLoading(false);
 
-                fetchProfile(data.session.user.id).catch(err =>
+                fetchProfile(data.session.user.id, data.session.user.email).catch(err =>
                   console.warn('[AuthProvider] ⚠️ Profile 加载失败:', err)
                 );
               }
@@ -182,7 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 监听认证状态变化
     const subscriptionWrapper = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[AuthProvider] 🔐 认证状态变化:', event);
+      // console.log('[AuthProvider] 🔐 认证状态变化:', event);
 
       try {
         if (!isMounted) return;
@@ -190,7 +206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // TOKEN_REFRESHED 事件：token刷新成功，不需要重新设置loading
         // 只需要更新session，用户体验无感知
         if (event === 'TOKEN_REFRESHED') {
-          console.log('[AuthProvider] ✅ Token已刷新，更新session');
+          // console.log('[AuthProvider] ✅ Token已刷新，更新session');
           setSession(session);
           setUser(session?.user ?? null);
           // 使用 setSessionCookie 更新 cookie（带过期时间）
@@ -204,7 +220,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          await fetchProfile(session.user.id);
+          await fetchProfile(session.user.id, session.user.email);
           // 更新 session cookie（带过期时间）
           setSessionCookie(session);
         } else {

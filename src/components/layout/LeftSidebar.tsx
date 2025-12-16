@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
 import { generateStoryboardFromScript, analyzeScript, groupShotsIntoScenes } from '@/services/storyboardService';
 import type { Character, Location, LocationType } from '@/types/project';
-
+// deprecated
 type Tab = 'script' | 'characters' | 'locations' | 'audio';
 
 export default function LeftSidebar() {
@@ -580,7 +580,7 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
               <button
                 onClick={handleGenerateCharacterTurnaround}
                 disabled={isGeneratingCharacter || !characterForm.name.trim() || !characterForm.appearance.trim()}
-                className="w-full bg-purple-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full bg-light-accent dark:bg-cine-accent text-white dark:text-black py-2 px-4 rounded-lg font-medium hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isGeneratingCharacter ? (
                   <>

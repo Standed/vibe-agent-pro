@@ -35,14 +35,11 @@ class StorageService {
 
   /**
    * 选择最优存储方式
-   * - 所有媒体文件（图片/视频/音频）: Cloudflare R2（成本低，无流量费，全球CDN）
-   * - 其他文件: Supabase Storage（备用）
+   * - 强制所有文件使用 Cloudflare R2（成本低，无流量费，全球CDN）
    */
   private shouldUseR2(file: File): boolean {
-    const category = this.getFileCategory(file);
-
-    // 所有媒体文件都用 R2（成本最优，性能最好）
-    return category === 'image' || category === 'video' || category === 'audio';
+    // 强制使用 R2
+    return true;
   }
 
   /**
@@ -51,10 +48,12 @@ class StorageService {
    * @param folder 文件夹路径（例如: 'projects/xxx/images'）
    * @returns 文件 URL
    */
-  async uploadFile(file: File, folder: string): Promise<UploadResult> {
-    const user = await getCurrentUser();
+  async uploadFile(file: File, folder: string, userId?: string): Promise<UploadResult> {
+    // 如果提供了 userId，直接使用；否则尝试获取当前用户
+    const user = userId ? { id: userId } : await getCurrentUser();
 
     if (!user) {
+      console.warn('[storageService] 用户未登录且未提供 userId，降级为 Data URL');
       // 未登录：转换为 Base64 Data URL
       return await this.convertToDataURL(file);
     }
@@ -78,13 +77,15 @@ class StorageService {
     userId: string
   ): Promise<UploadResult> {
     try {
+      // console.log('[storageService] 尝试上传到 R2...');
       const result = await r2Service.uploadFile(file, folder, userId);
+      // console.log('[storageService] ✅ R2 上传成功');
       return {
         url: result.url,
         path: result.key,
       };
     } catch (error: any) {
-      console.error('R2 upload failed, fallback to Supabase:', error);
+      console.error('[storageService] ❌ R2 上传失败，回退到 Supabase:', error);
       // 如果 R2 失败，回退到 Supabase
       return await this.uploadToSupabase(file, folder, userId);
     }
@@ -103,7 +104,7 @@ class StorageService {
     const filePath = `${userId}/${folder}/${fileName}`;
 
     const { data, error } = await supabase.storage
-      .from('media')
+      .from('video-agent-media')
       .upload(filePath, file, {
         cacheControl: '3600',
         upsert: false,
@@ -117,7 +118,7 @@ class StorageService {
     // 获取公开 URL
     const {
       data: { publicUrl },
-    } = supabase.storage.from('media').getPublicUrl(data.path);
+    } = supabase.storage.from('video-agent-media').getPublicUrl(data.path);
 
     return {
       url: publicUrl,
@@ -171,11 +172,11 @@ class StorageService {
     if (url.includes('supabase.co/storage')) {
       try {
         const urlObj = new URL(url);
-        const pathMatch = urlObj.pathname.match(/\/storage\/v1\/object\/public\/media\/(.+)/);
+        const pathMatch = urlObj.pathname.match(/\/storage\/v1\/object\/public\/video-agent-media\/(.+)/);
 
         if (pathMatch && pathMatch[1]) {
           const filePath = pathMatch[1];
-          const { error } = await supabase.storage.from('media').remove([filePath]);
+          const { error } = await supabase.storage.from('video-agent-media').remove([filePath]);
 
           if (error) {
             console.error('Delete error:', error);
@@ -213,6 +214,108 @@ class StorageService {
       }
       return await response.blob();
     }
+  }
+
+  /**
+   * 将 base64 字符串转换为 File 对象
+   */
+  private base64ToFile(base64: string, filename: string): File {
+    const arr = base64.split(',');
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+
+    return new File([u8arr], filename, { type: mime });
+  }
+
+  /**
+   * 上传 base64 图片到 R2
+   * @param base64 base64 图片数据
+   * @param folder 文件夹路径
+   * @param filename 文件名（可选，默认使用时间戳）
+   * @param userId 用户ID（可选，避免重复调用 getCurrentUser）
+   * @returns R2 URL，失败时抛出异常（不再回退到 base64）
+   */
+  async uploadBase64ToR2(
+    base64: string,
+    folder: string,
+    filename?: string,
+    userId?: string
+  ): Promise<string> {
+    // console.log('[storageService] uploadBase64ToR2 开始...');
+    // console.log('[storageService] base64 长度:', base64.length);
+    // console.log('[storageService] filename:', filename);
+    // console.log('[storageService] userId 参数:', userId ? '已提供' : '未提供');
+
+    try {
+      let user = null;
+
+      // 如果没有提供 userId，才调用 getCurrentUser
+      if (!userId) {
+        // console.log('[storageService] 开始调用 getCurrentUser...');
+        // 添加超时：15秒超时（增加到 3 倍）
+        const getUserPromise = getCurrentUser();
+        const timeoutPromise = new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('getCurrentUser 超时（15秒）')), 15000)
+        );
+
+        user = await Promise.race([getUserPromise, timeoutPromise]);
+        // console.log('[storageService] getCurrentUser 完成:', user ? 'user exists' : 'no user');
+
+        if (!user) {
+          throw new Error('用户未登录，无法上传到 R2');
+        }
+
+        userId = user.id;
+      } else {
+        // console.log('[storageService] ✅ 使用提供的 userId，跳过 getCurrentUser');
+      }
+
+      // console.log('[storageService] 开始转换 base64 为 File 对象...');
+      // 转换为 File 对象
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 8);
+      const finalFilename = filename || `grid_${timestamp}_${randomStr}.png`;
+      // console.log('[storageService] finalFilename:', finalFilename);
+
+      const file = this.base64ToFile(base64, finalFilename);
+      // console.log('[storageService] ✅ File 对象创建完成，大小:', file.size, 'bytes');
+
+      // console.log('[storageService] 开始调用 uploadToR2...');
+      // 上传到 R2
+      const result = await this.uploadToR2(file, folder, userId);
+      // console.log('[storageService] ✅ uploadToR2 完成，URL:', result.url.substring(0, 50) + '...');
+      return result.url;
+    } catch (error: any) {
+      console.error('[storageService] ❌ Upload base64 to R2 failed:', error.message);
+      // ⚠️ 不再回退到 base64，而是抛出异常
+      throw error;
+    }
+  }
+
+  /**
+   * 批量上传 base64 图片到 R2
+   * @param base64Array base64 图片数组
+   * @param folder 文件夹路径
+   * @param userId 用户ID（可选，避免重复调用 getCurrentUser）
+   */
+  async uploadBase64ArrayToR2(
+    base64Array: string[],
+    folder: string,
+    userId?: string
+  ): Promise<string[]> {
+    const results = await Promise.all(
+      base64Array.map((base64, index) =>
+        this.uploadBase64ToR2(base64, folder, `slice_${index}.png`, userId)
+      )
+    );
+    return results;
   }
 
   /**

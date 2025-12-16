@@ -14,7 +14,7 @@ import {
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { generateMultiViewGrid, generateSingleImage, editImageWithGemini, urlsToReferenceImages } from '@/services/geminiService';
-import { AspectRatio, ImageSize, GenerationHistoryItem, GridHistoryItem, Character, Location } from '@/types/project';
+import { AspectRatio, ImageSize, GenerationHistoryItem, GridHistoryItem, Character, Location, GridGenerationResult } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { toast } from 'sonner';
 import { validateGenerationConfig } from '@/utils/promptSecurity';
@@ -51,16 +51,19 @@ interface ChatMessage {
   };
 }
 
-interface GridGenerationResult {
-  fullImage: string;
-  slices: string[];
-  sceneId: string;
-  gridRows: number;
-  gridCols: number;
-  prompt: string;
-  aspectRatio: AspectRatio;
-  gridSize: '2x2' | '3x3';
-}
+// GridGenerationResult 现在从 types/project.ts 导入
+
+const generateMessageId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  // Fallback: simple UUID v4 generator to satisfy Supabase UUID columns
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
 
 export default function ChatPanelWithHistory() {
   const {
@@ -70,6 +73,9 @@ export default function ChatPanelWithHistory() {
     addGenerationHistory,
     addGridHistory,
     currentSceneId,
+    gridResult, // 从 store 获取
+    setGridResult, // 从 store 获取
+    clearGridResult, // 从 store 获取
   } = useProjectStore();
 
   // Chat state
@@ -89,7 +95,7 @@ export default function ChatPanelWithHistory() {
 
   // Grid specific state
   const [gridSize, setGridSize] = useState<'2x2' | '3x3'>('2x2');
-  const [gridResult, setGridResult] = useState<GridGenerationResult | null>(null);
+  // gridResult 现在从 store 获取，不再使用本地状态
   const { user } = useAuth();
 
   const requireAuthForAI = () => {
@@ -139,7 +145,23 @@ export default function ChatPanelWithHistory() {
   const selectedShot = shots.find((s) => s.id === selectedShotId);
   const selectedScene = scenes.find((s) => s.id === (selectedShot?.sceneId || currentSceneId));
   const selectedShotLabel = selectedShot ? formatShotLabel(selectedScene?.order, selectedShot.order, selectedShot.globalOrder) : undefined;
-  const generationHistory = selectedShot?.generationHistory || [];
+  const generationHistory = useMemo(() => {
+    return messages
+      .filter(msg => msg.role === 'assistant' && msg.images?.length)
+      .map(msg => ({
+        id: msg.id,
+        type: 'image' as const,
+        timestamp: msg.timestamp,
+        result: msg.images![0],
+        prompt: messages.find(m => m.role === 'user' && m.timestamp < msg.timestamp)?.content || '',
+        parameters: {
+          model: msg.model || 'Unknown',
+          aspectRatio: msg.gridData?.aspectRatio,
+          gridSize: msg.gridData?.gridSize,
+        },
+        status: 'success' as const,
+      }));
+  }, [messages]);
   const projectId = project?.id || 'default';
 
   const contextKey = useMemo(() => {
@@ -254,6 +276,21 @@ export default function ChatPanelWithHistory() {
       window.removeEventListener('mouseup', handleUp);
     };
   }, [isResizingHistory]);
+
+  // 🐛 DEBUG: 监控 gridResult 状态变化
+  useEffect(() => {
+    if (gridResult) {
+      console.log('[ChatPanel] ✅ gridResult 状态已更新:', {
+        fullImageLength: gridResult.fullImage?.length,
+        slicesCount: gridResult.slices?.length,
+        sceneId: gridResult.sceneId,
+        gridRows: gridResult.gridRows,
+        gridCols: gridResult.gridCols,
+      });
+    } else {
+      console.log('[ChatPanel] gridResult 为 null');
+    }
+  }, [gridResult]);
 
   const startResizeHistory = (e: React.MouseEvent) => {
     setIsResizingHistory(true);
@@ -416,7 +453,7 @@ export default function ChatPanelWithHistory() {
 
     // Add user message
     const userMessage: ChatMessage = {
-      id: `msg_${Date.now()}`,
+      id: generateMessageId(),
       role: 'user',
       content: inputText,
       timestamp: new Date(),
@@ -480,7 +517,7 @@ export default function ChatPanelWithHistory() {
     } catch (error: any) {
       console.error('Generation error:', error);
       const errorMessage: ChatMessage = {
-        id: `msg_${Date.now()}`,
+        id: generateMessageId(),
         role: 'assistant',
         content: `生成失败: ${error.message || '未知错误'}`,
         timestamp: new Date(),
@@ -622,7 +659,7 @@ export default function ChatPanelWithHistory() {
         type: 'image',
         timestamp: new Date(),
         result: imageUrl,
-          prompt: prompt,
+        prompt: prompt,
         parameters: {
           model: 'SeeDream',
           aspectRatio: projectAspectRatio,
@@ -634,7 +671,7 @@ export default function ChatPanelWithHistory() {
 
     // Add assistant message with result
     const assistantMessage: ChatMessage = {
-      id: `msg_${Date.now()}`,
+      id: generateMessageId(),
       role: 'assistant',
       content: '已使用 SeeDream 生成图片',
       timestamp: new Date(),
@@ -772,7 +809,7 @@ export default function ChatPanelWithHistory() {
 
     // Add assistant message with result
     const assistantMessage: ChatMessage = {
-      id: `msg_${Date.now()}`,
+      id: generateMessageId(),
       role: 'assistant',
       content: '已使用 Gemini 直接生成图片',
       timestamp: new Date(),
@@ -1112,6 +1149,7 @@ export default function ChatPanelWithHistory() {
     }));
     let result;
     try {
+      console.log('[ChatPanel] 🚀 准备调用 generateMultiViewGrid...');
       result = await generateMultiViewGrid(
         finalPrompt,
         rows,
@@ -1120,49 +1158,139 @@ export default function ChatPanelWithHistory() {
         ImageSize.K4,
         allRefImages
       );
+      console.log('[ChatPanel] ✅ generateMultiViewGrid 返回成功');
+      console.log('[ChatPanel] result.fullImage 长度:', result.fullImage?.length || 0);
+      console.log('[ChatPanel] result.slices 数量:', result.slices?.length || 0);
     } catch (error: any) {
+      console.error('[ChatPanel] ❌ generateMultiViewGrid 失败:', error);
       throw error;
     }
 
-    // Show Grid preview modal
+    // 🔄 尝试上传完整图和切片到 R2（必须成功，否则跳过保存聊天历史）
+    let fullImageUrl: string | null = null;
+    let sliceUrls: string[] | null = null;
+
+    console.log('[ChatPanel] 📤 开始上传到 R2...');
+    console.log('[ChatPanel] fullImage 大小:', (result.fullImage.length / 1024 / 1024).toFixed(2), 'MB');
+
+    if (user && project) {
+      try {
+        setPendingState((prev) => ({
+          ...prev,
+          [capturedContextKey]: { loading: true, message: '正在上传图片到云存储...' }
+        }));
+
+        const { storageService } = await import('@/lib/storageService');
+        const folder = `projects/${project.id}/grids`;
+
+        console.log('[ChatPanel] 上传 fullImage...');
+        // 添加超时机制：60秒超时（大文件需要更长时间）
+        const uploadFullImagePromise = storageService.uploadBase64ToR2(
+          result.fullImage,
+          folder,
+          `grid_full_${Date.now()}.png`,
+          user.id // ✅ 传递 userId，避免重复调用 getCurrentUser
+        );
+        const timeoutPromise = new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error('上传超时（60秒）')), 60000)
+        );
+
+        fullImageUrl = await Promise.race([uploadFullImagePromise, timeoutPromise]);
+        console.log('[ChatPanel] ✅ fullImage 上传完成:', fullImageUrl.substring(0, 50) + '...');
+
+        console.log('[ChatPanel] 批量上传 slices...');
+        // 批量上传所有切片（也添加超时，90秒因为是 4 个文件）
+        const uploadSlicesPromise = storageService.uploadBase64ArrayToR2(
+          result.slices,
+          folder,
+          user.id // ✅ 传递 userId
+        );
+        const slicesTimeoutPromise = new Promise<string[]>((_, reject) =>
+          setTimeout(() => reject(new Error('切片上传超时（90秒）')), 90000)
+        );
+
+        sliceUrls = await Promise.race([uploadSlicesPromise, slicesTimeoutPromise]);
+        console.log('[ChatPanel] ✅ slices 上传完成，数量:', sliceUrls.length);
+
+        toast.success('图片已上传到云存储');
+        console.log('[ChatPanel] ✅ Grid 图片已上传到 R2');
+      } catch (uploadError: any) {
+        console.error('[ChatPanel] ❌ R2 upload failed:', uploadError.message);
+        toast.error('图片上传失败', {
+          description: uploadError.message || '请检查网络连接'
+        });
+        // ⚠️ 上传失败时，设置为 null，稍后跳过聊天历史保存
+        fullImageUrl = null;
+        sliceUrls = null;
+      }
+    } else {
+      console.warn('[ChatPanel] ⚠️ 未登录或无项目，跳过 R2 上传');
+      // 未登录时使用 base64 回退
+      fullImageUrl = result.fullImage;
+      sliceUrls = result.slices;
+    }
+
+    // Show Grid preview modal with R2 URLs
+    console.log('[ChatPanel] 准备调用 setGridResult...');
+    console.log('[ChatPanel] currentScene:', currentScene?.id, currentScene?.name);
+
+    // 准备 gridResultData（优先使用 R2 URL，失败时回退到 base64）
+    let gridResultData: GridGenerationResult | null = null;
     if (currentScene) {
-      setGridResult({
-        fullImage: result.fullImage,
-        slices: result.slices,
+      // ✅ 如果 R2 上传失败，回退到 base64（仅用于显示 Modal）
+      const finalFullImage = fullImageUrl || result.fullImage;
+      const finalSlices = sliceUrls || result.slices;
+
+      gridResultData = {
+        fullImage: finalFullImage,
+        slices: finalSlices,
         sceneId: currentScene.id,
         gridRows: rows,
         gridCols: cols,
         prompt: finalPrompt,
         aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
         gridSize: gridSize,
+      };
+      console.log('[ChatPanel] gridResultData:', {
+        fullImageType: finalFullImage.startsWith('http') ? 'R2 URL' : 'base64',
+        fullImageLength: finalFullImage.length,
+        slicesCount: finalSlices.length,
+        sceneId: gridResultData.sceneId,
+        gridRows: gridResultData.gridRows,
+        gridCols: gridResultData.gridCols,
       });
 
-      // Save Grid to scene history
-      const gridHistory: GridHistoryItem = {
-        id: `grid_${Date.now()}`,
-        timestamp: new Date(),
-        fullGridUrl: result.fullImage,
-        slices: result.slices,
-        gridSize: gridSize,
-        prompt: finalPrompt,
-        aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
-      };
-      addGridHistory(currentScene.id, gridHistory);
+      // Save Grid to scene history（仅当 R2 上传成功时）
+      if (fullImageUrl && sliceUrls) {
+        const gridHistory: GridHistoryItem = {
+          id: `grid_${Date.now()}`,
+          timestamp: new Date(),
+          fullGridUrl: fullImageUrl,
+          slices: sliceUrls,
+          gridSize: gridSize,
+          prompt: finalPrompt,
+          aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
+        };
+        addGridHistory(currentScene.id, gridHistory);
+        console.log('[ChatPanel] ✅ Grid 历史记录保存成功');
+      } else {
+        console.warn('[ChatPanel] ⚠️ R2 上传失败，跳过 Grid 历史记录保存');
+      }
     }
 
-    // Add assistant message with grid result
+    // Add assistant message with grid result (using R2 URLs)
     const assistantMessage: ChatMessage = {
-      id: `msg_${Date.now()}`,
+      id: generateMessageId(),
       role: 'assistant',
       content: `已生成 ${gridSize} Grid (${rows * cols} 个视图)`,
       timestamp: new Date(),
-      images: [result.fullImage],
+      images: fullImageUrl ? [fullImageUrl] : undefined, // 修复：处理 null 情况
       model: 'gemini-grid',
       shotId: capturedShotId || undefined,
       sceneId: capturedSceneId || undefined,
       gridData: {
-        fullImage: result.fullImage,
-        slices: result.slices,
+        fullImage: fullImageUrl || '', // 修复：处理 null 情况
+        slices: sliceUrls || [], // 修复：处理 null 情况
         sceneId: currentScene?.id,
         gridRows: rows,
         gridCols: cols,
@@ -1177,8 +1305,8 @@ export default function ChatPanelWithHistory() {
       setMessages(prev => [...prev, assistantMessage]);
     }
 
-    // ⭐ 保存 assistant 消息到云端
-    if (user && project) {
+    // ⭐ 保存 assistant 消息到云端（仅当 R2 上传成功时）
+    if (user && project && fullImageUrl && sliceUrls) {
       try {
         await dataService.saveChatMessage({
           id: assistantMessage.id,
@@ -1191,11 +1319,11 @@ export default function ChatPanelWithHistory() {
           content: assistantMessage.content,
           timestamp: assistantMessage.timestamp,
           metadata: {
-            images: [result.fullImage],
+            images: [fullImageUrl],
             model: 'gemini-grid',
             gridData: {
-              fullImage: result.fullImage,
-              slices: result.slices,
+              fullImage: fullImageUrl,
+              slices: sliceUrls,
               sceneId: currentScene?.id,
               gridRows: rows,
               gridCols: cols,
@@ -1207,11 +1335,35 @@ export default function ChatPanelWithHistory() {
           createdAt: assistantMessage.timestamp,
           updatedAt: assistantMessage.timestamp,
         });
+        console.log('[ChatPanel] ✅ 聊天历史保存成功');
       } catch (error) {
         console.error('[ChatPanelWithHistory] 保存 assistant 消息失败:', error);
       }
+    } else {
+      if (!fullImageUrl || !sliceUrls) {
+        console.warn('[ChatPanel] ⚠️ R2 上传失败，跳过聊天历史保存（避免保存 base64）');
+      }
     }
 
+    // ⭐ 最后调用 setGridResult，确保 Modal 显示
+    if (gridResultData) {
+      console.log('[ChatPanel] 🎯 准备显示 Grid Preview Modal');
+      console.log('[ChatPanel] gridResultData.sceneId:', gridResultData.sceneId);
+      console.log('[ChatPanel] gridResultData.slices.length:', gridResultData.slices.length);
+      console.log('[ChatPanel] gridResultData.fullImage 类型:',
+        gridResultData.fullImage.startsWith('http') ? 'R2 URL' : 'base64 (本地)');
+
+      setGridResult(gridResultData);
+      toast.success('Grid 生成完成！请在预览窗口中分配到分镜。');
+    } else {
+      console.error('[ChatPanel] ❌ 无法显示 Grid Preview Modal');
+      console.error('[ChatPanel] currentScene 为 null，场景未选中');
+      toast.error('无法显示 Grid 预览', {
+        description: '请确保已选择当前场景'
+      });
+    }
+
+    console.log('[ChatPanel] 🎉 handleGeminiGridGeneration 函数执行完成');
     // success toast removed; inline消息和pending提示即可
   };
 
@@ -1247,9 +1399,9 @@ export default function ChatPanelWithHistory() {
                 ))}
               </div>
             )}
-            <div className="bg-light-accent dark:bg-cine-accent text-white rounded-2xl rounded-tr-sm px-4 py-3">
+            <div className="bg-black/5 dark:bg-white/10 text-light-text dark:text-white rounded-2xl rounded-tr-sm px-4 py-3 backdrop-blur-md border border-black/5 dark:border-white/5">
               <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-              <div className="text-xs opacity-70 mt-1">
+              <div className="text-xs opacity-50 mt-1">
                 {msg.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
@@ -1261,8 +1413,8 @@ export default function ChatPanelWithHistory() {
     // Assistant message
     return (
       <div key={msg.id} className="flex justify-start mb-4">
-        <div className="max-w-[70%]">
-          <div className="bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-2xl rounded-tl-sm px-4 py-3">
+        <div className="max-w-[85%]">
+          <div className="bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-md border border-black/5 dark:border-white/10 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
             <div className="text-sm text-light-text dark:text-white whitespace-pre-wrap mb-2">
               {msg.content}
             </div>
@@ -1353,7 +1505,7 @@ export default function ChatPanelWithHistory() {
       {/* History Sidebar */}
       {showHistory && generationHistory.length > 0 && (
         <div
-          className="border-r border-light-border dark:border-cine-border bg-light-panel dark:bg-cine-panel flex flex-col relative"
+          className="border-r border-black/5 dark:border-white/5 bg-white/60 dark:bg-[#0a0a0a]/60 backdrop-blur-2xl flex flex-col relative z-20"
           style={{ width: historyWidth }}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-cine-border">
@@ -1414,13 +1566,16 @@ export default function ChatPanelWithHistory() {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="flex-shrink-0 border-b border-light-border dark:border-cine-border px-6 py-4">
+        <div className="flex-shrink-0 border-b border-black/5 dark:border-white/5 px-6 py-4 bg-white/50 dark:bg-[#0a0a0a]/50 backdrop-blur-xl z-20">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-light-text dark:text-white">
-                Pro 模式 - AI 对话生成
-              </h2>
-              <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
+              <div className="flex items-center gap-2">
+                <Sparkles size={18} className="text-light-accent dark:text-cine-accent" />
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Pro 创作
+                </h2>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-6">
                 {selectedShotId
                   ? `当前镜头: ${selectedShotLabel || '未知'}`
                   : currentSceneId
@@ -1431,9 +1586,9 @@ export default function ChatPanelWithHistory() {
             {!showHistory && generationHistory.length > 0 && (
               <button
                 onClick={() => setShowHistory(true)}
-                className="flex items-center gap-2 text-xs text-light-accent dark:text-cine-accent hover:text-light-accent-hover dark:hover:text-cine-accent-hover"
+                className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-black/5 dark:bg-white/10 text-gray-700 dark:text-gray-200 hover:bg-black/10 dark:hover:bg-white/20 transition-all"
               >
-                <History size={16} />
+                <History size={14} />
                 显示历史
               </button>
             )}
@@ -1468,7 +1623,7 @@ export default function ChatPanelWithHistory() {
         </div>
 
         {/* Input Area */}
-        <div className="flex-shrink-0 border-t border-light-border dark:border-cine-border p-4 bg-light-panel dark:bg-cine-panel">
+        <div className="flex-shrink-0 p-4 m-4 mt-0 bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-3xl shadow-lg z-20">
           {/* Uploaded Images Preview */}
           {uploadedImages.length > 0 && (
             <div className="mb-3 flex flex-wrap gap-2">
@@ -1481,7 +1636,7 @@ export default function ChatPanelWithHistory() {
                   />
                   <button
                     onClick={() => removeUploadedImage(idx)}
-                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute -top-2 -right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
                   >
                     <X size={12} />
                   </button>
@@ -1491,39 +1646,64 @@ export default function ChatPanelWithHistory() {
           )}
 
           {/* Model Selection & Grid Size */}
-          <div className="flex items-center gap-2 mb-3">
-            <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
-              模型:
+          <div className="flex items-center justify-between mb-3 px-1">
+            <div className="flex items-center gap-2 p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
+              <button
+                onClick={() => setSelectedModel('seedream')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-300 ${selectedModel === 'seedream'
+                  ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
+                  }`}
+              >
+                SeeDream
+              </button>
+              <button
+                onClick={() => setSelectedModel('gemini-direct')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-300 ${selectedModel === 'gemini-direct'
+                  ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
+                  }`}
+              >
+                Gemini
+              </button>
+              <button
+                onClick={() => setSelectedModel('gemini-grid')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-300 ${selectedModel === 'gemini-grid'
+                  ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
+                  }`}
+              >
+                Grid
+              </button>
             </div>
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value as GenerationModel)}
-              className="text-xs bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border rounded px-2 py-1 focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
-            >
-              <option value="seedream">SeeDream (火山引擎)</option>
-              <option value="gemini-direct">Gemini 直出</option>
-              <option value="gemini-grid">Gemini Grid</option>
-            </select>
 
             {selectedModel === 'gemini-grid' && (
-              <>
-                <div className="text-xs text-light-text-muted dark:text-cine-text-muted ml-2">
-                  Grid:
-                </div>
-                <select
-                  value={gridSize}
-                  onChange={(e) => setGridSize(e.target.value as '2x2' | '3x3')}
-                  className="text-xs bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border rounded px-2 py-1 focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
+              <div className="flex items-center gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
+                <button
+                  onClick={() => setGridSize('2x2')}
+                  className={`px-2 py-1 text-xs font-medium rounded-lg transition-all duration-300 ${gridSize === '2x2'
+                    ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
                 >
-                  <option value="2x2">2x2 (4视图)</option>
-                  <option value="3x3">3x3 (9视图)</option>
-                </select>
-              </>
+                  2x2
+                </button>
+                <button
+                  onClick={() => setGridSize('3x3')}
+                  className={`px-2 py-1 text-xs font-medium rounded-lg transition-all duration-300 ${gridSize === '3x3'
+                    ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                >
+                  3x3
+                </button>
+              </div>
             )}
           </div>
 
           {/* Input Box */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-end">
+            {/* Upload Button */}
             {/* Upload Button */}
             <input
               ref={fileInputRef}
@@ -1536,10 +1716,10 @@ export default function ChatPanelWithHistory() {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isGenerating}
-              className="flex-shrink-0 p-3 bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border rounded-lg hover:bg-light-border dark:hover:bg-cine-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-shrink-0 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white"
               title="上传参考图"
             >
-              <ImageIcon size={20} className="text-light-text dark:text-white" />
+              <ImageIcon size={20} />
             </button>
 
             {/* Text Input */}
@@ -1550,19 +1730,19 @@ export default function ChatPanelWithHistory() {
               onEnterSend={handleSend}
               placeholder="输入提示词... (输入 @ 引用资源, Enter 发送, Shift+Enter 换行)"
               disabled={isGenerating}
-              className="flex-1 bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent resize-none disabled:opacity-50 disabled:cursor-not-allowed text-light-text dark:text-white"
+              className="flex-1 bg-transparent border-none px-2 py-3 text-sm focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted"
             />
 
             {/* Send Button */}
             <button
               onClick={handleSend}
               disabled={isGenerating || (!inputText.trim() && uploadedImages.length === 0)}
-              className="flex-shrink-0 px-6 bg-light-accent dark:bg-cine-accent text-white rounded-lg font-medium hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-shrink-0 w-10 h-10 rounded-full bg-light-accent dark:bg-cine-accent text-white dark:text-black hover:scale-105 active:scale-95 transition-all flex items-center justify-center shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isGenerating ? (
-                <Loader2 size={20} className="animate-spin" />
+                <Loader2 size={18} className="animate-spin" />
               ) : (
-                <Send size={20} />
+                <Send size={18} />
               )}
             </button>
           </div>
@@ -1608,9 +1788,9 @@ export default function ChatPanelWithHistory() {
                 };
                 addGenerationHistory(shotId, historyItem);
               });
-              setGridResult(null);
+              clearGridResult(); // 使用 clearGridResult 而不是 setGridResult(null)
             }}
-            onClose={() => setGridResult(null)}
+            onClose={() => clearGridResult()} // 使用 clearGridResult 而不是 setGridResult(null)
           />
         )}
 
@@ -1648,13 +1828,13 @@ export default function ChatPanelWithHistory() {
                   prompt: sliceSelectorData.gridData!.prompt || '',
                   parameters: {
                     model: 'Gemini Grid',
-                  gridSize: sliceSelectorData.gridData!.gridSize || '2x2',
-                  aspectRatio: sliceSelectorData.gridData!.aspectRatio || AspectRatio.WIDE,
-                  fullGridUrl: sliceSelectorData.gridData!.fullImage,
-                  sliceIndex,
-                },
-                status: 'success',
-              };
+                    gridSize: sliceSelectorData.gridData!.gridSize || '2x2',
+                    aspectRatio: sliceSelectorData.gridData!.aspectRatio || AspectRatio.WIDE,
+                    fullGridUrl: sliceSelectorData.gridData!.fullImage,
+                    sliceIndex,
+                  },
+                  status: 'success',
+                };
                 addGenerationHistory(sliceSelectorData.shotId, historyItem);
 
                 toast.success(`已选择切片 #${sliceIndex + 1}`, {

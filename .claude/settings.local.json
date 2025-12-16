@@ -45,7 +45,18 @@
       "Bash(taskkill //F //PID 47264)",
       "Bash(taskkill /F /PID 39276)",
       "Bash(timeout /t 5 /nobreak)",
-      "Bash(del nul)"
+      "Bash(del nul)",
+      "Bash(if exist .next rmdir /s /q .next)",
+      "Bash(node scripts/create-r2-bucket.js:*)",
+      "Bash(node scripts/list-r2-buckets.js:*)",
+      "Bash(cmd //c \"taskkill //F //PID 15820 && taskkill //F //PID 56440 && taskkill //F //PID 63472\")",
+      "Bash(npx kill-port:*)",
+      "Bash(taskkill /F /PID 62904)",
+      "Bash(powershell \"Stop-Process -Id 62904 -Force\")",
+      "Bash(powershell \"Get-Process | Where-Object {$_ProcessName -eq ''node''} | Select-Object Id,ProcessName | Format-Table\")",
+      "Bash(powershell \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue\")",
+      "Bash(powershell \"Stop-Process -Name node -Force\")",
+      "Bash(timeout 10 npm run dev:*)"
     ]
   }
 }

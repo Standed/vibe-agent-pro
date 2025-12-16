@@ -5,13 +5,14 @@
 :root {
   --foreground-rgb: 26, 26, 26;
   --background-start-rgb: 255, 255, 255;
-  --background-end-rgb: 255, 255, 255;
+  --background-end-rgb: 245, 245, 247;
+  /* iOS Light Gray */
 }
 
 .dark {
   --foreground-rgb: 255, 255, 255;
   --background-start-rgb: 10, 10, 10;
-  --background-end-rgb: 10, 10, 10;
+  --background-end-rgb: 0, 0, 0;
 }
 
 * {
@@ -29,49 +30,90 @@ body {
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
+  background: linear-gradient(to bottom,
       transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+      rgb(var(--background-end-rgb))) rgb(var(--background-start-rgb));
 }
 
-/* Custom scrollbar - Light mode */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
+@layer components {
 
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: #e9ecef;
-}
+  /* IOS 26 Liquid Glass System */
+  .glass {
+    @apply bg-white/70 dark:bg-[#0a0a0a]/70 backdrop-blur-xl border border-white/20 dark:border-white/5 shadow-sm;
+  }
 
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #adb5bd;
-  border-radius: 4px;
-}
+  .glass-panel {
+    @apply bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-2xl border-black/5 dark:border-white/5;
+  }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #868e96;
-}
+  .glass-card {
+    @apply bg-white/60 dark:bg-[#1a1a1a]/60 backdrop-blur-xl border border-white/40 dark:border-white/5 rounded-3xl shadow-sm hover:shadow-md transition-all duration-300;
+  }
 
-/* Custom scrollbar - Dark mode */
-.dark .custom-scrollbar::-webkit-scrollbar-track {
-  background: #1a1a1a;
-}
+  .glass-button {
+    @apply bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/5 backdrop-blur-md transition-all duration-300 active:scale-95;
+  }
 
-.dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #333333;
-}
+  .glass-button-active {
+    @apply bg-white dark:bg-white/10 text-black dark:text-white shadow-sm border-black/5 dark:border-white/10;
+  }
 
-.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #444444;
+  .glass-input {
+    @apply bg-white/50 dark:bg-white/5 border border-black/5 dark:border-white/10 focus:bg-white dark:focus:bg-black/40 backdrop-blur-md transition-all duration-300 outline-none focus:ring-2 focus:ring-black/20 dark:focus:ring-white/20;
+  }
+
+  .glass-tag {
+    @apply px-2 py-1 rounded-full text-xs font-medium bg-black/5 dark:bg-white/10 text-gray-600 dark:text-gray-300 backdrop-blur-sm;
+  }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }
 
+/* Modern Minimal Scrollbar - Hidden by default, hover to show */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 10px;
+}
+
+:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.dark :hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+}
