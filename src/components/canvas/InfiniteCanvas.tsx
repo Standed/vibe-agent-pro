@@ -2,15 +2,29 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Edit2 } from 'lucide-react';
+import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Edit2, Plus } from 'lucide-react';
 import type { ShotSize, CameraMovement, Shot } from '@/types/project';
 import { formatShotLabel } from '@/utils/shotOrder';
+import AddShotDialog from '@/components/shot/AddShotDialog';
+import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
+import AddLocationDialog from '@/components/asset/AddLocationDialog';
+import ShotListItem from '@/components/shot/ShotListItem';
+import { toast } from 'sonner';
+import { CanvasUserWidget } from '@/components/layout/CanvasUserWidget';
 
 export default function InfiniteCanvas() {
-  const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed, updateShot } = useProjectStore();
-  const [zoom, setZoom] = useState(100);
+  const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed, updateShot, addShot, reorderShots, addCharacter, addLocation } = useProjectStore();
+
+  // Canvas State
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Preview & Edit State
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
   const [editingShot, setEditingShot] = useState<Shot | null>(null);
   const [shotForm, setShotForm] = useState<{
     description: string;
@@ -29,6 +43,15 @@ export default function InfiniteCanvas() {
   });
   const [shotImagePreview, setShotImagePreview] = useState<string | null>(null);
   const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
+
+  // Dialog State
+  const [showAddShotDialog, setShowAddShotDialog] = useState(false);
+  const [selectedSceneForNewShot, setSelectedSceneForNewShot] = useState<string>('');
+  const [shotInsertIndex, setShotInsertIndex] = useState<number | null>(null);
+  const [showAddCharacterDialog, setShowAddCharacterDialog] = useState(false);
+  const [showAddLocationDialog, setShowAddLocationDialog] = useState(false);
+  const [editingCharacter, setEditingCharacter] = useState<any | null>(null);
+  const [editingLocation, setEditingLocation] = useState<any | null>(null);
 
   const shotSizeOptions: ShotSize[] = ['Extreme Wide Shot', 'Wide Shot', 'Medium Shot', 'Close-Up', 'Extreme Close-Up'];
   const cameraMovementOptions: CameraMovement[] = ['Static', 'Pan Left', 'Pan Right', 'Tilt Up', 'Tilt Down', 'Dolly In', 'Dolly Out', 'Zoom In', 'Zoom Out', 'Handheld'];
@@ -57,13 +80,86 @@ export default function InfiniteCanvas() {
     }
   }, [liveEditingShot?.referenceImage, editingShot?.id]);
 
-  // Handle image preview
+  // --- Zoom & Pan Logic ---
+
+  // Use ref to access latest state in event listener without re-binding
+  const stateRef = useRef({ scale, position });
+  useEffect(() => {
+    stateRef.current = { scale, position };
+  }, [scale, position]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+
+        const { scale: currentScale, position: currentPosition } = stateRef.current;
+        const delta = -e.deltaY;
+        const scaleChange = delta > 0 ? 1.1 : 0.9;
+        const newScale = Math.min(Math.max(currentScale * scaleChange, 0.1), 5);
+
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const contentX = (mouseX - currentPosition.x) / currentScale;
+        const contentY = (mouseY - currentPosition.y) / currentScale;
+
+        const newX = mouseX - contentX * newScale;
+        const newY = mouseY - contentY * newScale;
+
+        setScale(newScale);
+        setPosition({ x: newX, y: newY });
+      } else {
+        setPosition(prev => ({ ...prev, y: prev.y - e.deltaY }));
+      }
+    };
+
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => container.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only start dragging if clicking on the background (container)
+    // or if holding Space (common convention)
+    if (e.button === 1 || e.button === 0) { // Middle or Left click
+      // Check if target is interactive
+      const target = e.target as HTMLElement;
+      if (target.closest('button') || target.closest('.interactive')) return;
+
+      setIsDragging(true);
+      setLastMousePos({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      const deltaX = e.clientX - lastMousePos.x;
+      const deltaY = e.clientY - lastMousePos.y;
+
+      setPosition(prev => ({
+        x: prev.x + deltaX,
+        y: prev.y + deltaY
+      }));
+
+      setLastMousePos({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // --- Actions ---
+
   const handlePreview = (imageUrl: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setImagePreview(imageUrl);
   };
 
-  // Handle image download
   const handleDownload = (imageUrl: string, shotOrder: number, e: React.MouseEvent) => {
     e.stopPropagation();
     const link = document.createElement('a');
@@ -74,7 +170,6 @@ export default function InfiniteCanvas() {
     document.body.removeChild(link);
   };
 
-  // Handle generate/regenerate
   const handleGenerate = (shotId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     selectShot(shotId);
@@ -100,7 +195,6 @@ export default function InfiniteCanvas() {
   const saveShotEdit = () => {
     if (!editingShot) return;
     if (!shotForm.description.trim()) return;
-    if (!shotForm.shotSize || !shotForm.cameraMovement) return;
     updateShot(editingShot.id, {
       description: shotForm.description.trim(),
       narration: shotForm.narration.trim(),
@@ -112,33 +206,39 @@ export default function InfiniteCanvas() {
     setEditingShot(null);
   };
 
-  const handleZoomIn = () => {
-    setZoom((prev) => Math.min(prev + 10, 200));
+  const handleAddShotClick = (sceneId: string, insertIndex?: number) => {
+    setSelectedSceneForNewShot(sceneId);
+    setShotInsertIndex(insertIndex ?? null);
+    setShowAddShotDialog(true);
   };
 
-  const handleZoomOut = () => {
-    setZoom((prev) => Math.max(prev - 10, 50));
+  const handleAddShot = (shotData: any) => {
+    const scene = project?.scenes.find(s => s.id === shotData.sceneId);
+    const sceneShots = project?.shots.filter(s => s.sceneId === shotData.sceneId).sort((a, b) => (a.order || 0) - (b.order || 0)) || [];
+    const targetIndex = shotInsertIndex !== null ? shotInsertIndex : sceneShots.length;
+    const order = targetIndex + 1;
+
+    const newShot = {
+      id: crypto.randomUUID(),
+      ...shotData,
+      order,
+      status: 'draft' as const,
+    };
+
+    addShot(newShot);
+    if (scene) {
+      const newShotIds = [...sceneShots.map(s => s.id)];
+      newShotIds.splice(targetIndex, 0, newShot.id);
+      reorderShots(scene.id, newShotIds);
+    }
+    setShotInsertIndex(null);
+    toast.success('镜头添加成功！');
   };
 
-  const handleResetZoom = () => {
-    setZoom(100);
-  };
-
-  // 处理滚轮缩放（Ctrl + 滚轮 或 触控板捏合）
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    // 检测是否按住 Ctrl/Cmd 键（触控板捏合也会触发 ctrlKey）
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-
-      // deltaY > 0 表示向下滚动（缩小），< 0 表示向上滚动（放大）
-      const delta = -e.deltaY;
-      const zoomSpeed = 0.5; // 缩放速度
-
-      setZoom((prevZoom) => {
-        const newZoom = prevZoom + delta * zoomSpeed;
-        // 限制缩放范围在 50% - 200% 之间，并四舍五入为整数
-        return Math.round(Math.min(Math.max(newZoom, 50), 200));
-      });
+  const handleDeleteShot = (shotId: string, shotOrder: number, sceneName: string) => {
+    if (confirm(`确定要删除镜头 #${shotOrder} 吗？`)) {
+      useProjectStore.getState().deleteShot(shotId);
+      toast.success('镜头已删除');
     }
   };
 
@@ -152,83 +252,17 @@ export default function InfiniteCanvas() {
     };
   });
 
-  if (!sceneGroups || sceneGroups.length === 0) {
-    return (
-      <div
-        ref={canvasRef}
-        onWheel={handleWheel}
-        className="w-full h-full bg-light-bg dark:bg-cine-black relative"
-      >
-        {/* Floating Toolbar */}
-        <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
-          <div className="flex gap-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border p-1 rounded-lg shadow-xl backdrop-blur-sm">
-            <button className="p-1.5 hover:bg-light-border dark:hover:bg-cine-border rounded text-light-text-muted dark:text-cine-text-muted">
-              <MousePointer2 className="w-4 h-4" />
-            </button>
-            <button className="p-1.5 bg-cine-border text-light-text dark:text-white rounded">
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-            <div className="w-px bg-cine-border mx-1"></div>
-            <button onClick={handleZoomOut} className="p-1.5 hover:bg-light-border dark:hover:bg-cine-border rounded text-light-text-muted dark:text-cine-text-muted">
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <button onClick={handleResetZoom} className="text-[10px] text-light-text-muted dark:text-cine-text-muted px-1 hover:text-light-text dark:hover:text-white cursor-pointer">
-              {zoom}%
-            </button>
-            <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted px-1 select-none">
-              Ctrl+滚轮缩放
-            </span>
-            <button onClick={handleZoomIn} className="p-1.5 hover:bg-light-border dark:hover:bg-cine-border rounded text-light-text-muted dark:text-cine-text-muted">
-              <ZoomIn className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Grid Background */}
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: 'radial-gradient(#27272a 1px, transparent 1px)',
-            backgroundSize: '24px 24px',
-          }}
-        />
-
-        {/* Canvas Content */}
-        <div className="relative w-full h-full flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-light-text-muted dark:text-cine-text-muted mb-4">
-              <svg
-                className="mx-auto mb-2"
-                width="48"
-                height="48"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1"
-              >
-                <rect x="3" y="3" width="7" height="7" rx="1" />
-                <rect x="14" y="3" width="7" height="7" rx="1" />
-                <rect x="14" y="14" width="7" height="7" rx="1" />
-                <rect x="3" y="14" width="7" height="7" rx="1" />
-              </svg>
-            </div>
-            <p className="text-sm text-light-text-muted dark:text-cine-text-muted">
-              从左侧导入剧本，AI 将自动生成分镜场景卡片
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
-      ref={canvasRef}
-      onWheel={handleWheel}
-      className="w-full h-full bg-light-bg dark:bg-cine-black relative flex flex-col overflow-hidden"
+      ref={containerRef}
+      className="w-full h-full bg-light-bg dark:bg-cine-black relative overflow-hidden cursor-grab active:cursor-grabbing select-none"
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
     >
       {/* Floating Toolbar */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-2 interactive">
         <div className="flex gap-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border p-1 rounded-lg shadow-xl backdrop-blur-sm">
           <button className="p-1.5 hover:bg-light-border dark:hover:bg-cine-border rounded text-light-text-muted dark:text-cine-text-muted">
             <MousePointer2 className="w-4 h-4" />
@@ -237,406 +271,266 @@ export default function InfiniteCanvas() {
             <LayoutGrid className="w-4 h-4" />
           </button>
           <div className="w-px bg-cine-border mx-1"></div>
-          <button onClick={handleZoomOut} className="p-1.5 hover:bg-light-border dark:hover:bg-cine-border rounded text-light-text-muted dark:text-cine-text-muted">
+          <button onClick={() => setScale(s => Math.max(s - 0.1, 0.1))} className="p-1.5 hover:bg-light-border dark:hover:bg-cine-border rounded text-light-text-muted dark:text-cine-text-muted">
             <ZoomOut className="w-4 h-4" />
           </button>
-          <button onClick={handleResetZoom} className="text-[10px] text-light-text-muted dark:text-cine-text-muted px-1 hover:text-light-text dark:hover:text-white cursor-pointer">
-            {zoom}%
+          <button onClick={() => { setScale(1); setPosition({ x: 0, y: 0 }); }} className="text-[10px] text-light-text-muted dark:text-cine-text-muted px-1 hover:text-light-text dark:hover:text-white cursor-pointer min-w-[32px] text-center">
+            {Math.round(scale * 100)}%
           </button>
-          <button onClick={handleZoomIn} className="p-1.5 hover:bg-light-border dark:hover:bg-cine-border rounded text-light-text-muted dark:text-cine-text-muted">
+          <button onClick={() => setScale(s => Math.min(s + 0.1, 5))} className="p-1.5 hover:bg-light-border dark:hover:bg-cine-border rounded text-light-text-muted dark:text-cine-text-muted">
             <ZoomIn className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Canvas Container with Pan */}
+      {/* Canvas Content Container */}
       <div
-        className="flex-1 w-full h-full relative cursor-grab active:cursor-grabbing overflow-auto"
+        className="absolute top-0 left-0 w-full h-full origin-top-left transition-transform duration-75 ease-out"
         style={{
-          backgroundImage: 'radial-gradient(#27272a 1px, transparent 1px)',
-          backgroundSize: '24px 24px',
+          transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
         }}
       >
-        {/* Scene Cards with Zoom */}
+        {/* Grid Background - Scaled with content or fixed? 
+            If inside here, it scales. If outside, it needs background-size adjustment.
+            Let's put it inside so it scales naturally like a real surface.
+        */}
         <div
-          className="relative p-8 space-y-6 transition-transform origin-top-left"
+          className="absolute -inset-[5000px]" // Huge background
           style={{
-            transform: `scale(${zoom / 100})`,
-            minWidth: `${100 * (100 / zoom)}%`,
-            minHeight: `${100 * (100 / zoom)}%`,
+            backgroundImage: 'radial-gradient(#27272a 1px, transparent 1px)',
+            backgroundSize: '24px 24px',
+            opacity: 0.5
           }}
-        >
-        {sceneGroups.map(({ scene, shots: sceneShots }) => {
-          const isSceneSelected = currentSceneId === scene.id && !selectedShotId;
+        />
 
-          return (
-          <div
-            key={scene.id}
-            className={`bg-light-panel dark:bg-cine-dark rounded-lg p-4 min-w-[600px] max-w-4xl transition-all ${
-              isSceneSelected
-                ? 'border-2 border-light-accent dark:border-cine-accent shadow-lg shadow-cine-accent/20'
-                : 'border border-light-border dark:border-cine-border'
-            }`}
-            style={{
-              marginLeft: scene.position.x,
-              marginTop: scene.position.y,
-            }}
-          >
-            {/* Scene Header */}
-            <button
-              onClick={() => selectScene(scene.id)}
-              className="w-full flex items-center justify-between mb-4 hover:bg-light-bg dark:bg-cine-panel/50 rounded p-2 -m-2 transition-colors text-left"
-            >
-              <div>
-                <h3 className="font-bold text-light-text dark:text-white">{scene.name}</h3>
-                <p className="text-xs text-light-text-muted dark:text-cine-text-muted">{scene.location}</p>
+        {/* Content */}
+        <div className="relative p-20 min-w-max min-h-max">
+          {!sceneGroups || sceneGroups.length === 0 ? (
+            <div className="flex flex-col items-center justify-center pt-40">
+              <div className="text-light-text-muted dark:text-cine-text-muted mb-4">
+                <LayoutGrid size={48} className="opacity-20" />
               </div>
-              <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                {sceneShots.length} 个镜头
-              </div>
-            </button>
-
-            {/* Shots Grid */}
-            {sceneShots.length > 0 ? (
-              <div className="grid grid-cols-4 gap-3">
-                {sceneShots.map((shot) => {
-                  const isShotSelected = selectedShotId === shot.id;
-                  const shotLabel = formatShotLabel(scene.order, shot.order, shot.globalOrder);
-
-                  return (
+              <p className="text-sm text-light-text-muted dark:text-cine-text-muted">
+                暂无场景，请从左侧导入剧本生成
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {sceneGroups.map(({ scene, shots: sceneShots }) => {
+                const isSceneSelected = currentSceneId === scene.id && !selectedShotId;
+                return (
                   <div
-                    role="button"
-                    tabIndex={0}
-                    key={shot.id}
-                    onClick={() => {
-                      selectShot(shot.id);
-                      if (shot.referenceImage) {
-                        handlePreview(shot.referenceImage);
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        selectShot(shot.id);
-                      }
-                    }}
-                    className={`group bg-light-bg dark:bg-cine-panel rounded overflow-hidden hover:border-light-accent dark:border-cine-accent transition-all ${
-                      isShotSelected
-                        ? 'border-2 border-light-accent dark:border-cine-accent shadow-md shadow-cine-accent/30'
+                    key={scene.id}
+                    className={`bg-light-panel dark:bg-cine-dark rounded-lg p-4 min-w-[600px] max-w-4xl transition-all interactive ${isSceneSelected
+                        ? 'border-2 border-light-accent dark:border-cine-accent shadow-lg shadow-cine-accent/20'
                         : 'border border-light-border dark:border-cine-border'
-                    }`}
+                      }`}
+                    style={{
+                      marginLeft: scene.position.x,
+                      marginTop: scene.position.y,
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()} // Prevent drag when clicking scene
                   >
-                    {/* Shot Thumbnail */}
-                    <div className="aspect-video bg-light-bg dark:bg-cine-black flex items-center justify-center relative">
-                      {shot.referenceImage ? (
-                        <>
-                          <img
-                            src={shot.referenceImage}
-                            alt={shotLabel}
-                            className="w-full h-full object-cover"
-                          />
-                          {/* Action Buttons Overlay */}
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                            <button
-                              onClick={(e) => handlePreview(shot.referenceImage!, e)}
-                              className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800 transition-colors"
-                              title="预览"
-                            >
-                              <Eye size={14} />
-                            </button>
-                            <button
-                              onClick={(e) => handleDownload(shot.referenceImage!, shot.order, e)}
-                              className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800 transition-colors"
-                              title="下载"
-                            >
-                              <Download size={14} />
-                            </button>
-                            <button
-                              onClick={(e) => handleEditShot(shot, e)}
-                              className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800 transition-colors"
-                              title="编辑分镜"
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                            <button
-                              onClick={(e) => handleGenerate(shot.id, e)}
-                              className="p-1.5 bg-light-accent hover:bg-light-accent-hover rounded text-white transition-colors"
-                              title="重新生成"
-                            >
-                              <RefreshCw size={14} />
-                            </button>
-                          </div>
-                        </>
-                      ) : shot.gridImages && shot.gridImages.length > 0 ? (
-                        <>
-                          <img
-                            src={shot.gridImages[0]}
-                            alt={shotLabel}
-                            className="w-full h-full object-cover"
-                            onClick={(e) => handlePreview(shot.gridImages![0], e)}
-                          />
-                          {/* Action Buttons Overlay */}
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                            <button
-                              onClick={(e) => handlePreview(shot.gridImages![0], e)}
-                              className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800 transition-colors"
-                              title="预览"
-                            >
-                              <Eye size={14} />
-                            </button>
-                            <button
-                              onClick={(e) => handleDownload(shot.gridImages![0], shot.order, e)}
-                              className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800 transition-colors"
-                              title="下载"
-                            >
-                              <Download size={14} />
-                            </button>
-                            <button
-                              onClick={(e) => handleEditShot(shot, e)}
-                              className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800 transition-colors"
-                              title="编辑分镜"
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                            <button
-                              onClick={(e) => handleGenerate(shot.id, e)}
-                              className="p-1.5 bg-light-accent hover:bg-light-accent-hover rounded text-white transition-colors"
-                              title="重新生成"
-                            >
-                              <RefreshCw size={14} />
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <ImageIcon size={24} className="text-light-text-muted dark:text-cine-text-muted" />
-                          {/* Generate Button for empty shots */}
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <button
-                              onClick={(e) => handleGenerate(shot.id, e)}
-                              className="p-2 bg-light-accent hover:bg-light-accent-hover rounded-lg text-white transition-colors flex items-center gap-1 text-xs"
-                            >
-                              <Sparkles size={14} />
-                              生成图片
-                            </button>
-                            <button
-                              onClick={(e) => handleEditShot(shot, e)}
-                              className="p-2 bg-white/90 hover:bg-white rounded-lg text-gray-800 transition-colors flex items-center gap-1 text-xs"
-                            >
-                              <Edit2 size={14} />
-                              编辑
-                            </button>
-                          </div>
-                        </>
-                      )}
-
-                      {/* Status Indicator */}
-                      <div
-                        className={`absolute top-2 right-2 w-2 h-2 rounded-full ${
-                          shot.status === 'done'
-                            ? 'bg-green-500'
-                            : shot.status === 'processing'
-                            ? 'bg-yellow-500'
-                            : shot.status === 'error'
-                            ? 'bg-red-500'
-                            : 'bg-gray-500'
-                        }`}
-                      />
-
-                      {/* Play Icon Overlay */}
-                      {shot.videoClip && (
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Play size={32} className="text-light-text dark:text-white" fill="white" />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Shot Info */}
-                    <div className="p-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-mono text-light-text-muted dark:text-cine-text-muted">
-                          {shotLabel}
-                        </span>
-                        <span className="text-light-text-muted dark:text-cine-text-muted">{shot.duration}s</span>
+                    {/* Scene Header */}
+                    <button
+                      onClick={() => selectScene(scene.id)}
+                      className="w-full flex items-center justify-between mb-4 hover:bg-light-bg dark:bg-cine-panel/50 rounded p-2 -m-2 transition-colors text-left"
+                    >
+                      <div>
+                        <h3 className="font-bold text-light-text dark:text-white">{scene.name}</h3>
+                        <p className="text-xs text-light-text-muted dark:text-cine-text-muted">{scene.location}</p>
                       </div>
-                      <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 truncate">
-                        {shot.shotSize}
+                      <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                        {sceneShots.length} 个镜头
                       </div>
-                    </div>
+                    </button>
+
+                    {/* Shots Grid */}
+                    {sceneShots.length > 0 ? (
+                      <div className="grid grid-cols-4 gap-3">
+                        {sceneShots.map((shot) => {
+                          const isShotSelected = selectedShotId === shot.id;
+                          const shotLabel = formatShotLabel(scene.order, shot.order, shot.globalOrder);
+
+                          return (
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              key={shot.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                selectShot(shot.id);
+                                if (shot.referenceImage) {
+                                  handlePreview(shot.referenceImage);
+                                }
+                              }}
+                              className={`group bg-light-bg dark:bg-cine-panel rounded overflow-hidden hover:border-light-accent dark:border-cine-accent transition-all ${isShotSelected
+                                  ? 'border-2 border-light-accent dark:border-cine-accent shadow-md shadow-cine-accent/30'
+                                  : 'border border-light-border dark:border-cine-border'
+                                }`}
+                            >
+                              {/* Shot Thumbnail */}
+                              <div className="aspect-video bg-light-bg dark:bg-cine-black flex items-center justify-center relative">
+                                {shot.referenceImage ? (
+                                  <>
+                                    <img
+                                      src={shot.referenceImage}
+                                      alt={shotLabel}
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                      <button onClick={(e) => handlePreview(shot.referenceImage!, e)} className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800"><Eye size={14} /></button>
+                                      <button onClick={(e) => handleDownload(shot.referenceImage!, shot.order, e)} className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800"><Download size={14} /></button>
+                                      <button onClick={(e) => handleEditShot(shot, e)} className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800"><Edit2 size={14} /></button>
+                                      <button onClick={(e) => handleGenerate(shot.id, e)} className="p-1.5 bg-light-accent hover:bg-light-accent-hover rounded text-white"><RefreshCw size={14} /></button>
+                                    </div>
+                                  </>
+                                ) : shot.gridImages && shot.gridImages.length > 0 ? (
+                                  <>
+                                    <img src={shot.gridImages[0]} alt={shotLabel} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                      <button onClick={(e) => handlePreview(shot.gridImages![0], e)} className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800"><Eye size={14} /></button>
+                                      <button onClick={(e) => handleGenerate(shot.id, e)} className="p-1.5 bg-light-accent hover:bg-light-accent-hover rounded text-white"><RefreshCw size={14} /></button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <ImageIcon size={24} className="text-light-text-muted dark:text-cine-text-muted" />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                      <button onClick={(e) => handleGenerate(shot.id, e)} className="p-2 bg-light-accent hover:bg-light-accent-hover rounded-lg text-white flex items-center gap-1 text-xs"><Sparkles size={14} /> 生成图片</button>
+                                    </div>
+                                  </>
+                                )}
+                                {/* Status Indicator */}
+                                <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${shot.status === 'done' ? 'bg-green-500' : shot.status === 'processing' ? 'bg-yellow-500' : shot.status === 'error' ? 'bg-red-500' : 'bg-gray-500'}`} />
+                                {shot.videoClip && (
+                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                    <Play size={32} className="text-white" fill="white" />
+                                  </div>
+                                )}
+                              </div>
+                              {/* Shot Info */}
+                              <div className="p-2">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-mono text-light-text-muted dark:text-cine-text-muted">{shotLabel}</span>
+                                  <span className="text-light-text-muted dark:text-cine-text-muted">{shot.duration}s</span>
+                                </div>
+                                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 truncate">{shot.shotSize}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {/* Add Shot Button */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleAddShotClick(scene.id); }}
+                          className="aspect-video rounded border-2 border-dashed border-light-border dark:border-cine-border flex flex-col items-center justify-center text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent transition-colors"
+                        >
+                          <Plus size={24} />
+                          <span className="text-xs mt-1">添加镜头</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8 flex flex-col items-center gap-2">
+                        <span>暂无镜头</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleAddShotClick(scene.id); }}
+                          className="text-xs text-light-accent dark:text-cine-accent hover:underline"
+                        >
+                          添加第一个镜头
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8">
-                暂无镜头
-              </div>
-            )}
-          </div>
-          );
-        })}
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Image Preview Modal */}
+      {/* Canvas User Widget (Floating) */}
+      <CanvasUserWidget />
+
+      {/* Modals */}
       {imagePreview && (
-        <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
-          onClick={() => setImagePreview(null)}
-        >
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 interactive" onClick={() => setImagePreview(null)}>
           <div className="relative max-w-7xl max-h-full">
-            <img
-              src={imagePreview}
-              alt="Preview"
-              className="max-w-full max-h-[90vh] object-contain rounded-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
-            <button
-              onClick={() => setImagePreview(null)}
-              className="absolute top-4 right-4 p-2 bg-white/90 hover:bg-white rounded-full text-gray-800 transition-colors"
-            >
-              <X size={20} />
-            </button>
+            <img src={imagePreview} alt="Preview" className="max-w-full max-h-[90vh] object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />
+            <button onClick={() => setImagePreview(null)} className="absolute top-4 right-4 p-2 bg-white/90 hover:bg-white rounded-full text-gray-800"><X size={20} /></button>
           </div>
         </div>
       )}
 
       {editingShot && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 interactive">
           <div className="bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-xl shadow-xl w-[900px] max-w-[96vw] max-h-[88vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-cine-border">
               <div className="flex items-center gap-2">
                 <Edit2 size={16} className="text-light-accent dark:text-cine-accent" />
                 <span className="text-sm font-bold text-light-text dark:text-white">分镜详情编辑</span>
-                <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                  #{editingShot.order} • {editingShot.shotSize}
-                </span>
               </div>
-              <button
-                onClick={() => setEditingShot(null)}
-                className="p-1 rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
-              >
-                <X size={16} className="text-light-text-muted dark:text-cine-text-muted" />
-              </button>
+              <button onClick={() => setEditingShot(null)} className="p-1 rounded hover:bg-light-bg dark:hover:bg-cine-panel"><X size={16} className="text-light-text-muted dark:text-cine-text-muted" /></button>
             </div>
             <div className="grid grid-cols-2 gap-4 p-4 overflow-auto">
               <div className="space-y-3">
                 <label className="text-xs text-light-text-muted dark:text-cine-text-muted">镜头描述</label>
-                <textarea
-                  value={shotForm.description}
-                  onChange={(e) => setShotForm((prev) => ({ ...prev, description: e.target.value }))}
-                  className="w-full h-40 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
-                  placeholder="写下镜头内容..."
-                />
+                <textarea value={shotForm.description} onChange={(e) => setShotForm((prev) => ({ ...prev, description: e.target.value }))} className="w-full h-40 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white" />
                 <label className="text-xs text-light-text-muted dark:text-cine-text-muted">旁白</label>
-                <textarea
-                  value={shotForm.narration}
-                  onChange={(e) => setShotForm((prev) => ({ ...prev, narration: e.target.value }))}
-                  className="w-full h-24 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
-                  placeholder="旁白/场景说明"
-                />
+                <textarea value={shotForm.narration} onChange={(e) => setShotForm((prev) => ({ ...prev, narration: e.target.value }))} className="w-full h-24 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white" />
               </div>
               <div className="space-y-3">
                 <label className="text-xs text-light-text-muted dark:text-cine-text-muted">对白</label>
-                <textarea
-                  value={shotForm.dialogue}
-                  onChange={(e) => setShotForm((prev) => ({ ...prev, dialogue: e.target.value }))}
-                  className="w-full h-24 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
-                  placeholder="角色对白（可选）"
-                />
+                <textarea value={shotForm.dialogue} onChange={(e) => setShotForm((prev) => ({ ...prev, dialogue: e.target.value }))} className="w-full h-24 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white" />
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-light-text-muted dark:text-cine-text-muted">镜头景别</label>
-                    <select
-                      value={shotForm.shotSize}
-                      onChange={(e) => setShotForm((prev) => ({ ...prev, shotSize: e.target.value as ShotSize }))}
-                      className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
-                    >
+                    <select value={shotForm.shotSize} onChange={(e) => setShotForm((prev) => ({ ...prev, shotSize: e.target.value as ShotSize }))} className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm text-light-text dark:text-white">
                       <option value="">选择景别</option>
-                      {shotSizeOptions.map((size) => (
-                        <option key={size} value={size}>
-                          {size}
-                        </option>
-                      ))}
+                      {shotSizeOptions.map((size) => <option key={size} value={size}>{size}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="text-xs text-light-text-muted dark:text-cine-text-muted">镜头运动</label>
-                    <select
-                      value={shotForm.cameraMovement}
-                      onChange={(e) => setShotForm((prev) => ({ ...prev, cameraMovement: e.target.value as CameraMovement }))}
-                      className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
-                    >
+                    <select value={shotForm.cameraMovement} onChange={(e) => setShotForm((prev) => ({ ...prev, cameraMovement: e.target.value as CameraMovement }))} className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm text-light-text dark:text-white">
                       <option value="">选择运动</option>
-                      {cameraMovementOptions.map((move) => (
-                        <option key={move} value={move}>
-                          {move}
-                        </option>
-                      ))}
+                      {cameraMovementOptions.map((move) => <option key={move} value={move}>{move}</option>)}
                     </select>
                   </div>
                 </div>
                 <div>
                   <label className="text-xs text-light-text-muted dark:text-cine-text-muted">时长 (秒)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={shotForm.duration}
-                    onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))}
-                    className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white"
-                  />
+                  <input type="number" min={1} value={shotForm.duration} onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))} className="w-full mt-1 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-2 text-sm text-light-text dark:text-white" />
                 </div>
               </div>
             </div>
-            {/* 历史分镜图片 */}
-            <div className="px-4">
+            {/* History Images */}
+            <div className="px-4 pb-4">
               <div className="text-xs font-medium text-light-text dark:text-white mb-2">历史分镜图片</div>
-              {shotHistoryImages.length === 0 ? (
-                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-3">暂无历史图片</div>
-              ) : (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 mb-3">
-                  {shotHistoryImages.map((url, idx) => (
-                    <div
-                      key={idx}
-                      className={`relative aspect-video bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden border cursor-pointer transition-colors ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/40 dark:ring-cine-accent/40' : 'border-light-border/70 dark:border-cine-border/70 hover:border-light-accent dark:hover:border-cine-accent'}`}
-                      onClick={() => {
-                        setSelectedHistoryImage(url);
-                        if (liveEditingShot) {
-                          updateShot(liveEditingShot.id, { referenceImage: url, status: 'done' });
-                        }
-                      }}
-                      onDoubleClick={() => setShotImagePreview(url)}
-                    >
-                      <img src={url} alt={`history-${idx + 1}`} className="w-full h-full object-cover" />
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div className="grid grid-cols-5 gap-2">
+                {shotHistoryImages.map((url, idx) => (
+                  <div key={idx} className={`aspect-video bg-light-bg dark:bg-cine-black rounded border cursor-pointer ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent' : 'border-transparent'}`} onClick={() => { setSelectedHistoryImage(url); if (liveEditingShot) updateShot(liveEditingShot.id, { referenceImage: url }); }}>
+                    <img src={url} className="w-full h-full object-cover" />
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="flex justify-end gap-2 px-4 py-3 border-t border-light-border dark:border-cine-border">
-              <button
-                onClick={() => setEditingShot(null)}
-                className="px-3 py-2 text-sm rounded-lg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={saveShotEdit}
-                className="px-3 py-2 text-sm rounded-lg bg-light-accent dark:bg-cine-accent text-white hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors"
-              >
-                保存并应用
-              </button>
+              <button onClick={() => setEditingShot(null)} className="px-3 py-2 text-sm rounded-lg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted">取消</button>
+              <button onClick={saveShotEdit} className="px-3 py-2 text-sm rounded-lg bg-light-accent dark:bg-cine-accent text-white">保存并应用</button>
             </div>
           </div>
         </div>
       )}
 
-      {shotImagePreview && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] p-4" onClick={() => setShotImagePreview(null)}>
-          <div className="max-w-5xl w-full max-h-[90vh]">
-            <img src={shotImagePreview} alt="历史预览" className="w-full h-full object-contain rounded-lg" />
-          </div>
-        </div>
+      {showAddShotDialog && selectedSceneForNewShot && (
+        <AddShotDialog
+          sceneId={selectedSceneForNewShot}
+          sceneName={project?.scenes.find(s => s.id === selectedSceneForNewShot)?.name || ''}
+          existingShotsCount={project?.shots.filter(s => s.sceneId === selectedSceneForNewShot).length || 0}
+          insertIndex={shotInsertIndex ?? undefined}
+          onAdd={handleAddShot}
+          onClose={() => { setShowAddShotDialog(false); setShotInsertIndex(null); }}
+        />
       )}
     </div>
   );
