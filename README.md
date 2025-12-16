@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-0.2.0-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-0.4.0-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.5.6-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-blue?style=for-the-badge&logo=typescript)
@@ -77,6 +77,24 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 - Auto-convert to Data URL for storage
 - Display and delete functionality
 
+### 🆕 User Authentication & Credits System
+- **Supabase Auth Integration** - Secure user authentication
+- **Three-tier Role System** - admin (free) / vip (80% off) / user (standard price)
+- **Credits Management** - All AI operations consume credits
+- **Auto Profile Creation** - Profile auto-created on first login
+- **Session Persistence** - Cookie-based session with auto-refresh
+
+### 🆕 Request Cancellation (AbortController)
+- **Cancel AI Requests** - Stop ongoing AI operations anytime
+- **Agent Mode Support** - Cancel long-running conversations
+- **Clean Resource Cleanup** - Proper cleanup of network requests
+
+### 🆕 Cloud Storage & Sync
+- **Supabase Database** - PostgreSQL cloud storage for projects
+- **Chat History Sync** - Three-level scope (project/scene/shot)
+- **IndexedDB Fallback** - Local storage for offline access
+- **Auto-sync** - Automatic data synchronization
+
 ---
 
 <a name="quick-start"></a>
@@ -106,11 +124,24 @@ NEXT_PUBLIC_VOLCANO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 NEXT_PUBLIC_SEEDREAM_MODEL_ID=ep-xxxxxx-xxxxx  # Image generation
 NEXT_PUBLIC_SEEDANCE_MODEL_ID=ep-xxxxxx-xxxxx  # Video generation
 NEXT_PUBLIC_DOUBAO_MODEL_ID=ep-xxxxxx-xxxxx    # AI conversation
+
+# Supabase (for cloud storage and authentication)
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key  # Server-side only
+
+# Cloudflare R2 (optional, for file storage)
+R2_ACCOUNT_ID=your_account_id
+R2_ACCESS_KEY_ID=your_access_key
+R2_SECRET_ACCESS_KEY=your_secret_key
+R2_BUCKET_NAME=your_bucket_name
+R2_PUBLIC_DOMAIN=https://your-domain.r2.dev
 ```
 
 **Get API Keys:**
 - **Gemini**: [Google AI Studio](https://makersuite.google.com/app/apikey)
 - **Volcano Engine**: [Volcano Engine Console](https://console.volcengine.com/ark)
+- **Supabase**: [Supabase Dashboard](https://app.supabase.com/) - Create a new project
 
 ### 3. Start Development Server
 
@@ -179,11 +210,13 @@ Visit [http://localhost:3000](http://localhost:3000)
 - **Frontend**: React 19, TypeScript 5.8.2
 - **Styling**: Tailwind CSS 3.4 (Cinema Dark theme)
 - **State Management**: Zustand + Immer middleware
-- **Database**: Dexie.js (IndexedDB)
+- **Database**: Supabase (PostgreSQL) + Dexie.js (IndexedDB fallback)
+- **Authentication**: Supabase Auth (Email/Password + OAuth)
+- **File Storage**: Cloudflare R2
 - **AI Models**:
-  - Google Gemini 2.0 Flash (Grid generation)
+  - Google Gemini 2.0 Flash (Grid generation, text generation)
   - Volcano Engine SeeDream 4.0 (Image generation)
-  - Volcano Engine SeeDance 1.0 (Video generation)
+  - Volcano Engine SeeDance 1.0 Pro (Video generation)
   - Volcano Engine Doubao Pro (AI conversation)
 
 ---
@@ -226,18 +259,30 @@ src/
 ## 📋 Pending Features
 
 ### High Priority
-- Scene selector optimization
+- Grid generation history (per scene)
+- Timeline playback with sync
 - Drag shots to Timeline
-- Timeline playback
-- Video export
+- Video export with audio mixing
 - TTS audio generation
 
 ### Medium Priority
-- Scene drag & reorder
-- Timeline clip adjustment
-- Project list page
+- Scene drag & reorder on canvas
+- Timeline clip adjustment (trim, reorder)
+- Payment integration for credits
+- OAuth login (GitHub, Google)
 
 For detailed feature list, see [FEATURES.md](./FEATURES.md)
+
+---
+
+## 📚 Documentation
+
+- **Quick Reference for AI**: [AGENTS.md](./AGENTS.md) - Commands and best practices
+- **API Architecture**: [API_ARCHITECTURE.md](./API_ARCHITECTURE.md) - API design and authentication
+- **Authentication System**: [AUTHENTICATION.md](./AUTHENTICATION.md) - User auth and roles
+- **Credits System**: [CREDITS_SYSTEM.md](./CREDITS_SYSTEM.md) - Credits pricing and management
+- **Development Guide**: [CLAUDE.md](./CLAUDE.md) - Detailed development philosophy
+- **Chat Migration**: [CHAT_STORAGE_MIGRATION.md](./CHAT_STORAGE_MIGRATION.md) - Cloud storage migration guide
 
 ---
 
@@ -258,6 +303,16 @@ For detailed feature list, see [FEATURES.md](./FEATURES.md)
 ---
 
 ## 📝 Changelog
+
+### v0.4.0 (2025-12-17)
+- ✅ **User Authentication System** - Supabase Auth integration
+- ✅ **Credits System** - Three-tier pricing (admin free, vip 80% off, user standard)
+- ✅ **Request Cancellation** - AbortController support for AI requests
+- ✅ **Cloud Storage** - Supabase PostgreSQL for projects and chat history
+- ✅ **Chat History Sync** - Three-level scope (project/scene/shot) cloud storage
+- ✅ **Auto Profile Creation** - Profile auto-created with role-based credits
+- ✅ **authenticatedFetch** - Unified API client with auto authentication
+- ✅ **API Gateway** - Centralized Supabase API route
 
 ### v0.2.0 (2025-01-03)
 - ✅ Character AI turnaround generation (1/3 face + 2/3 views)
