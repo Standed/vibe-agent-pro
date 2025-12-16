@@ -17,8 +17,8 @@ const config: Config = {
         'cine-bg-secondary': '#18181b',
         'cine-panel': '#18181b',
         'cine-border': '#27272a',
-        'cine-accent': '#a855f7',
-        'cine-accent-hover': '#9333ea',
+        'cine-accent': '#ffffff',
+        'cine-accent-hover': '#e5e5e5',
         'cine-text-muted': '#a1a1aa',
 
         // Light theme colors (Cinema Light)
@@ -27,8 +27,8 @@ const config: Config = {
         'light-surface': '#f8f9fa',
         'light-panel': '#f1f3f5',
         'light-border': '#e9ecef',
-        'light-accent': '#7c3aed',
-        'light-accent-hover': '#6d28d9',
+        'light-accent': '#000000',
+        'light-accent-hover': '#262626',
         'light-text': '#1a1a1a',
         'light-text-muted': '#6c757d',
       },
