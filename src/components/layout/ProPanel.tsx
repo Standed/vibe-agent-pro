@@ -16,6 +16,7 @@ import { getUserCredits, getGridCost } from '@/lib/supabase/credits';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { logger } from '@/lib/logService';
 import { dataService } from '@/lib/dataService';
+import { storageService } from '@/lib/storageService';
 
 type GenerationType = 'grid' | 'single' | 'video' | 'edit' | 'batch' | null;
 type EditModel = 'seedream' | 'gemini';
@@ -128,7 +129,7 @@ export default function ProPanel() {
       const selectedShot = project?.shots.find(s => s.id === selectedShotId);
 
       // Enrich prompt with character and location context
-      const { enrichedPrompt, usedCharacters, usedLocations } = enrichPromptWithAssets(
+      const { enrichedPrompt, usedCharacters, usedLocations, referenceImageUrls } = enrichPromptWithAssets(
         prompt,
         project,
         selectedShot?.description
@@ -150,30 +151,86 @@ export default function ProPanel() {
 
       // 使用项目的画面比例生成图片
       const projectAspectRatio = project?.settings.aspectRatio;
-      const imageUrl = await volcanoService.generateSingleImage(enrichedPrompt, projectAspectRatio);
 
-      // Update selected shot with single image
+      // 🖼️ 准备参考图逻辑：
+      // 1. 如果用户上传了参考图 (referenceImages)，则仅使用用户上传的图，忽略资源库匹配
+      // 2. 如果用户未上传，则使用资源库自动匹配的图 (enrichPromptWithAssets 返回的 referenceImageUrls)
+      let finalReferenceImages: string[] = [];
+
+      if (referenceImages.length > 0) {
+        // 情况 A: 用户上传了参考图
+        // 注意：这里假设 referenceImages 已经是可访问的 URL (如 blob URL 或 base64)
+        // 如果是 File 对象，可能需要先上传或转 base64。目前 ProPanel 实现中 referenceImages 似乎是 string[]
+        finalReferenceImages = referenceImages;
+        console.log('[ProPanel] Using user uploaded reference images:', finalReferenceImages.length);
+      } else {
+        // 情况 B: 使用资源库匹配
+        if (referenceImageUrls && referenceImageUrls.length > 0) {
+          finalReferenceImages = referenceImageUrls;
+          console.log('[ProPanel] Using asset library reference images:', finalReferenceImages.length);
+        }
+      }
+
+      const base64Url = await volcanoService.generateSingleImage(
+        enrichedPrompt,
+        projectAspectRatio,
+        finalReferenceImages // 传递参考图
+      );
+
+      // 1. 立即更新 UI (使用 Base64)
       if (selectedShotId) {
         updateShot(selectedShotId, {
-          referenceImage: imageUrl,
+          referenceImage: base64Url,
           status: 'done',
         });
 
-        // Add to generation history
-        const historyItem: GenerationHistoryItem = {
-          id: `gen_${Date.now()}`,
-          type: 'image',
-          timestamp: new Date(),
-          result: imageUrl,
-          prompt: prompt,
-          parameters: {
-            model: 'SeeDream',
-            aspectRatio: aspectRatio,
-          },
-          status: 'success',
-        };
-        addGenerationHistory(selectedShotId, historyItem);
+        // 2. 后台上传 R2
+        storageService.uploadBase64ToR2(
+          base64Url,
+          `projects/${project?.id}/shots/${selectedShotId}`,
+          `gen_${Date.now()}.png`,
+          user?.id || 'anonymous'
+        ).then((r2Url) => {
+          // 上传成功后更新为 R2 链接
+          updateShot(selectedShotId, {
+            referenceImage: r2Url,
+            status: 'done',
+          });
+
+          // Add to generation history (using R2 URL)
+          const historyItem: GenerationHistoryItem = {
+            id: `gen_${Date.now()}`,
+            type: 'image',
+            timestamp: new Date(),
+            result: r2Url,
+            prompt: prompt,
+            parameters: {
+              model: 'SeeDream',
+              aspectRatio: aspectRatio,
+            },
+            status: 'success',
+          };
+          addGenerationHistory(selectedShotId, historyItem);
+        }).catch(err => {
+          console.error('Background upload failed:', err);
+          // Fallback: save history with base64
+          const historyItem: GenerationHistoryItem = {
+            id: `gen_${Date.now()}`,
+            type: 'image',
+            timestamp: new Date(),
+            result: base64Url,
+            prompt: prompt,
+            parameters: {
+              model: 'SeeDream (Local)',
+              aspectRatio: aspectRatio,
+            },
+            status: 'success',
+          };
+          addGenerationHistory(selectedShotId, historyItem);
+        });
       }
+
+
 
       toast.success('单图生成成功！');
     } catch (error) {
@@ -1118,6 +1175,7 @@ export default function ProPanel() {
               refImages // 传递参考图
             );
 
+            // 1. 立即更新 UI (Base64)
             updateShot(shot.id, {
               referenceImage: result.slices[0],
               fullGridUrl: result.fullImage,
@@ -1125,29 +1183,16 @@ export default function ProPanel() {
               status: 'done'
             });
 
-            addGenerationHistory(shot.id, {
-              id: `gen_${Date.now()}`,
-              type: 'image',
-              timestamp: new Date(),
-              result: result.slices[0],
-              prompt: shotPrompt,
-              parameters: {
-                model: 'Gemini Grid',
-                gridSize: '2x2',
-                fullGridUrl: result.fullImage
-              },
-              status: 'success'
-            });
-          } else {
-            // 使用 SeeDream 模式 (Volcano)
-            try {
-              const imageUrl = await volcanoService.generateSingleImage(
-                shotPrompt,
-                project?.settings.aspectRatio
-              );
-
+            // 2. 后台上传 R2
+            const folder = `projects/${project?.id}/grids`;
+            Promise.all([
+              storageService.uploadBase64ToR2(result.fullImage, folder, `grid_full_${Date.now()}.png`, user?.id || 'anonymous'),
+              storageService.uploadBase64ArrayToR2(result.slices, folder, user?.id || 'anonymous')
+            ]).then(([fullGridUrl, slices]) => {
               updateShot(shot.id, {
-                referenceImage: imageUrl,
+                referenceImage: slices[0],
+                fullGridUrl: fullGridUrl,
+                gridImages: slices,
                 status: 'done'
               });
 
@@ -1155,13 +1200,84 @@ export default function ProPanel() {
                 id: `gen_${Date.now()}`,
                 type: 'image',
                 timestamp: new Date(),
-                result: imageUrl,
+                result: slices[0],
                 prompt: shotPrompt,
                 parameters: {
-                  model: 'SeeDream',
-                  aspectRatio: project?.settings.aspectRatio
+                  model: 'Gemini Grid',
+                  gridSize: '2x2',
+                  fullGridUrl: fullGridUrl
                 },
                 status: 'success'
+              });
+            }).catch(err => {
+              console.error('Grid background upload failed:', err);
+              addGenerationHistory(shot.id, {
+                id: `gen_${Date.now()}`,
+                type: 'image',
+                timestamp: new Date(),
+                result: result.slices[0],
+                prompt: shotPrompt,
+                parameters: {
+                  model: 'Gemini Grid (Local)',
+                  gridSize: '2x2',
+                  fullGridUrl: result.fullImage
+                },
+                status: 'success'
+              });
+            });
+          } else {
+            // 使用 SeeDream 模式 (Volcano)
+            try {
+              const base64Url = await volcanoService.generateSingleImage(
+                shotPrompt,
+                project?.settings.aspectRatio
+              );
+
+              // 1. 立即更新 UI
+              updateShot(shot.id, {
+                referenceImage: base64Url,
+                status: 'done'
+              });
+
+              // 2. 后台上传 R2
+              storageService.uploadBase64ToR2(
+                base64Url,
+                `projects/${project?.id}/shots/${shot.id}`,
+                `gen_${Date.now()}.png`,
+                user?.id || 'anonymous'
+              ).then((r2Url) => {
+                updateShot(shot.id, {
+                  referenceImage: r2Url,
+                  status: 'done'
+                });
+
+                addGenerationHistory(shot.id, {
+                  id: `gen_${Date.now()}`,
+                  type: 'image',
+                  timestamp: new Date(),
+                  result: r2Url,
+                  prompt: shotPrompt,
+                  parameters: {
+                    model: 'SeeDream',
+                    aspectRatio: project?.settings.aspectRatio
+                  },
+                  status: 'success'
+                });
+              }).catch(err => {
+                console.error(`Shot ${shot.id} background upload failed:`, err);
+                // Fallback history with base64
+                addGenerationHistory(shot.id, {
+                  id: `gen_${Date.now()}`,
+                  type: 'image',
+                  timestamp: new Date(),
+                  result: base64Url,
+                  prompt: shotPrompt,
+                  parameters: {
+                    model: 'SeeDream (Local)',
+                    aspectRatio: project?.settings.aspectRatio
+                  },
+                  status: 'success'
+                });
               });
             } catch (seedreamError: any) {
               // 检测是否为模型未激活错误

@@ -6,10 +6,13 @@ import { useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
 import { generateStoryboardFromScript, analyzeScript, groupShotsIntoScenes } from '@/services/storyboardService';
 import type { Character, Location, LocationType } from '@/types/project';
+import { storageService } from '@/lib/storageService';
+import { useAuth } from '@/components/auth/AuthProvider';
 // deprecated
 type Tab = 'script' | 'characters' | 'locations' | 'audio';
 
 export default function LeftSidebar() {
+  const { user } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('script');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -173,12 +176,27 @@ ${characterForm.artStyle ? `画风：${characterForm.artStyle}` : ''}
 - 专业角色设计，线条清晰
 - 保持角色一致性`;
 
-      const imageUrl = await volcanoService.generateSingleImage(turnaroundPrompt, '1024x1024');
+      const base64Url = await volcanoService.generateSingleImage(turnaroundPrompt, '1024x1024');
 
+      // 1. Immediate UI update (Base64)
       setCharacterForm((prev) => ({
         ...prev,
-        referenceImages: [...prev.referenceImages, imageUrl],
+        referenceImages: [...prev.referenceImages, base64Url],
       }));
+
+      // 2. Background Upload to R2
+      const folder = `projects/characters/${user?.id || 'anonymous'}`;
+      storageService.uploadBase64ToR2(base64Url, folder, `char_turnaround_${Date.now()}.png`, user?.id || 'anonymous')
+        .then(r2Url => {
+          // Replace base64 with R2 URL
+          setCharacterForm((prev) => ({
+            ...prev,
+            referenceImages: prev.referenceImages.map(img => img === base64Url ? r2Url : img),
+          }));
+        })
+        .catch(error => {
+          console.error('R2 upload failed, keeping base64:', error);
+        });
 
       alert('角色三视图生成成功！');
     } catch (error) {

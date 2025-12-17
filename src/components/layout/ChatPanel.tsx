@@ -16,6 +16,7 @@ import { generateMultiViewGrid, generateSingleImage, editImageWithGemini, urlsTo
 import { AspectRatio, ImageSize, GenerationHistoryItem } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { toast } from 'sonner';
+import { storageService } from '@/lib/storageService';
 import { validateGenerationConfig } from '@/utils/promptSecurity';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
@@ -269,7 +270,15 @@ export default function ChatPanel() {
     }
 
     const projectAspectRatio = project?.settings.aspectRatio;
-    const imageUrl = await volcanoService.generateSingleImage(enrichedPrompt, projectAspectRatio);
+    let imageUrl = await volcanoService.generateSingleImage(enrichedPrompt, projectAspectRatio);
+
+    // Upload to R2
+    try {
+      const folder = `projects/${project?.id}/shots/${selectedShotId || 'chat'}`;
+      imageUrl = await storageService.uploadBase64ToR2(imageUrl, folder, `gen_${Date.now()}.png`, user?.id || 'anonymous');
+    } catch (error) {
+      console.error('R2 upload failed, using base64 fallback:', error);
+    }
 
     // Update shot if selected
     if (selectedShotId) {
@@ -310,6 +319,8 @@ export default function ChatPanel() {
 
   // Gemini direct generation (single image without grid)
   const handleGeminiDirectGeneration = async (prompt: string, imageFiles: File[]) => {
+    const skipAssetRefs = imageFiles.length > 0;
+
     // Enrich prompt with assets
     const { enrichedPrompt, referenceImageUrls, usedCharacters, usedLocations } = enrichPromptWithAssets(
       prompt,
@@ -318,7 +329,7 @@ export default function ChatPanel() {
     );
 
     // Show asset usage info
-    if (usedCharacters.length > 0 || usedLocations.length > 0) {
+    if (!skipAssetRefs && (usedCharacters.length > 0 || usedLocations.length > 0)) {
       const assetInfo = [];
       if (usedCharacters.length > 0) {
         assetInfo.push(`角色: ${usedCharacters.map(c => c.name).join(', ')}`);
@@ -343,19 +354,29 @@ export default function ChatPanel() {
     );
 
     // Convert asset reference URLs to ReferenceImageData
-    const assetRefImages = referenceImageUrls.length > 0
+    const assetRefImages = !skipAssetRefs && referenceImageUrls.length > 0
       ? await urlsToReferenceImages(referenceImageUrls)
       : [];
 
-    // Combine all reference images
-    const allRefImages = [...uploadedRefImages, ...assetRefImages];
+    // 用户上传则只用用户参考图，否则自动使用资产参考图
+    const allRefImages = uploadedRefImages.length > 0
+      ? uploadedRefImages
+      : assetRefImages;
 
     // Generate single image with Gemini
-    const imageUrl = await generateSingleImage(
+    let imageUrl = await generateSingleImage(
       enrichedPrompt,
       project?.settings.aspectRatio || AspectRatio.WIDE,
       allRefImages
     );
+
+    // Upload to R2
+    try {
+      const folder = `projects/${project?.id}/shots/${selectedShotId || 'chat'}`;
+      imageUrl = await storageService.uploadBase64ToR2(imageUrl, folder, `gen_${Date.now()}.png`, user?.id || 'anonymous');
+    } catch (error) {
+      console.error('R2 upload failed, using base64 fallback:', error);
+    }
 
     // Update shot if selected
     if (selectedShotId) {
@@ -470,7 +491,7 @@ export default function ChatPanel() {
         ? scenes.find(s => s.shotIds.includes(selectedShotId!))
         : null;
 
-    // Show Grid preview modal
+    // Show Grid preview modal (Immediate Base64)
     if (currentScene) {
       setGridResult({
         fullImage: result.fullImage,
@@ -478,6 +499,22 @@ export default function ChatPanel() {
         sceneId: currentScene.id,
         gridRows: rows,
         gridCols: cols,
+      });
+
+      // Background Upload to R2
+      const folder = `projects/${project?.id}/grids`;
+      Promise.all([
+        storageService.uploadBase64ToR2(result.fullImage, folder, `grid_full_${Date.now()}.png`, user?.id || 'anonymous'),
+        storageService.uploadBase64ArrayToR2(result.slices, folder, user?.id || 'anonymous')
+      ]).then(([fullGridUrl, slices]) => {
+        // Update Grid result with R2 URLs (only if modal is still open)
+        setGridResult(prev => prev ? ({
+          ...prev,
+          fullImage: fullGridUrl,
+          slices: slices
+        }) : null);
+      }).catch(err => {
+        console.error('Grid background upload failed:', err);
       });
     }
 

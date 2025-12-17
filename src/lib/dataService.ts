@@ -296,7 +296,7 @@ class SupabaseBackend implements DataBackend {
             },
             // 延迟加载大字段，减少传输体积
             select:
-              'id, scene_id, order_index, shot_size, camera_movement, duration, description, dialogue, narration, reference_image, video_clip, status, metadata',
+              'id, scene_id, order_index, shot_size, camera_movement, duration, description, dialogue, narration, reference_image, video_clip, grid_images, generation_history, status, metadata',
             order: {
               column: 'order_index',
               ascending: true,

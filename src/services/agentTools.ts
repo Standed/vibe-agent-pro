@@ -5,9 +5,10 @@
 
 import { Project, Scene, Shot, AspectRatio, ImageSize, GenerationHistoryItem, GridHistoryItem } from '@/types/project';
 import { VolcanoEngineService } from './volcanoEngineService';
-import { generateMultiViewGrid, editImageWithGemini, urlsToReferenceImages } from './geminiService';
+import { generateMultiViewGrid, generateSingleImage, urlsToReferenceImages } from './geminiService';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import { useProjectStore } from '@/store/useProjectStore';
+import { storageService } from '@/lib/storageService';
 
 export interface ToolDefinition {
   name: string;
@@ -51,6 +52,20 @@ const SEEDREAM_RETRY_DELAY_MS = parseConcurrency(
   process.env.NEXT_PUBLIC_SEEDREAM_RETRY_DELAY_MS || process.env.SEEDREAM_RETRY_DELAY_MS,
   1200
 );
+
+const fetchToBase64 = async (url: string): Promise<string> => {
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error(`获取图片失败: ${resp.status}`);
+  }
+  const blob = await resp.blob();
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('图片转换失败'));
+    reader.readAsDataURL(blob);
+  });
+};
 
 /**
  * 简单的并发控制器（保序）
@@ -159,6 +174,10 @@ export const AGENT_TOOLS: ToolDefinition[] = [
         prompt: {
           type: 'string',
           description: '生成提示词（可选，如不提供则使用分镜描述）'
+        },
+        force: {
+          type: 'boolean',
+          description: '是否强制覆盖已有图片/历史（默认 false，不覆盖）'
         }
       },
       required: ['shotId', 'mode']
@@ -187,6 +206,10 @@ export const AGENT_TOOLS: ToolDefinition[] = [
         prompt: {
           type: 'string',
           description: '额外的生成要求（可选）'
+        },
+        force: {
+          type: 'boolean',
+          description: '是否覆盖已生成的镜头（默认 false，仅生成空缺镜头）'
         }
       },
       required: ['sceneId', 'mode']
@@ -211,6 +234,10 @@ export const AGENT_TOOLS: ToolDefinition[] = [
         prompt: {
           type: 'string',
           description: '额外的生成要求（可选）'
+        },
+        force: {
+          type: 'boolean',
+          description: '是否覆盖已生成的镜头（默认 false，仅生成空缺镜头）'
         }
       },
       required: ['mode']
@@ -292,10 +319,12 @@ export interface StoreCallbacks {
 export class AgentToolExecutor {
   private project: Project | null;
   private storeCallbacks?: StoreCallbacks;
+  private userId?: string;
 
-  constructor(project: Project | null, storeCallbacks?: StoreCallbacks) {
+  constructor(project: Project | null, storeCallbacks?: StoreCallbacks, userId?: string) {
     this.project = project;
     this.storeCallbacks = storeCallbacks;
+    this.userId = userId;
   }
 
   /**
@@ -321,7 +350,8 @@ export class AgentToolExecutor {
             toolCall.arguments.shotId,
             toolCall.arguments.mode,
             toolCall.arguments.gridSize,
-            toolCall.arguments.prompt
+            toolCall.arguments.prompt,
+            toolCall.arguments.force
           );
 
         case 'batchGenerateSceneImages':
@@ -329,14 +359,16 @@ export class AgentToolExecutor {
             toolCall.arguments.sceneId,
             toolCall.arguments.mode,
             toolCall.arguments.gridSize,
-            toolCall.arguments.prompt
+            toolCall.arguments.prompt,
+            toolCall.arguments.force
           );
 
         case 'batchGenerateProjectImages':
           return await this.batchGenerateProjectImages(
             toolCall.arguments.mode,
             toolCall.arguments.gridSize,
-            toolCall.arguments.prompt
+            toolCall.arguments.prompt,
+            toolCall.arguments.force
           );
         case 'createScene':
           return this.createScene(toolCall.arguments.name, toolCall.arguments.description);
@@ -743,7 +775,8 @@ export class AgentToolExecutor {
     shotId: string,
     mode: 'seedream' | 'gemini' | 'grid',
     gridSize?: '2x2' | '3x3',
-    prompt?: string
+    prompt?: string,
+    force: boolean = false
   ): Promise<ToolResult> {
     if (!this.project) {
       return {
@@ -767,39 +800,59 @@ export class AgentToolExecutor {
     const volcanoService = new VolcanoEngineService();
     const promptText = prompt || shot.description || '生成分镜图片';
     const aspectRatio = this.project.settings.aspectRatio;
+    const hasImage = !!shot.referenceImage;
+
+    // 默认不覆盖已有图片，除非 force=true
+    if (hasImage && !force) {
+      return {
+        tool: 'generateShotImage',
+        result: {
+          shotId,
+          skipped: true,
+          reason: '该镜头已存在图片，设置 force=true 可覆盖重生成',
+        },
+        success: true,
+      };
+    }
 
     try {
       let imageUrl: string;
       let modelName: string;
+      const overwritten = hasImage && force;
 
       // Enrich prompt with assets
-      const { enrichedPrompt } = enrichPromptWithAssets(
+      const { enrichedPrompt, referenceImageUrls } = enrichPromptWithAssets(
         promptText,
         this.project,
         shot.description
       );
 
+      // 获取参考图数据 (用于 Gemini 直出或 SeeDream)
+      // 注意：Agent 模式下主要依赖资源库匹配，暂不支持用户实时上传
+      let refImages = await urlsToReferenceImages(referenceImageUrls);
+      // 如果镜头已有参考图，优先放在最前面作为基础参考
+      if (shot.referenceImage) {
+        const existing = await urlsToReferenceImages([shot.referenceImage]);
+        refImages = [...existing, ...refImages];
+      }
+
       if (mode === 'seedream') {
         // SeeDream mode with retry/backoff to handle upstream overload
-        imageUrl = await this.generateSeedreamWithRetry(volcanoService, enrichedPrompt, aspectRatio);
+        // 传递 referenceImageUrls 给 SeeDream (VolcanoEngineService 已更新支持)
+        imageUrl = await this.generateSeedreamWithRetry(volcanoService, enrichedPrompt, aspectRatio, referenceImageUrls);
         modelName = 'SeeDream 4.5';
       } else if (mode === 'gemini') {
-        // Gemini direct output (requires existing image to edit)
-        if (!shot.referenceImage) {
-          return {
-            tool: 'generateShotImage',
-            result: null,
-            success: false,
-            error: 'Gemini 直出模式需要先有参考图片，请先使用 SeeDream 生成'
-          };
-        }
-        imageUrl = await editImageWithGemini(shot.referenceImage, enrichedPrompt, aspectRatio);
-        modelName = 'Gemini Image Edit';
+        // Gemini 直出（与 Pro 模式一致）：带资产/已有参考图生成单张
+        imageUrl = await generateSingleImage(
+          enrichedPrompt,
+          aspectRatio as AspectRatio,
+          refImages
+        );
+        modelName = 'Gemini Direct';
       } else if (mode === 'grid') {
         // Grid mode for single shot - generate Grid and return slices
         const size = gridSize || '2x2';
         const [rows, cols] = size === '2x2' ? [2, 2] : [3, 3];
-
         // Enrich with assets
         const { enrichedPrompt: finalPrompt, referenceImageUrls } = enrichPromptWithAssets(
           enrichedPrompt,
@@ -824,25 +877,44 @@ export class AgentToolExecutor {
         imageUrl = gridResult.slices[0];
         modelName = `Gemini Grid ${size}`;
 
+        // 持久化 Grid 全图和切片
+        const folderBase = `projects/${this.project.id}/shots/${shotId}/grid_${Date.now()}`;
+        let fullGridUrl = gridResult.fullImage;
+        let sliceUrls = gridResult.slices;
+        try {
+          fullGridUrl = await storageService.uploadBase64ToR2(gridResult.fullImage, folderBase, 'grid_full.png', this.userId);
+          sliceUrls = await storageService.uploadBase64ArrayToR2(gridResult.slices, `${folderBase}/slices`, this.userId);
+        } catch (err) {
+          console.error('[AgentTools] Grid 上传 R2 失败，使用 base64 兜底:', err);
+        }
+        const mainSliceUrl = sliceUrls[0] || gridResult.slices[0];
+
         // Store full grid and all slices in generation history
         if (this.storeCallbacks) {
+          if (overwritten) {
+            this.recordReplacementHistory(shot, modelName);
+          }
+
           this.storeCallbacks.updateShot(shotId, {
-            referenceImage: imageUrl,
+            referenceImage: mainSliceUrl,
+            gridImages: sliceUrls,
+            fullGridUrl,
             status: 'done',
+            lastModel: modelName,
           });
 
           const historyItem: GenerationHistoryItem = {
             id: `gen_${Date.now()}`,
             type: 'image',
             timestamp: new Date(),
-            result: imageUrl,
+            result: mainSliceUrl,
             prompt: promptText,
             parameters: {
               model: modelName,
               gridSize: size,
               aspectRatio: aspectRatio,
-              fullGridUrl: gridResult.fullImage,
-              allSlices: gridResult.slices,
+              fullGridUrl,
+              allSlices: sliceUrls,
             },
             status: 'success',
           };
@@ -853,12 +925,13 @@ export class AgentToolExecutor {
           tool: 'generateShotImage',
           result: {
             shotId,
-            imageUrl,
+            imageUrl: mainSliceUrl,
             model: modelName,
             prompt: promptText,
             gridSize: size,
-            fullGridUrl: gridResult.fullImage,
-            allSlices: gridResult.slices,
+            fullGridUrl,
+            allSlices: sliceUrls,
+            overwritten,
           },
           success: true,
         };
@@ -871,11 +944,21 @@ export class AgentToolExecutor {
         };
       }
 
+      // 将生成结果持久化到 R2，避免上游链接过期
+      const folder = `projects/${this.project.id}/shots/${shotId}`;
+      const r2Url = await this.persistImageToR2(imageUrl, folder, `${mode}_${Date.now()}.png`);
+
+      // 如果是覆盖生成，先把旧图存入历史（保留记录）
+      if (this.storeCallbacks && overwritten) {
+        this.recordReplacementHistory(shot, modelName);
+      }
+
       // Update shot via store callback (for seedream and gemini modes)
       if (this.storeCallbacks) {
         this.storeCallbacks.updateShot(shotId, {
-          referenceImage: imageUrl,
+          referenceImage: r2Url,
           status: 'done',
+          lastModel: modelName,
         });
 
         // Add to generation history
@@ -883,7 +966,7 @@ export class AgentToolExecutor {
           id: `gen_${Date.now()}`,
           type: 'image',
           timestamp: new Date(),
-          result: imageUrl,
+          result: r2Url,
           prompt: promptText,
           parameters: {
             model: modelName,
@@ -898,9 +981,10 @@ export class AgentToolExecutor {
         tool: 'generateShotImage',
         result: {
           shotId,
-          imageUrl,
+          imageUrl: r2Url,
           model: modelName,
           prompt: promptText,
+          overwritten: hasImage && force,
         },
         success: true,
       };
@@ -920,7 +1004,8 @@ export class AgentToolExecutor {
   private async generateSeedreamWithRetry(
     volcanoService: VolcanoEngineService,
     prompt: string,
-    aspectRatio?: string
+    aspectRatio?: string,
+    referenceImageUrls: string[] = []
   ): Promise<string> {
     let attempt = 0;
     let delay = SEEDREAM_RETRY_DELAY_MS;
@@ -930,7 +1015,7 @@ export class AgentToolExecutor {
 
     while (attempt <= SEEDREAM_MAX_RETRIES) {
       try {
-        return await volcanoService.generateSingleImage(prompt, aspectRatio);
+        return await volcanoService.generateSingleImage(prompt, aspectRatio, referenceImageUrls);
       } catch (error: any) {
         attempt++;
         const msg = error?.message || '';
@@ -945,13 +1030,56 @@ export class AgentToolExecutor {
   }
 
   /**
+   * 将图片 URL 或 base64 持久化到 R2，并返回稳定的 R2 URL
+   */
+  private async persistImageToR2(imageUrl: string, folder: string, filename: string): Promise<string> {
+    try {
+      if (storageService.isR2URL(imageUrl)) return imageUrl;
+
+      let base64 = imageUrl;
+      if (!imageUrl.startsWith('data:')) {
+        base64 = await fetchToBase64(imageUrl);
+      }
+      return await storageService.uploadBase64ToR2(base64, folder, filename, this.userId);
+    } catch (error) {
+      console.error('[AgentTools] persistImageToR2 failed:', error);
+      return imageUrl; // 兜底使用原始 URL，避免阻塞流程
+    }
+  }
+
+  /**
+   * 记录覆盖前的分镜图片到历史，方便用户回滚
+   */
+  private recordReplacementHistory(shot: Shot, modelName?: string, extraParams: Record<string, unknown> = {}) {
+    if (!this.storeCallbacks || !shot.referenceImage) return;
+
+    const historyItem: GenerationHistoryItem = {
+      id: `replaced_${Date.now()}`,
+      type: 'image',
+      timestamp: new Date(),
+      result: shot.referenceImage,
+      prompt: '(覆盖前版本)',
+      parameters: {
+        model: shot.lastModel || modelName || 'unknown',
+        status: 'replaced',
+        gridImages: shot.gridImages,
+        fullGridUrl: shot.fullGridUrl,
+        ...extraParams,
+      },
+      status: 'replaced',
+    };
+    this.storeCallbacks.addGenerationHistory(shot.id, historyItem);
+  }
+
+  /**
    * Batch generate images for a scene
    */
   private async batchGenerateSceneImages(
     sceneId: string,
     mode: 'seedream' | 'gemini' | 'grid',
     gridSize?: '2x2' | '3x3',
-    prompt?: string
+    prompt?: string,
+    force: boolean = false
   ): Promise<ToolResult> {
     if (!this.project) {
       return {
@@ -973,14 +1101,14 @@ export class AgentToolExecutor {
     }
 
     const sceneShots = this.project.shots.filter(s => s.sceneId === sceneId);
-    const unassignedShots = sceneShots.filter(shot => !shot.referenceImage);
+    const targetShots = force ? sceneShots : sceneShots.filter(shot => !shot.referenceImage);
 
-    if (unassignedShots.length === 0) {
+    if (targetShots.length === 0) {
       return {
         tool: 'batchGenerateSceneImages',
         result: {
           sceneId,
-          message: '该场景所有分镜都已有图片'
+          message: force ? '该场景没有可处理的分镜' : '该场景所有分镜都已有图片'
         },
         success: true,
       };
@@ -989,13 +1117,13 @@ export class AgentToolExecutor {
     try {
       if (mode === 'grid') {
         // Grid mode with auto-assignment
-        return await this.generateSceneGrid(sceneId, scene, unassignedShots, gridSize || '2x2', prompt);
+        return await this.generateSceneGrid(sceneId, scene, targetShots, gridSize || '2x2', prompt, force);
       } else {
         // SeeDream or Gemini mode - generate with concurrency pool
         const results = await runWithConcurrency(
-          unassignedShots,
+          targetShots,
           IMAGE_CONCURRENCY,
-          async (shot) => this.generateShotImage(shot.id, mode, undefined, prompt)
+          async (shot) => this.generateShotImage(shot.id, mode, undefined, prompt, force)
         );
 
         const successCount = results.filter(r => r.success).length;
@@ -1003,9 +1131,9 @@ export class AgentToolExecutor {
           tool: 'batchGenerateSceneImages',
           result: {
             sceneId,
-            totalShots: unassignedShots.length,
+            totalShots: targetShots.length,
             successCount,
-            failedCount: unassignedShots.length - successCount,
+            failedCount: targetShots.length - successCount,
             results,
           },
           success: successCount > 0,
@@ -1029,7 +1157,8 @@ export class AgentToolExecutor {
     scene: Scene,
     targetShots: Shot[],
     gridSize: '2x2' | '3x3',
-    prompt?: string
+    prompt?: string,
+    force: boolean = false
   ): Promise<ToolResult> {
     const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
     const totalSlices = rows * cols;
@@ -1083,17 +1212,40 @@ export class AgentToolExecutor {
       refImages
     );
 
+    // 上传 Grid 全图和切片到 R2，避免外链过期
+    const folderBase = `projects/${this.project!.id}/scenes/${sceneId}/grid_${Date.now()}`;
+    let fullGridUrl = result.fullImage;
+    let sliceUrls = result.slices;
+    try {
+      fullGridUrl = await storageService.uploadBase64ToR2(result.fullImage, folderBase, 'grid_full.png', this.userId);
+      sliceUrls = await storageService.uploadBase64ArrayToR2(result.slices, `${folderBase}/slices`, this.userId);
+    } catch (err) {
+      console.error('[AgentTools] 场景 Grid 上传 R2 失败，使用 base64 兜底:', err);
+    }
+
     // Auto-assign slices to shots
     const assignments: Record<string, string> = {};
+    const overwrittenShots: string[] = [];
     shotsToUse.forEach((shot, idx) => {
       if (idx < result.slices.length) {
-        assignments[shot.id] = result.slices[idx];
+        const newUrl = sliceUrls[idx] || result.slices[idx];
+        assignments[shot.id] = newUrl;
+        const wasOverwrite = !!shot.referenceImage;
+        if (wasOverwrite) {
+          overwrittenShots.push(shot.id);
+        }
 
         // Update shot
         if (this.storeCallbacks) {
+          // 覆盖前保留旧图记录
+          if (wasOverwrite) {
+            this.recordReplacementHistory(shot, 'Gemini Grid');
+          }
+
           this.storeCallbacks.updateShot(shot.id, {
-            referenceImage: result.slices[idx],
+            referenceImage: newUrl,
             status: 'done',
+            lastModel: 'Gemini Grid',
           });
 
           // Add to generation history
@@ -1101,13 +1253,13 @@ export class AgentToolExecutor {
             id: `gen_${Date.now()}_${idx}`,
             type: 'image',
             timestamp: new Date(),
-            result: result.slices[idx],
+            result: newUrl,
             prompt: prompt || enhancedPrompt,
             parameters: {
               model: 'Gemini Grid',
               gridSize: gridSize,
               aspectRatio: aspectRatio,
-              fullGridUrl: result.fullImage,
+              fullGridUrl: fullGridUrl,
             },
             status: 'success',
           };
@@ -1139,8 +1291,9 @@ export class AgentToolExecutor {
         gridSize,
         totalSlices: result.slices.length,
         assignedShots: Object.keys(assignments).length,
-        fullGridUrl: result.fullImage,
+        fullGridUrl: fullGridUrl,
         assignments,
+        overwrittenShotIds: overwrittenShots,
       },
       success: true,
     };
@@ -1152,7 +1305,8 @@ export class AgentToolExecutor {
   private async batchGenerateProjectImages(
     mode: 'seedream' | 'gemini' | 'grid',
     gridSize?: '2x2' | '3x3',
-    prompt?: string
+    prompt?: string,
+    force: boolean = false
   ): Promise<ToolResult> {
     if (!this.project) {
       return {
@@ -1163,13 +1317,13 @@ export class AgentToolExecutor {
       };
     }
 
-    const unassignedShots = this.project.shots.filter(shot => !shot.referenceImage);
+    const targetShots = force ? this.project.shots : this.project.shots.filter(shot => !shot.referenceImage);
 
-    if (unassignedShots.length === 0) {
+    if (targetShots.length === 0) {
       return {
         tool: 'batchGenerateProjectImages',
         result: {
-          message: '所有分镜都已有图片'
+          message: force ? '没有可处理的分镜' : '所有分镜都已有图片'
         },
         success: true,
       };
@@ -1180,14 +1334,15 @@ export class AgentToolExecutor {
         // Grid mode: Generate grids by scene
         const sceneResults: any[] = [];
         for (const scene of this.project.scenes) {
-          const sceneShots = unassignedShots.filter(s => s.sceneId === scene.id);
+          const sceneShots = targetShots.filter(s => s.sceneId === scene.id);
           if (sceneShots.length > 0) {
             const result = await this.generateSceneGrid(
               scene.id,
               scene,
               sceneShots,
               gridSize || '2x2',
-              prompt
+              prompt,
+              force
             );
             sceneResults.push(result);
           }
@@ -1208,18 +1363,18 @@ export class AgentToolExecutor {
       } else {
         // SeeDream or Gemini mode
         const results = await runWithConcurrency(
-          unassignedShots,
+          targetShots,
           IMAGE_CONCURRENCY,
-          async (shot) => this.generateShotImage(shot.id, mode, undefined, prompt)
+          async (shot) => this.generateShotImage(shot.id, mode, undefined, prompt, force)
         );
 
         const successCount = results.filter(r => r.success).length;
         return {
           tool: 'batchGenerateProjectImages',
           result: {
-            totalShots: unassignedShots.length,
+            totalShots: targetShots.length,
             successCount,
-            failedCount: unassignedShots.length - successCount,
+            failedCount: targetShots.length - successCount,
             results,
           },
           success: successCount > 0,

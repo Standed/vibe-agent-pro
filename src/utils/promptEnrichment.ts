@@ -49,8 +49,20 @@ export function enrichPromptWithAssets(
 
   // Find mentioned characters
   for (const character of project.characters) {
-    const characterName = character.name.toLowerCase();
-    if (fullText.includes(characterName)) {
+    const characterName = character.name.trim().toLowerCase(); // Added trim()
+    let isMatch = fullText.includes(characterName);
+
+    // 增强匹配：如果全名未匹配，尝试匹配中文名的后两个字（通常是名）
+    // 例如：角色名为 "宇智波佐助"，Prompt 中只有 "佐助"
+    if (!isMatch && /[\u4e00-\u9fa5]/.test(characterName) && characterName.length >= 3) {
+      const suffix = characterName.substring(characterName.length - 2);
+      if (fullText.includes(suffix)) {
+        isMatch = true;
+        console.log(`[PromptEnrichment] Fuzzy matched character: ${character.name} via suffix ${suffix}`);
+      }
+    }
+
+    if (isMatch) {
       usedCharacters.push(character);
       // Collect reference images with indexing
       const primaryImage = character.referenceImages?.[0];
@@ -63,8 +75,10 @@ export function enrichPromptWithAssets(
           name: character.name,
           imageUrl: primaryImage,
         });
+        console.log(`[PromptEnrichment] Matched character: ${character.name}, Image: ${primaryImage.substring(0, 30)}...`);
       } else {
         missingAssets.push({ type: 'character', name: character.name });
+        console.warn(`[PromptEnrichment] Matched character: ${character.name} but NO reference image found.`);
       }
     }
   }
@@ -152,10 +166,18 @@ export function enrichPromptWithAssets(
     });
 
     // Concise markers only
-    const markerList = referenceImageMap
-      .map(ref => `@${ref.name}(第${ref.index}张参考图)`)
-      .join(' ');
-    concisePrompt = [basePrompt, markerList].filter(Boolean).join('\n');
+    // Concise markers only
+    concisePrompt = basePrompt;
+    referenceImageMap.forEach(ref => {
+      const marker = `@${ref.name}(第${ref.index}张参考图)`;
+      // Replace existing names with markers to avoid duplication
+      if (concisePrompt.includes(ref.name)) {
+        concisePrompt = concisePrompt.replaceAll(ref.name, marker);
+      } else {
+        // Only append if not mentioned in the prompt
+        concisePrompt += ` ${marker}`;
+      }
+    });
   }
 
   return {

@@ -25,6 +25,7 @@ import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { formatShotLabel } from '@/utils/shotOrder';
+import { storageService } from '@/lib/storageService';
 
 interface ShotDetailPanelProps {
   shotId: string;
@@ -146,11 +147,29 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
 
         // 使用项目的画面比例
         const projectAspectRatio = project?.settings.aspectRatio;
-        const imageUrl = await volcanoService.generateSingleImage(enrichedPrompt, projectAspectRatio);
+        const base64Url = await volcanoService.generateSingleImage(enrichedPrompt, projectAspectRatio);
 
+        // 1. 立即显示 Base64 图片，提升响应速度
         updateShot(shotId, {
-          referenceImage: imageUrl,
+          referenceImage: base64Url,
           status: 'done',
+        });
+
+        // 2. 后台上传到 R2 并更新链接
+        storageService.uploadBase64ToR2(
+          base64Url,
+          `projects/${project?.id}/shots/${shotId}`,
+          `gen_${Date.now()}.png`,
+          user?.id || 'anonymous'
+        ).then((r2Url) => {
+          updateShot(shotId, {
+            referenceImage: r2Url,
+            status: 'done',
+          });
+        }).catch((error) => {
+          console.error('Background R2 upload failed:', error);
+          // 上传失败保持 Base64 即可，无需回滚，但可以提示用户
+          toast.error('图片云端同步失败，仅本地可见');
         });
 
         // 添加到生成历史
@@ -158,7 +177,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
           id: `gen_${Date.now()}`,
           type: 'image',
           timestamp: new Date(),
-          result: imageUrl,
+          result: base64Url,
           prompt: regeneratePrompt,
           parameters: {
             model: 'SeeDream',

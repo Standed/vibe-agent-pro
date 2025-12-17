@@ -89,7 +89,8 @@ export async function executeToolsInParallel(
   toolCalls: ToolCall[],
   project: Project | null,
   storeCallbacks?: StoreCallbacks,
-  onProgress?: (progress: ExecutionProgress) => void
+  onProgress?: (progress: ExecutionProgress) => void,
+  userId?: string
 ): Promise<ToolResult[]> {
   const { independent, dependent } = analyzeToolDependencies(toolCalls);
   const allResults: ToolResult[] = [];
@@ -107,7 +108,7 @@ export async function executeToolsInParallel(
     });
   };
 
-  const executor = new AgentToolExecutor(project, storeCallbacks);
+  const executor = new AgentToolExecutor(project, storeCallbacks, userId);
 
   // Phase 1: Execute independent tools in parallel
   if (independent.length > 0) {
@@ -173,15 +174,18 @@ export class ParallelExecutor {
   private project: Project | null;
   private storeCallbacks?: StoreCallbacks;
   private onProgress?: (progress: ExecutionProgress) => void;
+  private userId?: string;
 
   constructor(
     project: Project | null,
     storeCallbacks?: StoreCallbacks,
-    onProgress?: (progress: ExecutionProgress) => void
+    onProgress?: (progress: ExecutionProgress) => void,
+    userId?: string
   ) {
     this.project = project;
     this.storeCallbacks = storeCallbacks;
     this.onProgress = onProgress;
+    this.userId = userId;
   }
 
   async execute(toolCalls: ToolCall[]): Promise<ToolResult[]> {
@@ -191,7 +195,7 @@ export class ParallelExecutor {
 
     if (toolCalls.length === 1) {
       // Single tool, execute directly
-      const executor = new AgentToolExecutor(this.project, this.storeCallbacks);
+      const executor = new AgentToolExecutor(this.project, this.storeCallbacks, this.userId);
       try {
         const result = await executor.execute(toolCalls[0]);
         return [result];
@@ -206,6 +210,6 @@ export class ParallelExecutor {
     }
 
     // Multiple tools, use parallel execution
-    return executeToolsInParallel(toolCalls, this.project, this.storeCallbacks, this.onProgress);
+    return executeToolsInParallel(toolCalls, this.project, this.storeCallbacks, this.onProgress, this.userId);
   }
 }
