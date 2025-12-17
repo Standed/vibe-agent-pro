@@ -644,6 +644,7 @@ export function useAgent(): UseAgentResult {
     isProcessing,
     lastMessageHash,
     user,
+    isAuthenticated,
   ]);
 
   // Clear session
