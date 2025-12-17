@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 // 使用 Service Role Key（服务端安全，绕过 RLS）
 const supabaseAdmin = createClient(
@@ -38,7 +39,7 @@ type AllowedOperation = typeof ALLOWED_OPERATIONS[number];
 interface SupabaseRequest {
   table: string;
   operation: string;
-  userId: string;
+  userId?: string;
   data?: any;
   filters?: {
     eq?: Record<string, any>;
@@ -133,20 +134,71 @@ const collectInvalidUuidFields = (
   return Array.from(new Set(invalidFields));
 };
 
+// 需要强制注入/过滤 user_id 的表
+const USER_ID_FIELD: Partial<Record<AllowedTable, string>> = {
+  projects: 'user_id',
+  chat_messages: 'user_id',
+};
+
+const injectUserIdToData = (table: AllowedTable, data: any, userId: string) => {
+  const field = USER_ID_FIELD[table];
+  if (!field || !data) return data;
+
+  if (Array.isArray(data)) {
+    return data.map((item) => ({
+      ...item,
+      [field]: userId,
+    }));
+  }
+
+  return {
+    ...data,
+    [field]: userId,
+  };
+};
+
+const ensureUserIdFilter = (
+  table: AllowedTable,
+  filters: SupabaseRequest['filters'],
+  userId: string
+) => {
+  const field = USER_ID_FIELD[table];
+  if (!field) return filters;
+
+  const nextFilters = { ...(filters || {}) };
+  nextFilters.eq = { ...(nextFilters.eq || {}), [field]: userId };
+  return nextFilters;
+};
+
 /**
  * POST /api/supabase
  * 统一的 Supabase 操作代理
  */
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await authenticateRequest(request);
+    if ('error' in authResult) {
+      return authResult.error;
+    }
+    const { user } = authResult;
+
     const body: SupabaseRequest = await request.json();
-    const { table, operation, userId, data, filters, select, order, single } = body;
+    const { table, operation, data, filters, select, order, single, userId: bodyUserId } = body;
+    const userId = user.id;
 
     // 1. 验证必需参数
-    if (!table || !operation || !userId) {
+    if (!table || !operation) {
       return NextResponse.json(
-        { error: '缺少必需参数: table, operation, userId' },
+        { error: '缺少必需参数: table, operation' },
         { status: 400 }
+      );
+    }
+
+    // 身份校验：请求体携带的 userId 必须与登录用户一致
+    if (bodyUserId && bodyUserId !== userId) {
+      return NextResponse.json(
+        { error: '用户身份不匹配，请重新登录' },
+        { status: 403 }
       );
     }
 
@@ -173,10 +225,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const dataWithUserId = injectUserIdToData(table as AllowedTable, data, userId);
+    const filtersWithUserId = ensureUserIdFilter(table as AllowedTable, filters, userId);
+
     const invalidUuidFields = collectInvalidUuidFields(
       table as AllowedTable,
-      data,
-      filters
+      dataWithUserId,
+      filtersWithUserId
     );
     if (invalidUuidFields.length > 0) {
       return NextResponse.json(
@@ -189,10 +244,10 @@ export async function POST(request: NextRequest) {
 
     // 🔍 详细日志：记录完整的请求数据（用于调试 UUID 错误）
     if (operation === 'upsert' || operation === 'insert') {
-      console.log('[Supabase API] 📦 完整数据负载:', JSON.stringify(data, null, 2));
+      console.log('[Supabase API] 📦 完整数据负载:', JSON.stringify(dataWithUserId, null, 2));
     }
-    if (filters) {
-      console.log('[Supabase API] 🔎 过滤条件:', JSON.stringify(filters, null, 2));
+    if (filtersWithUserId) {
+      console.log('[Supabase API] 🔎 过滤条件:', JSON.stringify(filtersWithUserId, null, 2));
     }
 
     // 3. 构建查询
@@ -205,18 +260,18 @@ export async function POST(request: NextRequest) {
         query = query.select(select || '*');
 
         // 应用过滤条件
-        if (filters?.eq) {
-          Object.entries(filters.eq).forEach(([key, value]) => {
+        if (filtersWithUserId?.eq) {
+          Object.entries(filtersWithUserId.eq).forEach(([key, value]) => {
             query = (query as any).eq(key, value);
           });
         }
-        if (filters?.in) {
-          Object.entries(filters.in).forEach(([key, value]) => {
+        if (filtersWithUserId?.in) {
+          Object.entries(filtersWithUserId.in).forEach(([key, value]) => {
             query = (query as any).in(key, value);
           });
         }
-        if (filters?.neq) {
-          Object.entries(filters.neq).forEach(([key, value]) => {
+        if (filtersWithUserId?.neq) {
+          Object.entries(filtersWithUserId.neq).forEach(([key, value]) => {
             query = (query as any).neq(key, value);
           });
         }
@@ -233,21 +288,21 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'insert':
-        if (!data) {
+        if (!dataWithUserId) {
           return NextResponse.json({ error: '缺少 data 参数' }, { status: 400 });
         }
-        query = (query as any).insert(data).select();
+        query = (query as any).insert(dataWithUserId).select();
         break;
 
       case 'update':
-        if (!data) {
+        if (!dataWithUserId) {
           return NextResponse.json({ error: '缺少 data 参数' }, { status: 400 });
         }
-        query = (query as any).update(data);
+        query = (query as any).update(dataWithUserId);
 
         // 应用过滤条件（必须有过滤条件）
-        if (filters?.eq) {
-          Object.entries(filters.eq).forEach(([key, value]) => {
+        if (filtersWithUserId?.eq) {
+          Object.entries(filtersWithUserId.eq).forEach(([key, value]) => {
             query = (query as any).eq(key, value);
           });
         } else {
@@ -261,10 +316,10 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'upsert':
-        if (!data) {
+        if (!dataWithUserId) {
           return NextResponse.json({ error: '缺少 data 参数' }, { status: 400 });
         }
-        query = (query as any).upsert(data).select();
+        query = (query as any).upsert(dataWithUserId).select();
         break;
 
       case 'delete':
@@ -272,8 +327,8 @@ export async function POST(request: NextRequest) {
         query = (query as any).delete();
 
         // 应用过滤条件（必须有过滤条件，防止误删全表）
-        if (filters?.eq) {
-          Object.entries(filters.eq).forEach(([key, value]) => {
+        if (filtersWithUserId?.eq) {
+          Object.entries(filtersWithUserId.eq).forEach(([key, value]) => {
             query = (query as any).eq(key, value);
           });
         } else {

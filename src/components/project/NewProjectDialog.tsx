@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Check, Loader2 } from 'lucide-react';
 import { AspectRatio } from '@/types/project';
 
@@ -59,6 +60,12 @@ export default function NewProjectDialog({
     AspectRatio.MOBILE
   );
   const [isCreating, setIsCreating] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,9 +85,11 @@ export default function NewProjectDialog({
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-      <div className="glass-panel rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl ring-1 ring-black/5">
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+      <div className="glass-panel rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl ring-1 ring-black/5 animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="sticky top-0 glass-panel border-b border-black/5 dark:border-white/5 p-6 flex items-center justify-between z-10">
           <div>
@@ -188,7 +197,7 @@ export default function NewProjectDialog({
                       </p>
                     </div>
                     <div className={`ml-4 rounded-full p-1 transition-all duration-300 ${selectedAspectRatio === option.value
-                      ? 'bg-light-accent dark:bg-cine-accent text-white scale-100'
+                      ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black scale-100'
                       : 'bg-gray-200 dark:bg-gray-700 text-transparent scale-90'
                       }`}>
                       <Check size={16} />
@@ -230,6 +239,7 @@ export default function NewProjectDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

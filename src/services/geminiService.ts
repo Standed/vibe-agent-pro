@@ -201,7 +201,8 @@ export const generateMultiViewGrid = async (
   gridCols: number, // 2 or 3
   aspectRatio: AspectRatio,
   imageSize: ImageSize,
-  referenceImages: ReferenceImageData[] = []
+  referenceImages: ReferenceImageData[] = [],
+  referenceImageCaptions: string[] = []
 ): Promise<{ fullImage: string; slices: string[] }> => {
   // 过多参考图会触发 FUNCTION_PAYLOAD_TOO_LARGE 错误，限制数量；压缩处理在 optimizeDataUrl
   const MAX_REF_IMAGES = 10;
@@ -226,8 +227,15 @@ export const generateMultiViewGrid = async (
   const orientationInstruction = isPortrait
     ? 'Each panel MUST be in PORTRAIT orientation (vertical/竖屏), taller than it is wide.'
     : isLandscape
-    ? 'Each panel MUST be in LANDSCAPE orientation (horizontal/横屏), wider than it is tall.'
-    : 'Each panel should maintain a square or near-square aspect ratio.';
+      ? 'Each panel MUST be in LANDSCAPE orientation (horizontal/横屏), wider than it is tall.'
+      : 'Each panel should maintain a square or near-square aspect ratio.';
+
+  // Build reference image instructions
+  let referenceInstructions = '';
+  if (referenceImageCaptions.length > 0) {
+    referenceInstructions = '\n  REFERENCE IMAGE MAPPING (CRITICAL):\n' +
+      referenceImageCaptions.map((caption, idx) => `  - Reference Image ${idx + 1}: ${caption}`).join('\n');
+  }
 
   // STRICT prompt engineering for storyboard grid generation
   const gridPrompt = `MANDATORY LAYOUT: Create a precise ${gridType} GRID containing exactly ${totalViews} distinct storyboard panels.
@@ -252,7 +260,7 @@ ${prompt}
   - Each panel MUST match its corresponding shot description EXACTLY (shot size, camera angle, action, characters).
   - DO NOT show the same scene from different angles - each panel is a DIFFERENT shot/scene.
   - If reference images are provided, use them for character/scene consistency across different shots.
-  - Maintain consistent art style and lighting mood across all panels while showing different shots.
+  - Maintain consistent art style and lighting mood across all panels while showing different shots.${referenceInstructions}
 
   Technical Requirements:
   - Cinematic lighting, 4K resolution.
@@ -263,17 +271,17 @@ ${prompt}
   - REMEMBER: Each panel is ${aspectRatio} ${isPortrait ? '(portrait/竖屏)' : isLandscape ? '(landscape/横屏)' : ''}.`;
 
   // 🔍 调试：输出最终的 Grid 提示词
-  console.log('[geminiService Grid Debug] ========== START ==========');
-  console.log('[geminiService Grid Debug] Input prompt:', prompt);
-  console.log('[geminiService Grid Debug] Original referenceImages.length:', referenceImages.length);
-  console.log('[geminiService Grid Debug] After deduplication:', uniqueReferenceImages.length);
-  console.log('[geminiService Grid Debug] Final safeReferenceImages.length:', safeReferenceImages.length);
-  console.log('[geminiService Grid Debug] Final gridPrompt:', gridPrompt);
-  console.log('[geminiService Grid Debug] ========== END ==========');
-  console.log('[geminiService Grid Debug] 🚀 准备发送 Gemini API 请求...');
+  // console.log('[geminiService Grid Debug] ========== START ==========');
+  // console.log('[geminiService Grid Debug] Input prompt:', prompt);
+  // console.log('[geminiService Grid Debug] Original referenceImages.length:', referenceImages.length);
+  // console.log('[geminiService Grid Debug] After deduplication:', uniqueReferenceImages.length);
+  // console.log('[geminiService Grid Debug] Final safeReferenceImages.length:', safeReferenceImages.length);
+  // console.log('[geminiService Grid Debug] Final gridPrompt:', gridPrompt);
+  // console.log('[geminiService Grid Debug] ========== END ==========');
+  // console.log('[geminiService Grid Debug] 🚀 准备发送 Gemini API 请求...');
 
   try {
-    console.log('[geminiService Grid Debug] 📡 调用 postJson...');
+    // console.log('[geminiService Grid Debug] 📡 调用 postJson...');
     const data = await postJson<{ fullImage: string }>('/api/gemini-grid', {
       prompt: gridPrompt,
       gridRows,
@@ -281,22 +289,22 @@ ${prompt}
       aspectRatio,
       referenceImages: safeReferenceImages
     });
-    console.log('[geminiService Grid Debug] ✅ API 请求成功');
-    console.log('[geminiService Grid Debug] fullImage 长度:', data.fullImage?.length || 0);
+    // console.log('[geminiService Grid Debug] ✅ API 请求成功');
+    // console.log('[geminiService Grid Debug] fullImage 长度:', data.fullImage?.length || 0);
 
     const fullImageBase64 = data.fullImage;
     if (!fullImageBase64) throw new Error('未能生成 Grid 图片');
 
     // Slice the single high-res grid into separate base64 images
-    console.log('[geminiService Grid Debug] 🔪 开始切片 Grid 图片...');
-    console.log('[geminiService Grid Debug] Grid 尺寸:', gridRows, 'x', gridCols);
+    // console.log('[geminiService Grid Debug] 🔪 开始切片 Grid 图片...');
+    // console.log('[geminiService Grid Debug] Grid 尺寸:', gridRows, 'x', gridCols);
     const panels = await sliceImageGrid(fullImageBase64, gridRows, gridCols);
-    console.log('[geminiService Grid Debug] ✅ 切片完成，共', panels.length, '个面板');
+    // console.log('[geminiService Grid Debug] ✅ 切片完成，共', panels.length, '个面板');
 
     const returnValue = { fullImage: fullImageBase64, slices: panels };
-    console.log('[geminiService Grid Debug] 🎉 准备返回结果...');
-    console.log('[geminiService Grid Debug] returnValue.fullImage 长度:', returnValue.fullImage.length);
-    console.log('[geminiService Grid Debug] returnValue.slices 数量:', returnValue.slices.length);
+    // console.log('[geminiService Grid Debug] 🎉 准备返回结果...');
+    // console.log('[geminiService Grid Debug] returnValue.fullImage 长度:', returnValue.fullImage.length);
+    // console.log('[geminiService Grid Debug] returnValue.slices 数量:', returnValue.slices.length);
     return returnValue;
   } catch (error: any) {
     console.error('[geminiService Grid Debug] ❌ 错误:', error);

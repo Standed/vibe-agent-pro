@@ -3,7 +3,11 @@ import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-mi
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-3-pro-image-preview';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_GEMINI_API_KEY;
+const GEMINI_API_KEY =
+  process.env.GEMINI_IMAGE_API_KEY ||
+  process.env.NEXT_GEMINI_IMAGE_API_KEY ||
+  process.env.GEMINI_API_KEY ||
+  process.env.NEXT_GEMINI_API_KEY;
 
 export async function POST(request: NextRequest) {
   // 1. 验证用户身份

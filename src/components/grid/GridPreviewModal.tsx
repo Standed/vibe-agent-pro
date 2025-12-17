@@ -2,6 +2,7 @@
 
 import { X, Check, Star, AlertCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Shot } from '@/types/project';
 import { formatShotLabel } from '@/utils/shotOrder';
 
@@ -40,22 +41,40 @@ export default function GridPreviewModal({
   // 防御空值：保证 slices/shots 不为 undefined
   const initialSlices = Array.isArray(gridImages) ? gridImages : [];
   const safeShots = Array.isArray(shots) ? shots : [];
-  const sceneShots = sceneId
+  const sceneShotsRaw = sceneId
     ? safeShots.filter((s) => s.sceneId === sceneId)
     : safeShots;
+
+  // 按 order/globalOrder 排序，并从第一个“未分配”镜头开始自动分配
+  const sortedSceneShots = [...sceneShotsRaw].sort((a, b) => {
+    const orderA = a.order ?? a.globalOrder ?? 0;
+    const orderB = b.order ?? b.globalOrder ?? 0;
+    return orderA - orderB;
+  });
+
+  const isShotAssigned = (shot: Shot) =>
+    (shot.referenceImage && shot.referenceImage.length > 0) ||
+    (shot.gridImages && shot.gridImages.length > 0);
+
+  const firstUnassignedIndex = sortedSceneShots.findIndex((shot) => !isShotAssigned(shot));
+  const orderedSceneShots =
+    firstUnassignedIndex > 0
+      ? [...sortedSceneShots.slice(firstUnassignedIndex), ...sortedSceneShots.slice(0, firstUnassignedIndex)]
+      : sortedSceneShots;
+
   const [slices, setSlices] = useState<string[]>(initialSlices);
   const [selectedShots, setSelectedShots] = useState<Set<string>>(() => {
     // If shots > slices, user must select which shots to assign
-    if (sceneShots.length > slices.length) {
-      return new Set(sceneShots.slice(0, slices.length).map((s) => s.id));
+    if (orderedSceneShots.length > slices.length) {
+      return new Set(orderedSceneShots.slice(0, slices.length).map((s) => s.id));
     }
-    return new Set(sceneShots.map((s) => s.id));
+    return new Set(orderedSceneShots.map((s) => s.id));
   });
 
   const [assignments, setAssignments] = useState<Record<string, string>>(() => {
     // Auto-assign: first N slices to first N selected shots
     const initial: Record<string, string> = {};
-    const selectedShotsList = sceneShots.filter((s) => selectedShots.has(s.id));
+    const selectedShotsList = orderedSceneShots.filter((s) => selectedShots.has(s.id));
     selectedShotsList.forEach((shot, idx) => {
       if (idx < slices.length) {
         initial[shot.id] = slices[idx];
@@ -65,6 +84,12 @@ export default function GridPreviewModal({
   });
 
   const [favoriteSlices, setFavoriteSlices] = useState<Set<string>>(new Set());
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   // 同步外部切片变更
   useEffect(() => {
@@ -158,36 +183,38 @@ export default function GridPreviewModal({
     onClose();
   };
 
-  const hasCountMismatch = sceneShots.length !== slices.length;
-  const hasMoreSlices = slices.length > sceneShots.length;
-  const hasMoreShots = sceneShots.length > slices.length;
+  const hasCountMismatch = orderedSceneShots.length !== slices.length;
+  const hasMoreSlices = slices.length > orderedSceneShots.length;
+  const hasMoreShots = orderedSceneShots.length > slices.length;
   const unusedSlices = slices.filter(
     (slice) => !Object.values(assignments).includes(slice)
   );
 
-  return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-cine-dark border border-cine-border rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-light-bg dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="sticky top-0 bg-cine-dark border-b border-cine-border p-4 flex items-center justify-between z-10">
+        <div className="sticky top-0 bg-light-bg dark:bg-cine-dark border-b border-light-border dark:border-cine-border p-4 flex items-center justify-between z-10">
           <div>
-            <h2 className="text-lg font-bold">Grid 切片预览与分配</h2>
-            <p className="text-sm text-cine-text-muted mt-1">
+            <h2 className="text-lg font-bold text-light-text dark:text-white">Grid 切片预览与分配</h2>
+            <p className="text-sm text-light-text-muted dark:text-cine-text-muted mt-1">
               点击切片图片为对应镜头分配
             </p>
             {hasCountMismatch && (
               <div className="flex items-center gap-2 mt-2 text-xs text-yellow-400">
                 <AlertCircle size={14} />
                 {hasMoreSlices && (
-                  <span>切片数量({slices.length})多于镜头数量({sceneShots.length})，未使用的切片可收藏保存</span>
+                  <span>切片数量({slices.length})多于镜头数量({orderedSceneShots.length})，未使用的切片可收藏保存</span>
                 )}
                 {hasMoreShots && (
-                  <span>镜头数量({sceneShots.length})多于切片数量({slices.length})，请选择要分配的镜头</span>
+                  <span>镜头数量({orderedSceneShots.length})多于切片数量({slices.length})，请选择要分配的镜头</span>
                 )}
               </div>
             )}
           </div>
-          <button onClick={onClose} className="text-cine-text-muted hover:text-white">
+          <button onClick={onClose} className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white">
             <X size={24} />
           </button>
         </div>
@@ -195,8 +222,8 @@ export default function GridPreviewModal({
         <div className="p-6 space-y-6">
           {/* Full Grid Preview */}
           <div>
-            <h3 className="text-sm font-bold mb-3">完整 Grid 图</h3>
-            <div className="bg-cine-panel border border-cine-border rounded-lg p-4">
+            <h3 className="text-sm font-bold mb-3 text-light-text dark:text-white">完整 Grid 图</h3>
+            <div className="bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-4">
               <img
                 src={fullGridUrl}
                 alt="Full Grid"
@@ -207,7 +234,7 @@ export default function GridPreviewModal({
 
           {/* Sliced Images */}
           <div>
-            <h3 className="text-sm font-bold mb-3">切片后的分镜 ({slices.length} 个)</h3>
+            <h3 className="text-sm font-bold mb-3 text-light-text dark:text-white">切片后的分镜 ({slices.length} 个)</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {slices.map((img, idx) => {
                 const isUsed = Object.values(assignments).includes(img);
@@ -215,9 +242,8 @@ export default function GridPreviewModal({
                 return (
                   <div
                     key={idx}
-                    className={`bg-cine-panel border rounded-lg p-3 ${
-                      isUsed ? 'border-cine-accent' : 'border-cine-border'
-                    }`}
+                    className={`bg-light-panel dark:bg-cine-panel border rounded-lg p-3 ${isUsed ? 'border-light-accent dark:border-cine-accent' : 'border-light-border dark:border-cine-border'
+                      }`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-xs text-cine-text-muted">切片 {idx + 1}</div>
@@ -240,17 +266,17 @@ export default function GridPreviewModal({
                       className="w-full rounded mb-2"
                     />
                     {isUsed && (
-                      <div className="text-xs text-cine-accent">已分配</div>
+                      <div className="text-xs text-light-accent dark:text-cine-accent font-medium">已分配</div>
                     )}
                     {!isUsed && hasMoreSlices && (
-                      <div className="text-xs text-cine-text-muted">未使用</div>
+                      <div className="text-xs text-light-text-muted dark:text-cine-text-muted">未使用</div>
                     )}
                   </div>
                 );
               })}
             </div>
             {hasMoreSlices && unusedSlices.length > 0 && (
-              <div className="mt-3 text-xs text-cine-text-muted">
+              <div className="mt-3 text-xs text-light-text-muted dark:text-cine-text-muted">
                 提示：未使用的切片可以点击星标收藏，保存到场景的素材库中
               </div>
             )}
@@ -258,25 +284,24 @@ export default function GridPreviewModal({
 
           {/* Shot Assignment */}
           <div>
-            <h3 className="text-sm font-bold mb-3">
-              镜头分配 ({sceneShots.length} 个镜头)
+            <h3 className="text-sm font-bold mb-3 text-light-text dark:text-white">
+              镜头分配 ({orderedSceneShots.length} 个镜头)
               {hasMoreShots && (
-                <span className="ml-2 text-xs text-yellow-400 font-normal">
+                <span className="ml-2 text-xs text-yellow-600 dark:text-yellow-400 font-normal">
                   (已选择 {selectedShots.size}/{slices.length})
                 </span>
               )}
             </h3>
             <div className="space-y-3">
-              {sceneShots.map((shot) => {
+              {orderedSceneShots.map((shot) => {
                 const isSelected = selectedShots.has(shot.id);
                 return (
                   <div
                     key={shot.id}
-                    className={`bg-cine-panel border rounded-lg p-4 transition-all ${
-                      hasMoreShots && !isSelected
-                        ? 'border-cine-border opacity-50'
-                        : 'border-cine-border'
-                    }`}
+                    className={`bg-light-panel dark:bg-cine-panel border rounded-lg p-4 transition-all ${hasMoreShots && !isSelected
+                      ? 'border-light-border dark:border-cine-border opacity-50'
+                      : 'border-light-border dark:border-cine-border'
+                      }`}
                   >
                     <div className="flex items-start gap-4">
                       {/* Shot Selection Checkbox (if more shots than slices) */}
@@ -289,20 +314,20 @@ export default function GridPreviewModal({
                             disabled={
                               !isSelected && selectedShots.size >= slices.length
                             }
-                            className="w-4 h-4 accent-cine-accent"
+                            className="w-4 h-4 accent-light-accent dark:accent-cine-accent"
                           />
                         </div>
                       )}
 
                       {/* Shot Info */}
                       <div className="flex-1">
-                        <div className="font-medium text-sm mb-1">
+                        <div className="font-medium text-sm mb-1 text-light-text dark:text-white">
                           镜头 {formatShotLabel(sceneOrder, shot.order, shot.globalOrder)}
                         </div>
-                        <div className="text-xs text-cine-text-muted mb-2">
+                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-2">
                           {shot.shotSize} - {shot.cameraMovement}
                         </div>
-                        <div className="text-xs text-cine-text-muted line-clamp-2">
+                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted line-clamp-2">
                           {shot.description}
                         </div>
                       </div>
@@ -314,14 +339,14 @@ export default function GridPreviewModal({
                             <img
                               src={assignments[shot.id]}
                               alt="Assigned"
-                              className="w-full rounded border-2 border-cine-accent"
+                              className="w-full rounded border-2 border-light-accent dark:border-cine-accent"
                             />
-                            <div className="absolute top-1 right-1 bg-cine-accent text-white rounded-full p-0.5">
+                            <div className="absolute top-1 right-1 bg-light-accent dark:bg-cine-accent text-white dark:text-black rounded-full p-0.5">
                               <Check size={12} />
                             </div>
                           </div>
                         ) : (
-                          <div className="w-full aspect-video bg-cine-dark border border-dashed border-cine-border rounded flex items-center justify-center text-xs text-cine-text-muted">
+                          <div className="w-full aspect-video bg-light-bg dark:bg-cine-dark border border-dashed border-light-border dark:border-cine-border rounded flex items-center justify-center text-xs text-light-text-muted dark:text-cine-text-muted">
                             {isSelected ? '未分配' : '未选择'}
                           </div>
                         )}
@@ -333,12 +358,11 @@ export default function GridPreviewModal({
                           {slices.map((img, idx) => (
                             <button
                               key={idx}
-                          onClick={() => handleSliceClick(img, shot.id)}
-                              className={`w-12 h-12 rounded border-2 transition-all ${
-                                assignments[shot.id] === img
-                                  ? 'border-cine-accent scale-110'
-                                  : 'border-cine-border hover:border-cine-accent/50'
-                              }`}
+                              onClick={() => handleSliceClick(img, shot.id)}
+                              className={`w-12 h-12 rounded border-2 transition-all ${assignments[shot.id] === img
+                                ? 'border-light-accent dark:border-cine-accent scale-110'
+                                : 'border-light-border dark:border-cine-border hover:border-light-accent/50 dark:hover:border-cine-accent/50'
+                                }`}
                             >
                               <img
                                 src={img}
@@ -358,10 +382,10 @@ export default function GridPreviewModal({
         </div>
 
         {/* Footer Actions */}
-        <div className="sticky bottom-0 bg-cine-dark border-t border-cine-border p-4 flex justify-between items-center">
-          <div className="text-xs text-cine-text-muted">
+        <div className="sticky bottom-0 bg-light-bg dark:bg-cine-dark border-t border-light-border dark:border-cine-border p-4 flex justify-between items-center">
+          <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
             {favoriteSlices.size > 0 && (
-              <span className="text-yellow-400">
+              <span className="text-yellow-600 dark:text-yellow-400">
                 {favoriteSlices.size} 个切片将被收藏
               </span>
             )}
@@ -369,19 +393,20 @@ export default function GridPreviewModal({
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-lg bg-cine-panel hover:bg-cine-border border border-cine-border transition-colors"
+              className="px-4 py-2 rounded-lg bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border transition-colors text-light-text dark:text-white"
             >
               取消
             </button>
             <button
               onClick={handleConfirm}
-              className="px-4 py-2 rounded-lg bg-cine-accent hover:bg-cine-accent-hover text-white font-bold transition-colors"
+              className="px-4 py-2 rounded-lg bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black font-bold transition-colors"
             >
               确认分配
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

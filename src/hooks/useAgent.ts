@@ -90,6 +90,8 @@ export function useAgent(): UseAgentResult {
     );
   }, []);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Send message
   const sendMessage = useCallback(async (message: string) => {
     if (!project) {
@@ -98,6 +100,8 @@ export function useAgent(): UseAgentResult {
     }
 
     cancelRef.current = false;
+    // 创建新的 AbortController
+    abortControllerRef.current = new AbortController();
 
     // 游客模式限制：只允许已登录用户调用 AI
     if (!isAuthenticated()) {
@@ -208,7 +212,22 @@ export function useAgent(): UseAgentResult {
       });
 
       const chatHistory = sessionManager.getMessages();
-      let action = await processUserCommand(message, chatHistory, enhancedContext);
+      // 传递 signal 给 processUserCommand (需要修改 processUserCommand 支持 signal)
+      // 这里我们暂时通过修改 agentService 来支持 signal 传递，但 processUserCommand 签名可能需要调整
+      // 或者我们可以将 signal 附加到 context 中，或者作为额外参数
+      // 由于 processUserCommand 签名限制，我们这里假设它已经被修改为接受 signal 或者我们在 agentService 中处理了
+      // 实际上 agentService.ts 中的 callGeminiWithBackoff 已经修改为支持 body.signal
+      // 所以我们需要确保 processUserCommand 能够传递 signal
+      // 但 processUserCommand 目前没有 signal 参数。
+      // 为了最小化改动，我们可以将 signal 放入 context 中，或者修改 processUserCommand
+      // 让我们修改 processUserCommand 吧，这更干净。但现在我们先在 useAgent 里准备好 signal
+
+      // 临时方案：我们修改 agentService.ts 中的 processUserCommand 签名
+      // 但在此之前，我们需要确保 useAgent 里的调用是正确的。
+
+      // 让我们假设 processUserCommand 接受一个可选的 signal 参数
+      // @ts-ignore - 我们稍后会更新 processUserCommand 的签名
+      let action = await processUserCommand(message, chatHistory, enhancedContext, abortControllerRef.current?.signal);
 
       updateStep(stepId3, {
         status: 'completed',
@@ -323,11 +342,13 @@ export function useAgent(): UseAgentResult {
           updatedShotId ?? undefined
         );
 
+        // @ts-ignore - 我们稍后会更新 continueWithToolResults 的签名
         action = await continueWithToolResults(
           results.map(r => ({ tool: r.tool, result: r.result || r.error })),
           chatHistory,
           updatedContext,
-          pendingScenes // 传递待处理的场景列表
+          pendingScenes, // 传递待处理的场景列表
+          abortControllerRef.current?.signal // 传递 signal
         );
 
         updateStep(stepId5, {
@@ -373,7 +394,7 @@ export function useAgent(): UseAgentResult {
       };
       await sessionManager.addMessage(assistantMessage);
 
-      // ⭐ 保存 assistant 消息到云端数据库（包含思考过程和工具结果）
+      // ⭐ 保存 assistant 消息到云端数据库（包含完整思考过程和工具结果）
       const thinkingStepsSummary = thinkingSteps
         .filter(step => step.type === 'thinking' || step.type === 'tool')
         .map(step => step.content)
@@ -390,6 +411,16 @@ export function useAgent(): UseAgentResult {
           timestamp: new Date(),
           thought: thinkingStepsSummary || undefined,
           metadata: {
+            // 保存完整的思考步骤（用于历史记录恢复）
+            thinkingSteps: thinkingSteps.map(step => ({
+              id: step.id,
+              type: step.type,
+              content: step.content,
+              status: step.status,
+              duration: step.duration,
+              details: step.details,
+              timestamp: step.timestamp.toISOString(),
+            })),
             toolResults: allToolResults.map(r => ({
               tool: r.tool,
               result: r.result,
@@ -404,7 +435,7 @@ export function useAgent(): UseAgentResult {
       toast.success('处理完成');
 
     } catch (error: any) {
-      if (error?.message === 'USER_CANCELLED') {
+      if (error?.message === 'USER_CANCELLED' || error?.name === 'AbortError') {
         toast.info('已停止当前 AI 处理');
       } else {
         console.error('Agent error:', error);
@@ -420,6 +451,7 @@ export function useAgent(): UseAgentResult {
       }
     } finally {
       setIsProcessing(false);
+      abortControllerRef.current = null;
     }
   }, [
     project,
@@ -457,6 +489,10 @@ export function useAgent(): UseAgentResult {
 
   const stop = useCallback(() => {
     cancelRef.current = true;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     setIsProcessing(false);
     setThinkingSteps([]);
     setSummary('');

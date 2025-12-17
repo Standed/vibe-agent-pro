@@ -25,6 +25,28 @@ export interface AuthenticatedUser {
   credits: number;
 }
 
+const SESSION_COOKIE_NAME = 'supabase-session';
+
+const readAccessTokenFromCookies = (request: NextRequest): string | null => {
+  const cookieHeader = request.headers.get('cookie');
+  if (!cookieHeader) return null;
+
+  const cookies = cookieHeader.split(';').map((c) => c.trim());
+  const sessionCookie = cookies.find((c) => c.startsWith(`${SESSION_COOKIE_NAME}=`));
+  if (!sessionCookie) return null;
+
+  try {
+    const raw = decodeURIComponent(sessionCookie.split('=')[1]);
+    const parsed = JSON.parse(raw);
+    if (parsed?.access_token && typeof parsed.access_token === 'string') {
+      return parsed.access_token;
+    }
+  } catch (err) {
+    console.warn('[Auth Middleware] 解析会话 cookie 失败:', err);
+  }
+  return null;
+};
+
 /**
  * 从请求中验证用户身份
  * 返回用户信息或错误响应
@@ -33,9 +55,14 @@ export async function authenticateRequest(
   request: NextRequest
 ): Promise<{ user: AuthenticatedUser } | { error: NextResponse }> {
   try {
-    // 从 Authorization header 获取 token
+    // 从 Authorization header 获取 token，或从 cookie 兜底
     const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const tokenFromHeader = authHeader?.startsWith('Bearer ')
+      ? authHeader.replace('Bearer ', '')
+      : null;
+    const token = tokenFromHeader || readAccessTokenFromCookies(request);
+
+    if (!token) {
       return {
         error: NextResponse.json(
           { error: '未登录，请先登录后再使用 AI 功能' },
@@ -43,8 +70,6 @@ export async function authenticateRequest(
         ),
       };
     }
-
-    const token = authHeader.replace('Bearer ', '');
 
     // 验证 token
     const {
@@ -164,7 +189,7 @@ export async function consumeCredits(
   amount: number,
   operationType: string,
   description?: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; creditsAfter?: number }> {
   try {
     const { data, error } = await (supabaseAdmin as any).rpc('consume_credits', {
       p_user_id: userId,
@@ -183,7 +208,19 @@ export async function consumeCredits(
       return { success: false, error: result?.error || '积分消耗失败' };
     }
 
-    return { success: true };
+    // 读取最新余额，便于前端更新
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('credits')
+      .eq('id', userId)
+      .single();
+
+    if (profileError) {
+      console.warn('[consumeCredits] 获取最新积分失败，仅返回成功状态:', profileError);
+      return { success: true };
+    }
+
+    return { success: true, creditsAfter: profile?.credits };
   } catch (error: any) {
     console.error('Exception in consumeCredits:', error);
     return { success: false, error: error.message };

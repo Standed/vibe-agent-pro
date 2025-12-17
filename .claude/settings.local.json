@@ -56,7 +56,8 @@
       "Bash(powershell \"Get-Process | Where-Object {$_ProcessName -eq ''node''} | Select-Object Id,ProcessName | Format-Table\")",
       "Bash(powershell \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue\")",
       "Bash(powershell \"Stop-Process -Name node -Force\")",
-      "Bash(timeout 10 npm run dev:*)"
+      "Bash(timeout 10 npm run dev:*)",
+      "Bash(timeout:*)"
     ]
   }
 }

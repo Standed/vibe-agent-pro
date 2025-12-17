@@ -12,7 +12,7 @@ import ShotGenerationHistory from '@/components/shot/ShotGenerationHistory';
 import { toast } from 'sonner';
 import { validateGenerationConfig } from '@/utils/promptSecurity';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
-import { consumeCredits, getUserCredits, getGridCost } from '@/lib/supabase/credits';
+import { getUserCredits, getGridCost } from '@/lib/supabase/credits';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { logger } from '@/lib/logService';
 import { dataService } from '@/lib/dataService';
@@ -425,10 +425,29 @@ export default function ProPanel() {
       // 先放资产参考图（与编号对应），再放用户上传的补充图
       const refImages = [...refImagesFromAssets, ...refImagesFromUpload];
 
+      // 构建参考图描述（用于 Prompt 对应）
+      const refCaptions: string[] = [];
+
+      // 1. 资产参考图描述
+      finalAssetUrls.forEach(url => {
+        const assetRef = referenceImageMap.find(r => r.imageUrl === url);
+        if (assetRef) {
+          refCaptions.push(`${assetRef.type === 'character' ? 'Character' : 'Location'}: ${assetRef.name}`);
+        } else {
+          refCaptions.push('Reference Image');
+        }
+      });
+
+      // 2. 用户上传参考图描述
+      refImagesFromUpload.forEach(() => {
+        refCaptions.push('User uploaded reference');
+      });
+
       // 🔍 调试：输出参考图信息
       console.log('[ProPanel Grid Debug] refUrlSet:', refUrlSet);
       console.log('[ProPanel Grid Debug] referenceImageMap:', referenceImageMap);
       console.log('[ProPanel Grid Debug] refImages.length:', refImages.length);
+      console.log('[ProPanel Grid Debug] refCaptions:', refCaptions);
 
       console.log('[ProPanel] 🚀 准备调用 generateMultiViewGrid...');
       const result = await generateMultiViewGrid(
@@ -437,7 +456,8 @@ export default function ProPanel() {
         cols,
         aspectRatio,
         ImageSize.K4,
-        refImages
+        refImages,
+        refCaptions // 传递参考图描述
       ).catch((error) => {
         console.error('[ProPanel] ❌ generateMultiViewGrid 抛出异常:', error);
         throw error;
@@ -462,30 +482,15 @@ export default function ProPanel() {
         aspectRatio,
       });
 
-      // 💰 消费积分（仅对已登录用户）
+      // 积分扣除在 API Route 完成，这里仅记录日志
       if (user) {
         const creditsConsumed = getGridCost(rows, cols);
-        const consumeResult = await consumeCredits({
-          amount: creditsConsumed,
-          operationType: `generate-grid-${rows}x${cols}`,
-          description: `生成 ${gridSize} Grid - ${targetScene.name}`,
-        });
-
-        if (consumeResult.success) {
-          toast.success(`已消耗 ${creditsConsumed} 积分`, {
-            description: `剩余积分：${consumeResult.creditsAfter}`,
-          });
-
-          // 记录日志
-          await logger.logAIGeneration(
-            `grid-${rows}x${cols}`,
-            creditsConsumed,
-            true,
-            { sceneId: targetScene.id, sceneName: targetScene.name }
-          );
-        } else {
-          console.warn('Credit consumption failed:', consumeResult.error);
-        }
+        await logger.logAIGeneration(
+          `grid-${rows}x${cols}`,
+          creditsConsumed,
+          true,
+          { sceneId: targetScene.id, sceneName: targetScene.name }
+        );
       }
 
       // 🔄 尝试上传完整图和切片到 R2（可选，失败时回退到 base64）
@@ -816,26 +821,15 @@ export default function ProPanel() {
       };
       addGenerationHistory(selectedShotId!, historyItem);
 
-      // 💰 消费积分（仅对已登录用户）
+      // 积分扣除在 API Route 完成，这里仅记录日志
       if (user) {
         const creditsConsumed = 20;
-        const consumeResult = await consumeCredits({
-          amount: creditsConsumed,
-          operationType: 'generate-video',
-          description: `生成视频 - ${selectedShot.shotSize}`,
-        });
-
-        if (consumeResult.success) {
-          // 记录日志
-          await logger.logAIGeneration(
-            'video',
-            creditsConsumed,
-            true,
-            { shotId: selectedShotId, shotSize: selectedShot.shotSize }
-          );
-        } else {
-          console.warn('Credit consumption failed:', consumeResult.error);
-        }
+        await logger.logAIGeneration(
+          'video',
+          creditsConsumed,
+          true,
+          { shotId: selectedShotId, shotSize: selectedShot.shotSize }
+        );
       }
 
       toast.success('视频生成成功！', {

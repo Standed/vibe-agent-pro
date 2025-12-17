@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, Loader2, User, Bot, Trash2, Sparkles, Image as ImageIcon, Grid3x3, CircleStop } from 'lucide-react';
+import { Send, Loader2, User, Bot, Trash2, Sparkles, Image as ImageIcon, Grid3x3, CircleStop, ChevronDown, ChevronUp } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { ChatMessage } from '@/types/project';
 import { useAgent } from '@/hooks/useAgent';
-import ThinkingProcess from './ThinkingProcess';
+import ThinkingProcess, { ThinkingStep } from './ThinkingProcess';
 import { dataService } from '@/lib/dataService';
 import { useAuth } from '@/components/auth/AuthProvider';
 
@@ -17,6 +17,7 @@ export default function AgentPanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
 
   const { isProcessing, thinkingSteps, summary, sendMessage, clearSession, stop } = useAgent();
 
@@ -65,10 +66,25 @@ export default function AgentPanel() {
     const userContent = input.trim();
     setInput('');
 
+    // ⭐ 立即添加用户消息到本地状态（乐观更新）
+    const userMessageId = crypto?.randomUUID() || `msg-${Date.now()}`;
+    const userMessage: ChatMessage = {
+      id: userMessageId,
+      userId: user?.id || '',
+      projectId: project?.id || '',
+      scope: 'project',
+      role: 'user',
+      content: userContent,
+      timestamp: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    setChatHistory((prev) => [...prev, userMessage]);
+
     // Send to agent
     await sendMessage(userContent);
 
-    // 重新加载聊天历史
+    // 重新加载聊天历史（包含AI回复）
     if (project && user) {
       const messages = await dataService.getChatMessages({
         projectId: project.id,
@@ -88,6 +104,18 @@ export default function AgentPanel() {
   const handleClearSession = async () => {
     await clearSession();
     setChatHistory([]);
+  };
+
+  const toggleMessageExpansion = (messageId: string) => {
+    setExpandedMessages((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
   };
 
   return (
@@ -134,45 +162,94 @@ export default function AgentPanel() {
           </div>
         ) : (
           <>
-            {chatHistory.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'
-                  }`}
-              >
-                {msg.role === 'assistant' && (
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-light-accent dark:bg-cine-accent flex items-center justify-center">
-                    <Bot size={16} className="text-white" />
-                  </div>
-                )}
+            {chatHistory.map((msg) => {
+              const hasThinkingSteps = msg.role === 'assistant' && msg.metadata?.thinkingSteps && Array.isArray(msg.metadata.thinkingSteps);
+              const isExpanded = expandedMessages.has(msg.id);
+              const historicalSteps: ThinkingStep[] | undefined = hasThinkingSteps && msg.metadata?.thinkingSteps
+                ? (msg.metadata.thinkingSteps as any[]).map((step: any) => ({
+                    id: step.id,
+                    type: step.type,
+                    content: step.content,
+                    status: step.status,
+                    duration: step.duration,
+                    details: step.details,
+                    timestamp: new Date(step.timestamp),
+                  }))
+                : undefined;
 
+              return (
                 <div
-                  className={`max-w-[80%] rounded-2xl p-4 shadow-sm ${msg.role === 'user'
-                    ? 'bg-black/5 dark:bg-white/10 text-light-text dark:text-white shadow-sm border border-black/5 dark:border-white/5 rounded-tr-sm'
-                    : 'glass-card text-gray-800 dark:text-gray-100 rounded-tl-sm'
+                  key={msg.id}
+                  className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'
                     }`}
                 >
-                  <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                  {msg.role === 'assistant' && (
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-light-accent dark:bg-cine-accent flex items-center justify-center">
+                      <Bot size={16} className="text-white" />
+                    </div>
+                  )}
 
-                  {/* Timestamp */}
-                  <div className={`text-xs mt-1 ${msg.role === 'user'
-                    ? 'text-white/70'
-                    : 'text-light-text-muted dark:text-cine-text-muted'
-                    }`}>
-                    {new Date(msg.timestamp).toLocaleTimeString('zh-CN', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                  <div className="flex-1 min-w-0 max-w-[80%]">
+                    <div
+                      className={`rounded-2xl p-4 shadow-sm ${msg.role === 'user'
+                        ? 'bg-black/5 dark:bg-white/10 text-light-text dark:text-white shadow-sm border border-black/5 dark:border-white/5 rounded-tr-sm'
+                        : 'glass-card text-gray-800 dark:text-gray-100 rounded-tl-sm'
+                        }`}
+                    >
+                      <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+
+                      {/* Timestamp */}
+                      <div className={`text-xs mt-1 ${msg.role === 'user'
+                        ? 'text-white/70'
+                        : 'text-light-text-muted dark:text-cine-text-muted'
+                        }`}>
+                        {new Date(msg.timestamp).toLocaleTimeString('zh-CN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </div>
+                    </div>
+
+                    {/* 历史思考步骤（可展开） */}
+                    {hasThinkingSteps && (
+                      <div className="mt-2">
+                        <button
+                          onClick={() => toggleMessageExpansion(msg.id)}
+                          className="flex items-center gap-1 text-xs text-light-accent dark:text-cine-accent hover:underline"
+                        >
+                          {isExpanded ? (
+                            <>
+                              <ChevronUp size={14} />
+                              隐藏思考过程
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown size={14} />
+                              查看思考过程
+                            </>
+                          )}
+                        </button>
+                        {isExpanded && historicalSteps && (
+                          <div className="mt-2">
+                            <ThinkingProcess
+                              steps={historicalSteps}
+                              isProcessing={false}
+                              summary=""
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
+
+                  {msg.role === 'user' && (
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
+                      <User size={16} className="text-gray-600 dark:text-gray-300" />
+                    </div>
+                  )}
                 </div>
-
-                {msg.role === 'user' && (
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
-                    <User size={16} className="text-gray-600 dark:text-gray-300" />
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
 
             {/* Thinking Process (only show during processing or if there are steps) */}
             {(isProcessing || thinkingSteps.length > 0) && (
