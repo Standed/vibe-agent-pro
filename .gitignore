@@ -42,3 +42,6 @@ next-env.d.ts
 # Generated files
 /public/generated
 /tmp
+
+# Windows reserved names
+NUL
