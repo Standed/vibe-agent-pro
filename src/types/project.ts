@@ -184,7 +184,7 @@ export interface GenerationHistoryItem {
     referenceImages?: string[];
     [key: string]: unknown;
   };
-  status: 'success' | 'failed';
+  status: 'success' | 'failed' | 'replaced';
 }
 
 export interface Shot {

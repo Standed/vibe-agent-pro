@@ -17,6 +17,7 @@ const r2Client = new S3Client({
     accessKeyId: process.env.R2_ACCESS_KEY_ID!,
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
   },
+  forcePathStyle: true, // 必须开启，否则 SDK 会尝试 bucket.endpoint 导致 DNS 解析失败
 });
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME!;

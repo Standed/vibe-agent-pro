@@ -6,6 +6,8 @@ import { X, Plus, Upload, Trash2, Sparkles, Loader2, Eye } from 'lucide-react';
 import type { Character } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { toast } from 'sonner';
+import { storageService } from '@/lib/storageService';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 interface AddCharacterDialogProps {
   onAdd: (character: Character) => void;
@@ -15,6 +17,7 @@ interface AddCharacterDialogProps {
 }
 
 export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initialCharacter }: AddCharacterDialogProps) {
+  const { user } = useAuth();
   const [name, setName] = useState(initialCharacter?.name || '');
   const [description, setDescription] = useState(initialCharacter?.description || '');
   const [appearance, setAppearance] = useState(initialCharacter?.appearance || '');
@@ -126,10 +129,21 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     try {
       const volcanoService = VolcanoEngineService.getInstance();
 
-      const imageUrl = await volcanoService.generateSingleImage(prompt, aspectRatio);
+      const base64Url = await volcanoService.generateSingleImage(prompt, aspectRatio);
 
-      // Add to reference images
-      setReferenceImages([...referenceImages, imageUrl]);
+      // 1. Immediate UI update (Base64)
+      setReferenceImages(prev => [...prev, base64Url]);
+
+      // 2. Background Upload to R2
+      const folder = `projects/characters/${user?.id || 'anonymous'}`;
+      storageService.uploadBase64ToR2(base64Url, folder, `char_${Date.now()}.png`, user?.id || 'anonymous')
+        .then(r2Url => {
+          // Replace base64 with R2 URL
+          setReferenceImages(prev => prev.map(img => img === base64Url ? r2Url : img));
+        })
+        .catch(error => {
+          console.error('R2 upload failed, keeping base64:', error);
+        });
 
       toast.success('三视图生成成功！');
     } catch (error: any) {

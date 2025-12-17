@@ -170,7 +170,8 @@ export class VolcanoEngineService {
    */
   async generateSingleImage(
     prompt: string,
-    aspectRatio?: string // '16:9', '9:16', '1:1', '4:3', '3:4', '21:9'
+    aspectRatio?: string, // '16:9', '9:16', '1:1', '4:3', '3:4', '21:9'
+    referenceImages: string[] = [] // Added parameter for reference images
   ): Promise<string> {
     // 根据画面比例计算尺寸 - 满足 SeeDream API 最小像素要求（3,686,400 像素）
     const sizeMap: Record<string, string> = {
@@ -191,6 +192,7 @@ export class VolcanoEngineService {
         prompt,
         size,
         model: this.seedreamModelId,
+        imageUrls: referenceImages, // Pass reference images
       }),
     });
 

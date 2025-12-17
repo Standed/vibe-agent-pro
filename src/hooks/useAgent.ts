@@ -19,6 +19,7 @@ import { StoreCallbacks } from '@/services/agentTools';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { dataService } from '@/lib/dataService';
+import { logger } from '@/lib/logService';
 import type { ChatMessage } from '@/types/project';
 
 const generateMessageId = () => {
@@ -191,7 +192,7 @@ export function useAgent(): UseAgentResult {
 
       // ⭐ 保存用户消息到云端数据库（chat_messages表）
       if (user && project) {
-        await dataService.saveChatMessage({
+        void dataService.saveChatMessage({
           id: generateMessageId(),
           userId: user.id,
           projectId: project.id,
@@ -201,6 +202,8 @@ export function useAgent(): UseAgentResult {
           timestamp: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),
+        }).catch((err) => {
+          console.warn('[useAgent] 保存用户消息失败，已忽略', err);
         });
       }
 
@@ -226,8 +229,29 @@ export function useAgent(): UseAgentResult {
       // 但在此之前，我们需要确保 useAgent 里的调用是正确的。
 
       // 让我们假设 processUserCommand 接受一个可选的 signal 参数
-      // @ts-ignore - 我们稍后会更新 processUserCommand 的签名
-      let action = await processUserCommand(message, chatHistory, enhancedContext, abortControllerRef.current?.signal);
+      // 为了增强鲁棒性，增加简单的网络重试（最多 2 次）
+      const callProcessUserCommandWithRetry = async () => {
+        let lastError: any = null;
+        const maxRetries = 2;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            // @ts-ignore - 我们稍后会更新 processUserCommand 的签名
+            return await processUserCommand(message, chatHistory, enhancedContext, abortControllerRef.current?.signal);
+          } catch (err: any) {
+            lastError = err;
+            const msg = `${err?.message || ''}`.toLowerCase();
+            const retriable = err?.name !== 'AbortError' && /network|fetch failed|timeout|socket|econn|503|502|overload|gateway/.test(msg);
+            if (cancelRef.current || attempt >= maxRetries || !retriable) {
+              throw err;
+            }
+            // 线性退避
+            await new Promise(resolve => setTimeout(resolve, 600 * (attempt + 1)));
+          }
+        }
+        throw lastError;
+      };
+
+      let action = await callProcessUserCommandWithRetry();
 
       updateStep(stepId3, {
         status: 'completed',
@@ -245,6 +269,7 @@ export function useAgent(): UseAgentResult {
       let iteration = 0;
       const allCreatedScenes = new Set<string>(); // 跟踪所有创建的场景
       const allScenesWithShots = new Set<string>(); // 跟踪所有已添加分镜的场景
+      const executedToolSignatures = new Set<string>(); // 避免重复执行同一工具调用
 
       while (action.requiresToolExecution && action.toolCalls && iteration < maxIterations) {
         iteration++;
@@ -281,11 +306,25 @@ export function useAgent(): UseAgentResult {
             updateStep(stepId4, {
               details: `${progress.currentStep} (${progress.completed}/${progress.total})`,
             });
-          }
+          },
+          user?.id
         );
 
+        // 去重：如果同一个工具 + 参数已执行过，跳过，防止死循环重复执行
+        const dedupedToolCalls = action.toolCalls.filter(tc => {
+          const sig = `${tc.name}:${JSON.stringify(tc.arguments || {})}`;
+          if (executedToolSignatures.has(sig)) return false;
+          executedToolSignatures.add(sig);
+          return true;
+        });
+
+        if (dedupedToolCalls.length === 0) {
+          // 没有新的工具可执行，跳出循环
+          break;
+        }
+
         const iterationStart = Date.now();
-        const results = await executor.execute(action.toolCalls);
+        const results = await executor.execute(dedupedToolCalls);
         if (cancelRef.current) {
           throw new Error('USER_CANCELLED');
         }
@@ -342,14 +381,51 @@ export function useAgent(): UseAgentResult {
           updatedShotId ?? undefined
         );
 
-        // @ts-ignore - 我们稍后会更新 continueWithToolResults 的签名
-        action = await continueWithToolResults(
-          results.map(r => ({ tool: r.tool, result: r.result || r.error })),
-          chatHistory,
-          updatedContext,
-          pendingScenes, // 传递待处理的场景列表
-          abortControllerRef.current?.signal // 传递 signal
+        // 给 continueWithToolResults 加超时保护，避免一直卡在总结前
+        const CONTINUE_TIMEOUT_MS = 45000;
+        const continueController = new AbortController();
+        const continuePromise =
+          // @ts-ignore - 我们稍后会更新 continueWithToolResults 的签名
+          continueWithToolResults(
+            results.map(r => {
+              // 简化结果，避免大 payload 导致 LLM 处理超时
+              let simplifiedResult = r.result || r.error;
+              if (r.tool === 'batchGenerateSceneImages' || r.tool === 'batchGenerateProjectImages') {
+                simplifiedResult = {
+                  successCount: r.result?.successCount,
+                  failedCount: r.result?.failedCount,
+                  total: r.result?.totalShots || r.result?.totalScenes,
+                  mode: r.result?.mode,
+                  // 仅保留失败的详情，成功的省略
+                  failures: r.result?.results?.filter((i: any) => !i.success).map((i: any) => ({ shotId: i.shotId, error: i.error }))
+                };
+              }
+              return { tool: r.tool, result: simplifiedResult };
+            }),
+            chatHistory,
+            updatedContext,
+            pendingScenes, // 传递待处理的场景列表
+            continueController.signal // 传递 signal
+          );
+
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => {
+            continueController.abort();
+            reject(new Error('继续处理超时，已跳过'));
+          }, CONTINUE_TIMEOUT_MS)
         );
+
+        try {
+          action = await Promise.race([continuePromise, timeoutPromise]);
+        } catch (e: any) {
+          console.warn('[useAgent] continueWithToolResults 超时/失败，直接结束工具链', e);
+          action = { type: 'none', message: '生成完成', requiresToolExecution: false };
+        }
+
+        // 如果下一轮没有工具需要执行，提前终止循环，防止卡住
+        if (!action.toolCalls || action.toolCalls.length === 0) {
+          action.requiresToolExecution = false;
+        }
 
         updateStep(stepId5, {
           status: 'completed',
@@ -368,17 +444,138 @@ export function useAgent(): UseAgentResult {
         throw new Error('USER_CANCELLED');
       }
 
-      let finalSummary = action.message || '处理完成';
+      // 构建用户视角的简洁生成结果摘要
+      const projectSnapshot = useProjectStore.getState().project;
+      const shotLabel = (shotId: string) => {
+        if (!projectSnapshot) return shotId;
+        const shot = projectSnapshot.shots.find(s => s.id === shotId);
+        if (!shot) return shotId;
+        const scene = projectSnapshot.scenes.find(sc => sc.id === shot.sceneId);
+        const scenePrefix = scene ? `${scene.name || '场景'} ` : '';
+        return `${scenePrefix}镜头${shot.order}`;
+      };
 
-      // Add tool execution summary
-      if (allToolResults.length > 0) {
-        const successCount = allToolResults.filter(r => r.success !== false).length;
-        const failCount = allToolResults.length - successCount;
-        finalSummary += `\n\n执行了 ${allToolResults.length} 个工具调用`;
-        if (failCount > 0) {
-          finalSummary += ` (${failCount} 个失败)`;
+      const generated = new Set<string>();
+      const overwritten = new Set<string>();
+      const skipped = new Set<string>();
+
+      const markShot = (shotId?: string, opts?: { overwritten?: boolean; skipped?: boolean }) => {
+        if (!shotId) return;
+        if (opts?.skipped) {
+          skipped.add(shotId);
+          return;
         }
+        generated.add(shotId);
+        if (opts?.overwritten) {
+          overwritten.add(shotId);
+        }
+      };
+
+      const handleResult = (toolResult: any) => {
+        const res = toolResult?.result;
+        if (!res) return;
+        switch (toolResult.tool) {
+          case 'generateShotImage':
+            markShot(res.shotId, { overwritten: !!res.overwritten, skipped: !!res.skipped });
+            break;
+          case 'batchGenerateSceneImages':
+            if (Array.isArray(res.results)) {
+              res.results.forEach((r: any) =>
+                markShot(r?.result?.shotId, { overwritten: !!r?.result?.overwritten, skipped: !!r?.result?.skipped })
+              );
+            }
+            if (res.assignments) {
+              Object.keys(res.assignments).forEach((id: string) =>
+                markShot(id, { overwritten: Array.isArray(res.overwrittenShotIds) && res.overwrittenShotIds.includes(id) })
+              );
+            }
+            break;
+          case 'batchGenerateProjectImages':
+            if (Array.isArray(res.results)) {
+              res.results.forEach((r: any) =>
+                markShot(r?.result?.shotId, { overwritten: !!r?.result?.overwritten, skipped: !!r?.result?.skipped })
+              );
+            }
+            if (Array.isArray(res.sceneResults)) {
+              res.sceneResults.forEach((sr: any) => {
+                const srRes = sr?.result;
+                if (!srRes) return;
+                if (srRes.assignments) {
+                  Object.keys(srRes.assignments).forEach((id: string) =>
+                    markShot(
+                      id,
+                      { overwritten: Array.isArray(srRes.overwrittenShotIds) && srRes.overwrittenShotIds.includes(id) }
+                    )
+                  );
+                }
+                if (Array.isArray(srRes.results)) {
+                  srRes.results.forEach((r: any) =>
+                    markShot(r?.result?.shotId, { overwritten: !!r?.result?.overwritten, skipped: !!r?.result?.skipped })
+                  );
+                }
+              });
+            }
+            break;
+          default:
+            break;
+        }
+      };
+
+      allToolResults.forEach(handleResult);
+
+      const formatGroupedShots = (ids: Set<string>) => {
+        if (!projectSnapshot) return Array.from(ids).map(shotLabel);
+        const byScene = new Map<string, { sceneOrder: number; sceneLabel: string; shots: number[] }>();
+
+        ids.forEach(id => {
+          const shot = projectSnapshot.shots.find(s => s.id === id);
+          if (!shot) return;
+          const scene = projectSnapshot.scenes.find(sc => sc.id === shot.sceneId);
+          const sceneOrder = scene?.order ?? 9999;
+          const sceneLabel = scene?.name || `场景${sceneOrder}`;
+          const entry = byScene.get(sceneLabel) || { sceneOrder, sceneLabel, shots: [] };
+          entry.shots.push(shot.order ?? 0);
+          byScene.set(sceneLabel, entry);
+        });
+
+        return Array.from(byScene.values())
+          .sort((a, b) => a.sceneOrder - b.sceneOrder)
+          .map(group => {
+            const shotOrders = group.shots.sort((a, b) => a - b).map(o => (o || o === 0 ? o : '')).join('、');
+            return `${group.sceneLabel} 镜头${shotOrders}`;
+          });
+      };
+
+      const generatedLabels = formatGroupedShots(generated);
+      const overwrittenLabels = formatGroupedShots(overwritten);
+      const skippedLabels = formatGroupedShots(skipped);
+
+      let finalSummary = action.message || '处理完成';
+      const lines: string[] = [];
+      if (generatedLabels.length > 0) {
+        lines.push(`生成：${generatedLabels.join('、')}`);
       }
+      if (overwrittenLabels.length > 0) {
+        lines.push(`覆盖：${overwrittenLabels.join('、')}`);
+      }
+      if (skippedLabels.length > 0) {
+        lines.push(`跳过：${skippedLabels.join('、')}`);
+      }
+      if (lines.length > 0) {
+        finalSummary = lines.join('；');
+      }
+
+      // 系统日志：记录本次 Agent 生成结果（不写入聊天记录）
+      void logger.info('ai_generation', 'Agent batch generation summary', {
+        projectId: project?.id,
+        generatedShotIds: Array.from(generated),
+        overwrittenShotIds: Array.from(overwritten),
+        skippedShotIds: Array.from(skipped),
+        actionType: action.type,
+      }).catch((e) => {
+        // 日志失败不影响主流程
+        console.debug('[AgentLog] failed to log summary', e);
+      });
 
       updateStep(stepId6, {
         status: 'completed',
@@ -394,14 +591,8 @@ export function useAgent(): UseAgentResult {
       };
       await sessionManager.addMessage(assistantMessage);
 
-      // ⭐ 保存 assistant 消息到云端数据库（包含完整思考过程和工具结果）
-      const thinkingStepsSummary = thinkingSteps
-        .filter(step => step.type === 'thinking' || step.type === 'tool')
-        .map(step => step.content)
-        .join(' → ');
-
       if (user && project) {
-        await dataService.saveChatMessage({
+        void dataService.saveChatMessage({
           id: generateMessageId(),
           userId: user.id,
           projectId: project.id,
@@ -409,26 +600,10 @@ export function useAgent(): UseAgentResult {
           role: 'assistant',
           content: finalSummary,
           timestamp: new Date(),
-          thought: thinkingStepsSummary || undefined,
-          metadata: {
-            // 保存完整的思考步骤（用于历史记录恢复）
-            thinkingSteps: thinkingSteps.map(step => ({
-              id: step.id,
-              type: step.type,
-              content: step.content,
-              status: step.status,
-              duration: step.duration,
-              details: step.details,
-              timestamp: step.timestamp.toISOString(),
-            })),
-            toolResults: allToolResults.map(r => ({
-              tool: r.tool,
-              result: r.result,
-              error: r.error,
-            })),
-          },
           createdAt: new Date(),
           updatedAt: new Date(),
+        }).catch((err) => {
+          console.warn('[useAgent] 保存 assistant 消息失败，已忽略', err);
         });
       }
 

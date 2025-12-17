@@ -24,6 +24,7 @@ import MentionInput from '@/components/input/MentionInput';
 import { GridSliceSelector } from '@/components/ui/GridSliceSelector';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { formatShotLabel } from '@/utils/shotOrder';
+import { storageService } from '@/lib/storageService';
 import { dataService } from '@/lib/dataService';
 
 // Model types
@@ -646,6 +647,14 @@ export default function ChatPanelWithHistory() {
       imageUrl = await volcanoService.generateSingleImage(promptWithRefs, projectAspectRatio);
     }
 
+    // Upload to R2
+    try {
+      const folder = `projects/${project?.id}/shots/${capturedShotId || 'chat'}`;
+      imageUrl = await storageService.uploadBase64ToR2(imageUrl, folder, `gen_${Date.now()}.png`, user?.id || 'anonymous');
+    } catch (error) {
+      console.error('R2 upload failed, using base64 fallback:', error);
+    }
+
     // Update shot if selected
     if (capturedShotId) {
       updateShot(capturedShotId, {
@@ -774,15 +783,25 @@ export default function ChatPanelWithHistory() {
       ? await urlsToReferenceImages(allReferenceUrls)
       : [];
 
-    // Combine all reference images
-    const allRefImages = [...uploadedRefImages, ...assetRefImages];
+    // 用户上传则只用用户上传的参考图，否则自动使用资产/手动参考图
+    const allRefImages = uploadedRefImages.length > 0
+      ? uploadedRefImages
+      : assetRefImages;
 
     // Generate single image with Gemini
-    const imageUrl = await generateSingleImage(
+    let imageUrl = await generateSingleImage(
       promptForModel,
       project?.settings.aspectRatio || AspectRatio.WIDE,
       allRefImages
     );
+
+    // Upload to R2
+    try {
+      const folder = `projects/${project?.id}/shots/${capturedShotId || 'chat'}`;
+      imageUrl = await storageService.uploadBase64ToR2(imageUrl, folder, `gen_${Date.now()}.png`, user?.id || 'anonymous');
+    } catch (error) {
+      console.error('R2 upload failed, using base64 fallback:', error);
+    }
 
     // Update shot if selected
     if (capturedShotId) {
@@ -1166,205 +1185,156 @@ export default function ChatPanelWithHistory() {
       throw error;
     }
 
-    // 🔄 尝试上传完整图和切片到 R2（必须成功，否则跳过保存聊天历史）
-    let fullImageUrl: string | null = null;
-    let sliceUrls: string[] | null = null;
-
-    console.log('[ChatPanel] 📤 开始上传到 R2...');
-    console.log('[ChatPanel] fullImage 大小:', (result.fullImage.length / 1024 / 1024).toFixed(2), 'MB');
-
-    if (user && project) {
-      try {
-        setPendingState((prev) => ({
-          ...prev,
-          [capturedContextKey]: { loading: true, message: '正在上传图片到云存储...' }
-        }));
-
-        const { storageService } = await import('@/lib/storageService');
-        const folder = `projects/${project.id}/grids`;
-
-        console.log('[ChatPanel] 上传 fullImage...');
-        // 添加超时机制：60秒超时（大文件需要更长时间）
-        const uploadFullImagePromise = storageService.uploadBase64ToR2(
-          result.fullImage,
-          folder,
-          `grid_full_${Date.now()}.png`,
-          user.id // ✅ 传递 userId，避免重复调用 getCurrentUser
-        );
-        const timeoutPromise = new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error('上传超时（60秒）')), 60000)
-        );
-
-        fullImageUrl = await Promise.race([uploadFullImagePromise, timeoutPromise]);
-        console.log('[ChatPanel] ✅ fullImage 上传完成:', fullImageUrl.substring(0, 50) + '...');
-
-        console.log('[ChatPanel] 批量上传 slices...');
-        // 批量上传所有切片（也添加超时，90秒因为是 4 个文件）
-        const uploadSlicesPromise = storageService.uploadBase64ArrayToR2(
-          result.slices,
-          folder,
-          user.id // ✅ 传递 userId
-        );
-        const slicesTimeoutPromise = new Promise<string[]>((_, reject) =>
-          setTimeout(() => reject(new Error('切片上传超时（90秒）')), 90000)
-        );
-
-        sliceUrls = await Promise.race([uploadSlicesPromise, slicesTimeoutPromise]);
-        console.log('[ChatPanel] ✅ slices 上传完成，数量:', sliceUrls.length);
-
-        toast.success('图片已上传到云存储');
-        console.log('[ChatPanel] ✅ Grid 图片已上传到 R2');
-      } catch (uploadError: any) {
-        console.error('[ChatPanel] ❌ R2 upload failed:', uploadError.message);
-        toast.error('图片上传失败', {
-          description: uploadError.message || '请检查网络连接'
-        });
-        // ⚠️ 上传失败时，设置为 null，稍后跳过聊天历史保存
-        fullImageUrl = null;
-        sliceUrls = null;
-      }
-    } else {
-      console.warn('[ChatPanel] ⚠️ 未登录或无项目，跳过 R2 上传');
-      // 未登录时使用 base64 回退
-      fullImageUrl = result.fullImage;
-      sliceUrls = result.slices;
-    }
-
-    // Show Grid preview modal with R2 URLs
-    console.log('[ChatPanel] 准备调用 setGridResult...');
-    console.log('[ChatPanel] currentScene:', currentScene?.id, currentScene?.name);
-
-    // 准备 gridResultData（优先使用 R2 URL，失败时回退到 base64）
-    let gridResultData: GridGenerationResult | null = null;
+    // Show Grid preview modal (Immediate Base64)
     if (currentScene) {
-      // ✅ 如果 R2 上传失败，回退到 base64（仅用于显示 Modal）
-      const finalFullImage = fullImageUrl || result.fullImage;
-      const finalSlices = sliceUrls || result.slices;
-
-      gridResultData = {
-        fullImage: finalFullImage,
-        slices: finalSlices,
+      setGridResult({
+        fullImage: result.fullImage,
+        slices: result.slices,
         sceneId: currentScene.id,
         gridRows: rows,
         gridCols: cols,
         prompt: finalPrompt,
         aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
         gridSize: gridSize,
-      };
-      console.log('[ChatPanel] gridResultData:', {
-        fullImageType: finalFullImage.startsWith('http') ? 'R2 URL' : 'base64',
-        fullImageLength: finalFullImage.length,
-        slicesCount: finalSlices.length,
-        sceneId: gridResultData.sceneId,
-        gridRows: gridResultData.gridRows,
-        gridCols: gridResultData.gridCols,
       });
 
-      // Save Grid to scene history（仅当 R2 上传成功时）
-      if (fullImageUrl && sliceUrls) {
-        const gridHistory: GridHistoryItem = {
-          id: `grid_${Date.now()}`,
-          timestamp: new Date(),
-          fullGridUrl: fullImageUrl,
-          slices: sliceUrls,
-          gridSize: gridSize,
-          prompt: finalPrompt,
-          aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
-        };
-        addGridHistory(currentScene.id, gridHistory);
-        console.log('[ChatPanel] ✅ Grid 历史记录保存成功');
-      } else {
-        console.warn('[ChatPanel] ⚠️ R2 上传失败，跳过 Grid 历史记录保存');
-      }
-    }
+      // Background Upload to R2
+      if (user && project) {
+        (async () => {
+          try {
+            const { storageService } = await import('@/lib/storageService');
+            const folder = `projects/${project.id}/grids`;
 
-    // Add assistant message with grid result (using R2 URLs)
-    const assistantMessage: ChatMessage = {
-      id: generateMessageId(),
-      role: 'assistant',
-      content: `已生成 ${gridSize} Grid (${rows * cols} 个视图)`,
-      timestamp: new Date(),
-      images: fullImageUrl ? [fullImageUrl] : undefined, // 修复：处理 null 情况
-      model: 'gemini-grid',
-      shotId: capturedShotId || undefined,
-      sceneId: capturedSceneId || undefined,
-      gridData: {
-        fullImage: fullImageUrl || '', // 修复：处理 null 情况
-        slices: sliceUrls || [], // 修复：处理 null 情况
-        sceneId: currentScene?.id,
-        gridRows: rows,
-        gridCols: cols,
-        prompt: finalPrompt,
-        aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
-        gridSize: gridSize,
-      },
-    };
+            const [fullGridUrl, slices] = await Promise.all([
+              storageService.uploadBase64ToR2(result.fullImage, folder, `grid_full_${Date.now()}.png`, user.id),
+              storageService.uploadBase64ArrayToR2(result.slices, folder, user.id)
+            ]);
 
-    // 只在消息属于当前上下文时才添加到显示列表
-    if (contextKey === capturedContextKey) {
-      setMessages(prev => [...prev, assistantMessage]);
-    }
-
-    // ⭐ 保存 assistant 消息到云端（仅当 R2 上传成功时）
-    if (user && project && fullImageUrl && sliceUrls) {
-      try {
-        await dataService.saveChatMessage({
-          id: assistantMessage.id,
-          userId: user.id,
-          projectId: project.id,
-          scope: capturedShotId ? 'shot' : capturedSceneId ? 'scene' : 'project',
-          shotId: capturedShotId || undefined,
-          sceneId: capturedSceneId || undefined,
-          role: 'assistant',
-          content: assistantMessage.content,
-          timestamp: assistantMessage.timestamp,
-          metadata: {
-            images: [fullImageUrl],
-            model: 'gemini-grid',
-            gridData: {
-              fullImage: fullImageUrl,
-              slices: sliceUrls,
-              sceneId: currentScene?.id,
+            // Update Grid result with R2 URLs (only if modal is still open)
+            // Note: We use the current scope variables because setGridResult from store might not support functional updates
+            // and we want to ensure we set the R2 URLs.
+            setGridResult({
+              fullImage: fullGridUrl,
+              slices: slices,
+              sceneId: currentScene.id,
               gridRows: rows,
               gridCols: cols,
               prompt: finalPrompt,
               aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
               gridSize: gridSize,
-            },
-          },
-          createdAt: assistantMessage.timestamp,
-          updatedAt: assistantMessage.timestamp,
-        });
-        console.log('[ChatPanel] ✅ 聊天历史保存成功');
-      } catch (error) {
-        console.error('[ChatPanelWithHistory] 保存 assistant 消息失败:', error);
+            });
+
+            // Save Grid to scene history
+            const gridHistory: GridHistoryItem = {
+              id: `grid_${Date.now()}`,
+              timestamp: new Date(),
+              fullGridUrl: fullGridUrl,
+              slices: slices,
+              gridSize: gridSize,
+              prompt: finalPrompt,
+              aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
+            };
+            addGridHistory(currentScene.id, gridHistory);
+            console.log('[ChatPanel] ✅ Grid 历史记录保存成功 (R2)');
+
+            // Save assistant message to DB (only after R2 upload)
+            const assistantMessage: ChatMessage = {
+              id: generateMessageId(),
+              role: 'assistant',
+              content: `已生成 ${gridSize} Grid (${rows * cols} 个视图)`,
+              timestamp: new Date(),
+              images: [fullGridUrl],
+              model: 'gemini-grid',
+              shotId: capturedShotId || undefined,
+              sceneId: capturedSceneId || undefined,
+              gridData: {
+                fullImage: fullGridUrl,
+                slices: slices,
+                sceneId: currentScene?.id,
+                gridRows: rows,
+                gridCols: cols,
+                prompt: finalPrompt,
+                aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
+                gridSize: gridSize,
+              },
+            };
+
+            // Add to UI (if context matches)
+            if (contextKey === capturedContextKey) {
+              // We need to check if we should add it or if it was already added?
+              // The previous logic added it at the end. Here we add it async.
+              // To avoid "pop-in", we might want to add a placeholder?
+              // But for now, let's just add it when ready.
+              setMessages(prev => [...prev, assistantMessage]);
+            }
+
+            try {
+              await dataService.saveChatMessage({
+                id: assistantMessage.id,
+                userId: user.id,
+                projectId: project.id,
+                scope: capturedShotId ? 'shot' : capturedSceneId ? 'scene' : 'project',
+                shotId: capturedShotId || undefined,
+                sceneId: capturedSceneId || undefined,
+                role: 'assistant',
+                content: assistantMessage.content,
+                timestamp: assistantMessage.timestamp,
+                metadata: {
+                  images: [fullGridUrl],
+                  model: 'gemini-grid',
+                  gridData: {
+                    fullImage: fullGridUrl,
+                    slices: slices,
+                    sceneId: currentScene?.id,
+                    gridRows: rows,
+                    gridCols: cols,
+                    prompt: finalPrompt,
+                    aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
+                    gridSize: gridSize,
+                  },
+                },
+                createdAt: assistantMessage.timestamp,
+                updatedAt: assistantMessage.timestamp,
+              });
+              console.log('[ChatPanel] ✅ 聊天历史保存成功');
+            } catch (error) {
+              console.error('[ChatPanelWithHistory] 保存 assistant 消息失败:', error);
+            }
+
+          } catch (error) {
+            console.error('[ChatPanel] ❌ R2 upload failed:', error);
+            toast.error('图片云端同步失败，仅本地可见');
+
+            // Fallback: Add message with base64 (local only, do not save to DB to avoid bloat)
+            const assistantMessage: ChatMessage = {
+              id: generateMessageId(),
+              role: 'assistant',
+              content: `已生成 ${gridSize} Grid (${rows * cols} 个视图) (本地预览)`,
+              timestamp: new Date(),
+              images: [result.fullImage],
+              model: 'gemini-grid',
+              gridData: {
+                fullImage: result.fullImage,
+                slices: result.slices,
+                sceneId: currentScene.id,
+                gridRows: rows,
+                gridCols: cols,
+                prompt: finalPrompt,
+                aspectRatio: project?.settings.aspectRatio || AspectRatio.WIDE,
+                gridSize: gridSize,
+              },
+            };
+            if (contextKey === capturedContextKey) {
+              setMessages(prev => [...prev, assistantMessage]);
+            }
+          }
+        })();
       }
     } else {
-      if (!fullImageUrl || !sliceUrls) {
-        console.warn('[ChatPanel] ⚠️ R2 上传失败，跳过聊天历史保存（避免保存 base64）');
-      }
-    }
-
-    // ⭐ 最后调用 setGridResult，确保 Modal 显示
-    if (gridResultData) {
-      console.log('[ChatPanel] 🎯 准备显示 Grid Preview Modal');
-      console.log('[ChatPanel] gridResultData.sceneId:', gridResultData.sceneId);
-      console.log('[ChatPanel] gridResultData.slices.length:', gridResultData.slices.length);
-      console.log('[ChatPanel] gridResultData.fullImage 类型:',
-        gridResultData.fullImage.startsWith('http') ? 'R2 URL' : 'base64 (本地)');
-
-      setGridResult(gridResultData);
-      toast.success('Grid 生成完成！请在预览窗口中分配到分镜。');
-    } else {
-      console.error('[ChatPanel] ❌ 无法显示 Grid Preview Modal');
-      console.error('[ChatPanel] currentScene 为 null，场景未选中');
-      toast.error('无法显示 Grid 预览', {
-        description: '请确保已选择当前场景'
-      });
+      toast.error('无法显示 Grid 预览: 未选择场景');
     }
 
     console.log('[ChatPanel] 🎉 handleGeminiGridGeneration 函数执行完成');
-    // success toast removed; inline消息和pending提示即可
   };
 
   // Helper: Convert File to base64

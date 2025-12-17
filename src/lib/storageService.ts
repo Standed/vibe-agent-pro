@@ -20,6 +20,8 @@ interface UploadResult {
 }
 
 class StorageService {
+  private cachedUserId: string | null = null;
+  private cachedUserPromise: Promise<string | null> | null = null;
   /**
    * 根据文件类型判断文件分类
    */
@@ -78,7 +80,13 @@ class StorageService {
   ): Promise<UploadResult> {
     try {
       // console.log('[storageService] 尝试上传到 R2...');
-      const result = await r2Service.uploadFile(file, folder, userId);
+      // 添加超时保护，避免长时间阻塞
+      const UPLOAD_TIMEOUT_MS = 20000;
+      const uploadPromise = r2Service.uploadFile(file, folder, userId);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('R2 upload timeout')), UPLOAD_TIMEOUT_MS)
+      );
+      const result = await Promise.race([uploadPromise, timeoutPromise]);
       // console.log('[storageService] ✅ R2 上传成功');
       return {
         url: result.url,
@@ -254,27 +262,32 @@ class StorageService {
     // console.log('[storageService] userId 参数:', userId ? '已提供' : '未提供');
 
     try {
-      let user = null;
-
-      // 如果没有提供 userId，才调用 getCurrentUser
+      // 如果未提供 userId，优先使用缓存，避免并发重复调用 getCurrentUser
       if (!userId) {
-        // console.log('[storageService] 开始调用 getCurrentUser...');
-        // 添加超时：15秒超时（增加到 3 倍）
-        const getUserPromise = getCurrentUser();
-        const timeoutPromise = new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error('getCurrentUser 超时（15秒）')), 15000)
-        );
-
-        user = await Promise.race([getUserPromise, timeoutPromise]);
-        // console.log('[storageService] getCurrentUser 完成:', user ? 'user exists' : 'no user');
-
-        if (!user) {
-          throw new Error('用户未登录，无法上传到 R2');
+        if (this.cachedUserId) {
+          userId = this.cachedUserId;
+        } else {
+          if (!this.cachedUserPromise) {
+            const timeoutPromise = new Promise<null>((_, reject) =>
+              setTimeout(() => reject(new Error('getCurrentUser 超时（15秒）')), 15000)
+            );
+          this.cachedUserPromise = Promise.race([getCurrentUser(), timeoutPromise])
+            .then(u => {
+              this.cachedUserId = u?.id || null;
+              return this.cachedUserId;
+            })
+            .catch(err => {
+              this.cachedUserId = null;
+              this.cachedUserPromise = null;
+              throw err;
+            });
         }
-
-        userId = user.id;
-      } else {
-        // console.log('[storageService] ✅ 使用提供的 userId，跳过 getCurrentUser');
+          const resolvedId = await this.cachedUserPromise;
+          if (!resolvedId) {
+            throw new Error('用户未登录，无法上传到 R2');
+          }
+          userId = resolvedId;
+        }
       }
 
       // console.log('[storageService] 开始转换 base64 为 File 对象...');
