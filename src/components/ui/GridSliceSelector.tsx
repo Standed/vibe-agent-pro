@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check } from 'lucide-react';
+import Image from 'next/image';
 import { GridData } from '@/types/project';
 
 interface GridSliceSelectorProps {
@@ -72,10 +73,13 @@ export function GridSliceSelector({
               完整 Grid 预览
             </h3>
             <div className="w-full border border-light-border dark:border-cine-border rounded-lg overflow-hidden">
-              <img
+              <Image
                 src={fullImage}
                 alt="Grid 完整预览"
+                width={1920}
+                height={1080}
                 className="w-full h-auto"
+                unoptimized
               />
             </div>
           </div>
@@ -107,10 +111,13 @@ export function GridSliceSelector({
                       }`}
                     onClick={() => shotId && handleSelectSlice(index)}
                   >
-                    <img
+                    <Image
                       src={slice}
                       alt={`切片 ${index + 1}`}
+                      width={500}
+                      height={500}
                       className="w-full h-auto"
+                      unoptimized
                     />
 
                     {/* Slice Number Badge */}

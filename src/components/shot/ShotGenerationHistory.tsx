@@ -1,6 +1,7 @@
 'use client';
 
 import { RotateCcw, Download, Heart, Mic, CheckCircle2 } from 'lucide-react';
+import Image from 'next/image';
 import { GenerationHistoryItem } from '@/types/project';
 
 interface ShotGenerationHistoryProps {
@@ -42,10 +43,13 @@ export default function ShotGenerationHistory({
           {/* Preview */}
           <div className="relative group">
             {item.type === 'image' ? (
-              <img
+              <Image
                 src={item.result}
                 alt="Generation Result"
-                className="w-full rounded border border-cine-border object-cover"
+                width={800}
+                height={600}
+                className="w-full h-auto rounded border border-cine-border object-cover"
+                unoptimized
               />
             ) : (
               <video
@@ -59,8 +63,8 @@ export default function ShotGenerationHistory({
             {/* Status Badge */}
             <div
               className={`absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded ${item.status === 'success'
-                  ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                : 'bg-red-500/20 text-red-400 border border-red-500/30'
                 }`}
             >
               {item.status === 'success' ? '成功' : '失败'}

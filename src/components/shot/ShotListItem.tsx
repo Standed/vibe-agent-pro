@@ -1,6 +1,7 @@
 'use client';
 
 import { Film, Trash2 } from 'lucide-react';
+import Image from 'next/image';
 import type { Shot } from '@/types/project';
 
 interface ShotListItemProps {
@@ -33,10 +34,12 @@ export default function ShotListItem({
           {/* Thumbnail */}
           <div className="w-16 h-16 flex-shrink-0 bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden border border-light-border/50 dark:border-cine-border/50 shadow-sm">
             {shot.referenceImage ? (
-              <img
+              <Image
                 src={shot.referenceImage}
                 alt={`Shot ${shot.order}`}
-                className="w-full h-full object-cover transition-transform duration-500 group-hover/item:scale-110"
+                fill
+                className="object-cover transition-transform duration-500 group-hover/item:scale-110"
+                unoptimized
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-light-text-muted dark:text-cine-text-muted bg-light-bg/50 dark:bg-cine-panel/50">
