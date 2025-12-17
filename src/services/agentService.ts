@@ -34,9 +34,14 @@ const MAX_STRING_LENGTH_FOR_GEMINI = 400; // 避免把 base64 或长文本全部
 /**
  * Fetch with timeout
  */
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = DEFAULT_TIMEOUT_MS, signal?: AbortSignal): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  // If external signal is provided, listen to it
+  if (signal) {
+    signal.addEventListener('abort', () => controller.abort());
+  }
 
   try {
     const response = await fetch(url, {
@@ -48,7 +53,7 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
   } catch (error: any) {
     clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
-      throw new Error(`请求超时（${timeoutMs/1000}秒）`);
+      throw new Error(`请求超时（${timeoutMs / 1000}秒）`);
     }
     throw error;
   }
@@ -121,7 +126,8 @@ async function callGeminiWithBackoff(body: any, timeoutMs: number) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         },
-        timeoutMs
+        timeoutMs,
+        body.signal // Pass signal to fetchWithTimeout
       );
     } catch (err: any) {
       lastError = err instanceof Error ? err : new Error(String(err));
@@ -249,11 +255,11 @@ const sanitizeToolResult = (tool: string, result: any): any => {
         failedCount: result.failedCount,
         results: Array.isArray(result.results)
           ? result.results.map((r: any) => ({
-              tool: r.tool,
-              shotId: r.result?.shotId,
-              success: r.success ?? (r.error ? false : true),
-              error: r.error ? truncateString(r.error) : undefined,
-            }))
+            tool: r.tool,
+            shotId: r.result?.shotId,
+            success: r.success ?? (r.error ? false : true),
+            error: r.error ? truncateString(r.error) : undefined,
+          }))
           : undefined,
       };
     case 'batchGenerateProjectImages':
@@ -375,36 +381,6 @@ function generateSystemInstruction(): string {
 
 6. **图片生成模式选择**
    - seedream: 火山引擎单图生成，适合单个分镜的高质量生成
-   - gemini: Gemini 直出
-   - grid: Gemini Grid 多视图，适合批量生成一个场景的多个分镜
-
-7. **简洁的用户反馈**
-   - message 应该简洁明了，说明正在执行什么操作
-   - 不要重复工具调用的细节
-   - 重点是让用户知道进度和结果
-
-8. **多轮对话能力**
-   - 如果一次工具调用无法完成任务，可以在下一轮继续
-   - 关注工具执行结果，根据结果决定下一步操作
-   - 遇到创建场景但未添加分镜的情况，应该主动补充
-
-## 可用工具
-
-${toolDefinitions}
-
-## 输出格式
-
-你必须以 JSON 格式回复（可选地包含 markdown 代码块），结构如下：
-
-\`\`\`json
-{
-  "thought": "你的思考过程（可选）",
-  "type": "tool_use",
-  "toolCalls": [
-    {
-      "name": "工具名称",
-      "arguments": {
-        "参数名": "参数值"
       }
     }
   ],
@@ -633,7 +609,8 @@ function generateContextPrompt(context: AgentContext): string {
 export async function processUserCommand(
   userMessage: string,
   chatHistory: AgentMessage[],
-  context: AgentContext = {}
+  context: AgentContext = {},
+  signal?: AbortSignal
 ): Promise<AgentAction> {
   const systemInstruction = generateSystemInstruction();
   const contextPrompt = generateContextPrompt(context);
@@ -670,7 +647,8 @@ export async function processUserCommand(
             temperature: 0.3,
             maxOutputTokens: MAX_OUTPUT_TOKENS,
           }
-        }
+        },
+        signal // Pass signal to payload
       },
       AI_TIMEOUT_MS // AI 对话/推理阶段允许更长时间
     );
@@ -721,6 +699,7 @@ export async function processUserCommand(
     };
 
   } catch (error: any) {
+    if (error.name === 'AbortError') throw error;
     console.error('Gemini API error:', error);
     return {
       type: 'none',
@@ -738,7 +717,8 @@ export async function continueWithToolResults(
   toolResults: Array<{ tool: string; result: any }>,
   chatHistory: AgentMessage[],
   context: AgentContext = {},
-  pendingScenes: string[] = [] // 跨轮次跟踪未添加分镜的场景
+  pendingScenes: string[] = [], // 跨轮次跟踪未添加分镜的场景
+  signal?: AbortSignal
 ): Promise<AgentAction> {
   const systemInstruction = generateSystemInstruction();
   const contextPrompt = generateContextPrompt(context);
@@ -800,16 +780,17 @@ export async function continueWithToolResults(
       {
         model: GEMINI_MODEL,
         payload: {
-          system_instruction: { parts: [{ text: systemInstruction }] },  // ✅ Use system_instruction
+          system_instruction: { parts: [{ text: systemInstruction }] },
           contents,
           tools,
           generationConfig: {
             temperature: 0.3,
             maxOutputTokens: MAX_OUTPUT_TOKENS,
           }
-        }
+        },
+        signal // Pass signal to payload
       },
-      AI_TIMEOUT_MS // 继续对话也视为 AI 生成，给足时间
+      AI_TIMEOUT_MS
     );
     const candidate = data?.candidates?.[0];
 

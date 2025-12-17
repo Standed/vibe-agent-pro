@@ -199,8 +199,8 @@ export default function InfiniteCanvas() {
       description: shotForm.description.trim(),
       narration: shotForm.narration.trim(),
       dialogue: shotForm.dialogue.trim(),
-      shotSize: shotForm.shotSize,
-      cameraMovement: shotForm.cameraMovement,
+      shotSize: shotForm.shotSize || undefined,
+      cameraMovement: shotForm.cameraMovement || undefined,
       duration: shotForm.duration,
     });
     setEditingShot(null);

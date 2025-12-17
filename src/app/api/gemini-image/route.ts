@@ -34,7 +34,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'missing prompt' }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_GEMINI_API_KEY;
+    const apiKey =
+      process.env.GEMINI_IMAGE_API_KEY ||
+      process.env.NEXT_GEMINI_IMAGE_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.NEXT_GEMINI_API_KEY;
     const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-3-pro-image-preview';
     if (!apiKey) {
       return NextResponse.json({ error: 'gemini api key not configured' }, { status: 500 });

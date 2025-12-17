@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Check } from 'lucide-react';
 import { GridData } from '@/types/project';
 
@@ -24,6 +25,12 @@ export function GridSliceSelector({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(
     currentSliceIndex !== undefined ? currentSliceIndex : null
   );
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   const handleSelectSlice = (index: number) => {
     setSelectedIndex(index);
@@ -34,13 +41,15 @@ export function GridSliceSelector({
 
   const { gridRows, gridCols, slices, fullImage, aspectRatio } = gridData;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="relative w-[90vw] max-w-6xl max-h-[90vh] bg-white dark:bg-cine-dark rounded-lg shadow-xl overflow-auto">
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="relative w-[90vw] max-w-6xl max-h-[90vh] bg-white dark:bg-cine-dark rounded-lg shadow-xl overflow-auto animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between p-4 bg-white dark:bg-cine-dark border-b border-light-border dark:border-cine-border">
           <div>
-            <h2 className="text-lg font-semibold text-light-text dark:text-cine-text">
+            <h2 className="text-lg font-semibold text-light-text dark:text-white">
               Grid 切片选择器
             </h2>
             <p className="text-sm text-light-text-muted dark:text-cine-text-muted">
@@ -59,7 +68,7 @@ export function GridSliceSelector({
         <div className="p-6 space-y-6">
           {/* Full Grid Preview */}
           <div>
-            <h3 className="text-sm font-medium text-light-text dark:text-cine-text mb-3">
+            <h3 className="text-sm font-medium text-light-text dark:text-white mb-3">
               完整 Grid 预览
             </h3>
             <div className="w-full border border-light-border dark:border-cine-border rounded-lg overflow-hidden">
@@ -73,7 +82,7 @@ export function GridSliceSelector({
 
           {/* Slices Grid */}
           <div>
-            <h3 className="text-sm font-medium text-light-text dark:text-cine-text mb-3">
+            <h3 className="text-sm font-medium text-light-text dark:text-white mb-3">
               切片预览 {shotId && '(点击选择)'}
             </h3>
             <div
@@ -91,10 +100,10 @@ export function GridSliceSelector({
                   <div
                     key={index}
                     className={`relative border-2 rounded-lg overflow-hidden cursor-pointer transition-all ${isSelected
-                        ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/50 dark:ring-cine-accent/50'
-                        : isCurrent
-                          ? 'border-gray-500 dark:border-gray-400'
-                          : 'border-light-border dark:border-cine-border hover:border-light-accent dark:hover:border-cine-accent'
+                      ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/50 dark:ring-cine-accent/50'
+                      : isCurrent
+                        ? 'border-gray-500 dark:border-gray-400'
+                        : 'border-light-border dark:border-cine-border hover:border-light-accent dark:hover:border-cine-accent'
                       }`}
                     onClick={() => shotId && handleSelectSlice(index)}
                   >
@@ -145,6 +154,7 @@ export function GridSliceSelector({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Plus, Upload, Trash2 } from 'lucide-react';
 import type { Location, LocationType } from '@/types/project';
 import { toast } from 'sonner';
@@ -18,7 +19,13 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
   const [description, setDescription] = useState(initialLocation?.description || '');
   const [referenceImages, setReferenceImages] = useState<string[]>(initialLocation?.referenceImages || []);
   const [selectedRefIndex, setSelectedRefIndex] = useState<number>(0);
+  const [mounted, setMounted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -126,9 +133,11 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-light-panel dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+      <div className="bg-light-panel dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-light-border dark:border-cine-border">
           <div>
@@ -171,22 +180,20 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
               <button
                 type="button"
                 onClick={() => setType('interior')}
-                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                  type === 'interior'
-                    ? 'bg-light-accent dark:bg-cine-accent text-white'
-                    : 'bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border'
-                }`}
+                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${type === 'interior'
+                  ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black'
+                  : 'bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border'
+                  }`}
               >
                 室内
               </button>
               <button
                 type="button"
                 onClick={() => setType('exterior')}
-                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                  type === 'exterior'
-                    ? 'bg-light-accent dark:bg-cine-accent text-white'
-                    : 'bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border'
-                }`}
+                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${type === 'exterior'
+                  ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black'
+                  : 'bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border'
+                  }`}
               >
                 室外
               </button>
@@ -242,9 +249,8 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
                 {referenceImages.map((imageUrl, index) => (
                   <div
                     key={index}
-                    className={`relative aspect-square bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden group border ${
-                      selectedRefIndex === index ? 'border-light-accent dark:border-cine-accent' : 'border-light-border dark:border-cine-border'
-                    }`}
+                    className={`relative aspect-square bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden group border ${selectedRefIndex === index ? 'border-light-accent dark:border-cine-accent' : 'border-light-border dark:border-cine-border'
+                      }`}
                   >
                     <img
                       src={imageUrl}
@@ -288,13 +294,14 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
           </button>
           <button
             onClick={handleSubmit}
-            className="bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+            className="bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
           >
             <Plus size={16} />
             添加场景地点
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

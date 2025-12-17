@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ProxyAgent } from 'undici';
+import { ProxyAgent, fetch as undiciFetch, Agent } from 'undici';
 import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
@@ -8,324 +8,183 @@ export const dynamic = 'force-dynamic';
 
 const DEFAULT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
 const GEMINI_API_KEY =
+  process.env.GEMINI_AGENT_API_KEY ||
+  process.env.NEXT_GEMINI_AGENT_API_KEY ||
+  process.env.GEMINI_TEXT_API_KEY ||
+  process.env.NEXT_GEMINI_TEXT_API_KEY ||
   process.env.GEMINI_API_KEY ||
-  process.env.NEXT_GEMINI_API_KEY;
+  process.env.NEXT_GEMINI_API_KEY ||
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
 export async function POST(request: NextRequest) {
-  // 1. 验证用户身份
   const authResult = await authenticateRequest(request);
-  if ('error' in authResult) {
-    return authResult.error;
-  }
+  if ('error' in authResult) return authResult.error;
   const { user } = authResult;
 
-  // 2. 计算所需积分 (通用生成使用TEXT类型积分)
   const requiredCredits = calculateCredits('GEMINI_TEXT', user.role);
   const operationDesc = getOperationDescription('GEMINI_TEXT');
 
-  // 3. 检查积分
   const creditsCheck = checkCredits(user, requiredCredits);
-  if ('error' in creditsCheck) {
-    return creditsCheck.error;
-  }
+  if ('error' in creditsCheck) return creditsCheck.error;
 
   if (!GEMINI_API_KEY) {
     return NextResponse.json({ error: 'gemini api key not configured' }, { status: 500 });
   }
 
   const requestId = `generate-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  // console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}, credits: ${user.credits}, cost: ${requiredCredits}`);
 
   try {
     const body = await request.json();
     const { model = DEFAULT_MODEL, payload } = body || {};
-
     if (!payload) {
       return NextResponse.json({ error: 'missing payload' }, { status: 400 });
     }
 
-    // Log the request details for debugging
-    // console.log('[Gemini Generate] Model:', model);
-    // console.log('[Gemini Generate] Tools count:', payload.tools?.[0]?.function_declarations?.length || 0);
-    // console.log('[Gemini Generate] Request payload:', JSON.stringify(payload, null, 2));
-
     const requestBody = JSON.stringify(payload);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+    const BASE_URL = process.env.GEMINI_API_BASE_URL || 'https://generativelanguage.googleapis.com';
+    const url = `${BASE_URL}/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 
-    // Build proxy agent (if configured) and fall back when unavailable
-    // console.log('[Gemini Generate] HTTP_PROXY:', process.env.HTTP_PROXY);
-    // console.log('[Gemini Generate] HTTPS_PROXY:', process.env.HTTPS_PROXY);
+    let dispatcher: any;
+    let proxySource = 'none';
 
-    let proxyAgent: ProxyAgent | undefined;
     if (process.env.HTTP_PROXY) {
       try {
-        proxyAgent = new ProxyAgent(process.env.HTTP_PROXY);
-        // console.log('[Gemini Generate] ✅ ProxyAgent created successfully');
+        dispatcher = new ProxyAgent(process.env.HTTP_PROXY);
+        proxySource = `env (${process.env.HTTP_PROXY})`;
+        console.log(`[Gemini Generate] 🔌 Using Proxy: ${process.env.HTTP_PROXY}`);
       } catch (e) {
         console.error('[Gemini Generate] ❌ Failed to create ProxyAgent:', e);
       }
-    } else {
-      console.warn('[Gemini Generate] ⚠️ No HTTP_PROXY found, proceeding without proxy');
     }
 
-    const buildOptions = (useProxy: boolean) => {
+    // 如果没有配置代理，使用强制 IPv4 的 Agent，防止 VPN TUN 模式下 IPv6 泄露导致 400 错误
+    if (!dispatcher) {
+      dispatcher = new Agent({
+        connect: {
+          family: 4
+        }
+      });
+      proxySource = 'direct (IPv4 forced)';
+      console.log('[Gemini Generate] 🌐 Direct connection (IPv4 forced)');
+    }
+
+    console.log(`[Gemini Generate] 🚀 Requesting: ${url.replace(GEMINI_API_KEY, '***')}`);
+
+    const buildOptions = () => {
+      // 监听客户端断开连接信号
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120_000); // 120s safeguard
+      const signal = request.signal; // 获取客户端请求的 signal
+
+      // 如果客户端断开，我们也中止请求
+      if (signal) {
+        signal.addEventListener('abort', () => controller.abort());
+      }
+
+      const timeoutId = setTimeout(() => controller.abort(), 120_000);
       const options: any = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: requestBody,
         signal: controller.signal,
+        dispatcher: dispatcher // 使用配置好的 dispatcher (Proxy 或 IPv4 Agent)
       };
-      if (useProxy && proxyAgent) {
-        options.dispatcher = proxyAgent;
-      }
       return { options, timeoutId };
     };
 
-    const sendRequest = async (useProxy: boolean) => {
-      const { options, timeoutId } = buildOptions(useProxy);
+    const sendRequest = async () => {
+      const { options, timeoutId } = buildOptions();
       try {
-        return await fetch(url, options);
+        // @ts-ignore
+        return await undiciFetch(url, options);
       } finally {
         clearTimeout(timeoutId);
       }
     };
 
-    const strategies: { useProxy: boolean; label: string }[] = proxyAgent
-      ? [
-        { useProxy: true, label: 'proxy' },
-        { useProxy: false, label: 'direct' },
-      ]
-      : [{ useProxy: false, label: 'direct' }];
-
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
     let resp: Response | null = null;
     let lastError: any = null;
 
-    for (const { useProxy, label } of strategies) {
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          // console.log(`[Gemini Generate] Attempt ${attempt} via ${label}...`);
-          resp = await sendRequest(useProxy);
-          if (resp.ok) break;
-          // For 5xx / 429, retry once with small backoff
-          if (attempt === 1 && (resp.status >= 500 || resp.status === 429)) {
-            console.warn(`[Gemini Generate] ${label} received ${resp.status}, retrying...`);
-            await delay(800);
-            continue;
-          }
-          break;
-        } catch (err: any) {
-          lastError = err;
-          console.warn(`[Gemini Generate] ⚠️ ${label} attempt ${attempt} failed:`, err?.message || err);
-          if (attempt === 1) {
-            await delay(500);
-            continue;
+    // 重试逻辑
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        // @ts-ignore
+        resp = await sendRequest();
+        if (resp && resp.ok) break;
+
+        // 打印非 200 的响应详情
+        if (resp && !resp.ok) {
+          const errText = await resp.clone().text();
+          console.warn(`[Gemini Generate] ⚠️ Attempt ${attempt} failed with status ${resp.status}: ${errText.slice(0, 200)}`);
+
+          // 如果是 400 User location not supported，重试通常无效，除非是偶发
+          if (resp.status === 400 && errText.includes('User location')) {
+            throw new Error(`Gemini Region Error: ${errText}`);
           }
         }
+
+        if (resp && attempt === 1 && (resp.status >= 500 || resp.status === 429)) {
+          console.warn(`[Gemini Generate] Attempt ${attempt} received ${resp.status}, retrying...`);
+          await delay(800);
+          continue;
+        }
+        break;
+      } catch (err: any) {
+        lastError = err;
+        if (err.name === 'AbortError' && request.signal.aborted) {
+          throw err;
+        }
+        console.warn(`[Gemini Generate] ⚠️ Attempt ${attempt} failed:`, err?.message || err);
+        if (attempt === 1) {
+          await delay(500);
+          continue;
+        }
       }
-      if (resp) break;
     }
 
     if (!resp) {
-      console.error('[Gemini Generate] ❌ Network request failed after retries:', lastError);
-      const message =
-        lastError?.message ||
-        'failed to reach Gemini API. Please verify network/proxy configuration.';
+      const message = lastError?.message || 'failed to reach Gemini API';
       return NextResponse.json({ error: message }, { status: 500 });
     }
 
     if (!resp.ok) {
       const text = await resp.text();
-      console.error('[Gemini Generate] ❌ API error:', resp.status, text);
+      // 针对 400 错误提供更友好的提示
+      if (resp.status === 400 && text.includes('User location')) {
+        return NextResponse.json({
+          error: text,
+          hint: 'Current IP region is not supported by Google Gemini. Please check your VPN/Proxy settings (ensure IPv4 is proxied) or configure GEMINI_API_BASE_URL.'
+        }, { status: 400 });
+      }
       return NextResponse.json({ error: text || resp.statusText }, { status: resp.status });
     }
 
     const data = await resp.json();
-    // console.log('[Gemini Generate] ✅ Success');
 
-    // 4. 消耗积分
-    const consumeResult = await consumeCredits(
-      user.id,
-      requiredCredits,
-      'generate-content',
-      `${operationDesc}`
-    );
+    // 4. 消耗积分 (宽容模式：即使失败也返回数据)
+    try {
+      const consumeResult = await consumeCredits(
+        user.id,
+        requiredCredits,
+        'generate-content',
+        `${operationDesc}`
+      );
 
-    if (!consumeResult.success) {
-      console.error(`[${requestId}] 💳 Failed to consume credits:`, consumeResult.error);
-      import { NextRequest, NextResponse } from 'next/server';
-      import { ProxyAgent } from 'undici';
-      import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
-      import { calculateCredits, getOperationDescription } from '@/config/credits';
-
-      export const runtime = 'nodejs';
-      export const dynamic = 'force-dynamic';
-
-      const DEFAULT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
-      const GEMINI_API_KEY =
-        process.env.GEMINI_API_KEY ||
-        process.env.NEXT_GEMINI_API_KEY;
-
-      export async function POST(request: NextRequest) {
-        // 1. 验证用户身份
-        const authResult = await authenticateRequest(request);
-        if ('error' in authResult) {
-          return authResult.error;
-        }
-        const { user } = authResult;
-
-        // 2. 计算所需积分 (通用生成使用TEXT类型积分)
-        const requiredCredits = calculateCredits('GEMINI_TEXT', user.role);
-        const operationDesc = getOperationDescription('GEMINI_TEXT');
-
-        // 3. 检查积分
-        const creditsCheck = checkCredits(user, requiredCredits);
-        if ('error' in creditsCheck) {
-          return creditsCheck.error;
-        }
-
-        if (!GEMINI_API_KEY) {
-          return NextResponse.json({ error: 'gemini api key not configured' }, { status: 500 });
-        }
-
-        const requestId = `generate-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        // console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}, credits: ${user.credits}, cost: ${requiredCredits}`);
-
-        try {
-          const body = await request.json();
-          const { model = DEFAULT_MODEL, payload } = body || {};
-
-          if (!payload) {
-            return NextResponse.json({ error: 'missing payload' }, { status: 400 });
-          }
-
-          // Log the request details for debugging
-          // console.log('[Gemini Generate] Model:', model);
-          // console.log('[Gemini Generate] Tools count:', payload.tools?.[0]?.function_declarations?.length || 0);
-          // console.log('[Gemini Generate] Request payload:', JSON.stringify(payload, null, 2));
-
-          const requestBody = JSON.stringify(payload);
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-
-          // Build proxy agent (if configured) and fall back when unavailable
-          // console.log('[Gemini Generate] HTTP_PROXY:', process.env.HTTP_PROXY);
-          // console.log('[Gemini Generate] HTTPS_PROXY:', process.env.HTTPS_PROXY);
-
-          let proxyAgent: ProxyAgent | undefined;
-          if (process.env.HTTP_PROXY) {
-            try {
-              proxyAgent = new ProxyAgent(process.env.HTTP_PROXY);
-              // console.log('[Gemini Generate] ✅ ProxyAgent created successfully');
-            } catch (e) {
-              console.error('[Gemini Generate] ❌ Failed to create ProxyAgent:', e);
-            }
-          } else {
-            console.warn('[Gemini Generate] ⚠️ No HTTP_PROXY found, proceeding without proxy');
-          }
-
-          const buildOptions = (useProxy: boolean) => {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 120_000); // 120s safeguard
-            const options: any = {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: requestBody,
-              signal: controller.signal,
-            };
-            if (useProxy && proxyAgent) {
-              options.dispatcher = proxyAgent;
-            }
-            return { options, timeoutId };
-          };
-
-          const sendRequest = async (useProxy: boolean) => {
-            const { options, timeoutId } = buildOptions(useProxy);
-            try {
-              return await fetch(url, options);
-            } finally {
-              clearTimeout(timeoutId);
-            }
-          };
-
-          const strategies: { useProxy: boolean; label: string }[] = proxyAgent
-            ? [
-              { useProxy: true, label: 'proxy' },
-              { useProxy: false, label: 'direct' },
-            ]
-            : [{ useProxy: false, label: 'direct' }];
-
-          const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-          let resp: Response | null = null;
-          let lastError: any = null;
-
-          for (const { useProxy, label } of strategies) {
-            for (let attempt = 1; attempt <= 2; attempt++) {
-              try {
-                // console.log(`[Gemini Generate] Attempt ${attempt} via ${label}...`);
-                resp = await sendRequest(useProxy);
-                if (resp.ok) break;
-                // For 5xx / 429, retry once with small backoff
-                if (attempt === 1 && (resp.status >= 500 || resp.status === 429)) {
-                  console.warn(`[Gemini Generate] ${label} received ${resp.status}, retrying...`);
-                  await delay(800);
-                  continue;
-                }
-                break;
-              } catch (err: any) {
-                lastError = err;
-                console.warn(`[Gemini Generate] ⚠️ ${label} attempt ${attempt} failed:`, err?.message || err);
-                if (attempt === 1) {
-                  await delay(500);
-                  continue;
-                }
-              }
-            }
-            if (resp) break;
-          }
-
-          if (!resp) {
-            console.error('[Gemini Generate] ❌ Network request failed after retries:', lastError);
-            const message =
-              lastError?.message ||
-              'failed to reach Gemini API. Please verify network/proxy configuration.';
-            return NextResponse.json({ error: message }, { status: 500 });
-          }
-
-          if (!resp.ok) {
-            const text = await resp.text();
-            console.error('[Gemini Generate] ❌ API error:', resp.status, text);
-            return NextResponse.json({ error: text || resp.statusText }, { status: resp.status });
-          }
-
-          const data = await resp.json();
-          // console.log('[Gemini Generate] ✅ Success');
-
-          // 4. 消耗积分
-          const consumeResult = await consumeCredits(
-            user.id,
-            requiredCredits,
-            'generate-content',
-            `${operationDesc}`
-          );
-
-          if (!consumeResult.success) {
-            console.error(`[${requestId}] 💳 Failed to consume credits:`, consumeResult.error);
-            return NextResponse.json(
-              { error: '积分扣除失败: ' + consumeResult.error },
-              { status: 500 }
-            );
-          }
-
-          // console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
-
-          return NextResponse.json({ data, requestId });
-        } catch (error: any) {
-          console.error('[Gemini Generate] ❌ Fetch failed:', error);
-          console.error('[Gemini Generate] Error name:', error?.name);
-          console.error('[Gemini Generate] Error message:', error?.message);
-          console.error('[Gemini Generate] Error stack:', error?.stack);
-          return NextResponse.json({ error: error?.message || 'unknown error' }, { status: 500 });
-        }
+      if (!consumeResult.success) {
+        console.error(`[${requestId}] ⚠️ Credits consume failed but content generated:`, consumeResult.error);
+        // 这里可以添加报警逻辑，例如发送邮件给管理员
       }
+    } catch (consumeError) {
+      console.error(`[${requestId}] ⚠️ Credits consume exception:`, consumeError);
+    }
+
+    return NextResponse.json({ data, requestId });
+  } catch (error: any) {
+    if (error.name === 'AbortError' || request.signal.aborted) {
+      console.log(`[${requestId}] ⏹️ Request aborted by client`);
+      return NextResponse.json({ error: 'Request aborted' }, { status: 499 }); // 499 Client Closed Request
+    }
+    console.error('[Gemini Generate] ❌ Fetch failed:', error);
+    return NextResponse.json({ error: error?.message || 'unknown error' }, { status: 500 });
+  }
+}

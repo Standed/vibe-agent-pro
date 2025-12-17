@@ -14,6 +14,7 @@ import type {
 } from '@/types/project';
 import { AspectRatio } from '@/types/project';
 import { getCurrentUser } from './supabase/auth';
+import { authenticatedFetch } from './api-client';
 
 interface DataBackend {
   saveProject(project: Project): Promise<void>;
@@ -94,11 +95,8 @@ class SupabaseBackend implements DataBackend {
 
     for (let i = 0; i < maxRetries; i++) {
       try {
-        const response = await fetch('/api/supabase', {
+        const response = await authenticatedFetch('/api/supabase', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
           body: JSON.stringify({
             ...request,
             userId: this.userId,

@@ -10,26 +10,26 @@
  * 等等（格式：CREDITS_<操作名称>）
  */
 
-// 默认积分配置
+// 默认积分配置（1 积分 = 0.1 元，向上取整）
 const DEFAULT_CREDITS_CONFIG = {
   // Gemini 系列
-  GEMINI_GRID: 10,           // Grid 图片生成 (默认 3x3)
-  GEMINI_GRID_2X2: 5,        // 2x2 Grid 生成
-  GEMINI_GRID_3X3: 10,       // 3x3 Grid 生成
-  GEMINI_GRID_2X3: 8,        // 2x3 Grid 生成
-  GEMINI_GRID_3X2: 8,        // 3x2 Grid 生成
-  GEMINI_IMAGE: 8,           // 单张图片生成
-  GEMINI_TEXT: 2,            // 文本生成 (聊天、剧本等)
+  GEMINI_GRID: 20,           // Grid 4K（统一默认 20 积分）
+  GEMINI_GRID_2X2: 20,       // 2x2 Grid 4K
+  GEMINI_GRID_3X3: 20,       // 3x3 Grid 4K
+  GEMINI_GRID_2X3: 20,
+  GEMINI_GRID_3X2: 20,
+  GEMINI_IMAGE: 10,          // 单张图片生成（2K，10 积分）
+  GEMINI_TEXT: 3,            // 文本生成 (脚本/对话)
   GEMINI_ANALYZE: 3,         // 图片分析
-  GEMINI_EDIT: 5,            // 图片编辑
+  GEMINI_EDIT: 10,           // 图片编辑（按单图计）
 
   // SeeDream 系列
-  SEEDREAM_GENERATE: 12,     // SeeDream 图片生成
-  SEEDREAM_EDIT: 10,         // SeeDream 图片编辑
+  SEEDREAM_GENERATE: 3,      // SeeDream 4.5 单图 ~0.25 元 -> 向上取整 3
+  SEEDREAM_EDIT: 3,          // 同上
 
   // 火山引擎系列
-  VOLCANO_GENERATE: 12,      // 火山引擎图片生成
-  VOLCANO_VIDEO: 50,         // 视频生成 (较贵)
+  VOLCANO_GENERATE: 12,      // 可按需覆盖
+  VOLCANO_VIDEO: 50,         // 视频生成
 
   // 其他操作
   UPLOAD_PROCESS: 1,         // 图片上传处理
