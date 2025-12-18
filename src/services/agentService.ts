@@ -5,7 +5,7 @@
 
 import { AGENT_TOOLS, ToolCall, formatToolsForPrompt } from './agentTools';
 
-const GEMINI_MODEL = 'gemini-3-pro-preview'; // Using Gemini 3 Pro text model for better reasoning
+const GEMINI_MODEL = 'gemini-3-flash-preview'; // Agent推理使用 Flash 模型（更快更经济）
 
 // Allow configurable timeouts:短步骤用短超时，AI 生成/推理用长超时
 const parseTimeout = (val: string | undefined, fallback: number) => {
@@ -644,7 +644,7 @@ export async function processUserCommand(
           contents,
           tools,
           generationConfig: {
-            temperature: 0.3,
+            temperature: 1.0, // 统一使用 temperature=1.0
             maxOutputTokens: MAX_OUTPUT_TOKENS,
           }
         },
@@ -784,7 +784,7 @@ export async function continueWithToolResults(
           contents,
           tools,
           generationConfig: {
-            temperature: 0.3,
+            temperature: 1.0, // 统一使用 temperature=1.0
             maxOutputTokens: MAX_OUTPUT_TOKENS,
           }
         },
