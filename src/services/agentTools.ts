@@ -9,6 +9,7 @@ import { generateMultiViewGrid, generateSingleImage, urlsToReferenceImages } fro
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import { useProjectStore } from '@/store/useProjectStore';
 import { storageService } from '@/lib/storageService';
+import { dataService } from '@/lib/dataService';
 
 export interface ToolDefinition {
   name: string;
@@ -95,6 +96,29 @@ async function runWithConcurrency<T, R>(
 }
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Helper to sanitize tool outputs by removing large Base64 strings
+ */
+function sanitizeForToolOutput(value: any): any {
+  if (typeof value === 'string') {
+    if (value.startsWith('data:image') && value.length > 100) {
+      return '[Base64 Image Data]';
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeForToolOutput);
+  }
+  if (typeof value === 'object' && value !== null) {
+    const newObj: any = {};
+    for (const key in value) {
+      newObj[key] = sanitizeForToolOutput(value[key]);
+    }
+    return newObj;
+  }
+  return value;
+}
 
 /**
  * Define available tools for the Agent
@@ -399,9 +423,100 @@ export class AgentToolExecutor {
   }
 
   /**
+   * 生成 UUID (带 fallback)
+   */
+  private generateId(): string {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  /**
+   * 同步消息到 Pro 模式的聊天记录中
+   * 这样用户在 Pro 模式点击对应分镜时，能看到 Agent 生成的历史，并能重用提示词
+   */
+  private async saveProChatMessage(shotId: string, prompt: string, result: any, model: string, enrichedPrompt?: string) {
+    if (!this.userId || !this.project) {
+      console.warn('[AgentTools] Skip Pro chat sync: missing userId or project');
+      return;
+    }
+
+    console.log(`[AgentTools] 🔄 Syncing Pro chat for shot ${shotId}...`);
+
+    try {
+      const finalPrompt = enrichedPrompt || prompt;
+      const sceneId = result.sceneId || this.project.shots.find(s => s.id === shotId)?.sceneId;
+
+      // 1. 保存用户消息 (提示词)
+      const userMsgId = this.generateId();
+      await dataService.saveChatMessage({
+        id: userMsgId,
+        userId: this.userId,
+        projectId: this.project.id,
+        sceneId: sceneId,
+        shotId: shotId,
+        scope: 'shot',
+        role: 'user',
+        content: finalPrompt,
+        timestamp: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }, this.userId);
+
+      // 2. 保存助手消息 (生成结果)
+      const assistantMsgId = this.generateId();
+      const modelKey = model.toLowerCase().includes('seedream') ? 'seedream' :
+        (model.toLowerCase().includes('grid') ? 'gemini-grid' : 'gemini-direct');
+
+      const assistantMsg: any = {
+        id: assistantMsgId,
+        userId: this.userId,
+        projectId: this.project.id,
+        sceneId: sceneId,
+        shotId: shotId,
+        scope: 'shot',
+        role: 'assistant',
+        content: `已使用 ${model} 为您生成了分镜图片。`,
+        timestamp: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        metadata: {
+          images: [result.imageUrl],
+          model: modelKey,
+        }
+      };
+
+      if (modelKey === 'gemini-grid') {
+        assistantMsg.metadata.gridData = {
+          fullImage: result.fullGridUrl || result.imageUrl,
+          slices: result.allSlices || [result.imageUrl],
+          sceneId: sceneId,
+          shotId: shotId,
+          prompt: finalPrompt,
+          gridRows: result.gridSize === '3x3' ? 3 : 2,
+          gridCols: result.gridSize === '3x3' ? 3 : 2,
+          gridSize: result.gridSize || '2x2',
+          aspectRatio: result.aspectRatio || this.project.settings.aspectRatio,
+        };
+        assistantMsg.metadata.images = [assistantMsg.metadata.gridData.fullImage];
+      }
+
+      await dataService.saveChatMessage(assistantMsg, this.userId);
+      console.log(`[AgentTools] ✅ Pro chat message synced for shot ${shotId}, model: ${modelKey}, sceneId: ${sceneId}`);
+    } catch (err) {
+      console.error('[AgentTools] ❌ Failed to sync Pro chat message:', err);
+    }
+  }
+
+  /**
    * Get full project context
    */
-  private getProjectContext(): ToolResult {
+  private async getProjectContext(): Promise<ToolResult> {
     if (!this.project) {
       return {
         tool: 'getProjectContext',
@@ -433,21 +548,21 @@ export class AgentToolExecutor {
 
     return {
       tool: 'getProjectContext',
-      result: {
+      result: sanitizeForToolOutput({
         projectName: this.project.metadata.title,
         projectDescription: this.project.metadata.description,
         sceneCount: this.project.scenes.length,
         shotCount: this.project.shots.length,
         aspectRatio: this.project.settings.aspectRatio,
         scenes: scenes
-      }
+      })
     };
   }
 
   /**
    * Get details of a specific scene
    */
-  private getSceneDetails(sceneId: string): ToolResult {
+  private async getSceneDetails(sceneId: string): Promise<ToolResult> {
     if (!this.project) {
       return {
         tool: 'getSceneDetails',
@@ -469,7 +584,7 @@ export class AgentToolExecutor {
 
     return {
       tool: 'getSceneDetails',
-      result: {
+      result: sanitizeForToolOutput({
         id: scene.id,
         name: scene.name,
         description: scene.description,
@@ -488,7 +603,7 @@ export class AgentToolExecutor {
           hasVideo: !!shot.videoClip,
           status: shot.status
         }))
-      }
+      })
     };
   }
 
@@ -921,6 +1036,16 @@ export class AgentToolExecutor {
           this.storeCallbacks.addGenerationHistory(shotId, historyItem);
         }
 
+        // 同步到 Pro 模式聊天记录
+        void this.saveProChatMessage(shotId, promptText, {
+          imageUrl: mainSliceUrl,
+          allSlices: sliceUrls,
+          fullGridUrl,
+          gridSize: size,
+          sceneId: shot.sceneId,
+          aspectRatio: aspectRatio,
+        }, modelName, finalPrompt);
+
         return {
           tool: 'generateShotImage',
           result: {
@@ -944,29 +1069,23 @@ export class AgentToolExecutor {
         };
       }
 
-      // 将生成结果持久化到 R2，避免上游链接过期
-      const folder = `projects/${this.project.id}/shots/${shotId}`;
-      const r2Url = await this.persistImageToR2(imageUrl, folder, `${mode}_${Date.now()}.png`);
-
-      // 如果是覆盖生成，先把旧图存入历史（保留记录）
-      if (this.storeCallbacks && overwritten) {
-        this.recordReplacementHistory(shot, modelName);
-      }
-
-      // Update shot via store callback (for seedream and gemini modes)
+      // 2. Optimistic Update (立即更新 UI 显示 Base64)
       if (this.storeCallbacks) {
+        if (overwritten) {
+          this.recordReplacementHistory(shot, modelName);
+        }
+
         this.storeCallbacks.updateShot(shotId, {
-          referenceImage: r2Url,
+          referenceImage: imageUrl, // Base64
           status: 'done',
-          // // lastModel: modelName, // ⚠️ Shot 类型中没有 lastModel 字段
         } as any);
 
-        // Add to generation history
+        // Add to generation history (Base64)
         const historyItem: GenerationHistoryItem = {
           id: `gen_${Date.now()}`,
           type: 'image',
           timestamp: new Date(),
-          result: r2Url,
+          result: imageUrl,
           prompt: promptText,
           parameters: {
             model: modelName,
@@ -977,15 +1096,36 @@ export class AgentToolExecutor {
         this.storeCallbacks.addGenerationHistory(shotId, historyItem);
       }
 
+      // 3. Background Upload (后台上传 R2，成功后再次更新 Store)
+      // 不使用 await，让 Agent 立即返回
+      this.persistImageToR2InBackground(imageUrl, `projects/${this.project.id}/shots/${shotId}`, `${mode}_${Date.now()}.png`)
+        .then(r2Url => {
+          if (this.storeCallbacks) {
+            // Update with R2 URL
+            this.storeCallbacks.updateShot(shotId, {
+              referenceImage: r2Url,
+            } as any);
+            console.log(`[AgentTools] Background upload complete for shot ${shotId}: ${r2Url}`);
+          }
+
+          // 同步到 Pro 模式聊天记录 (使用上传后的 R2 URL)
+          void this.saveProChatMessage(shotId, promptText, {
+            imageUrl: r2Url,
+            aspectRatio: aspectRatio,
+          }, modelName, enrichedPrompt);
+        })
+        .catch(err => console.error(`[AgentTools] Background upload failed for shot ${shotId}:`, err));
+
+      // 4. Return Sanitized Result
       return {
         tool: 'generateShotImage',
-        result: {
+        result: sanitizeForToolOutput({
           shotId,
-          imageUrl: r2Url,
+          imageUrl: imageUrl, // Will be sanitized if Base64
           model: modelName,
           prompt: promptText,
           overwritten: hasImage && force,
-        },
+        }),
         success: true,
       };
     } catch (error: any) {
@@ -1030,9 +1170,9 @@ export class AgentToolExecutor {
   }
 
   /**
-   * 将图片 URL 或 base64 持久化到 R2，并返回稳定的 R2 URL
+   * 后台上传 R2 (Fire and Forget)
    */
-  private async persistImageToR2(imageUrl: string, folder: string, filename: string): Promise<string> {
+  private async persistImageToR2InBackground(imageUrl: string, folder: string, filename: string): Promise<string> {
     try {
       if (storageService.isR2URL(imageUrl)) return imageUrl;
 
@@ -1040,11 +1180,20 @@ export class AgentToolExecutor {
       if (!imageUrl.startsWith('data:')) {
         base64 = await fetchToBase64(imageUrl);
       }
+      // 使用 storageService 的重试/超时逻辑
       return await storageService.uploadBase64ToR2(base64, folder, filename, this.userId);
     } catch (error) {
-      console.error('[AgentTools] persistImageToR2 failed:', error);
-      return imageUrl; // 兜底使用原始 URL，避免阻塞流程
+      console.error('[AgentTools] persistImageToR2InBackground failed:', error);
+      return imageUrl; // Return original on failure
     }
+  }
+
+  /**
+   * 将图片 URL 或 base64 持久化到 R2，并返回稳定的 R2 URL
+   * @deprecated Use persistImageToR2InBackground for non-blocking uploads
+   */
+  private async persistImageToR2(imageUrl: string, folder: string, filename: string): Promise<string> {
+    return this.persistImageToR2InBackground(imageUrl, folder, filename);
   }
 
   /**
@@ -1116,8 +1265,47 @@ export class AgentToolExecutor {
 
     try {
       if (mode === 'grid') {
-        // Grid mode with auto-assignment
-        return await this.generateSceneGrid(sceneId, scene, targetShots, gridSize || '2x2', prompt, force);
+        // Grid mode with auto-assignment - PARALLEL batches
+        const results: ToolResult[] = [];
+        const batchSize = gridSize === '3x3' ? 9 : 4;
+        const batches: Shot[][] = [];
+        let remainingShots = [...targetShots];
+
+        while (remainingShots.length > 0) {
+          batches.push(remainingShots.slice(0, batchSize));
+          remainingShots = remainingShots.slice(batchSize);
+        }
+
+        console.log(`[AgentTools] Parallel Grid Generation: ${targetShots.length} shots, ${batches.length} batches`);
+
+        // 并行执行所有批次
+        const batchPromises = batches.map((batch, idx) => {
+          console.log(`[AgentTools] Starting batch ${idx + 1}/${batches.length}`);
+          return this.generateSceneGrid(sceneId, scene, batch, gridSize || '2x2', prompt, force);
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        results.push(...batchResults);
+
+        // Aggregate results
+        const totalSlices = results.reduce((acc, r) => acc + (r.result?.totalSlices || 0), 0);
+        const assignedShots = results.reduce((acc, r) => acc + (r.result?.assignedShots || 0), 0);
+        const assignments = results.reduce((acc, r) => ({ ...acc, ...(r.result?.assignments || {}) }), {});
+        const overwrittenShotIds = results.reduce((acc, r) => [...acc, ...(r.result?.overwrittenShotIds || [])], [] as string[]);
+
+        return {
+          tool: 'batchGenerateSceneImages',
+          result: sanitizeForToolOutput({
+            sceneId,
+            mode: 'grid',
+            gridSize,
+            totalSlices,
+            assignedShots,
+            assignments,
+            overwrittenShotIds,
+          }),
+          success: true,
+        };
       } else {
         // SeeDream or Gemini mode - generate with concurrency pool
         const results = await runWithConcurrency(
@@ -1212,32 +1400,21 @@ export class AgentToolExecutor {
       refImages
     );
 
-    // 上传 Grid 全图和切片到 R2，避免外链过期
-    const folderBase = `projects/${this.project!.id}/scenes/${sceneId}/grid_${Date.now()}`;
-    let fullGridUrl = result.fullImage;
-    let sliceUrls = result.slices;
-    try {
-      fullGridUrl = await storageService.uploadBase64ToR2(result.fullImage, folderBase, 'grid_full.png', this.userId);
-      sliceUrls = await storageService.uploadBase64ArrayToR2(result.slices, `${folderBase}/slices`, this.userId);
-    } catch (err) {
-      console.error('[AgentTools] 场景 Grid 上传 R2 失败，使用 base64 兜底:', err);
-    }
-
-    // Auto-assign slices to shots
+    // 2. Optimistic Update (立即更新 UI)
     const assignments: Record<string, string> = {};
     const overwrittenShots: string[] = [];
+
     shotsToUse.forEach((shot, idx) => {
       if (idx < result.slices.length) {
-        const newUrl = sliceUrls[idx] || result.slices[idx];
+        const newUrl = result.slices[idx]; // Base64
         assignments[shot.id] = newUrl;
         const wasOverwrite = !!shot.referenceImage;
         if (wasOverwrite) {
           overwrittenShots.push(shot.id);
         }
 
-        // Update shot
+        // Update shot immediately
         if (this.storeCallbacks) {
-          // 覆盖前保留旧图记录
           if (wasOverwrite) {
             this.recordReplacementHistory(shot, 'Gemini Grid');
           }
@@ -1245,7 +1422,6 @@ export class AgentToolExecutor {
           this.storeCallbacks.updateShot(shot.id, {
             referenceImage: newUrl,
             status: 'done',
-            // lastModel: 'Gemini Grid',
           });
 
           // Add to generation history
@@ -1259,16 +1435,17 @@ export class AgentToolExecutor {
               model: 'Gemini Grid',
               gridSize: gridSize,
               aspectRatio: aspectRatio,
-              fullGridUrl: fullGridUrl,
+              fullGridUrl: result.fullImage, // Base64
             },
             status: 'success',
           };
           this.storeCallbacks.addGenerationHistory(shot.id, historyItem);
         }
+
       }
     });
 
-    // Save Grid history
+    // Save Grid history (Base64)
     if (this.storeCallbacks) {
       const gridHistory: GridHistoryItem = {
         id: `grid_${Date.now()}`,
@@ -1283,18 +1460,59 @@ export class AgentToolExecutor {
       this.storeCallbacks.addGridHistory(sceneId, gridHistory);
     }
 
+    // 3. Background Upload (后台上传 R2)
+    const folderBase = `projects/${this.project!.id}/scenes/${sceneId}/grid_${Date.now()}`;
+
+    // Start background upload task
+    (async () => {
+      try {
+        // Upload full grid
+        const fullGridR2 = await storageService.uploadBase64ToR2(result.fullImage, folderBase, 'grid_full.png', this.userId);
+
+        // Upload slices
+        const sliceR2s = await storageService.uploadBase64ArrayToR2(result.slices, `${folderBase}/slices`, this.userId);
+
+        // Update shots with R2 URLs
+        if (this.storeCallbacks) {
+          shotsToUse.forEach((shot, idx) => {
+            if (idx < sliceR2s.length) {
+              const r2Url = sliceR2s[idx];
+              this.storeCallbacks!.updateShot(shot.id, {
+                referenceImage: r2Url,
+              });
+
+              // 同步到 Pro 模式聊天记录 (使用 R2 URL)
+              const shotSpecificPrompt = shot.description || prompt || enhancedPrompt;
+              void this.saveProChatMessage(shot.id, shotSpecificPrompt, {
+                imageUrl: r2Url, // 关键：使用上传后的 R2 URL
+                allSlices: sliceR2s, // 关键：使用上传后的 R2 URL 数组
+                fullGridUrl: fullGridR2, // 关键：使用上传后的 R2 URL
+                gridSize: gridSize,
+                sceneId: sceneId,
+                aspectRatio: aspectRatio,
+              }, 'Gemini Grid', shotSpecificPrompt);
+            }
+          });
+          console.log(`[AgentTools] Background Grid upload and Pro chat sync complete for scene ${sceneId}`);
+        }
+      } catch (err) {
+        console.error('[AgentTools] 场景 Grid 后台上传 R2 失败:', err);
+      }
+    })();
+
+    // 4. Return Sanitized Result
     return {
-      tool: 'batchGenerateSceneImages',
-      result: {
+      tool: 'generateSceneGrid',
+      result: sanitizeForToolOutput({
         sceneId,
         mode: 'grid',
         gridSize,
         totalSlices: result.slices.length,
         assignedShots: Object.keys(assignments).length,
-        fullGridUrl: fullGridUrl,
+        fullGridUrl: result.fullImage, // Will be sanitized
         assignments,
         overwrittenShotIds: overwrittenShots,
-      },
+      }),
       success: true,
     };
   }

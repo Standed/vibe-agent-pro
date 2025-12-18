@@ -42,7 +42,8 @@ export async function batchDownloadAssets(project: Project) {
     return new Blob(byteArrays, { type: mimeType });
   };
 
-  const fetchImageBlob = async (url: string, retries = 3): Promise<Blob | null> => {
+  const fetchImageBlob = async (url: string | null | undefined, retries = 3): Promise<Blob | null> => {
+    if (!url) return null;
     const isR2PublicUrl = url.includes('.r2.dev') || url.includes('r2.cloudflarestorage.com');
 
     for (let attempt = 0; attempt < retries; attempt++) {
@@ -83,7 +84,8 @@ export async function batchDownloadAssets(project: Project) {
     return null;
   };
 
-  const fetchMediaBlob = async (url: string, type: 'video' | 'audio' = 'video', retries = 3): Promise<Blob | null> => {
+  const fetchMediaBlob = async (url: string | null | undefined, type: 'video' | 'audio' = 'video', retries = 3): Promise<Blob | null> => {
+    if (!url) return null;
     const isR2PublicUrl = url.includes('.r2.dev') || url.includes('r2.cloudflarestorage.com');
 
     for (let attempt = 0; attempt < retries; attempt++) {
@@ -191,36 +193,45 @@ export async function batchDownloadAssets(project: Project) {
         );
       };
 
+      // 1. Selected Image
       enqueueImage(shot.referenceImage, selectedFolder, `${shotName}_selected.png`, '参考图');
 
-      if (shot.gridImages && shot.gridImages.length > 0) {
-        shot.gridImages.forEach((url, idx) => {
-          enqueueImage(url, historyFolder, `${shotName}_grid_slice_${idx + 1}.png`, 'Grid切片');
-        });
-      }
-
+      // 2. Full Grid Image (if exists)
       if (shot.fullGridUrl) {
         const scene = project.scenes.find((s) => s.shotIds.includes(shot.id));
         const sceneName = scene?.name.replace(/[^\w\u4e00-\u9fa5]/g, '_') || 'scene';
-        enqueueImage(shot.fullGridUrl, historyFolder, `${sceneName}_full_grid.png`, '完整Grid');
+        enqueueImage(shot.fullGridUrl, historyFolder, `${sceneName}_full_grid_${shot.id.slice(0, 4)}.png`, '完整Grid');
       }
 
-      enqueueVideo(shot.videoClip, `${shotName}_video.mp4`, '视频');
-      enqueueAudio(shot.audioTrack, `${shotName}_audio.mp3`);
+      // 3. Grid Slices (if any)
+      if (shot.gridImages && shot.gridImages.length > 0) {
+        shot.gridImages.forEach((url, idx) => {
+          // If this slice is the selected one, it's already in selectedFolder
+          if (url !== shot.referenceImage) {
+            enqueueImage(url, historyFolder, `${shotName}_grid_slice_${idx + 1}.png`, 'Grid切片');
+          }
+        });
+      }
 
+      // 4. Generation History (All other images)
       if (shot.generationHistory && shot.generationHistory.length > 0) {
         shot.generationHistory.forEach((history, idx) => {
           if (!history.result) return;
           if (history.type === 'image') {
             const isSelected = history.result === shot.referenceImage;
-            const targetFolder = isSelected ? selectedFolder : historyFolder;
-            const prefix = isSelected ? 'selected_history' : 'history';
-            enqueueImage(history.result, targetFolder, `${shotName}_${prefix}_${idx + 1}.png`, '历史图片');
+            // Only add to history folder if NOT the currently selected image
+            if (!isSelected) {
+              enqueueImage(history.result, historyFolder, `${shotName}_history_${idx + 1}.png`, '历史图片');
+            }
           } else if (history.type === 'video') {
             enqueueVideo(history.result, `${shotName}_history_${idx + 1}.mp4`, '历史视频');
           }
         });
       }
+
+      // 5. Media
+      enqueueVideo(shot.videoClip, `${shotName}_video.mp4`, '视频');
+      enqueueAudio(shot.audioTrack, `${shotName}_audio.mp3`);
 
       await Promise.all(tasks);
     });
@@ -233,7 +244,9 @@ export async function batchDownloadAssets(project: Project) {
     for (const character of project.characters) {
       if (character.referenceImages && character.referenceImages.length > 0) {
         for (let i = 0; i < character.referenceImages.length; i++) {
-          const blob = await fetchImageBlob(character.referenceImages[i]);
+          const url = character.referenceImages[i];
+          if (!url) continue;
+          const blob = await fetchImageBlob(url);
           if (blob) {
             const characterName = character.name.replace(/[^\w\u4e00-\u9fa5]/g, '_');
             charactersFolder.file(`${characterName}_${i + 1}.png`, blob);
@@ -255,7 +268,9 @@ export async function batchDownloadAssets(project: Project) {
     for (const location of project.locations) {
       if (location.referenceImages && location.referenceImages.length > 0) {
         for (let i = 0; i < location.referenceImages.length; i++) {
-          const blob = await fetchImageBlob(location.referenceImages[i]);
+          const url = location.referenceImages[i];
+          if (!url) continue;
+          const blob = await fetchImageBlob(url);
           if (blob) {
             const locationName = location.name.replace(/[^\w\u4e00-\u9fa5]/g, '_');
             locationsFolder.file(`${locationName}_${i + 1}.png`, blob);

@@ -78,25 +78,41 @@ class StorageService {
     folder: string,
     userId: string
   ): Promise<UploadResult> {
-    try {
-      // console.log('[storageService] 尝试上传到 R2...');
-      // 添加超时保护，避免长时间阻塞
-      const UPLOAD_TIMEOUT_MS = 20000;
-      const uploadPromise = r2Service.uploadFile(file, folder, userId);
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('R2 upload timeout')), UPLOAD_TIMEOUT_MS)
-      );
-      const result = await Promise.race([uploadPromise, timeoutPromise]);
-      // console.log('[storageService] ✅ R2 上传成功');
-      return {
-        url: result.url,
-        path: result.key,
-      };
-    } catch (error: any) {
-      console.error('[storageService] ❌ R2 上传失败，回退到 Supabase:', error);
-      // 如果 R2 失败，回退到 Supabase
-      return await this.uploadToSupabase(file, folder, userId);
+    const MAX_RETRIES = 3;
+    let lastError: any;
+
+    for (let i = 0; i < MAX_RETRIES; i++) {
+      try {
+        // console.log(`[storageService] 尝试上传到 R2 (第 ${i + 1}/${MAX_RETRIES} 次)...`);
+        // 添加超时保护，避免长时间阻塞
+        // 默认 120秒 (120000ms) 以支持大文件/4k图片上传
+        const UPLOAD_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_UPLOAD_TIMEOUT_MS) || 120000;
+
+        // 注意：每次重试都需要新的 promise，因为 r2Service.uploadFile 可能会被之前的 timeout reject 影响（取决于具体实现，但通常重新调用是安全的）
+        const uploadPromise = r2Service.uploadFile(file, folder, userId);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`R2 upload timeout (${UPLOAD_TIMEOUT_MS}ms)`)), UPLOAD_TIMEOUT_MS)
+        );
+
+        const result = await Promise.race([uploadPromise, timeoutPromise]);
+        // console.log('[storageService] ✅ R2 上传成功');
+        return {
+          url: result.url,
+          path: result.key,
+        };
+      } catch (error: any) {
+        console.warn(`[storageService] ⚠️ R2 上传失败 (第 ${i + 1} 次):`, error.message);
+        lastError = error;
+        // 等待 1s 后重试
+        if (i < MAX_RETRIES - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
     }
+
+    console.error('[storageService] ❌ R2 上传最终失败，回退到 Supabase:', lastError);
+    // 如果 R2 失败，回退到 Supabase
+    return await this.uploadToSupabase(file, folder, userId);
   }
 
   /**
@@ -271,17 +287,17 @@ class StorageService {
             const timeoutPromise = new Promise<null>((_, reject) =>
               setTimeout(() => reject(new Error('getCurrentUser 超时（15秒）')), 15000)
             );
-          this.cachedUserPromise = Promise.race([getCurrentUser(), timeoutPromise])
-            .then(u => {
-              this.cachedUserId = u?.id || null;
-              return this.cachedUserId;
-            })
-            .catch(err => {
-              this.cachedUserId = null;
-              this.cachedUserPromise = null;
-              throw err;
-            });
-        }
+            this.cachedUserPromise = Promise.race([getCurrentUser(), timeoutPromise])
+              .then(u => {
+                this.cachedUserId = u?.id || null;
+                return this.cachedUserId;
+              })
+              .catch(err => {
+                this.cachedUserId = null;
+                this.cachedUserPromise = null;
+                throw err;
+              });
+          }
           const resolvedId = await this.cachedUserPromise;
           if (!resolvedId) {
             throw new Error('用户未登录，无法上传到 R2');
