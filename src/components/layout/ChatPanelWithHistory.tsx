@@ -205,7 +205,7 @@ export default function ChatPanelWithHistory() {
           };
         }
 
-        const loadedMessages = await dataService.getChatMessages(filters);
+        const loadedMessages = await dataService.getChatMessages(filters, user?.id);
 
         // 转换为组件内部的 ChatMessage 格式
         const converted: ChatMessage[] = loadedMessages.map((msg) => ({

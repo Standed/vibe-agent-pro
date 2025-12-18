@@ -67,9 +67,36 @@ class SupabaseBackend implements DataBackend {
     this.userId = userId;
   }
 
-  // 注意：不再需要 ensureSession()
-  // AuthProvider 已经在应用启动时恢复了会话
-  // 多次调用 setSession() 会导致冲突和挂起
+  /**
+   * 递归剥离对象中的巨大 Base64 字符串，防止 Supabase 负载过大报错
+   */
+  private stripBase64(obj: any): any {
+    if (obj === null || obj === undefined) return obj;
+    if (typeof obj === 'string') {
+      // 如果是 Base64 图片且长度超过 10KB，则剥离
+      if (obj.startsWith('data:image') && obj.length > 10240) {
+        return null;
+      }
+      return obj;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.stripBase64(item));
+    }
+    if (typeof obj === 'object') {
+      // 不要递归处理特殊对象
+      if (obj instanceof Date || (typeof Blob !== 'undefined' && obj instanceof Blob)) {
+        return obj;
+      }
+      const newObj: any = {};
+      for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+          newObj[key] = this.stripBase64(obj[key]);
+        }
+      }
+      return newObj;
+    }
+    return obj;
+  }
 
   /**
    * 调用统一的 Supabase API Gateway
@@ -93,6 +120,11 @@ class SupabaseBackend implements DataBackend {
     const maxRetries = 3;
     let lastError: any;
 
+    // 自动剥离 data 中的 Base64
+    if (request.data) {
+      request.data = this.stripBase64(request.data);
+    }
+
     for (let i = 0; i < maxRetries; i++) {
       try {
         const response = await authenticatedFetch('/api/supabase', {
@@ -106,8 +138,6 @@ class SupabaseBackend implements DataBackend {
         const result = await response.json();
 
         if (!response.ok || result.error) {
-          // 如果是特定的网络错误，抛出异常以触发重试
-          // 这里的 result.error 可能是服务端返回的 "TypeError: fetch failed"
           throw new Error(result.error || 'API 调用失败');
         }
 
@@ -116,9 +146,8 @@ class SupabaseBackend implements DataBackend {
         console.warn(`[SupabaseBackend] ⚠️ API 调用失败 (尝试 ${i + 1}/${maxRetries}):`, err.message);
         lastError = err;
 
-        // 如果不是最后一次尝试，等待后重试
         if (i < maxRetries - 1) {
-          const delay = 1000 * (i + 1); // 1s, 2s, 3s
+          const delay = 1000 * (i + 1);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
@@ -252,15 +281,14 @@ class SupabaseBackend implements DataBackend {
     console.log('[SupabaseBackend] 📖 加载项目 (通过统一 API):', id);
 
     try {
-      // 加载项目基本信息（限制字段，避免大字段）
+      // 加载项目基本信息
       const projects = await this.callSupabaseAPI({
         table: 'projects',
         operation: 'select',
         filters: {
           eq: { id, user_id: this.userId },
         },
-        select:
-          'id, user_id, title, description, art_style, created_at, updated_at, settings, metadata',
+        select: 'id, user_id, title, description, art_style, created_at, updated_at, settings, metadata',
         single: true,
       });
 
@@ -271,19 +299,15 @@ class SupabaseBackend implements DataBackend {
         return undefined;
       }
 
-      // 并行加载关联数据，镜头依赖场景列表
+      // 加载关联数据
       const scenesPromise = this.callSupabaseAPI({
         table: 'scenes',
         operation: 'select',
         filters: {
           eq: { project_id: id },
         },
-        select:
-          'id, project_id, name, description, order_index, grid_history, saved_grid_slices, metadata',
-        order: {
-          column: 'order_index',
-          ascending: true,
-        },
+        select: 'id, project_id, name, description, order_index, grid_history, saved_grid_slices, metadata',
+        order: { column: 'order_index', ascending: true },
       });
 
       const shotsPromise = scenesPromise.then((sceneList) => {
@@ -294,13 +318,8 @@ class SupabaseBackend implements DataBackend {
             filters: {
               in: { scene_id: sceneList.map((s: any) => s.id) },
             },
-            // 延迟加载大字段，减少传输体积
-            select:
-              'id, scene_id, order_index, shot_size, camera_movement, duration, description, dialogue, narration, reference_image, video_clip, grid_images, generation_history, status, metadata',
-            order: {
-              column: 'order_index',
-              ascending: true,
-            },
+            select: 'id, scene_id, order_index, shot_size, camera_movement, duration, description, dialogue, narration, reference_image, video_clip, grid_images, generation_history, status, metadata',
+            order: { column: 'order_index', ascending: true },
           });
         }
         return [];
@@ -309,22 +328,17 @@ class SupabaseBackend implements DataBackend {
       const charactersPromise = this.callSupabaseAPI({
         table: 'characters',
         operation: 'select',
-        filters: {
-          eq: { project_id: id },
-        },
+        filters: { eq: { project_id: id } },
         select: 'id, project_id, name, description, appearance, reference_images',
       });
 
       const audioAssetsPromise = this.callSupabaseAPI({
         table: 'audio_assets',
         operation: 'select',
-        filters: {
-          eq: { project_id: id },
-        },
+        filters: { eq: { project_id: id } },
         select: 'id, project_id, name, category, file_url, duration',
       });
 
-      // 并行执行所有查询
       const [scenes, shots, characters, audioAssets] = await Promise.all([
         scenesPromise,
         shotsPromise,
@@ -332,8 +346,7 @@ class SupabaseBackend implements DataBackend {
         audioAssetsPromise,
       ]);
 
-      // 组装 Project 对象
-      const result: Project = {
+      return {
         id: project.id,
         metadata: {
           title: project.title,
@@ -393,9 +406,6 @@ class SupabaseBackend implements DataBackend {
         })),
         locations: [],
       };
-
-      console.log('[SupabaseBackend] ✅ 项目加载成功');
-      return result;
     } catch (err) {
       console.error('[SupabaseBackend] ❌ loadProject 失败:', err);
       throw err;
@@ -403,25 +413,16 @@ class SupabaseBackend implements DataBackend {
   }
 
   async getAllProjects(): Promise<Project[]> {
-    console.log('[SupabaseBackend] 📋 获取所有项目 (通过统一 API), userId:', this.userId);
-
     try {
       const projects = await this.callSupabaseAPI({
         table: 'projects',
         operation: 'select',
-        filters: {
-          eq: { user_id: this.userId },
-        },
+        filters: { eq: { user_id: this.userId } },
         select: 'id, title, description, art_style, created_at, updated_at, scene_count, shot_count',
-        order: {
-          column: 'updated_at',
-          ascending: false,
-        },
+        order: { column: 'updated_at', ascending: false },
       });
 
-      // 简化版项目列表，不加载完整的 scenes/shots/characters
-      // 但需要创建对应长度的空数组，以便首页显示计数
-      const formattedProjects = (projects || []).map((p: any) => ({
+      return (projects || []).map((p: any) => ({
         id: p.id,
         metadata: {
           title: p.title,
@@ -434,16 +435,12 @@ class SupabaseBackend implements DataBackend {
         script: '',
         chatHistory: [],
         timeline: [],
-        // 创建对应长度的空数组（用于显示计数）
         scenes: Array.from({ length: p.scene_count || 0 }, () => ({})),
         shots: Array.from({ length: p.shot_count || 0 }, () => ({})),
         characters: [],
         locations: [],
         audioAssets: [],
-      }));
-
-      console.log('[SupabaseBackend] ✅ 获取到', formattedProjects.length, '个项目');
-      return formattedProjects;
+      })) as any;
     } catch (err) {
       console.error('[SupabaseBackend] ❌ getAllProjects 失败:', err);
       return [];
@@ -451,23 +448,11 @@ class SupabaseBackend implements DataBackend {
   }
 
   async deleteProject(id: string): Promise<void> {
-    console.log('[SupabaseBackend] 🗑️ 删除项目 (通过统一 API), id:', id, 'userId:', this.userId);
-
-    try {
-      // Supabase CASCADE 会自动删除关联的 scenes, shots, characters, audio_assets
-      await this.callSupabaseAPI({
-        table: 'projects',
-        operation: 'delete',
-        filters: {
-          eq: { id, user_id: this.userId },
-        },
-      });
-
-      console.log('[SupabaseBackend] ✅ 项目删除成功');
-    } catch (err) {
-      console.error('[SupabaseBackend] ❌ deleteProject 失败:', err);
-      throw err;
-    }
+    await this.callSupabaseAPI({
+      table: 'projects',
+      operation: 'delete',
+      filters: { eq: { id, user_id: this.userId } },
+    });
   }
 
   async saveScene(projectId: string, scene: Scene): Promise<void> {
@@ -495,9 +480,7 @@ class SupabaseBackend implements DataBackend {
     await this.callSupabaseAPI({
       table: 'scenes',
       operation: 'delete',
-      filters: {
-        eq: { id: sceneId },
-      },
+      filters: { eq: { id: sceneId } },
     });
   }
 
@@ -534,9 +517,7 @@ class SupabaseBackend implements DataBackend {
     await this.callSupabaseAPI({
       table: 'shots',
       operation: 'delete',
-      filters: {
-        eq: { id: shotId },
-      },
+      filters: { eq: { id: shotId } },
     });
   }
 
@@ -559,9 +540,7 @@ class SupabaseBackend implements DataBackend {
     await this.callSupabaseAPI({
       table: 'characters',
       operation: 'delete',
-      filters: {
-        eq: { id: characterId },
-      },
+      filters: { eq: { id: characterId } },
     });
   }
 
@@ -584,19 +563,11 @@ class SupabaseBackend implements DataBackend {
     await this.callSupabaseAPI({
       table: 'audio_assets',
       operation: 'delete',
-      filters: {
-        eq: { id: audioId },
-      },
+      filters: { eq: { id: audioId } },
     });
   }
 
-  // ========================
-  // 聊天消息 CRUD
-  // ========================
-
   async saveChatMessage(message: ChatMessage): Promise<void> {
-    console.log('[SupabaseBackend] 💬 保存聊天消息:', message.id, message.scope);
-
     await this.callSupabaseAPI({
       table: 'chat_messages',
       operation: 'upsert',
@@ -623,39 +594,19 @@ class SupabaseBackend implements DataBackend {
     limit?: number;
     offset?: number;
   }): Promise<ChatMessage[]> {
-    console.log('[SupabaseBackend] 📖 获取聊天消息:', filters);
-
-    const apiFilters: any = {
-      eq: { project_id: filters.projectId },
-    };
-
-    // 根据 scope 筛选
-    if (filters.scope) {
-      apiFilters.eq.scope = filters.scope;
-    }
-
-    // 根据 sceneId 筛选
-    if (filters.sceneId) {
-      apiFilters.eq.scene_id = filters.sceneId;
-    }
-
-    // 根据 shotId 筛选
-    if (filters.shotId) {
-      apiFilters.eq.shot_id = filters.shotId;
-    }
+    const apiFilters: any = { eq: { project_id: filters.projectId } };
+    if (filters.scope) apiFilters.eq.scope = filters.scope;
+    if (filters.sceneId) apiFilters.eq.scene_id = filters.sceneId;
+    if (filters.shotId) apiFilters.eq.shot_id = filters.shotId;
 
     const messages = await this.callSupabaseAPI({
       table: 'chat_messages',
       operation: 'select',
       filters: apiFilters,
       select: '*',
-      order: {
-        column: 'created_at',
-        ascending: true, // 按时间升序（旧到新）
-      },
+      order: { column: 'created_at', ascending: true },
     });
 
-    // 转换为前端格式
     return (messages || []).map((msg: any) => ({
       id: msg.id,
       userId: msg.user_id,
@@ -674,14 +625,10 @@ class SupabaseBackend implements DataBackend {
   }
 
   async deleteChatMessage(messageId: string): Promise<void> {
-    console.log('[SupabaseBackend] 🗑️ 删除聊天消息:', messageId);
-
     await this.callSupabaseAPI({
       table: 'chat_messages',
       operation: 'delete',
-      filters: {
-        eq: { id: messageId },
-      },
+      filters: { eq: { id: messageId } },
     });
   }
 
@@ -690,19 +637,9 @@ class SupabaseBackend implements DataBackend {
     sceneId?: string;
     shotId?: string;
   }): Promise<void> {
-    console.log('[SupabaseBackend] 🧹 清除聊天历史:', filters);
-
-    const apiFilters: any = {
-      eq: { project_id: filters.projectId },
-    };
-
-    if (filters.sceneId) {
-      apiFilters.eq.scene_id = filters.sceneId;
-    }
-
-    if (filters.shotId) {
-      apiFilters.eq.shot_id = filters.shotId;
-    }
+    const apiFilters: any = { eq: { project_id: filters.projectId } };
+    if (filters.sceneId) apiFilters.eq.scene_id = filters.sceneId;
+    if (filters.shotId) apiFilters.eq.shot_id = filters.shotId;
 
     await this.callSupabaseAPI({
       table: 'chat_messages',
@@ -720,60 +657,23 @@ class UnifiedDataService {
   private backend: DataBackend | null = null;
   private currentUserId: string | null = null;
 
-  /**
-   * 初始化数据服务（仅使用 Supabase）
-   * @param userId 可选：直接提供用户ID，避免重新获取
-   */
   async initialize(userId?: string): Promise<void> {
-    console.log('[DataService] 🔄 正在初始化...');
-
-    let user = null;
-
-    // 如果提供了 userId，直接使用
     if (userId) {
-      console.log('[DataService] ✅ 使用提供的用户ID:', userId);
       this.currentUserId = userId;
       this.backend = new SupabaseBackend(userId);
-      console.log('[DataService] ☁️ 使用 Supabase 后端');
       return;
     }
-
-    // 否则尝试获取用户（不重试，快速失败）
-    // 注意：不在这里恢复会话，因为 AuthProvider 已经在应用启动时处理了
-    // 多次调用 setSession() 会导致冲突和挂起
     try {
-      console.log('[DataService] 尝试获取当前用户...');
-
-      // 设置更宽松的 15 秒超时，避免慢网环境下误判为未登录
-      const getUserPromise = getCurrentUser();
-      const timeoutPromise = new Promise<null>((_, reject) =>
-        setTimeout(() => reject(new Error('获取用户超时（15秒）')), 15000)
-      );
-
-      user = await Promise.race([getUserPromise, timeoutPromise]);
-
+      const user = await getCurrentUser();
       if (user) {
-        console.log('[DataService] ✅ 成功获取用户:', user.email);
+        this.currentUserId = user.id;
+        this.backend = new SupabaseBackend(user.id);
       } else {
-        // 如果返回 null（未登录），直接抛出错误，不重试
-        console.warn('[DataService] ⚠️ 用户未登录（无会话）');
-        throw new Error('用户未登录，请先登录');
+        throw new Error('用户未登录');
       }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : '获取用户失败';
-      console.error('[DataService] ❌ 获取用户失败:', errorMsg);
-      throw new Error('用户未登录或会话已过期，请重新登录');
+      throw new Error('用户未登录或会话已过期');
     }
-
-    if (!user) {
-      console.error('[DataService] ❌ 用户未登录');
-      throw new Error('用户未登录，请先登录');
-    }
-
-    // 已登录：使用 Supabase
-    this.currentUserId = user.id;
-    this.backend = new SupabaseBackend(user.id);
-    console.log('[DataService] ☁️ 使用 Supabase 后端');
   }
 
   private async ensureInitialized(userId?: string): Promise<void> {
@@ -842,12 +742,8 @@ class UnifiedDataService {
     return this.backend!.deleteAudioAsset(audioId);
   }
 
-  // ========================
-  // 聊天消息 API
-  // ========================
-
-  async saveChatMessage(message: ChatMessage): Promise<void> {
-    await this.ensureInitialized();
+  async saveChatMessage(message: ChatMessage, userId?: string): Promise<void> {
+    await this.ensureInitialized(userId);
     return this.backend!.saveChatMessage(message);
   }
 
@@ -858,13 +754,13 @@ class UnifiedDataService {
     scope?: ChatScope;
     limit?: number;
     offset?: number;
-  }): Promise<ChatMessage[]> {
-    await this.ensureInitialized();
+  }, userId?: string): Promise<ChatMessage[]> {
+    await this.ensureInitialized(userId);
     return this.backend!.getChatMessages(filters);
   }
 
-  async deleteChatMessage(messageId: string): Promise<void> {
-    await this.ensureInitialized();
+  async deleteChatMessage(messageId: string, userId?: string): Promise<void> {
+    await this.ensureInitialized(userId);
     return this.backend!.deleteChatMessage(messageId);
   }
 
@@ -872,11 +768,10 @@ class UnifiedDataService {
     projectId: string;
     sceneId?: string;
     shotId?: string;
-  }): Promise<void> {
-    await this.ensureInitialized();
+  }, userId?: string): Promise<void> {
+    await this.ensureInitialized(userId);
     return this.backend!.clearChatHistory(filters);
   }
 }
 
-// 导出单例
 export const dataService = new UnifiedDataService();
