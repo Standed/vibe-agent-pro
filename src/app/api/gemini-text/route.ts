@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
-const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-flash-preview'; // 文本生成使用 Flash 模型
+const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview'; // 文本生成使用 Pro 模型
 const GEMINI_API_KEY =
   process.env.GEMINI_TEXT_API_KEY ||
   process.env.GEMINI_API_KEY ||

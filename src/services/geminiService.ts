@@ -444,7 +444,7 @@ Do NOT write full sentences. Do NOT describe the subject again if the user alrea
 
   try {
     const data = await postJson<{ result: string }>('/api/gemini-text', {
-      model: 'gemini-3-flash-preview', // 使用 Flash 模型
+      model: 'gemini-3-pro-preview', // 使用 Pro 模型
       prompt: baseIdea.trim()
         ? `User Idea: "${baseIdea}"`
         : 'User Idea: Cinematic shot based on references.',
