@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
         },
       ],
       generationConfig: {
-        temperature: 0.3,
+        temperature: 1.0, // 统一使用 temperature=1.0
         // @ts-ignore
         imageConfig: {
           aspectRatio,

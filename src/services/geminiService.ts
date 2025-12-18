@@ -444,13 +444,13 @@ Do NOT write full sentences. Do NOT describe the subject again if the user alrea
 
   try {
     const data = await postJson<{ result: string }>('/api/gemini-text', {
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview', // 使用 Flash 模型
       prompt: baseIdea.trim()
         ? `User Idea: "${baseIdea}"`
         : 'User Idea: Cinematic shot based on references.',
       systemInstruction,
       referenceImages,
-      temperature: 0.7
+      temperature: 1.0 // 统一使用 temperature=1.0
     });
     return data.result || baseIdea;
   } catch (error: any) {
