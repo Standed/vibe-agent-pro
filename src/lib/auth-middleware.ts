@@ -220,7 +220,7 @@ export async function consumeCredits(
       return { success: true };
     }
 
-    return { success: true, creditsAfter: profile?.credits };
+    return { success: true, creditsAfter: (profile as any)?.credits };
   } catch (error: any) {
     console.error('Exception in consumeCredits:', error);
     return { success: false, error: error.message };

@@ -41,15 +41,15 @@ const parseConcurrency = (val: string | undefined, fallback: number) => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 const IMAGE_CONCURRENCY = parseConcurrency(
-  process.env.NEXT_PUBLIC_AGENT_IMAGE_CONCURRENCY || process.env.AGENT_IMAGE_CONCURRENCY,
+  process.env.AGENT_IMAGE_CONCURRENCY || process.env.NEXT_PUBLIC_AGENT_IMAGE_CONCURRENCY,
   3
 );
 const SEEDREAM_MAX_RETRIES = parseConcurrency(
-  process.env.NEXT_PUBLIC_SEEDREAM_MAX_RETRIES || process.env.SEEDREAM_MAX_RETRIES,
+  process.env.SEEDREAM_MAX_RETRIES || process.env.NEXT_PUBLIC_SEEDREAM_MAX_RETRIES,
   2
 );
 const SEEDREAM_RETRY_DELAY_MS = parseConcurrency(
-  process.env.NEXT_PUBLIC_SEEDREAM_RETRY_DELAY_MS || process.env.SEEDREAM_RETRY_DELAY_MS,
+  process.env.SEEDREAM_RETRY_DELAY_MS || process.env.NEXT_PUBLIC_SEEDREAM_RETRY_DELAY_MS,
   1200
 );
 
@@ -900,8 +900,8 @@ export class AgentToolExecutor {
             gridImages: sliceUrls,
             fullGridUrl,
             status: 'done',
-            lastModel: modelName,
-          });
+            // // lastModel: modelName, // ⚠️ Shot 类型中没有 lastModel 字段
+          } as any);
 
           const historyItem: GenerationHistoryItem = {
             id: `gen_${Date.now()}`,
@@ -958,8 +958,8 @@ export class AgentToolExecutor {
         this.storeCallbacks.updateShot(shotId, {
           referenceImage: r2Url,
           status: 'done',
-          lastModel: modelName,
-        });
+          // // lastModel: modelName, // ⚠️ Shot 类型中没有 lastModel 字段
+        } as any);
 
         // Add to generation history
         const historyItem: GenerationHistoryItem = {
@@ -1060,7 +1060,7 @@ export class AgentToolExecutor {
       result: shot.referenceImage,
       prompt: '(覆盖前版本)',
       parameters: {
-        model: shot.lastModel || modelName || 'unknown',
+        model: (shot as any).lastModel || modelName || 'unknown',
         status: 'replaced',
         gridImages: shot.gridImages,
         fullGridUrl: shot.fullGridUrl,
@@ -1245,7 +1245,7 @@ export class AgentToolExecutor {
           this.storeCallbacks.updateShot(shot.id, {
             referenceImage: newUrl,
             status: 'done',
-            lastModel: 'Gemini Grid',
+            // lastModel: 'Gemini Grid',
           });
 
           // Add to generation history

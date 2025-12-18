@@ -5,10 +5,10 @@ import { calculateCredits, getOperationDescription } from '@/config/credits';
 const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
 const GEMINI_API_KEY =
   process.env.GEMINI_TEXT_API_KEY ||
-  process.env.NEXT_GEMINI_TEXT_API_KEY ||
   process.env.GEMINI_API_KEY ||
+  process.env.NEXT_GEMINI_TEXT_API_KEY ||
   process.env.NEXT_GEMINI_API_KEY ||
-  process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY; // ⚠️ 向后兼容，应移除
 
 export async function POST(request: NextRequest) {
   // 1. 验证用户身份

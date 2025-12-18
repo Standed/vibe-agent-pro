@@ -416,7 +416,7 @@ export function useAgent(): UseAgentResult {
         );
 
         try {
-          action = await Promise.race([continuePromise, timeoutPromise]);
+          action = await Promise.race([continuePromise, timeoutPromise]) as any;
         } catch (e: any) {
           console.warn('[useAgent] continueWithToolResults 超时/失败，直接结束工具链', e);
           action = { type: 'none', message: '生成完成', requiresToolExecution: false };
