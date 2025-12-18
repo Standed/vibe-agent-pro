@@ -385,6 +385,32 @@ Style Constraints:
 };
 
 /**
+ * Generate a character three-view (front, side, back) using Gemini Direct
+ */
+export const generateCharacterThreeView = async (
+  prompt: string,
+  artStyle: string = 'Cinematic',
+  referenceImages: ReferenceImageData[] = [],
+  aspectRatio: string = '21:9'
+): Promise<string> => {
+  // 逻辑调整：不再对 prompt 进行复杂的二次包装，直接使用用户在 UI 界面微调后的提示词，保持与 SeeDream 一致
+  try {
+    const data = await postJson<{ url: string }>('/api/gemini-image', {
+      prompt: `${prompt}, no text, no labels`,
+      referenceImages,
+      aspectRatio,
+    });
+    if (!data.url) {
+      throw new Error('未能生成角色三视图');
+    }
+    return data.url;
+  } catch (error: any) {
+    console.error('Gemini character three-view generation error:', error);
+    throw error;
+  }
+};
+
+/**
  * Analyze an image or video asset using Gemini
  */
 export const analyzeAsset = async (

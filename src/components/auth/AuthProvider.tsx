@@ -5,7 +5,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import { getUserProfile, readSessionCookie, setSessionCookie, parseJWT, isTokenExpired } from '@/lib/supabase/auth';
 import type { Database } from '@/lib/supabase/database.types';
-import { ADMIN_EMAILS } from '@/config/users';
+import { ADMIN_EMAILS, INITIAL_CREDITS } from '@/config/users';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: userId,
           email: userEmail || '',
           role: 'user',
-          credits: 0,
+          credits: INITIAL_CREDITS.user,
           is_whitelisted: false,
           is_active: true
         };
@@ -92,31 +92,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initSession = async () => {
       try {
-        // console.log('[AuthProvider] 🔐 开始初始化...');
-
         // 检查是否有认证 cookie
         if (typeof window !== 'undefined') {
           const cookieTokens = readSessionCookie();
 
           // 如果没有 cookie，立即结束 loading（未登录状态）
           if (!cookieTokens?.access_token || !cookieTokens?.refresh_token) {
-            // console.log('[AuthProvider] ℹ️ 未找到认证 cookie，用户需要登录');
             if (isMounted) {
               setLoading(false);
             }
             return;
           }
 
-          // ✅ 乐观策略：先检查 token 是否过期
-          // console.log('[AuthProvider] 🔍 检查 token 是否过期...');
-
           if (!isTokenExpired(cookieTokens.access_token)) {
             // Token 未过期，直接从 JWT 提取用户信息
             const payload = parseJWT(cookieTokens.access_token);
 
             if (payload && payload.sub) {
-              // console.log('[AuthProvider] ✅ Token 有效，立即设置用户状态');
-
               // 从 JWT 构造 User 对象
               const user: User = {
                 id: payload.sub,
@@ -137,8 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 );
               }
 
-              // 🔄 后台验证 session（不阻塞 UI，无超时限制）
-              // console.log('[AuthProvider] 🔄 后台验证 session...');
+              // 🔄 后台验证 session
               supabase.auth.setSession({
                 access_token: cookieTokens.access_token,
                 refresh_token: cookieTokens.refresh_token,
@@ -146,7 +137,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (!isMounted) return;
 
                 if (!error && data?.session) {
-                  // console.log('[AuthProvider] ✅ 后台验证成功，更新 session');
                   setSession(data.session);
                   // 如果 token 被 refresh，更新 user
                   if (data.session.user.id !== user.id) {
@@ -155,11 +145,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   }
                 } else {
                   console.warn('[AuthProvider] ⚠️ 后台验证失败，但保留当前状态:', error?.message);
-                  // 不清空 user，允许用户继续使用（token 可能仍然有效）
                 }
               }).catch(err => {
                 console.warn('[AuthProvider] ⚠️ 后台验证异常:', err);
-                // 不清空 user，保留当前状态
               });
 
               return; // 已处理完毕
@@ -167,8 +155,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           // Token 过期或解析失败，尝试完整验证
-          // console.log('[AuthProvider] ⚠️ Token 过期或无效，尝试完整验证...');
-
           try {
             const { data, error } = await supabase.auth.setSession({
               access_token: cookieTokens.access_token,
@@ -176,7 +162,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             });
 
             if (!error && data?.session) {
-              // console.log('[AuthProvider] ✅ 完整验证成功');
               if (isMounted) {
                 setSession(data.session);
                 setUser(data.session.user);
@@ -219,34 +204,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 监听认证状态变化
     const subscriptionWrapper = supabase.auth.onAuthStateChange(async (event, session) => {
-      // console.log('[AuthProvider] 🔐 认证状态变化:', event);
-
       try {
         if (!isMounted) return;
 
-        // TOKEN_REFRESHED 事件：token刷新成功，不需要重新设置loading
-        // 只需要更新session，用户体验无感知
         if (event === 'TOKEN_REFRESHED') {
-          // console.log('[AuthProvider] ✅ Token已刷新，更新session');
           setSession(session);
           setUser(session?.user ?? null);
-          // 使用 setSessionCookie 更新 cookie（带过期时间）
           setSessionCookie(session);
-          // Token刷新不需要重新加载profile
           return;
         }
 
-        // SIGNED_IN / SIGNED_OUT 等其他事件：需要完整更新状态
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
           await fetchProfile(session.user.id, session.user.email);
-          // 更新 session cookie（带过期时间）
           setSessionCookie(session);
         } else {
           setProfile(null);
-          // 清除 session cookie
           setSessionCookie(null);
         }
       } catch (err) {
@@ -256,7 +231,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setProfile(null);
       } finally {
-        // TOKEN_REFRESHED事件不改变loading状态
         if (isMounted && event !== 'TOKEN_REFRESHED') {
           setLoading(false);
         }
@@ -271,10 +245,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 登出
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
-    setProfile(null);
+    try {
+      const signOutPromise = supabase.auth.signOut();
+      const timeoutPromise = new Promise(resolve => setTimeout(resolve, 1000));
+      await Promise.race([signOutPromise, timeoutPromise]).catch(err => {
+        console.warn('[AuthProvider] Supabase signOut 失败或超时:', err);
+      });
+
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+      setSessionCookie(null);
+
+      if (typeof window !== 'undefined') {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        if (supabaseUrl) {
+          const projectRef = supabaseUrl.split('.')[0].split('//')[1];
+          window.localStorage.removeItem(`sb-${projectRef}-auth-token`);
+        }
+
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('sb-') || key.includes('supabase'))) {
+            localStorage.removeItem(key);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[AuthProvider] 登出过程中发生异常:', error);
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+      setSessionCookie(null);
+    }
   };
 
   // 检查是否已认证（非游客）
@@ -310,7 +313,6 @@ export function useRequireAuth() {
 
   useEffect(() => {
     if (!loading && !user) {
-      // 重定向到登录页
       window.location.href = '/auth/login';
     }
   }, [user, loading]);
@@ -329,7 +331,6 @@ export function useRequireAdmin() {
         return;
       }
 
-      // 如果 profile 已经加载出来，检查权限
       if (profile) {
         const isAdminEmail = user.email && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(user.email.toLowerCase());
         if (profile.role !== 'admin' && !isAdminEmail) {
@@ -339,7 +340,6 @@ export function useRequireAdmin() {
     }
   }, [user, profile, loading]);
 
-  // 🚀 使用 useMemo 稳定引用，防止无限循环
   const isAdminEmail = user?.email && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(user.email.toLowerCase());
 
   const effectiveProfile = React.useMemo(() => {
@@ -355,8 +355,35 @@ export function useRequireAdmin() {
     return null;
   }, [profile, isAdminEmail, user?.id, user?.email]);
 
-  // 只有当：正在加载中 OR (有用户但既没 profile 也不是管理员邮箱) 时，才显示加载中
   const isAuthLoading = loading || (user && !profile && !isAdminEmail);
 
   return { profile: effectiveProfile, loading: isAuthLoading };
+}
+
+// Hook to require whitelist
+export function useRequireWhitelist() {
+  const { user, profile, loading, signOut } = useAuth();
+
+  useEffect(() => {
+    if (!loading) {
+      if (!user) {
+        window.location.href = '/auth/login';
+        return;
+      }
+
+      if (profile) {
+        const isAdminEmail = user.email && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(user.email.toLowerCase());
+        const isWhitelisted = (profile as any).is_whitelisted || profile.role === 'admin' || isAdminEmail;
+
+        if (!isWhitelisted) {
+          const message = encodeURIComponent('您的账号尚未开通白名单权限，请联系管理员。');
+          signOut().then(() => {
+            window.location.href = `/auth/login?error=${message}`;
+          });
+        }
+      }
+    }
+  }, [user, profile, loading, signOut]);
+
+  return { user, profile, loading, signOut };
 }

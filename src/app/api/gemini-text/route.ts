@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
+import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview'; // 文本生成使用 Pro 模型
@@ -17,6 +17,10 @@ export async function POST(request: NextRequest) {
     return authResult.error;
   }
   const { user } = authResult;
+
+  // 白名单检查
+  const whitelistCheck = checkWhitelist(user);
+  if ('error' in whitelistCheck) return whitelistCheck.error;
 
   // 2. 计算所需积分
   const requiredCredits = calculateCredits('GEMINI_TEXT', user.role);

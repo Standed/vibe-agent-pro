@@ -36,15 +36,10 @@ export default function RegisterPage() {
     }
   };
 
-  // 阶段性限制：未登录用户禁止访问注册页
+  // 移除阶段性限制，允许所有人注册
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) {
-        toast.error('当前阶段仅内部账号可注册');
-        router.replace('/');
-      }
-    });
-  }, [router]);
+    // 可以在这里添加其他初始化逻辑
+  }, []);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] px-4">
@@ -60,14 +55,14 @@ export default function RegisterPage() {
             />
           </div>
           <h1 className="text-4xl font-bold text-white mb-2">Video Agent Pro</h1>
-          <p className="text-zinc-400">创建新账号（仅内部开放）</p>
+          <p className="text-zinc-400">创建你的账号</p>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-6">
           <div className="space-y-4">
             <div>
               <label htmlFor="fullName" className="block text-sm font-medium text-zinc-300 mb-1">
-                姓名
+                昵称
               </label>
               <input
                 id="fullName"

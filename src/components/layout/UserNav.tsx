@@ -28,9 +28,11 @@ export function UserNav() {
     const handleSignOut = async () => {
         try {
             await signOut();
-            router.push('/auth/login');
+            // 使用 window.location.href 确保彻底清理状态并跳转
+            window.location.href = '/auth/login';
         } catch (error) {
             console.error('Sign out failed:', error);
+            window.location.href = '/auth/login';
         }
     };
 
