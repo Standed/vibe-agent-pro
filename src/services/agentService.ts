@@ -5,7 +5,7 @@
 
 import { AGENT_TOOLS, ToolCall, formatToolsForPrompt } from './agentTools';
 
-const GEMINI_MODEL = 'gemini-3-flash-preview'; // Agent推理使用 Flash 模型（更快更经济）
+const GEMINI_MODEL = 'gemini-3-pro-preview'; // Agent推理使用 Pro 模型
 
 // Allow configurable timeouts:短步骤用短超时，AI 生成/推理用长超时
 const parseTimeout = (val: string | undefined, fallback: number) => {
