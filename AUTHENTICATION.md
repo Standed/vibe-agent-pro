@@ -57,7 +57,7 @@ export async function authenticateRequest(request: NextRequest) {
   // 获取用户 profile
   const { data: profile, error: profileError } = await supabaseAdmin
     .from('profiles')
-    .select('id, email, role, credits')
+    .select('id, email, role, credits, is_whitelisted')
     .eq('id', user.id)
     .single();
 
@@ -77,6 +77,7 @@ export async function authenticateRequest(request: NextRequest) {
         email: userEmail,
         role: userRole,
         credits: initialCredits,
+        is_whitelisted: userRole === 'admin', // 管理员默认开启白名单
         full_name: user.user_metadata?.full_name || null,
         avatar_url: user.user_metadata?.avatar_url || null,
       })
@@ -86,7 +87,17 @@ export async function authenticateRequest(request: NextRequest) {
     return { user: newProfile };
   }
 
-  return { user: profile };
+  // 提权逻辑：如果邮箱在硬编码管理员列表中，强制赋予 admin 角色
+  const isAdminEmail = getUserRoleByEmail(user.email) === 'admin';
+  const effectiveRole = isAdminEmail ? 'admin' : profile.role;
+
+  return { 
+    user: {
+      ...profile,
+      role: effectiveRole,
+      isWhitelisted: profile.is_whitelisted || effectiveRole === 'admin'
+    } 
+  };
 }
 ```
 
@@ -304,10 +315,10 @@ export async function authenticateRequest(request: NextRequest) {
       };
     }
 
-    // 3. 获取用户 profile（包括积分和角色）
+    // 3. 获取用户 profile（包括积分、角色、白名单）
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('id, email, role, credits')
+      .select('id, email, role, credits, is_whitelisted')
       .eq('id', user.id)
       .single();
 
@@ -316,13 +327,18 @@ export async function authenticateRequest(request: NextRequest) {
       // ... 创建 profile 逻辑（见上文）
     }
 
-    // 5. 返回用户信息
+    // 5. 提权逻辑：如果邮箱在硬编码管理员列表中，强制赋予 admin 角色
+    const isAdminEmail = getUserRoleByEmail(user.email) === 'admin';
+    const effectiveRole = isAdminEmail ? 'admin' : profile.role;
+
+    // 6. 返回用户信息
     return {
       user: {
         id: profile.id,
         email: profile.email,
-        role: profile.role,
+        role: effectiveRole as 'user' | 'admin' | 'vip',
         credits: profile.credits,
+        isWhitelisted: profile.is_whitelisted || effectiveRole === 'admin',
       },
     };
   } catch (error: any) {
@@ -416,11 +432,11 @@ export function getUserRoleByEmail(email: string): UserRole {
 export function getInitialCredits(role: UserRole): number {
   switch (role) {
     case 'admin':
-      return 999999; // 管理员大量积分（但实际免费）
+      return 1000;   // 管理员初始 1000 积分
     case 'vip':
       return 500;    // VIP 初始 500 积分
     case 'user':
-      return 100;    // 普通用户初始 100 积分
+      return 60;     // 普通用户初始 60 积分
   }
 }
 ```
@@ -556,5 +572,5 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 ---
 
-**最后更新**: 2025-12-17
+**最后更新**: 2025-12-18
 **维护者**: Claude Code + 西羊石团队

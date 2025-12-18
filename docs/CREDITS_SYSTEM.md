@@ -28,21 +28,18 @@ Video Agent Pro 使用**积分系统**来管理 AI 服务的使用，确保资�
 ```typescript
 export const CREDITS_CONFIG = {
   // Gemini 系列
-  GEMINI_GRID_2X2: 5,        // 2x2 Grid 生成 (4 个视图)
-  GEMINI_GRID_3X3: 10,       // 3x3 Grid 生成 (9 个视图)
-  GEMINI_GRID_2X3: 8,        // 2x3 Grid 生成 (6 个视图)
-  GEMINI_GRID_3X2: 8,        // 3x2 Grid 生成 (6 个视图)
-  GEMINI_IMAGE: 8,           // 单张图片生成
-  GEMINI_TEXT: 2,            // 文本生成 (聊天、剧本等)
+  GEMINI_GRID: 20,           // Grid 生成 (所有尺寸统一)
+  GEMINI_IMAGE: 10,          // 单张图片生成
+  GEMINI_TEXT: 3,            // 文本生成 (聊天、剧本等)
   GEMINI_ANALYZE: 3,         // 图片分析
   GEMINI_EDIT: 5,            // 图片编辑
 
   // SeeDream 系列
-  SEEDREAM_GENERATE: 12,     // SeeDream 图片生成
-  SEEDREAM_EDIT: 10,         // SeeDream 图片编辑
+  SEEDREAM_GENERATE: 3,      // SeeDream 图片生成 (大幅降价)
+  SEEDREAM_EDIT: 5,          // SeeDream 图片编辑
 
   // 火山引擎系列
-  VOLCANO_GENERATE: 12,      // 火山引擎图片生成
+  VOLCANO_GENERATE: 10,      // 火山引擎图片生成
   VOLCANO_VIDEO: 50,         // 视频生成 (较贵)
 
   // 其他操作
@@ -114,9 +111,9 @@ export type UserRole = 'admin' | 'vip' | 'user';
 
 | 角色 | 定价策略 | 初始积分 | 说明 |
 |------|---------|---------|------|
-| **admin** | 免费 (0 积分) | 999,999 | 管理员，所有操作免费 |
+| **admin** | 免费 (0 积分) | 1,000 | 管理员，所有操作免费 |
 | **vip** | 8 折 | 500 | VIP 用户，所有操作 80% 价格 |
-| **user** | 原价 | 100 | 普通用户，标准价格 |
+| **user** | 原价 | 60 | 普通用户，标准价格 |
 
 ### 实际价格计算
 
@@ -146,11 +143,11 @@ export function calculateCredits(
 **示例计算**：
 
 ```typescript
-// Gemini 3x3 Grid 生成（默认 10 积分）
+// Gemini Grid 生成（默认 20 积分）
 
-calculateCredits('GEMINI_GRID_3X3', 'admin');  // → 0 积分（免费）
-calculateCredits('GEMINI_GRID_3X3', 'vip');    // → 8 积分（10 * 0.8）
-calculateCredits('GEMINI_GRID_3X3', 'user');   // → 10 积分（原价）
+calculateCredits('GEMINI_GRID', 'admin');  // → 0 积分（免费）
+calculateCredits('GEMINI_GRID', 'vip');    // → 16 积分（20 * 0.8）
+calculateCredits('GEMINI_GRID', 'user');   // → 20 积分（原价）
 
 // Volcano 视频生成（默认 50 积分）
 
@@ -366,7 +363,7 @@ CREATE TABLE profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
   role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin', 'vip')),
-  credits INTEGER NOT NULL DEFAULT 100,
+  credits INTEGER NOT NULL DEFAULT 60,
   full_name TEXT,
   avatar_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -569,9 +566,9 @@ ADMIN_FREE=false
 
 ### 初始积分
 
-1. **admin**: 999,999（无限制）
-2. **vip**: 500（试用后付费）
-3. **user**: 100（体验后升级）
+1. **admin**: 1,000（初始测试额度）
+2. **vip**: 500（高级体验额度）
+3. **user**: 60（基础体验额度）
 
 ---
 
@@ -627,5 +624,5 @@ ADMIN_FREE=true  # 或 NEXT_PUBLIC_ADMIN_FREE=true
 
 ---
 
-**最后更新**: 2025-12-17
-**维护者**: Claude Code + 西羊石团队
+**最后更新**: 2025-12-18
+**维护者**: Antigravity (Google Deepmind)

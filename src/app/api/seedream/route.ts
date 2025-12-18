@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
+import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist, checkRateLimit } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 export async function POST(request: NextRequest) {
@@ -9,6 +9,14 @@ export async function POST(request: NextRequest) {
     return authResult.error;
   }
   const { user } = authResult;
+
+  // 1.1 白名单检查
+  const whitelistCheck = checkWhitelist(user);
+  if ('error' in whitelistCheck) return whitelistCheck.error;
+
+  // 1.2 频率限制检查 (图片: 60次/分钟)
+  const rateLimitCheck = await checkRateLimit(user.id, 'image', 60);
+  if ('error' in rateLimitCheck) return rateLimitCheck.error;
 
   // 2. 计算所需积分
   const requiredCredits = calculateCredits('SEEDREAM_GENERATE', user.role);

@@ -26,6 +26,13 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   -- 角色和权限
   role TEXT DEFAULT 'user' NOT NULL CHECK (role IN ('user', 'admin', 'vip')),
   is_active BOOLEAN DEFAULT TRUE NOT NULL,
+  is_whitelisted BOOLEAN DEFAULT FALSE NOT NULL,
+
+  -- 频率限制 (Rate Limiting)
+  last_chat_at TIMESTAMP WITH TIME ZONE,
+  chat_count_in_min INTEGER DEFAULT 0,
+  last_image_at TIMESTAMP WITH TIME ZONE,
+  image_count_in_min INTEGER DEFAULT 0,
 
   -- 元数据
   metadata JSONB DEFAULT '{}'::jsonb,
@@ -305,7 +312,32 @@ CREATE INDEX IF NOT EXISTS admin_logs_target_user_idx ON public.admin_logs(targe
 CREATE INDEX IF NOT EXISTS admin_logs_created_at_idx ON public.admin_logs(created_at DESC);
 
 -- =============================================
--- 10. 启用行级安全策略 (RLS)
+-- 11. 错误反馈表 (Error Reports)
+-- =============================================
+CREATE TABLE IF NOT EXISTS public.error_reports (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  
+  -- 错误信息
+  type TEXT NOT NULL, -- 'bug', 'feedback', 'ai_error'
+  content TEXT NOT NULL,
+  context JSONB DEFAULT '{}'::jsonb, -- 包含 project_id, shot_id, browser_info 等
+  
+  -- 状态
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'investigating', 'resolved', 'ignored')),
+  admin_note TEXT,
+  
+  -- 时间戳
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS error_reports_user_id_idx ON public.error_reports(user_id);
+CREATE INDEX IF NOT EXISTS error_reports_status_idx ON public.error_reports(status);
+CREATE INDEX IF NOT EXISTS error_reports_created_at_idx ON public.error_reports(created_at DESC);
+
+-- =============================================
+-- 12. 启用行级安全策略 (RLS)
 -- =============================================
 
 -- 用户信息表
@@ -434,8 +466,25 @@ CREATE POLICY "Only admins can view logs"
     )
   );
 
+-- 错误反馈表
+ALTER TABLE public.error_reports ENABLE ROW LEVEL SECURITY;
+
+-- 用户可以提交反馈，管理员可以查看所有
+CREATE POLICY "Users can insert own error reports"
+  ON public.error_reports FOR INSERT
+  WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
+
+CREATE POLICY "Admins can view and update all error reports"
+  ON public.error_reports FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+
 -- =============================================
--- 11. RPC 函数
+-- 13. RPC 函数
 -- =============================================
 
 -- 消费积分函数（原子操作）
@@ -646,8 +695,11 @@ CREATE TRIGGER update_audio_assets_updated_at BEFORE UPDATE ON public.audio_asse
 CREATE TRIGGER update_chat_messages_updated_at BEFORE UPDATE ON public.chat_messages
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+CREATE TRIGGER update_error_reports_updated_at BEFORE UPDATE ON public.error_reports
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
 -- =============================================
--- 13. 触发器：新用户注册时自动创建 profile
+-- 14. 触发器：新用户注册时自动创建 profile
 -- =============================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -691,6 +743,11 @@ ON CONFLICT (id) DO NOTHING;
 -- WHERE email = 'admin@vibeagent.com';
 
 -- =============================================
+-- 15. 启用 Realtime
+-- =============================================
+-- 启用 chat_messages 表的实时更新
+ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
+
 -- 完成！
 -- =============================================
 -- 接下来的步骤：

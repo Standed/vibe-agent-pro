@@ -52,6 +52,8 @@ interface SupabaseRequest {
     ascending?: boolean;
   };
   single?: boolean;
+  limit?: number;
+  offset?: number;
 }
 
 // 需要校验 UUID 的字段映射
@@ -183,7 +185,7 @@ export async function POST(request: NextRequest) {
     const { user } = authResult;
 
     const body: SupabaseRequest = await request.json();
-    const { table, operation, data, filters, select, order, single, userId: bodyUserId } = body;
+    const { table, operation, data, filters, select, order, single, limit, offset, userId: bodyUserId } = body;
     const userId = user.id;
 
     // 1. 验证必需参数
@@ -284,6 +286,13 @@ export async function POST(request: NextRequest) {
         // 单条记录
         if (single) {
           query = (query as any).single();
+        } else {
+          // 应用分页
+          if (limit !== undefined) {
+            const start = offset || 0;
+            const end = start + limit - 1;
+            query = (query as any).range(start, end);
+          }
         }
         break;
 

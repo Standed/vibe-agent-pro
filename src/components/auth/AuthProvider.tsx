@@ -5,6 +5,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import { getUserProfile, readSessionCookie, setSessionCookie, parseJWT, isTokenExpired } from '@/lib/supabase/auth';
 import type { Database } from '@/lib/supabase/database.types';
+import { ADMIN_EMAILS } from '@/config/users';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -36,25 +37,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 获取用户 profile
   const fetchProfile = async (userId: string, userEmail?: string) => {
-    const { data } = await getUserProfile(userId);
-    if (data) {
-      // 如果没有头像，生成默认头像并保存
-      if (!data.avatar_url && userEmail) {
-        const defaultAvatar = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userEmail)}&backgroundColor=000000,ffffff&textColor=ffffff,000000`;
-        // console.log('[AuthProvider] 👤 生成默认头像:', defaultAvatar);
+    try {
+      const { data, error } = await getUserProfile(userId);
 
-        // 乐观更新本地状态
-        const updatedProfile = { ...data, avatar_url: defaultAvatar };
-        setProfile(updatedProfile);
+      let finalProfile: any = data;
 
-        // 异步更新数据库
-        (supabase as any).from('profiles').update({ avatar_url: defaultAvatar }).eq('id', userId).then(({ error }: any) => {
-          if (error) console.error('[AuthProvider] ❌ 保存默认头像失败:', error);
-          // else console.log('[AuthProvider] ✅ 默认头像已保存');
-        });
-      } else {
-        setProfile(data);
+      // 如果数据库中没有 profile，但我们有用户信息，可以先构造一个临时 profile
+      if (!data || error) {
+        finalProfile = {
+          id: userId,
+          email: userEmail || '',
+          role: 'user',
+          credits: 0,
+          is_whitelisted: false,
+          is_active: true
+        };
       }
+
+      // 兜底逻辑：如果邮箱在硬编码的管理员列表中，前端先行提权
+      if (userEmail && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(userEmail.toLowerCase())) {
+        finalProfile.role = 'admin';
+        finalProfile.is_whitelisted = true;
+      }
+
+      // 如果没有头像，生成默认头像
+      if (!finalProfile.avatar_url && userEmail) {
+        const defaultAvatar = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userEmail)}&backgroundColor=000000,ffffff&textColor=ffffff,000000`;
+        finalProfile.avatar_url = defaultAvatar;
+
+        // 异步更新数据库（仅当数据库已有记录时）
+        if (data) {
+          (supabase as any).from('profiles').update({ avatar_url: defaultAvatar }).eq('id', userId).catch(() => { });
+        }
+      }
+
+      setProfile(finalProfile);
+    } catch (err) {
+      console.error('[AuthProvider] fetchProfile 异常:', err);
+      // 发生异常也至少设置一个基础状态，防止页面卡死
+      setProfile({ id: userId, email: userEmail || '', role: 'user' } as any);
     }
   };
 
@@ -299,14 +320,43 @@ export function useRequireAuth() {
 
 // Hook to require admin
 export function useRequireAdmin() {
-  const { profile, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
 
   useEffect(() => {
-    if (!loading && profile?.role !== 'admin') {
-      // 重定向到首页
-      window.location.href = '/';
-    }
-  }, [profile, loading]);
+    if (!loading) {
+      if (!user) {
+        window.location.href = '/auth/login';
+        return;
+      }
 
-  return { profile, loading };
+      // 如果 profile 已经加载出来，检查权限
+      if (profile) {
+        const isAdminEmail = user.email && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(user.email.toLowerCase());
+        if (profile.role !== 'admin' && !isAdminEmail) {
+          window.location.href = '/';
+        }
+      }
+    }
+  }, [user, profile, loading]);
+
+  // 🚀 使用 useMemo 稳定引用，防止无限循环
+  const isAdminEmail = user?.email && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(user.email.toLowerCase());
+
+  const effectiveProfile = React.useMemo(() => {
+    if (profile) return profile;
+    if (isAdminEmail) {
+      return {
+        id: user?.id,
+        email: user?.email,
+        role: 'admin',
+        is_whitelisted: true
+      } as any;
+    }
+    return null;
+  }, [profile, isAdminEmail, user?.id, user?.email]);
+
+  // 只有当：正在加载中 OR (有用户但既没 profile 也不是管理员邮箱) 时，才显示加载中
+  const isAuthLoading = loading || (user && !profile && !isAdminEmail);
+
+  return { profile: effectiveProfile, loading: isAuthLoading };
 }

@@ -36,6 +36,7 @@ interface ProjectStore {
   leftSidebarCollapsed: boolean;
   rightSidebarCollapsed: boolean;
   gridResult: GridGenerationResult | null; // Grid 生成结果（用于显示 Modal）
+  isSaving: boolean; // 是否正在保存到云端 (R2 上传或数据库同步)
 
   // Project Actions
   loadProject: (project: Project) => void;
@@ -98,6 +99,7 @@ interface ProjectStore {
   setCanvasPosition: (position: { x: number; y: number }) => void;
   setTimelineMode: (mode: TimelineMode) => void;
   setControlMode: (mode: ControlMode) => void;
+  setIsSaving: (isSaving: boolean) => void;
   toggleLeftSidebar: () => void;
   toggleRightSidebar: () => void;
   setGridResult: (result: GridGenerationResult | null) => void;
@@ -116,7 +118,8 @@ export const useProjectStore = create<ProjectStore>()(
     controlMode: 'agent',
     leftSidebarCollapsed: false,
     rightSidebarCollapsed: false,
-    gridResult: null, // Grid 生成结果初始为 null
+    gridResult: null,
+    isSaving: false,
 
     // Project Actions
     loadProject: (project) =>
@@ -569,6 +572,7 @@ export const useProjectStore = create<ProjectStore>()(
     setCanvasPosition: (position) => set({ canvasPosition: position }),
     setTimelineMode: (mode) => set({ timelineMode: mode }),
     setControlMode: (mode) => set({ controlMode: mode }),
+    setIsSaving: (isSaving) => set({ isSaving }),
     toggleLeftSidebar: () => set((state) => ({ leftSidebarCollapsed: !state.leftSidebarCollapsed })),
     toggleRightSidebar: () => set((state) => ({ rightSidebarCollapsed: !state.rightSidebarCollapsed })),
 

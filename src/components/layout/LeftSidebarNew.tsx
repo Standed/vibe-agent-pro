@@ -34,7 +34,7 @@ type Tab = 'script' | 'storyboard' | 'assets';
 
 export default function LeftSidebarNew() {
   const router = useRouter();
-  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot, deleteShot, deleteScene, updateScene, addCharacter, addLocation, setControlMode, updateShot, reorderShots, updateCharacter } = useProjectStore();
+  const { project, leftSidebarCollapsed, toggleLeftSidebar, selectedShotId, selectShot, currentSceneId, selectScene, updateScript, addScene, addShot, deleteShot, deleteScene, updateScene, addCharacter, addLocation, setControlMode, updateShot, reorderShots, updateCharacter, isSaving } = useProjectStore();
   const [activeTab, setActiveTab] = useState<Tab>('storyboard');
   const [collapsedScenes, setCollapsedScenes] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
@@ -724,9 +724,17 @@ export default function LeftSidebarNew() {
 
       {/* Project Info */}
       <div className="px-6 pb-6">
-        <h2 className="font-bold text-lg text-light-text dark:text-white truncate">
-          {project?.metadata.title || '未命名项目'}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="font-bold text-lg text-light-text dark:text-white truncate">
+            {project?.metadata.title || '未命名项目'}
+          </h2>
+          {isSaving && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-light-accent/10 dark:bg-cine-accent/10 border border-light-accent/20 dark:border-cine-accent/20 animate-pulse">
+              <Loader2 size={10} className="animate-spin text-light-accent dark:text-cine-accent" />
+              <span className="text-[10px] font-medium text-light-accent dark:text-cine-accent">同步中</span>
+            </div>
+          )}
+        </div>
         {project?.metadata.description && (
           <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 line-clamp-2">
             {project.metadata.description}

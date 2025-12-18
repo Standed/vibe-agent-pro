@@ -15,6 +15,7 @@ import type {
 import { AspectRatio } from '@/types/project';
 import { getCurrentUser } from './supabase/auth';
 import { authenticatedFetch } from './api-client';
+import { supabase } from './supabase/client';
 
 interface DataBackend {
   saveProject(project: Project): Promise<void>;
@@ -46,6 +47,10 @@ interface DataBackend {
     sceneId?: string;
     shotId?: string;
   }): Promise<void>;
+  subscribeToChatMessages(
+    projectId: string,
+    callback: (message: ChatMessage) => void
+  ): () => void;
 }
 
 const DEFAULT_SETTINGS: ProjectSettings = {
@@ -116,6 +121,8 @@ class SupabaseBackend implements DataBackend {
       ascending?: boolean;
     };
     single?: boolean;
+    limit?: number;
+    offset?: number;
   }): Promise<any> {
     const maxRetries = 3;
     let lastError: any;
@@ -605,6 +612,8 @@ class SupabaseBackend implements DataBackend {
       filters: apiFilters,
       select: '*',
       order: { column: 'created_at', ascending: true },
+      limit: filters.limit,
+      offset: filters.offset,
     });
 
     return (messages || []).map((msg: any) => ({
@@ -646,6 +655,46 @@ class SupabaseBackend implements DataBackend {
       operation: 'delete',
       filters: apiFilters,
     });
+  }
+
+  subscribeToChatMessages(
+    projectId: string,
+    callback: (message: ChatMessage) => void
+  ): () => void {
+    const channel = supabase
+      .channel(`chat_messages:project_id=eq.${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `project_id=eq.${projectId}`,
+        },
+        (payload) => {
+          const msg = payload.new as any;
+          callback({
+            id: msg.id,
+            userId: msg.user_id,
+            projectId: msg.project_id,
+            sceneId: msg.scene_id || undefined,
+            shotId: msg.shot_id || undefined,
+            scope: msg.scope,
+            role: msg.role,
+            content: msg.content,
+            thought: msg.thought || undefined,
+            metadata: msg.metadata || {},
+            timestamp: new Date(msg.created_at),
+            createdAt: new Date(msg.created_at),
+            updatedAt: new Date(msg.updated_at),
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }
 }
 
@@ -771,6 +820,14 @@ class UnifiedDataService {
   }, userId?: string): Promise<void> {
     await this.ensureInitialized(userId);
     return this.backend!.clearChatHistory(filters);
+  }
+
+  subscribeToChatMessages(
+    projectId: string,
+    callback: (message: ChatMessage) => void
+  ): () => void {
+    // 订阅不需要 ensureInitialized，因为它是通过客户端 supabase 实例直接进行的
+    return new SupabaseBackend('browser-only').subscribeToChatMessages(projectId, callback);
   }
 }
 

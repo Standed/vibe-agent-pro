@@ -201,6 +201,8 @@ npm run dist             # Create distributable packages (dmg/nsis/AppImage)
 **API 路由结构**:
 ```
 src/app/api/
+├── admin/               # Admin management (users, credits, whitelist)
+├── error-report/        # User feedback and bug reports
 ├── gemini-grid/         # Grid multi-view generation (Gemini)
 ├── gemini-image/        # Single image generation
 ├── gemini-text/         # Text generation
@@ -225,6 +227,8 @@ User Action → Component → Store Action → dataService
 - 类型定义: `src/types/project.ts` (所有 TypeScript 类型)
 - 数据服务: `src/lib/dataService.ts` (统一数据层,自动切换 Supabase/IndexedDB)
 - AI 服务: `src/services/geminiService.ts`, `volcanoEngineService.ts`
+- 认证中间件: `src/lib/auth-middleware.ts` (处理积分、白名单、管理员权限)
+- 管理员后台: `src/app/admin/page.tsx`
 - 国际化: `src/locales/zh.ts`, `en.ts`
 
 ### Working with State (状态管理)
@@ -1458,7 +1462,7 @@ if (currentScene && selectedSceneId !== currentScene.id) {
 - `src/components/shot/ShotDetailPanel.tsx` - **分镜详情面板**（oiioii 风格）
 - `src/components/grid/GridPreviewModal.tsx` - Grid 切片预览与分配
 - `src/components/canvas/InfiniteCanvas.tsx` - 无限画布
-- `src/components/layout/Timeline.tsx` - 时间轴编辑器
+- `src/components/layout/Timeline.tsx` - 时间轴编辑器（）
 - `src/components/settings/SettingsPanel.tsx` - 设置面板（主题切换、语言切换）
 
 ### 服务
