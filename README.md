@@ -9,7 +9,9 @@
 
 **AI-Powered Video Production Tool | AI 驱动的影视创作工具**
 
-[Features (中文)](#features) | [Quick Start](#quick-start) | [Usage](#usage) | [Tech Stack](#tech-stack)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Standed/vibe-agent-pro)
+
+[Features (中文)](#features) | [Quick Start](#quick-start) | [Deployment](#deployment) | [Usage](#usage) | [Tech Stack](#tech-stack)
 
 </div>
 
@@ -299,6 +301,38 @@ For detailed feature list, see [FEATURES.md](./FEATURES.md)
 
 ### Agent Not Responding
 - Check `NEXT_PUBLIC_DOUBAO_MODEL_ID` configuration
+
+---
+
+<a name="deployment"></a>
+
+## 🚀 Deployment
+
+### Deploy to Vercel (Recommended)
+
+Click the button below for one-click deployment:
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Standed/vibe-agent-pro)
+
+**Manual Deployment Steps**:
+
+1. Visit [Vercel Import](https://vercel.com/new/import?s=https://github.com/Standed/vibe-agent-pro)
+2. Connect your GitHub account
+3. Configure environment variables (see `.env.example`)
+4. Click "Deploy"
+
+**Required Environment Variables**:
+- Supabase: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- R2 Storage: `R2_BUCKET_NAME`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`, `NEXT_PUBLIC_R2_PUBLIC_URL`
+- Gemini API: `GEMINI_TEXT_API_KEY`, `GEMINI_IMAGE_API_KEY`, `GEMINI_AGENT_API_KEY`
+- Volcano Engine: `NEXT_PUBLIC_VOLCANO_API_KEY`, model IDs for SeeDream/SeeDance/Doubao
+
+**Post-Deployment**:
+- Auto-deploy on every push to `main` branch
+- Preview deployments for PRs
+- Custom domain configuration available
+
+For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 
 ---
 
