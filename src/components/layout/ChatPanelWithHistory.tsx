@@ -9,9 +9,12 @@ import {
   Upload,
   Grid3x3,
   History,
-  Clock
+  Clock,
+  Bug,
+  MessageSquare
 } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
+import Image from 'next/image';
 import { useProjectStore } from '@/store/useProjectStore';
 import { generateMultiViewGrid, generateSingleImage, editImageWithGemini, urlsToReferenceImages } from '@/services/geminiService';
 import { AspectRatio, ImageSize, GenerationHistoryItem, GridHistoryItem, Character, Location, GridGenerationResult } from '@/types/project';
@@ -97,6 +100,39 @@ export default function ChatPanelWithHistory() {
   // Grid specific state
   const [gridSize, setGridSize] = useState<'2x2' | '3x3'>('2x2');
   // gridResult 现在从 store 获取，不再使用本地状态
+
+  const handleFeedback = async () => {
+    const content = window.prompt('请输入您的反馈或遇到的问题：');
+    if (!content || !content.trim()) return;
+
+    const context = {
+      projectId: project?.id,
+      selectedShotId,
+      currentSceneId,
+      lastMessages: messages.slice(-5).map(m => ({ role: m.role, content: m.content.slice(0, 100) })),
+      url: window.location.href,
+    };
+
+    try {
+      const resp = await fetch('/api/error-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'feedback',
+          content,
+          context,
+        }),
+      });
+
+      if (resp.ok) {
+        toast.success('反馈已提交，我们会尽快处理！');
+      } else {
+        toast.error('提交失败，请稍后重试');
+      }
+    } catch (err) {
+      toast.error('提交失败，网络异常');
+    }
+  };
   const { user } = useAuth();
 
   const requireAuthForAI = () => {
@@ -232,6 +268,54 @@ export default function ChatPanelWithHistory() {
     setMentionedAssets({ characters: [], locations: [] });
     setInputText(''); // 避免跨镜头残留提示词
     setManualReferenceUrls([]);
+  }, [project?.id, selectedShotId, currentSceneId, user]);
+
+  // 实时订阅新消息
+  useEffect(() => {
+    if (!project?.id || !user) return;
+
+    console.log(`[ChatPanelWithHistory] 📡 开启实时订阅: project=${project.id}`);
+
+    const unsubscribe = dataService.subscribeToChatMessages(project.id, (newMsg) => {
+      // 检查消息是否属于当前上下文
+      let isRelevant = false;
+      if (selectedShotId) {
+        isRelevant = newMsg.shotId === selectedShotId;
+      } else if (currentSceneId) {
+        isRelevant = newMsg.sceneId === currentSceneId && !newMsg.shotId;
+      } else {
+        isRelevant = newMsg.scope === 'project' && !newMsg.sceneId && !newMsg.shotId;
+      }
+
+      if (isRelevant) {
+        console.log('[ChatPanelWithHistory] ✨ 收到相关新消息:', newMsg.id);
+
+        setMessages(prev => {
+          // 避免重复添加
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+
+          const converted: ChatMessage = {
+            id: newMsg.id,
+            role: newMsg.role as 'user' | 'assistant',
+            content: newMsg.content,
+            timestamp: new Date(newMsg.createdAt),
+            images: newMsg.metadata?.images as string[] | undefined,
+            referenceImages: newMsg.metadata?.referenceImages as string[] | undefined,
+            model: newMsg.metadata?.model as GenerationModel | undefined,
+            shotId: newMsg.shotId,
+            sceneId: newMsg.sceneId,
+            gridData: newMsg.metadata?.gridData as ChatMessage['gridData'] | undefined,
+          };
+
+          return [...prev, converted];
+        });
+      }
+    });
+
+    return () => {
+      console.log('[ChatPanelWithHistory] 🛑 关闭实时订阅');
+      unsubscribe();
+    };
   }, [project?.id, selectedShotId, currentSceneId, user]);
 
   // 选中未生成图片的镜头时，自动把分镜描述填入输入框，便于直接生成
@@ -1360,12 +1444,15 @@ export default function ChatPanelWithHistory() {
             {msg.images && msg.images.length > 0 && (
               <div className="mb-2 grid grid-cols-2 gap-2">
                 {msg.images.map((img, idx) => (
-                  <img
-                    key={idx}
-                    src={img}
-                    alt={`Upload ${idx + 1}`}
-                    className="rounded-lg border border-light-border dark:border-cine-border max-h-32 object-cover"
-                  />
+                  <div key={idx} className="relative aspect-video rounded-lg border border-light-border dark:border-cine-border overflow-hidden">
+                    <Image
+                      src={img}
+                      alt={`Upload ${idx + 1}`}
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
                 ))}
               </div>
             )}
@@ -1392,11 +1479,13 @@ export default function ChatPanelWithHistory() {
               <div className="mt-3 space-y-2">
                 {msg.images.map((img, idx) => (
                   <div key={idx} className="space-y-2">
-                    <div className="relative group">
-                      <img
+                    <div className="relative group aspect-video rounded-lg border border-light-border dark:border-cine-border overflow-hidden cursor-pointer hover:border-light-accent dark:hover:border-cine-accent transition-colors">
+                      <Image
                         src={img}
                         alt={`Result ${idx + 1}`}
-                        className="rounded-lg border border-light-border dark:border-cine-border w-full cursor-pointer hover:border-light-accent dark:hover:border-cine-accent transition-colors"
+                        fill
+                        className="object-cover"
+                        unoptimized
                         onClick={() => {
                           if (msg.gridData?.fullImage && msg.gridData?.slices?.length) {
                             const rows = msg.gridData.gridRows || (gridSize === '3x3' ? 3 : 2);
@@ -1553,15 +1642,25 @@ export default function ChatPanelWithHistory() {
                     : '未选择镜头或场景'}
               </p>
             </div>
-            {!showHistory && generationHistory.length > 0 && (
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowHistory(true)}
+                onClick={handleFeedback}
                 className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-black/5 dark:bg-white/10 text-gray-700 dark:text-gray-200 hover:bg-black/10 dark:hover:bg-white/20 transition-all"
+                title="反馈问题"
               >
-                <History size={14} />
-                显示历史
+                <Bug size={14} />
+                反馈
               </button>
-            )}
+              {!showHistory && generationHistory.length > 0 && (
+                <button
+                  onClick={() => setShowHistory(true)}
+                  className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-black/5 dark:bg-white/10 text-gray-700 dark:text-gray-200 hover:bg-black/10 dark:hover:bg-white/20 transition-all"
+                >
+                  <History size={14} />
+                  显示历史
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

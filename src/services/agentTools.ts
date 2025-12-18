@@ -335,6 +335,7 @@ export interface StoreCallbacks {
   addScene?: (scene: Scene) => void;
   addShot?: (shot: Shot) => void;
   renumberScenesAndShots?: () => void;
+  setSavingStatus?: (isSaving: boolean) => void;
 }
 
 /**
@@ -344,6 +345,7 @@ export class AgentToolExecutor {
   private project: Project | null;
   private storeCallbacks?: StoreCallbacks;
   private userId?: string;
+  private pendingTasks: number = 0;
 
   constructor(project: Project | null, storeCallbacks?: StoreCallbacks, userId?: string) {
     this.project = project;
@@ -510,6 +512,26 @@ export class AgentToolExecutor {
       console.log(`[AgentTools] ✅ Pro chat message synced for shot ${shotId}, model: ${modelKey}, sceneId: ${sceneId}`);
     } catch (err) {
       console.error('[AgentTools] ❌ Failed to sync Pro chat message:', err);
+    }
+  }
+
+  /**
+   * 增加后台任务计数
+   */
+  private incrementPendingTasks() {
+    this.pendingTasks++;
+    if (this.pendingTasks === 1 && this.storeCallbacks?.setSavingStatus) {
+      this.storeCallbacks.setSavingStatus(true);
+    }
+  }
+
+  /**
+   * 减少后台任务计数
+   */
+  private decrementPendingTasks() {
+    this.pendingTasks = Math.max(0, this.pendingTasks - 1);
+    if (this.pendingTasks === 0 && this.storeCallbacks?.setSavingStatus) {
+      this.storeCallbacks.setSavingStatus(false);
     }
   }
 
@@ -1098,6 +1120,7 @@ export class AgentToolExecutor {
 
       // 3. Background Upload (后台上传 R2，成功后再次更新 Store)
       // 不使用 await，让 Agent 立即返回
+      this.incrementPendingTasks();
       this.persistImageToR2InBackground(imageUrl, `projects/${this.project.id}/shots/${shotId}`, `${mode}_${Date.now()}.png`)
         .then(r2Url => {
           if (this.storeCallbacks) {
@@ -1114,7 +1137,8 @@ export class AgentToolExecutor {
             aspectRatio: aspectRatio,
           }, modelName, enrichedPrompt);
         })
-        .catch(err => console.error(`[AgentTools] Background upload failed for shot ${shotId}:`, err));
+        .catch(err => console.error(`[AgentTools] Background upload failed for shot ${shotId}:`, err))
+        .finally(() => this.decrementPendingTasks());
 
       // 4. Return Sanitized Result
       return {
@@ -1464,6 +1488,7 @@ export class AgentToolExecutor {
     const folderBase = `projects/${this.project!.id}/scenes/${sceneId}/grid_${Date.now()}`;
 
     // Start background upload task
+    this.incrementPendingTasks();
     (async () => {
       try {
         // Upload full grid
@@ -1497,6 +1522,8 @@ export class AgentToolExecutor {
         }
       } catch (err) {
         console.error('[AgentTools] 场景 Grid 后台上传 R2 失败:', err);
+      } finally {
+        this.decrementPendingTasks();
       }
     })();
 

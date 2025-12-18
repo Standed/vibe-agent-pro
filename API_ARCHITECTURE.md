@@ -10,9 +10,10 @@
 
 1. **API Key 隐藏** - 所有外部 API 调用通过 Next.js API Routes 代理
 2. **统一认证** - 使用 `authenticatedFetch()` 自动添加认证 header
-3. **积分系统** - 所有 AI 操作需要消耗积分
-4. **请求可取消** - 支持 AbortController 中止进行中的请求
-5. **错误重试** - 自动重试机制，处理限流和网络错误
+3. **白名单拦截** - 内测期间仅限白名单用户使用 AI 功能
+4. **积分系统** - 所有 AI 操作需要消耗积分，管理员免费，VIP 8 折
+5. **请求可取消** - 支持 AbortController 中止进行中的请求
+6. **错误重试** - 自动重试机制，处理限流和网络错误
 
 ---
 
@@ -116,10 +117,10 @@ export async function authenticateRequest(request: NextRequest) {
     return { error: NextResponse.json({ error: '认证失败' }, { status: 401 }) };
   }
 
-  // 3. 获取用户 profile（包括积分和角色）
+  // 3. 获取用户 profile（包括积分、角色、白名单状态）
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('id, email, role, credits')
+    .select('id, email, role, credits, is_whitelisted')
     .eq('id', user.id)
     .single();
 
@@ -128,21 +129,29 @@ export async function authenticateRequest(request: NextRequest) {
     const userRole = getUserRoleByEmail(user.email);
     const initialCredits = getInitialCredits(userRole);
 
-    await supabaseAdmin.from('profiles').insert({
+    const { data: newProfile } = await supabaseAdmin.from('profiles').insert({
       id: user.id,
       email: user.email,
       role: userRole,
       credits: initialCredits,
-    });
+      is_whitelisted: userRole === 'admin', // 管理员默认开启白名单
+    }).select().single();
+    
+    return { user: newProfile };
   }
 
-  // 5. 返回用户信息
+  // 5. 提权逻辑：如果邮箱在硬编码管理员列表中，强制赋予 admin 角色
+  const isAdminEmail = getUserRoleByEmail(user.email) === 'admin';
+  const effectiveRole = isAdminEmail ? 'admin' : profile.role;
+
+  // 6. 返回用户信息
   return {
     user: {
       id: profile.id,
       email: profile.email,
-      role: profile.role,
+      role: effectiveRole as 'user' | 'admin' | 'vip',
       credits: profile.credits,
+      isWhitelisted: profile.is_whitelisted || effectiveRole === 'admin',
     },
   };
 }
@@ -159,19 +168,18 @@ export async function authenticateRequest(request: NextRequest) {
 ```typescript
 export const CREDITS_CONFIG = {
   // Gemini 系列
-  GEMINI_GRID_2X2: 5,        // 2x2 Grid 生成
-  GEMINI_GRID_3X3: 10,       // 3x3 Grid 生成
-  GEMINI_IMAGE: 8,           // 单张图片生成
-  GEMINI_TEXT: 2,            // 文本生成
+  GEMINI_GRID: 20,           // Grid 生成 (统一 20 积分)
+  GEMINI_IMAGE: 10,          // 单张图片生成
+  GEMINI_TEXT: 3,            // 文本生成
   GEMINI_ANALYZE: 3,         // 图片分析
-  GEMINI_EDIT: 5,            // 图片编辑
+  GEMINI_EDIT: 10,           // 图片编辑
 
   // SeeDream 系列
-  SEEDREAM_GENERATE: 12,     // SeeDream 图片生成
-  SEEDREAM_EDIT: 10,         // SeeDream 图片编辑
+  SEEDREAM_GENERATE: 3,      // SeeDream 图片生成
+  SEEDREAM_EDIT: 3,          // SeeDream 图片编辑
 
   // 火山引擎系列
-  VOLCANO_VIDEO: 50,         // 视频生成 (较贵)
+  VOLCANO_VIDEO: 50,         // 视频生成
 };
 
 // VIP 用户 8 折
@@ -582,5 +590,5 @@ catch (error: any) {
 
 ---
 
-**最后更新**: 2025-12-17
+**最后更新**: 2025-12-18
 **维护者**: Claude Code + 西羊石团队

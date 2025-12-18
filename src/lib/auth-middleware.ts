@@ -23,6 +23,7 @@ export interface AuthenticatedUser {
   email: string;
   role: 'user' | 'admin' | 'vip';
   credits: number;
+  isWhitelisted: boolean;
 }
 
 const SESSION_COOKIE_NAME = 'supabase-session';
@@ -135,16 +136,23 @@ export async function authenticateRequest(
           email: newProfile.email,
           role: newProfile.role as 'user' | 'admin' | 'vip',
           credits: newProfile.credits,
+          isWhitelisted: (newProfile as any).is_whitelisted || newProfile.role === 'admin',
         },
       };
     }
+
+    // 🔧 提权逻辑：如果邮箱在硬编码的管理员列表中，但数据库记录不是 admin，直接提权
+    const userEmail = user.email || '';
+    const isAdminEmail = getUserRoleByEmail(userEmail) === 'admin';
+    const effectiveRole = isAdminEmail ? 'admin' : profile.role;
 
     return {
       user: {
         id: profile.id,
         email: profile.email,
-        role: profile.role,
+        role: effectiveRole as 'user' | 'admin' | 'vip',
         credits: profile.credits,
+        isWhitelisted: (profile as any).is_whitelisted || effectiveRole === 'admin',
       },
     };
   } catch (error: any) {
@@ -173,6 +181,24 @@ export function checkCredits(
           currentCredits: user.credits,
           requiredCredits,
         },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return { success: true };
+}
+
+/**
+ * 检查用户是否在白名单中
+ */
+export function checkWhitelist(
+  user: AuthenticatedUser
+): { success: true } | { error: NextResponse } {
+  if (!user.isWhitelisted) {
+    return {
+      error: NextResponse.json(
+        { error: '您的账号尚未获得内测权限，请联系管理员开通白名单' },
         { status: 403 }
       ),
     };
@@ -224,5 +250,70 @@ export async function consumeCredits(
   } catch (error: any) {
     console.error('Exception in consumeCredits:', error);
     return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 频率限制检查 (Rate Limiting)
+ * 使用数据库字段实现简单的每分钟计数
+ */
+export async function checkRateLimit(
+  userId: string,
+  type: 'chat' | 'image',
+  limit: number
+): Promise<{ success: true } | { error: NextResponse }> {
+  try {
+    const now = new Date();
+    const { data: profile, error } = await supabaseAdmin
+      .from('profiles')
+      .select('last_chat_at, chat_count_in_min, last_image_at, image_count_in_min')
+      .eq('id', userId)
+      .single();
+
+    if (error || !profile) {
+      return { success: true }; // 容错：如果查不到，放行
+    }
+
+    const lastAtField = type === 'chat' ? 'last_chat_at' : 'last_image_at';
+    const countField = type === 'chat' ? 'chat_count_in_min' : 'image_count_in_min';
+
+    const lastAt = (profile as any)[lastAtField] ? new Date((profile as any)[lastAtField] as string) : null;
+    let count = (profile as any)[countField] || 0;
+
+    // 检查是否在同一分钟内
+    const isSameMinute = lastAt &&
+      now.getFullYear() === lastAt.getFullYear() &&
+      now.getMonth() === lastAt.getMonth() &&
+      now.getDate() === lastAt.getDate() &&
+      now.getHours() === lastAt.getHours() &&
+      now.getMinutes() === lastAt.getMinutes();
+
+    if (isSameMinute) {
+      if (count >= limit) {
+        return {
+          error: NextResponse.json(
+            { error: `请求过于频繁，${type === 'chat' ? '聊天' : '图片生成'}每分钟限额 ${limit} 次` },
+            { status: 429 }
+          ),
+        };
+      }
+      count += 1;
+    } else {
+      count = 1;
+    }
+
+    // 更新数据库
+    await (supabaseAdmin as any)
+      .from('profiles')
+      .update({
+        [lastAtField]: now.toISOString(),
+        [countField]: count
+      })
+      .eq('id', userId);
+
+    return { success: true };
+  } catch (err) {
+    console.error('[RateLimit] 检查失败:', err);
+    return { success: true }; // 异常时放行，保证可用性
   }
 }
