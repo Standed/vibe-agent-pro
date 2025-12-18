@@ -644,7 +644,7 @@ export async function processUserCommand(
           contents,
           tools,
           generationConfig: {
-            temperature: 1.0, // 统一使用 temperature=1.0
+            temperature: 0.3, // Agent推理需要精确性，使用较低的temperature
             maxOutputTokens: MAX_OUTPUT_TOKENS,
           }
         },
@@ -784,7 +784,7 @@ export async function continueWithToolResults(
           contents,
           tools,
           generationConfig: {
-            temperature: 1.0, // 统一使用 temperature=1.0
+            temperature: 0.3, // Agent推理需要精确性，使用较低的temperature
             maxOutputTokens: MAX_OUTPUT_TOKENS,
           }
         },
