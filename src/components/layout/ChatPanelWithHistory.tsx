@@ -1371,7 +1371,7 @@ export default function ChatPanelWithHistory() {
             )}
             <div className="bg-black/5 dark:bg-white/10 text-light-text dark:text-white rounded-2xl rounded-tr-sm px-4 py-3 backdrop-blur-md border border-black/5 dark:border-white/5">
               <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-              <div className="text-xs opacity-50 mt-1">
+              <div className="text-[10px] text-light-text-muted dark:text-cine-text-muted mt-1.5 font-medium">
                 {msg.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
@@ -1456,10 +1456,10 @@ export default function ChatPanelWithHistory() {
                 ))}
               </div>
             )}
-            <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-2">
+            <div className="text-[10px] text-light-text-muted dark:text-cine-text-muted mt-2 font-medium">
               {msg.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
               {msg.model && (
-                <span className="ml-2">
+                <span className="ml-2 opacity-80">
                   · {msg.model === 'seedream' ? 'SeeDream' : msg.model === 'gemini-direct' ? 'Gemini 直出' : 'Gemini Grid'}
                 </span>
               )}
