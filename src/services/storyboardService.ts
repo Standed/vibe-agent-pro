@@ -4,7 +4,7 @@
 import type { Shot, Scene } from '@/types/project';
 import { securePromptExecution, filterAIOutput } from '@/utils/promptSecurity';
 
-const MODEL_FULL = 'gemini-3-pro-preview'; // AI自动分镜使用 Pro 模型
+const MODEL_FULL = process.env.GEMINI_STORYBOARD_MODEL || 'gemini-3-pro-preview'; // AI自动分镜模型
 const GEMINI_ROUTE = '/api/gemini-generate';
 
 export interface CharacterDesign {

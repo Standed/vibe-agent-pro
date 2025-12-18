@@ -26,7 +26,12 @@
 
 **模型配置**：
 ```typescript
-const MODEL_FULL = 'gemini-3-pro-preview';
+const MODEL_FULL = process.env.GEMINI_STORYBOARD_MODEL || 'gemini-3-pro-preview';
+```
+
+**环境变量**：
+```env
+GEMINI_STORYBOARD_MODEL=gemini-3-pro-preview
 ```
 
 **为什么使用 Pro**：
@@ -44,11 +49,16 @@ const MODEL_FULL = 'gemini-3-pro-preview';
 
 **模型配置**：
 ```typescript
-const GEMINI_MODEL = 'gemini-3-pro-preview';
+const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3-pro-preview';
 generationConfig: {
   temperature: 0.3, // Agent推理需要精确性，使用较低的temperature
   maxOutputTokens: MAX_OUTPUT_TOKENS,
 }
+```
+
+**环境变量**：
+```env
+GEMINI_AGENT_MODEL=gemini-3-pro-preview
 ```
 
 **为什么使用 Pro + 低temperature**：
@@ -93,8 +103,13 @@ generationConfig: {
 
 **模型配置**：
 ```typescript
-const GEMINI_TEXT_MODEL = 'gemini-3-pro-preview';
+const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
 temperature: 1.0
+```
+
+**环境变量**：
+```env
+GEMINI_TEXT_MODEL=gemini-3-pro-preview
 ```
 
 ---
@@ -165,14 +180,33 @@ src/app/api/
 
 ## 🔄 环境变量配置
 
-可以通过环境变量覆盖默认模型：
+可以通过环境变量覆盖默认模型（按功能区分，灵活配置）：
 
 ```env
-# 文本/推理模型（默认：gemini-3-pro-preview）
+# AI自动分镜（5步流程）
+GEMINI_STORYBOARD_MODEL=gemini-3-pro-preview
+
+# Agent推理模式（工具调用）
+GEMINI_AGENT_MODEL=gemini-3-pro-preview
+
+# 通用文本生成
 GEMINI_TEXT_MODEL=gemini-3-pro-preview
 
-# 图片生成模型（默认：gemini-3-pro-image-preview）
+# 图片分析
+GEMINI_ANALYZE_MODEL=gemini-3-pro-preview
+
+# 图片生成（Gemini直出、Grid多视图、图片编辑）
 GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
+```
+
+**灵活配置示例**：
+```env
+# 假设未来Flash模型可用，可以这样分配：
+GEMINI_STORYBOARD_MODEL=gemini-3-flash-preview  # 分镜用Flash（快速）
+GEMINI_AGENT_MODEL=gemini-3-pro-preview         # Agent用Pro（精确）
+GEMINI_TEXT_MODEL=gemini-3-flash-preview        # 文本用Flash（经济）
+GEMINI_ANALYZE_MODEL=gemini-3-flash-preview     # 分析用Flash（快速）
+GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview   # 图片用Pro Image（质量）
 ```
 
 ---
@@ -205,12 +239,17 @@ GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
 
 ### Q: 如何调整模型配置？
 **A**:
-1. **推荐方式**：在 `.env.local` 中设置环境变量（优先级最高）
+1. **推荐方式**：在 `.env.local` 中按功能设置独立的环境变量（优先级最高）
    ```env
+   # 分别配置不同功能的模型
+   GEMINI_STORYBOARD_MODEL=gemini-3-pro-preview
+   GEMINI_AGENT_MODEL=gemini-3-pro-preview
    GEMINI_TEXT_MODEL=gemini-3-pro-preview
+   GEMINI_ANALYZE_MODEL=gemini-3-pro-preview
    GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
    ```
-2. 代码层兜底：项目中的默认值仅作为后备，不建议直接修改硬编码
+2. **代码层兜底**：项目中的默认值（`|| 'gemini-3-pro-preview'`）仅作为后备，不建议直接修改硬编码
+3. **灵活配置**：不同功能可以使用不同模型，例如Agent用Pro保证精确性，分镜用Flash提升速度（当Flash可用时）
 
 ---
 
