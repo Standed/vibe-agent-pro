@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { authenticateRequest } from '@/lib/auth-middleware';
+import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
+import type { Database } from '@/lib/supabase/database.types';
 
 // 使用 Service Role Key（服务端安全，绕过 RLS）
-const supabaseAdmin = createClient(
+const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   {
@@ -217,6 +218,12 @@ export async function POST(request: NextRequest) {
         { error: `不允许的操作: ${operation}` },
         { status: 403 }
       );
+    }
+
+    // 🔒 白名单检查：非查询操作必须在白名单中
+    if (operation !== 'select') {
+      const whitelistCheck = checkWhitelist(user);
+      if ('error' in whitelistCheck) return whitelistCheck.error;
     }
 
     // 校验 userId / 过滤条件中的 UUID，提前阻断 Supabase 的 22P02 错误

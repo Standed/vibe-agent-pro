@@ -8,14 +8,14 @@ import LeftSidebarNew from '@/components/layout/LeftSidebarNew';
 import InfiniteCanvas from '@/components/canvas/InfiniteCanvas';
 import RightPanel from '@/components/layout/RightPanel';
 import { useI18n } from '@/components/providers/I18nProvider';
-import { useAuth } from '@/components/auth/AuthProvider';
+import { useAuth, useRequireWhitelist } from '@/components/auth/AuthProvider';
 
 export function ProjectEditorClient() {
     const params = useParams();
     const router = useRouter();
     const { t } = useI18n();
     const { project, loadProject: loadProjectToStore } = useProjectStore();
-    const { user, loading: authLoading } = useAuth();
+    const { user, profile, signOut, loading: authLoading } = useRequireWhitelist();
     const [isLoadingProject, setIsLoadingProject] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
 

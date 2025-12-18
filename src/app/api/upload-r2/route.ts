@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
+import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 // 初始化 R2 客户端（兼容 S3 API）
@@ -34,6 +34,10 @@ export async function POST(request: NextRequest) {
   }
   const { user } = authResult;
 
+  // 🔒 白名单检查
+  const whitelistCheck = checkWhitelist(user);
+  if ('error' in whitelistCheck) return whitelistCheck.error;
+
   // 2. 计算所需积分
   const requiredCredits = calculateCredits('UPLOAD_PROCESS', user.role);
   const operationDesc = getOperationDescription('UPLOAD_PROCESS');
@@ -48,7 +52,6 @@ export async function POST(request: NextRequest) {
   console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}, credits: ${user.credits}, cost: ${requiredCredits}`);
 
   try {
-
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const folder = formData.get('folder') as string;
@@ -126,7 +129,6 @@ export async function DELETE(request: NextRequest) {
   const { user } = authResult;
 
   try {
-
     const { key } = await request.json();
 
     if (!key) {

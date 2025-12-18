@@ -26,6 +26,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [generationPrompt, setGenerationPrompt] = useState('');
   const [aspectRatio, setAspectRatio] = useState<'21:9' | '16:9'>('21:9');
+  const [genMode, setGenMode] = useState<'seedream' | 'gemini'>('gemini');
   const [isGenerating, setIsGenerating] = useState(false);
   const [mounted, setMounted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -127,9 +128,19 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
 
     setIsGenerating(true);
     try {
-      const volcanoService = VolcanoEngineService.getInstance();
+      let base64Url = '';
 
-      const base64Url = await volcanoService.generateSingleImage(prompt, aspectRatio);
+      if (genMode === 'seedream') {
+        const volcanoService = VolcanoEngineService.getInstance();
+        base64Url = await volcanoService.generateSingleImage(prompt, aspectRatio);
+      } else {
+        // Gemini Direct
+        const { generateCharacterThreeView } = await import('@/services/geminiService');
+        const { urlsToReferenceImages } = await import('@/services/geminiService');
+        const refImages = await urlsToReferenceImages(referenceImages);
+        // 修正：使用 UI 中选择的 aspectRatio，Gemini 模式下三视图通常推荐 21:9
+        base64Url = await generateCharacterThreeView(prompt, 'Cinematic', refImages, aspectRatio);
+      }
 
       // 1. Immediate UI update (Base64)
       setReferenceImages(prev => [...prev, base64Url]);
@@ -367,6 +378,22 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                 <span className="text-[11px] text-light-text-muted dark:text-cine-text-muted">
                   选择生成比例
                 </span>
+                <div className="flex items-center gap-1 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setGenMode('gemini')}
+                    className={`px-2 py-1 text-[10px] rounded transition-colors ${genMode === 'gemini' ? 'bg-light-accent dark:bg-cine-accent text-white' : 'bg-light-bg dark:bg-cine-panel text-light-text-muted dark:text-cine-text-muted border border-light-border dark:border-cine-border'}`}
+                  >
+                    Gemini (推荐)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGenMode('seedream')}
+                    className={`px-2 py-1 text-[10px] rounded transition-colors ${genMode === 'seedream' ? 'bg-light-accent dark:bg-cine-accent text-white' : 'bg-light-bg dark:bg-cine-panel text-light-text-muted dark:text-cine-text-muted border border-light-border dark:border-cine-border'}`}
+                  >
+                    SeeDream
+                  </button>
+                </div>
               </div>
               <div className="mt-3">
                 <label className="block text-xs text-light-text-muted dark:text-cine-text-muted mb-1">

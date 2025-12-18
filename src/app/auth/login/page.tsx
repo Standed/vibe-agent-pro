@@ -30,6 +30,21 @@ export default function LoginPage() {
     }
   }, [user, loading, redirectTo, router]);
 
+  // 处理 URL 中的错误信息（如白名单拦截）
+  useEffect(() => {
+    const error = searchParams.get('error');
+    if (error) {
+      // 使用 setTimeout 确保 toast 在页面渲染后显示
+      const timer = setTimeout(() => {
+        toast.error(error, {
+          duration: 5000,
+          id: 'auth-error' // 防止重复
+        });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -105,6 +120,12 @@ export default function LoginPage() {
           <p className="text-zinc-400">登录你的账号</p>
         </div>
 
+        {searchParams.get('error') && (
+          <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 text-red-500 text-sm text-center animate-in fade-in slide-in-from-top-2 duration-300">
+            {searchParams.get('error')}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="mt-8 space-y-6">
           <div className="space-y-4">
             <div>
@@ -161,8 +182,14 @@ export default function LoginPage() {
             {loading ? '登录中...' : '登录'}
           </button>
 
-          <div className="text-center text-sm text-zinc-400">
-            注册暂未对外开放，如需开通请联系管理员。
+          <div className="text-center text-sm">
+            <span className="text-zinc-400">还没有账号？</span>{' '}
+            <Link
+              href="/auth/register"
+              className="text-white/70 hover:text-white font-medium"
+            >
+              立即注册
+            </Link>
           </div>
         </form>
       </div>

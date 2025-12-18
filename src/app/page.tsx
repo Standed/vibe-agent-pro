@@ -12,7 +12,7 @@ import NewProjectDialog from '@/components/project/NewProjectDialog';
 import { useProjectStore } from '@/store/useProjectStore';
 import { dataService } from '@/lib/dataService';
 import type { Project } from '@/types/project';
-import { useAuth } from '@/components/auth/AuthProvider';
+import { useAuth, useRequireWhitelist } from '@/components/auth/AuthProvider';
 import { toast } from 'sonner';
 
 export default function Home() {
@@ -23,7 +23,7 @@ export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const { user, profile, signOut, loading: authLoading } = useAuth();
+  const { user, profile, signOut, loading: authLoading } = useRequireWhitelist();
 
   // 加载所有项目（当用户状态变化时重新加载）
   useEffect(() => {
@@ -157,48 +157,12 @@ export default function Home() {
   const handleSignOut = async () => {
     try {
       console.log('[HomePage] 开始退出登录...');
-
-      // 直接清除所有认证相关的 cookies 和存储，不等待 Supabase signOut()
-      // 因为 signOut() 在使用内存存储时可能会挂起
-      if (typeof document !== 'undefined') {
-        // 清除会话 cookie
-        document.cookie = 'supabase-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-        console.log('[HomePage] ✅ 已清除会话 cookie');
-      }
-
-      // 尝试调用 signOut 并等待完成（最多等待 2 秒）
-      const signOutPromise = signOut();
-      const timeoutPromise = new Promise(resolve => setTimeout(resolve, 2000));
-      await Promise.race([signOutPromise, timeoutPromise]).catch(err => {
-        console.warn('[HomePage] signOut() 调用失败:', err);
-      });
-
-      // 双重保障：手动清理 localStorage
-      if (typeof window !== 'undefined') {
-        // 清理 Supabase 相关的 localStorage
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        if (supabaseUrl) {
-          const projectRef = supabaseUrl.split('.')[0].split('//')[1];
-          window.localStorage.removeItem(`sb-${projectRef}-auth-token`);
-        }
-
-        // 清理所有可能相关的项
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && (key.startsWith('sb-') || key.includes('supabase'))) {
-            localStorage.removeItem(key);
-          }
-        }
-      }
-
+      await signOut();
       toast.info('已退出登录');
-
       // 强制跳转到登录页
       window.location.href = '/auth/login';
     } catch (err) {
       console.error('[HomePage] 退出失败:', err);
-      toast.error('退出失败，请重试');
-      // 即使出错也尝试强制跳转
       window.location.href = '/auth/login';
     }
   };

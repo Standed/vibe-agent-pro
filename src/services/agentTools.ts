@@ -5,7 +5,7 @@
 
 import { Project, Scene, Shot, AspectRatio, ImageSize, GenerationHistoryItem, GridHistoryItem } from '@/types/project';
 import { VolcanoEngineService } from './volcanoEngineService';
-import { generateMultiViewGrid, generateSingleImage, urlsToReferenceImages } from './geminiService';
+import { generateMultiViewGrid, generateSingleImage, generateCharacterThreeView, urlsToReferenceImages } from './geminiService';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import { useProjectStore } from '@/store/useProjectStore';
 import { storageService } from '@/lib/storageService';
@@ -322,6 +322,28 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       },
       required: ['sceneId', 'count']
     }
+  },
+  {
+    name: 'generateCharacterThreeView',
+    description: '为指定角色生成三视图（正面、侧面、背面），用于角色设计一致性',
+    parameters: {
+      type: 'object',
+      properties: {
+        characterId: {
+          type: 'string',
+          description: '角色的ID'
+        },
+        prompt: {
+          type: 'string',
+          description: '额外的设计要求（可选，如不提供则使用角色描述和外貌描述）'
+        },
+        artStyle: {
+          type: 'string',
+          description: '艺术风格（可选，默认使用项目设定的风格）'
+        }
+      },
+      required: ['characterId']
+    }
   }
 ];
 
@@ -404,6 +426,12 @@ export class AgentToolExecutor {
             toolCall.arguments.count,
             toolCall.arguments.description,
             toolCall.arguments.shots
+          );
+        case 'generateCharacterThreeView':
+          return await this.generateCharacterThreeView(
+            toolCall.arguments.characterId,
+            toolCall.arguments.prompt,
+            toolCall.arguments.artStyle
           );
 
         default:
@@ -1631,6 +1659,75 @@ export class AgentToolExecutor {
         result: null,
         success: false,
         error: error.message || '批量生成失败'
+      };
+    }
+  }
+
+  /**
+   * Generate a character three-view (front, side, back)
+   */
+  private async generateCharacterThreeView(
+    characterId: string,
+    prompt?: string,
+    artStyle?: string
+  ): Promise<ToolResult> {
+    if (!this.project) {
+      return {
+        tool: 'generateCharacterThreeView',
+        result: null,
+        success: false,
+        error: '项目不存在'
+      };
+    }
+
+    const character = this.project.characters.find(c => c.id === characterId);
+    if (!character) {
+      return {
+        tool: 'generateCharacterThreeView',
+        result: null,
+        success: false,
+        error: `角色 ${characterId} 不存在`
+      };
+    }
+
+    try {
+      const designPrompt = prompt || `${character.name}: ${character.description}. ${character.appearance}`;
+      const style = artStyle || this.project.metadata.artStyle || 'Cinematic';
+
+      // Get reference images if any
+      const refImages = await urlsToReferenceImages(character.referenceImages || []);
+
+      // Generate Three-View
+      const imageUrl = await generateCharacterThreeView(designPrompt, style, refImages);
+
+      // Background Upload to R2
+      this.incrementPendingTasks();
+      this.persistImageToR2InBackground(imageUrl, `projects/${this.project.id}/characters/${characterId}`, `three_view_${Date.now()}.png`)
+        .then(r2Url => {
+          // Optional: Update character reference images in store if needed
+          // Currently we just return the result to the user
+          console.log(`[AgentTools] Character three-view uploaded: ${r2Url}`);
+        })
+        .catch(err => console.error('[AgentTools] Character three-view upload failed:', err))
+        .finally(() => this.decrementPendingTasks());
+
+      return {
+        tool: 'generateCharacterThreeView',
+        result: sanitizeForToolOutput({
+          characterId,
+          characterName: character.name,
+          imageUrl,
+          prompt: designPrompt,
+          style
+        }),
+        success: true
+      };
+    } catch (error: any) {
+      return {
+        tool: 'generateCharacterThreeView',
+        result: null,
+        success: false,
+        error: error.message || '角色三视图生成失败'
       };
     }
   }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ProxyAgent, fetch as undiciFetch, Agent } from 'undici';
-import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
+import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 export const runtime = 'nodejs';
@@ -20,6 +20,10 @@ export async function POST(request: NextRequest) {
   const authResult = await authenticateRequest(request);
   if ('error' in authResult) return authResult.error;
   const { user } = authResult;
+
+  // 白名单检查
+  const whitelistCheck = checkWhitelist(user);
+  if ('error' in whitelistCheck) return whitelistCheck.error;
 
   const requiredCredits = calculateCredits('GEMINI_TEXT', user.role);
   const operationDesc = getOperationDescription('GEMINI_TEXT');

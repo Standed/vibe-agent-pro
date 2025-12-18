@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
+import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-3-pro-image-preview';
@@ -16,6 +16,10 @@ export async function POST(request: NextRequest) {
     return authResult.error;
   }
   const { user } = authResult;
+
+  // 白名单检查
+  const whitelistCheck = checkWhitelist(user);
+  if ('error' in whitelistCheck) return whitelistCheck.error;
 
   // 2. 计算所需积分
   const requiredCredits = calculateCredits('GEMINI_EDIT', user.role);

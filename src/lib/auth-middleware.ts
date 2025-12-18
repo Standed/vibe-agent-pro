@@ -90,9 +90,9 @@ export async function authenticateRequest(
     // 获取用户的 profile 信息（包括积分和角色）
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('id, email, role, credits')
+      .select('id, email, role, credits, is_whitelisted')
       .eq('id', user.id)
-      .single<{ id: string; email: string; role: 'user' | 'admin' | 'vip'; credits: number }>();
+      .single<{ id: string; email: string; role: 'user' | 'admin' | 'vip'; credits: number; is_whitelisted: boolean }>();
 
     // 🔧 如果 profile 不存在，自动创建一个（根据邮箱判断角色并分配对应积分）
     if (profileError || !profile) {
@@ -112,10 +112,11 @@ export async function authenticateRequest(
           email: userEmail,
           role: userRole,
           credits: initialCredits,
+          is_whitelisted: userRole === 'admin', // 管理员默认开启白名单
           full_name: user.user_metadata?.full_name || null,
           avatar_url: user.user_metadata?.avatar_url || null,
         })
-        .select('id, email, role, credits')
+        .select('id, email, role, credits, is_whitelisted')
         .single();
 
       if (createError || !newProfile) {
@@ -136,7 +137,7 @@ export async function authenticateRequest(
           email: newProfile.email,
           role: newProfile.role as 'user' | 'admin' | 'vip',
           credits: newProfile.credits,
-          isWhitelisted: (newProfile as any).is_whitelisted || newProfile.role === 'admin',
+          isWhitelisted: !!newProfile.is_whitelisted || newProfile.role === 'admin',
         },
       };
     }
@@ -152,7 +153,7 @@ export async function authenticateRequest(
         email: profile.email,
         role: effectiveRole as 'user' | 'admin' | 'vip',
         credits: profile.credits,
-        isWhitelisted: (profile as any).is_whitelisted || effectiveRole === 'admin',
+        isWhitelisted: !!profile.is_whitelisted || effectiveRole === 'admin',
       },
     };
   } catch (error: any) {
