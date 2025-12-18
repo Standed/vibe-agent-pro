@@ -10,7 +10,7 @@ const parseTimeout = (val: string | undefined, fallback: number) => {
 
 // 默认 240s（通过代理时数据传输较慢），可通过环境变量覆盖
 const GEMINI_TIMEOUT_MS = parseTimeout(
-  process.env.NEXT_PUBLIC_GEMINI_IMG_TIMEOUT_MS || process.env.GEMINI_IMG_TIMEOUT_MS,
+  process.env.GEMINI_IMG_TIMEOUT_MS || process.env.NEXT_PUBLIC_GEMINI_IMG_TIMEOUT_MS,
   240000
 );
 

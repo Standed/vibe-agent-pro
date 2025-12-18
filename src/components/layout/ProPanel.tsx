@@ -161,7 +161,7 @@ export default function ProPanel() {
         // 情况 A: 用户上传了参考图
         // 注意：这里假设 referenceImages 已经是可访问的 URL (如 blob URL 或 base64)
         // 如果是 File 对象，可能需要先上传或转 base64。目前 ProPanel 实现中 referenceImages 似乎是 string[]
-        finalReferenceImages = referenceImages;
+        finalReferenceImages = referenceImages as unknown as string[];
         console.log('[ProPanel] Using user uploaded reference images:', finalReferenceImages.length);
       } else {
         // 情况 B: 使用资源库匹配

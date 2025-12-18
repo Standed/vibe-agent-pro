@@ -42,11 +42,13 @@ export class VolcanoEngineService {
   private static instance: VolcanoEngineService | null = null;
 
   constructor() {
-    this.apiKey = process.env.NEXT_PUBLIC_VOLCANO_API_KEY || '';
-    this.baseUrl = process.env.NEXT_PUBLIC_VOLCANO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
-    this.seedreamModelId = process.env.NEXT_PUBLIC_SEEDREAM_MODEL_ID || '';
-    this.seedanceModelId = process.env.NEXT_PUBLIC_SEEDANCE_MODEL_ID || '';
-    this.doubaoModelId = process.env.NEXT_PUBLIC_DOUBAO_MODEL_ID || '';
+    // ⚠️ 这些变量不应该在客户端使用，应该通过 API Routes 调用
+    // 如果在客户端运行，这些值会是 undefined（Next.js 不会将非 NEXT_PUBLIC_ 变量打包到客户端）
+    this.apiKey = process.env.VOLCANO_API_KEY || process.env.NEXT_PUBLIC_VOLCANO_API_KEY || '';
+    this.baseUrl = process.env.VOLCANO_BASE_URL || process.env.NEXT_PUBLIC_VOLCANO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+    this.seedreamModelId = process.env.SEEDREAM_MODEL_ID || process.env.NEXT_PUBLIC_SEEDREAM_MODEL_ID || '';
+    this.seedanceModelId = process.env.SEEDANCE_MODEL_ID || process.env.NEXT_PUBLIC_SEEDANCE_MODEL_ID || '';
+    this.doubaoModelId = process.env.DOUBAO_MODEL_ID || process.env.NEXT_PUBLIC_DOUBAO_MODEL_ID || '';
   }
 
   /**

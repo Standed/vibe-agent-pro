@@ -15,18 +15,18 @@ const parseTimeout = (val: string | undefined, fallback: number) => {
 
 // 默认短超时（工具查询等轻量请求）
 const DEFAULT_TIMEOUT_MS = parseTimeout(
-  process.env.NEXT_PUBLIC_AGENT_TIMEOUT_MS || process.env.AGENT_TIMEOUT_MS,
+  process.env.AGENT_TIMEOUT_MS || process.env.NEXT_PUBLIC_AGENT_TIMEOUT_MS,
   30000
 );
 // AI 对话/生成允许更长时间，避免大 prompt 被过早中断
 const AI_TIMEOUT_MS = parseTimeout(
-  process.env.NEXT_PUBLIC_AGENT_AI_TIMEOUT_MS || process.env.AGENT_AI_TIMEOUT_MS,
+  process.env.AGENT_AI_TIMEOUT_MS || process.env.NEXT_PUBLIC_AGENT_AI_TIMEOUT_MS,
   90000
 );
 
 const MAX_GEMINI_RETRIES = 1; // 简单重试 1 次，避免频繁触发限流
 const MAX_OUTPUT_TOKENS = parseTimeout(
-  process.env.NEXT_PUBLIC_AGENT_MAX_OUTPUT_TOKENS || process.env.AGENT_MAX_OUTPUT_TOKENS,
+  process.env.AGENT_MAX_OUTPUT_TOKENS || process.env.NEXT_PUBLIC_AGENT_MAX_OUTPUT_TOKENS,
   10000
 );
 const MAX_STRING_LENGTH_FOR_GEMINI = 400; // 避免把 base64 或长文本全部塞给 Gemini，但保留必要上下文

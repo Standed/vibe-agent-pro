@@ -32,15 +32,15 @@ export async function POST(request: NextRequest) {
     }
 
     const apiKey =
-      process.env.NEXT_VOLCANO_API_KEY ||
       process.env.VOLCANO_API_KEY ||
-      process.env.NEXT_PUBLIC_VOLCANO_API_KEY;
-    const baseUrl = process.env.NEXT_VOLCANO_BASE_URL || process.env.VOLCANO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+      process.env.NEXT_VOLCANO_API_KEY ||
+      process.env.NEXT_PUBLIC_VOLCANO_API_KEY; // ⚠️ 向后兼容，应移除
+    const baseUrl = process.env.VOLCANO_BASE_URL || process.env.NEXT_VOLCANO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
     const seedreamModelId =
       model ||
-      process.env.NEXT_SEEDREAM_MODEL_ID ||
       process.env.SEEDREAM_MODEL_ID ||
-      process.env.NEXT_PUBLIC_SEEDREAM_MODEL_ID ||
+      process.env.NEXT_SEEDREAM_MODEL_ID ||
+      process.env.NEXT_PUBLIC_SEEDREAM_MODEL_ID || // ⚠️ 向后兼容，应移除
       'doubao-seedream-4-5-251128';
 
     if (!apiKey || !seedreamModelId) {

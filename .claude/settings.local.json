@@ -57,7 +57,9 @@
       "Bash(powershell \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue\")",
       "Bash(powershell \"Stop-Process -Name node -Force\")",
       "Bash(timeout 10 npm run dev:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(vercel --version:*)",
+      "Bash(vercel:*)"
     ]
   }
 }
