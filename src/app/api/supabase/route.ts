@@ -3,17 +3,32 @@ import { createClient } from '@supabase/supabase-js';
 import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
 import type { Database } from '@/lib/supabase/database.types';
 
-// 使用 Service Role Key（服务端安全，绕过 RLS）
-const supabaseAdmin = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
+// 延迟创建 Supabase 客户端，避免构建时报错
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+let supabaseAdmin: any | null = null;
+
+function getSupabaseAdmin(): any {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Missing Supabase environment variables for supabase API');
   }
-);
+
+  if (!supabaseAdmin) {
+    supabaseAdmin = createClient<Database>(
+      supabaseUrl,
+      supabaseServiceKey,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    );
+  }
+
+  return supabaseAdmin;
+}
 
 // 允许的表和操作（白名单）
 const ALLOWED_TABLES = [
@@ -261,7 +276,7 @@ export async function POST(request: NextRequest) {
 
     // 3. 构建查询
     // 使用 any 简化后续链式调用的类型约束
-    let query: any = supabaseAdmin.from(table);
+    let query: any = getSupabaseAdmin().from(table);
 
     // 4. 执行操作
     switch (operation) {
