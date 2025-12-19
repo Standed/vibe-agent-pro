@@ -26,7 +26,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [generationPrompt, setGenerationPrompt] = useState('');
   const [aspectRatio, setAspectRatio] = useState<'21:9' | '16:9'>('21:9');
-  const [genMode, setGenMode] = useState<'seedream' | 'gemini'>('gemini');
+  const [genMode, setGenMode] = useState<'seedream' | 'gemini' | 'jimeng'>('jimeng');
   const [isGenerating, setIsGenerating] = useState(false);
   const [mounted, setMounted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -133,6 +133,42 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
       if (genMode === 'seedream') {
         const volcanoService = VolcanoEngineService.getInstance();
         base64Url = await volcanoService.generateSingleImage(prompt, aspectRatio);
+      } else if (genMode === 'jimeng') {
+        // Jimeng Generation
+        const { jimengService } = await import('@/services/jimengService');
+        const sessionid = localStorage.getItem('jimeng_session_id');
+
+        if (!sessionid) {
+          throw new Error('请先在设置中配置即梦 Session ID');
+        }
+
+        // 1. Generate
+        const genResult = await jimengService.generateImage({
+          prompt,
+          model: 'jimeng-4.0',
+          aspectRatio, // '21:9' or '16:9'
+          sessionid
+        });
+
+        const historyId = genResult.data?.aigc_data?.history_record_id;
+        if (!historyId) throw new Error('即梦任务提交失败');
+
+        // 2. Poll
+        const pollResult = await jimengService.pollTask(historyId, sessionid);
+        const imageUrl = pollResult.url || (pollResult.urls && pollResult.urls[0]);
+
+        if (!imageUrl) throw new Error('即梦未返回图片');
+
+        // 3. Proxy Download to Base64 (for consistency with other flows and R2 upload)
+        const proxyResp = await fetch('/api/image-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: imageUrl }),
+        });
+
+        if (!proxyResp.ok) throw new Error('图片下载失败');
+        const { data: base64Data, mimeType } = await proxyResp.json();
+        base64Url = `data:${mimeType};base64,${base64Data}`;
       } else {
         // Gemini Direct
         const { generateCharacterThreeView } = await import('@/services/geminiService');
@@ -381,10 +417,17 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                 <div className="flex items-center gap-1 ml-auto">
                   <button
                     type="button"
+                    onClick={() => setGenMode('jimeng')}
+                    className={`px-2 py-1 text-[10px] rounded transition-colors ${genMode === 'jimeng' ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black' : 'bg-light-bg dark:bg-cine-panel text-light-text-muted dark:text-cine-text-muted border border-light-border dark:border-cine-border'}`}
+                  >
+                    即梦 (推荐)
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setGenMode('gemini')}
                     className={`px-2 py-1 text-[10px] rounded transition-colors ${genMode === 'gemini' ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black' : 'bg-light-bg dark:bg-cine-panel text-light-text-muted dark:text-cine-text-muted border border-light-border dark:border-cine-border'}`}
                   >
-                    Gemini (推荐)
+                    Gemini
                   </button>
                   <button
                     type="button"

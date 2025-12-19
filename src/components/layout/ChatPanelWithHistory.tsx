@@ -25,13 +25,15 @@ import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
 import MentionInput from '@/components/input/MentionInput';
 import { GridSliceSelector } from '@/components/ui/GridSliceSelector';
+import { JimengImageSelector } from '@/components/ui/JimengImageSelector';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { formatShotLabel } from '@/utils/shotOrder';
 import { storageService } from '@/lib/storageService';
 import { dataService } from '@/lib/dataService';
+import { jimengService } from '@/services/jimengService';
 
 // Model types
-type GenerationModel = 'seedream' | 'gemini-direct' | 'gemini-grid';
+type GenerationModel = 'seedream' | 'gemini-direct' | 'gemini-grid' | 'jimeng';
 
 interface ChatMessage {
   id: string;
@@ -100,6 +102,20 @@ export default function ChatPanelWithHistory() {
   // Grid specific state
   const [gridSize, setGridSize] = useState<'2x2' | '3x3'>('2x2');
   // gridResult 现在从 store 获取，不再使用本地状态
+
+  // Jimeng specific state
+  const [jimengModel, setJimengModel] = useState('jimeng-4.0');
+  const [jimengVideoModel, setJimengVideoModel] = useState('video-S3.0-Pro');
+
+  // 即梦图片选择器状态
+  const [jimengSelectorData, setJimengSelectorData] = useState<{
+    images: string[];
+    prompt: string;
+    shotId?: string;
+    sceneId?: string;
+    aspectRatio?: string;
+    contextKey: string;
+  } | null>(null);
 
   const handleFeedback = async () => {
     const content = window.prompt('请输入您的反馈或遇到的问题：');
@@ -598,6 +614,9 @@ export default function ChatPanelWithHistory() {
         case 'gemini-grid':
           await handleGeminiGridGeneration(promptText, imageFiles, capturedShotId, capturedSceneId, capturedContextKey);
           break;
+        case 'jimeng':
+          await handleJimengGeneration(promptText, capturedShotId, capturedSceneId, capturedContextKey);
+          break;
       }
     } catch (error: any) {
       console.error('Generation error:', error);
@@ -806,6 +825,164 @@ export default function ChatPanelWithHistory() {
     }
 
     toast.success('SeeDream 生成成功！');
+  };
+
+  // Jimeng generation (即梦 4.0)
+  const handleJimengGeneration = async (
+    prompt: string,
+    capturedShotId: string | null,
+    capturedSceneId: string | null,
+    capturedContextKey: string
+  ) => {
+    const sessionid = localStorage.getItem('jimeng_session_id');
+    if (!sessionid) {
+      toast.error('请先在设置中配置即梦 sessionid', {
+        description: '进入设置 → API 配置 → 即梦 Session ID'
+      });
+      throw new Error('未配置即梦 sessionid');
+    }
+
+    const { promptForModel } = buildPromptWithReferences(prompt, { skipAssetRefs: false });
+    const projectAspectRatio = project?.settings.aspectRatio || AspectRatio.WIDE;
+
+    toast.info('正在通过即梦 4.0 生成图片...', { duration: 3000 });
+
+    console.log('[Jimeng] Generation params:', {
+      prompt: promptForModel.substring(0, 100),
+      model: 'jimeng-4.0',
+      aspectRatio: projectAspectRatio,
+      sessionid: sessionid ? '已配置' : '未配置'
+    });
+
+    // Submit generation task
+    const genResult = await jimengService.generateImage({
+      prompt: promptForModel,
+      model: 'jimeng-4.0',
+      aspectRatio: projectAspectRatio, // AspectRatio枚举值如 '16:9'
+      sessionid
+    });
+
+    console.log('[Jimeng] Generation result:', genResult);
+
+    // 根据官方实现，应该从 aigc_data 中获取 history_record_id
+    const historyId = genResult.data?.aigc_data?.history_record_id;
+    if (!historyId) {
+      console.error('[Jimeng] Failed to get history_record_id, response:', genResult);
+      throw new Error('即梦任务提交失败：' + (genResult.errmsg || '未知错误'));
+    }
+
+    // Poll for completion - 现在返回所有图片
+    const pollResult = await jimengService.pollTask(historyId, sessionid);
+    const imageUrls = pollResult.urls || [pollResult.url];
+
+    if (!imageUrls || imageUrls.length === 0) {
+      throw new Error('即梦生成失败：未返回图片 URL');
+    }
+
+    console.log('[Jimeng] Generated images:', imageUrls.length);
+
+    // 如果只有一张图片，直接使用；否则打开选择器
+    if (imageUrls.length === 1) {
+      // 单张图片直接处理
+      await handleJimengImageSelected(
+        imageUrls[0],
+        imageUrls[0],
+        prompt,
+        capturedShotId,
+        capturedSceneId,
+        capturedContextKey,
+        projectAspectRatio
+      );
+    } else {
+      // 多张图片，打开选择器让用户选择
+      setJimengSelectorData({
+        images: imageUrls,
+        prompt,
+        shotId: capturedShotId || undefined,
+        sceneId: capturedSceneId || undefined,
+        aspectRatio: projectAspectRatio,
+        contextKey: capturedContextKey,
+      });
+      toast.success(`即梦 4.0 生成了 ${imageUrls.length} 张图片，请选择一张保存`);
+    }
+  };
+
+  // 处理即梦图片选择后的保存逻辑
+  const handleJimengImageSelected = async (
+    r2Url: string,
+    originalUrl: string,
+    prompt: string,
+    capturedShotId: string | null,
+    capturedSceneId: string | null,
+    capturedContextKey: string,
+    aspectRatio: string
+  ) => {
+    // Update shot if selected
+    if (capturedShotId) {
+      updateShot(capturedShotId, {
+        referenceImage: r2Url,
+        status: 'done',
+      });
+
+      // Add to generation history
+      const historyItem: GenerationHistoryItem = {
+        id: `gen_${Date.now()}`,
+        type: 'image',
+        timestamp: new Date(),
+        result: r2Url,
+        prompt,
+        parameters: {
+          model: '即梦 4.0',
+          aspectRatio: aspectRatio as AspectRatio,
+        },
+        status: 'success',
+      };
+      addGenerationHistory(capturedShotId, historyItem);
+    }
+
+    // Add assistant message with result
+    const assistantMessage: ChatMessage = {
+      id: generateMessageId(),
+      role: 'assistant',
+      content: '已使用即梦 4.0 生成图片',
+      timestamp: new Date(),
+      images: [r2Url],
+      model: 'jimeng',
+      shotId: capturedShotId || undefined,
+      sceneId: capturedSceneId || undefined,
+    };
+
+    // 只在消息属于当前上下文时才添加到显示列表
+    if (contextKey === capturedContextKey) {
+      setMessages(prev => [...prev, assistantMessage]);
+    }
+
+    // 保存 assistant 消息到云端
+    if (user && project) {
+      try {
+        await dataService.saveChatMessage({
+          id: assistantMessage.id,
+          userId: user.id,
+          projectId: project.id,
+          scope: capturedShotId ? 'shot' : capturedSceneId ? 'scene' : 'project',
+          shotId: capturedShotId || undefined,
+          sceneId: capturedSceneId || undefined,
+          role: 'assistant',
+          content: assistantMessage.content,
+          timestamp: assistantMessage.timestamp,
+          metadata: {
+            images: [r2Url],
+            model: 'jimeng-4.0',
+          },
+          createdAt: assistantMessage.timestamp,
+          updatedAt: assistantMessage.timestamp,
+        });
+      } catch (error) {
+        console.error('[ChatPanelWithHistory] 保存 assistant 消息失败:', error);
+      }
+    }
+
+    toast.success('即梦 4.0 图片已保存！');
   };
 
   // Gemini direct generation (single image without grid)
@@ -1443,7 +1620,7 @@ export default function ChatPanelWithHistory() {
           <div className="max-w-[70%]">
             {msg.images && msg.images.length > 0 && (
               <div className="mb-2 grid grid-cols-2 gap-2">
-                {msg.images.map((img, idx) => (
+                {msg.images.filter(img => img && img.trim() !== '').map((img, idx) => (
                   <div key={idx} className="relative aspect-video rounded-lg border border-light-border dark:border-cine-border overflow-hidden">
                     <Image
                       src={img}
@@ -1477,7 +1654,7 @@ export default function ChatPanelWithHistory() {
             </div>
             {msg.images && msg.images.length > 0 && (
               <div className="mt-3 space-y-2">
-                {msg.images.map((img, idx) => (
+                {msg.images.filter(img => img && img.trim() !== '').map((img, idx) => (
                   <div key={idx} className="space-y-2">
                     <div className="relative group aspect-video rounded-lg border border-light-border dark:border-cine-border overflow-hidden cursor-pointer hover:border-light-accent dark:hover:border-cine-accent transition-colors">
                       <Image
@@ -1744,6 +1921,16 @@ export default function ChatPanelWithHistory() {
               >
                 Grid
               </button>
+              <button
+                onClick={() => setSelectedModel('jimeng')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-300 ${selectedModel === 'jimeng'
+                  ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
+                  }`}
+                title="即梦 4.0 模型"
+              >
+                即梦
+              </button>
             </div>
 
             {selectedModel === 'gemini-grid' && (
@@ -1914,6 +2101,30 @@ export default function ChatPanelWithHistory() {
               setSliceSelectorData(null);
             }}
             onClose={() => setSliceSelectorData(null)}
+          />
+        )}
+
+        {/* Jimeng Image Selector */}
+        {jimengSelectorData && (
+          <JimengImageSelector
+            images={jimengSelectorData.images}
+            prompt={jimengSelectorData.prompt}
+            shotId={jimengSelectorData.shotId}
+            sceneId={jimengSelectorData.sceneId}
+            aspectRatio={jimengSelectorData.aspectRatio}
+            onSelect={async (r2Url, originalUrl) => {
+              await handleJimengImageSelected(
+                r2Url,
+                originalUrl,
+                jimengSelectorData.prompt,
+                jimengSelectorData.shotId || null,
+                jimengSelectorData.sceneId || null,
+                jimengSelectorData.contextKey,
+                jimengSelectorData.aspectRatio || '16:9'
+              );
+              setJimengSelectorData(null);
+            }}
+            onClose={() => setJimengSelectorData(null)}
           />
         )}
       </div>
