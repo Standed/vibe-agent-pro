@@ -271,7 +271,16 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-6 py-4">
                         <button
-                          onClick={() => handleUpdateUser(user.id, { is_active: !user.is_active })}
+                          onClick={() => {
+                            const newActive = !user.is_active;
+                            const updates: any = { is_active: newActive };
+                            // 如果是激活账户，自动开启白名单（解决用户激活后仍无法登录的问题）
+                            if (newActive) {
+                              updates.is_whitelisted = true;
+                              toast.info('已自动开启白名单权限');
+                            }
+                            handleUpdateUser(user.id, updates);
+                          }}
                           className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors ${user.is_active ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}
                         >
                           {user.is_active ? '正常' : '禁用'}
