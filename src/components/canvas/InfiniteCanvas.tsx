@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Edit2, Plus } from 'lucide-react';
+import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Edit2, Plus, MoreHorizontal, Check } from 'lucide-react';
 import type { ShotSize, CameraMovement, Shot } from '@/types/project';
 import { formatShotLabel } from '@/utils/shotOrder';
 import AddShotDialog from '@/components/shot/AddShotDialog';
@@ -462,61 +462,203 @@ export default function InfiniteCanvas() {
       )}
 
       {editingShot && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 interactive">
-          <div className="bg-white/90 dark:bg-[#1a1a1a]/90 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-3xl shadow-2xl w-[900px] max-w-[96vw] max-h-[88vh] overflow-hidden flex flex-col ring-1 ring-black/5">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-cine-border">
-              <div className="flex items-center gap-2">
-                <Edit2 size={16} className="text-light-accent dark:text-cine-accent" />
-                <span className="text-sm font-bold text-light-text dark:text-white">分镜详情编辑</span>
-              </div>
-              <button onClick={() => setEditingShot(null)} className="p-1 rounded hover:bg-light-bg dark:hover:bg-cine-panel"><X size={16} className="text-light-text-muted dark:text-cine-text-muted" /></button>
-            </div>
-            <div className="grid grid-cols-2 gap-4 p-4 overflow-auto">
-              <div className="space-y-3">
-                <label className="text-xs text-gray-500 dark:text-gray-400 font-medium ml-1 mb-1 block">镜头描述</label>
-                <textarea value={shotForm.description} onChange={(e) => setShotForm((prev) => ({ ...prev, description: e.target.value }))} className="glass-input w-full h-40 rounded-xl p-3 text-sm resize-none text-gray-800 dark:text-gray-100 placeholder-gray-400" placeholder="描述镜头画面内容..." />
-                <label className="text-xs text-gray-500 dark:text-gray-400 font-medium ml-1 mb-1 block mt-3">旁白</label>
-                <textarea value={shotForm.narration} onChange={(e) => setShotForm((prev) => ({ ...prev, narration: e.target.value }))} className="glass-input w-full h-24 rounded-xl p-3 text-sm resize-none text-gray-800 dark:text-gray-100 placeholder-gray-400" placeholder="旁白内容..." />
-              </div>
-              <div className="space-y-3">
-                <label className="text-xs text-gray-500 dark:text-gray-400 font-medium ml-1 mb-1 block">对白</label>
-                <textarea value={shotForm.dialogue} onChange={(e) => setShotForm((prev) => ({ ...prev, dialogue: e.target.value }))} className="glass-input w-full h-24 rounded-xl p-3 text-sm resize-none text-gray-800 dark:text-gray-100 placeholder-gray-400" placeholder="角色对白..." />
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400 font-medium ml-1 mb-1 block">镜头景别</label>
-                    <select value={shotForm.shotSize} onChange={(e) => setShotForm((prev) => ({ ...prev, shotSize: e.target.value as ShotSize }))} className="glass-input w-full mt-1 rounded-xl p-2 text-sm text-gray-800 dark:text-gray-100">
-                      <option value="">选择景别</option>
-                      {shotSizeOptions.map((size) => <option key={size} value={size}>{size}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400 font-medium ml-1 mb-1 block">镜头运动</label>
-                    <select value={shotForm.cameraMovement} onChange={(e) => setShotForm((prev) => ({ ...prev, cameraMovement: e.target.value as CameraMovement }))} className="glass-input w-full mt-1 rounded-xl p-2 text-sm text-gray-800 dark:text-gray-100">
-                      <option value="">选择运动</option>
-                      {cameraMovementOptions.map((move) => <option key={move} value={move}>{move}</option>)}
-                    </select>
-                  </div>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] p-4 md:p-8">
+          <div className="bg-white dark:bg-[#0c0c0e] border border-white/20 dark:border-white/10 rounded-[2rem] shadow-2xl w-full max-w-6xl max-h-full overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 ring-1 ring-black/5">
+            {/* Header Toolbar */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-light-border dark:border-cine-border bg-light-bg/50 dark:bg-cine-dark/50 backdrop-blur-xl">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-light-accent dark:bg-cine-accent rounded-xl text-white dark:text-black">
+                  <Edit2 size={18} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 dark:text-gray-400 font-medium ml-1 mb-1 block">时长 (秒)</label>
-                  <input type="number" min={1} value={shotForm.duration} onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))} className="glass-input w-full mt-1 rounded-xl p-2 text-sm text-gray-800 dark:text-gray-100" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-bold text-light-text dark:text-white">分镜详情编辑</span>
+                    <div className="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]"></div>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-light-text-muted dark:text-cine-text-muted mt-0.5">
+                    <span>镜头 #{editingShot.order}</span>
+                    <span className="opacity-30">•</span>
+                    <span>{editingShot.shotSize}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5">
+                  <button className="px-3 py-1.5 text-xs font-medium rounded-lg hover:bg-white dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-all">
+                    Web search
+                  </button>
+                  <button className="px-3 py-1.5 text-xs font-medium rounded-lg hover:bg-white dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-all">
+                    Copy
+                  </button>
+                  <button className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted transition-all">
+                    <MoreHorizontal size={16} />
+                  </button>
+                </div>
+                <div className="w-px h-6 bg-black/5 dark:bg-white/10 mx-1"></div>
+                <button
+                  onClick={() => setEditingShot(null)}
+                  className="p-2 rounded-xl hover:bg-red-500/10 text-light-text-muted dark:text-cine-text-muted hover:text-red-500 transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Main Content Area */}
+            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* Left Column: Description & Text */}
+                <div className="lg:col-span-7 space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider ml-1">镜头描述</label>
+                    <textarea
+                      value={shotForm.description}
+                      onChange={(e) => setShotForm((prev) => ({ ...prev, description: e.target.value }))}
+                      className="w-full h-48 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-2xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-light-accent/20 dark:focus:ring-cine-accent/20 focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white transition-all"
+                      placeholder="详细描述镜头画面内容..."
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider ml-1">对白</label>
+                      <textarea
+                        value={shotForm.dialogue}
+                        onChange={(e) => setShotForm((prev) => ({ ...prev, dialogue: e.target.value }))}
+                        className="w-full h-32 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-2xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-light-accent/20 dark:focus:ring-cine-accent/20 focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white transition-all"
+                        placeholder="角色对白（可选）"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider ml-1">旁白</label>
+                      <textarea
+                        value={shotForm.narration}
+                        onChange={(e) => setShotForm((prev) => ({ ...prev, narration: e.target.value }))}
+                        className="w-full h-32 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-2xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-light-accent/20 dark:focus:ring-cine-accent/20 focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white transition-all"
+                        placeholder="旁白/场景说明"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Settings & History */}
+                <div className="lg:col-span-5 space-y-6">
+                  <div className="bg-light-bg-secondary dark:bg-cine-bg-secondary rounded-3xl p-6 border border-light-border dark:border-cine-border space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider ml-1">镜头景别</label>
+                        <select
+                          value={shotForm.shotSize}
+                          onChange={(e) => setShotForm((prev) => ({ ...prev, shotSize: e.target.value as ShotSize }))}
+                          className="w-full bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl p-2.5 text-sm text-light-text dark:text-white focus:outline-none focus:border-light-accent dark:focus:border-cine-accent transition-all"
+                        >
+                          <option value="">选择景别</option>
+                          {shotSizeOptions.map((size) => (
+                            <option key={size} value={size}>{size}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider ml-1">镜头运动</label>
+                        <select
+                          value={shotForm.cameraMovement}
+                          onChange={(e) => setShotForm((prev) => ({ ...prev, cameraMovement: e.target.value as CameraMovement }))}
+                          className="w-full bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl p-2.5 text-sm text-light-text dark:text-white focus:outline-none focus:border-light-accent dark:focus:border-cine-accent transition-all"
+                        >
+                          <option value="">选择运动</option>
+                          {cameraMovementOptions.map((move) => (
+                            <option key={move} value={move}>{move}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider ml-1">时长 (秒)</label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min={1}
+                          max={10}
+                          step={0.5}
+                          value={shotForm.duration}
+                          onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))}
+                          className="flex-1 accent-light-accent dark:accent-cine-accent"
+                        />
+                        <input
+                          type="number"
+                          min={1}
+                          value={shotForm.duration}
+                          onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))}
+                          className="w-16 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl p-2 text-center text-sm font-bold text-light-text dark:text-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between ml-1">
+                      <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider">历史分镜图片</label>
+                      <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full">
+                        {shotHistoryImages.length} 张记录
+                      </span>
+                    </div>
+
+                    {shotHistoryImages.length === 0 ? (
+                      <div className="bg-light-bg-secondary dark:bg-cine-bg-secondary border border-dashed border-light-border dark:border-cine-border rounded-2xl py-8 text-center">
+                        <ImageIcon size={24} className="mx-auto mb-2 text-light-text-muted dark:text-cine-text-muted opacity-30" />
+                        <p className="text-xs text-light-text-muted dark:text-cine-text-muted">暂无历史图片</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        {shotHistoryImages.map((url, idx) => (
+                          <div
+                            key={idx}
+                            className={`group relative aspect-video bg-light-bg dark:bg-cine-black rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent ring-4 ring-light-accent/10 dark:ring-cine-accent/10' : 'border-transparent hover:border-light-accent/30 dark:hover:border-cine-accent/30'}`}
+                            onClick={() => {
+                              setSelectedHistoryImage(url);
+                              if (liveEditingShot) {
+                                updateShot(liveEditingShot.id, { referenceImage: url, status: 'done' });
+                              }
+                            }}
+                          >
+                            <img src={url} alt={`history-${idx + 1}`} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                            {selectedHistoryImage === url && (
+                              <div className="absolute inset-0 bg-light-accent/10 dark:bg-cine-accent/10 flex items-center justify-center">
+                                <div className="bg-light-accent dark:bg-cine-accent text-white dark:text-black p-1 rounded-full shadow-lg">
+                                  <Check size={12} />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-            {/* History Images */}
-            <div className="px-4 pb-4">
-              <div className="text-xs font-medium text-light-text dark:text-white mb-2">历史分镜图片</div>
-              <div className="grid grid-cols-5 gap-2">
-                {shotHistoryImages.map((url, idx) => (
-                  <div key={idx} className={`aspect-video bg-light-bg dark:bg-cine-black rounded border cursor-pointer ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent' : 'border-transparent'}`} onClick={() => { setSelectedHistoryImage(url); if (liveEditingShot) updateShot(liveEditingShot.id, { referenceImage: url }); }}>
-                    <img src={url} className="w-full h-full object-cover" />
-                  </div>
-                ))}
+
+            {/* Footer Actions */}
+            <div className="flex items-center justify-between px-8 py-6 border-t border-light-border dark:border-cine-border bg-light-bg-secondary dark:bg-cine-bg-secondary">
+              <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                最后修改: {new Date().toLocaleTimeString()}
               </div>
-            </div>
-            <div className="flex justify-end gap-2 px-4 py-3 border-t border-light-border dark:border-cine-border">
-              <button onClick={() => setEditingShot(null)} className="px-4 py-2 text-sm rounded-xl glass-button text-gray-600 dark:text-gray-300">取消</button>
-              <button onClick={saveShotEdit} className="px-4 py-2 text-sm rounded-xl bg-black dark:bg-white text-white dark:text-black font-medium shadow-md hover:scale-105 transition-transform">保存并应用</button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setEditingShot(null)}
+                  className="px-6 py-2.5 text-sm font-bold rounded-xl glass-button text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={saveShotEdit}
+                  className="px-8 py-2.5 text-sm font-bold rounded-xl bg-black dark:bg-white text-white dark:text-black shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+                >
+                  <span>保存并应用</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

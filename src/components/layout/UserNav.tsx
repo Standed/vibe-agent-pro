@@ -41,7 +41,7 @@ export function UserNav() {
             <div className="flex items-center gap-3">
                 <button
                     onClick={() => router.push('/auth/login')}
-                    className="inline-flex items-center gap-2 text-sm px-4 py-2 rounded-lg bg-light-accent dark:bg-cine-accent text-white hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors font-medium"
+                    className="inline-flex items-center gap-2 text-sm px-4 py-2 rounded-lg bg-light-accent dark:bg-cine-accent text-white dark:text-black hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors font-medium"
                 >
                     <User size={16} />
                     登录 / 注册

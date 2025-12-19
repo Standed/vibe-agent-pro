@@ -410,7 +410,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
             {!hasImage ? (
               <button
                 onClick={handleRegenerate}
-                className="flex items-center justify-center gap-2 bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white rounded-lg px-3 py-2 text-sm transition-colors font-medium"
+                className="flex items-center justify-center gap-2 bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black rounded-lg px-3 py-2 text-sm transition-colors font-medium"
               >
                 <Sparkles size={16} />
                 <span>生成</span>
@@ -714,7 +714,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                 setIsEditing(false);
                 alert('保存成功！');
               }}
-              className="flex-1 bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white rounded-lg px-4 py-2 text-sm font-bold transition-colors"
+              className="flex-1 bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black rounded-lg px-4 py-2 text-sm font-bold transition-colors"
             >
               保存更改
             </button>
@@ -777,7 +777,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                   <button
                     onClick={handleConfirmRegenerate}
                     disabled={isRegenerating || !regeneratePrompt.trim()}
-                    className="flex-1 bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white rounded-lg px-4 py-2 text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="flex-1 bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black rounded-lg px-4 py-2 text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {isRegenerating ? (
                       <>

@@ -382,14 +382,14 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                   <button
                     type="button"
                     onClick={() => setGenMode('gemini')}
-                    className={`px-2 py-1 text-[10px] rounded transition-colors ${genMode === 'gemini' ? 'bg-light-accent dark:bg-cine-accent text-white' : 'bg-light-bg dark:bg-cine-panel text-light-text-muted dark:text-cine-text-muted border border-light-border dark:border-cine-border'}`}
+                    className={`px-2 py-1 text-[10px] rounded transition-colors ${genMode === 'gemini' ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black' : 'bg-light-bg dark:bg-cine-panel text-light-text-muted dark:text-cine-text-muted border border-light-border dark:border-cine-border'}`}
                   >
                     Gemini (推荐)
                   </button>
                   <button
                     type="button"
                     onClick={() => setGenMode('seedream')}
-                    className={`px-2 py-1 text-[10px] rounded transition-colors ${genMode === 'seedream' ? 'bg-light-accent dark:bg-cine-accent text-white' : 'bg-light-bg dark:bg-cine-panel text-light-text-muted dark:text-cine-text-muted border border-light-border dark:border-cine-border'}`}
+                    className={`px-2 py-1 text-[10px] rounded transition-colors ${genMode === 'seedream' ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black' : 'bg-light-bg dark:bg-cine-panel text-light-text-muted dark:text-cine-text-muted border border-light-border dark:border-cine-border'}`}
                   >
                     SeeDream
                   </button>
@@ -422,7 +422,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
             </button>
             <button
               onClick={handleSubmit}
-              className="bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              className="bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
             >
               <Plus size={16} />
               {mode === 'add' ? '添加角色' : '保存修改'}

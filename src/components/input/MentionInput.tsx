@@ -174,14 +174,14 @@ export default function MentionInput({
                 key={`${asset.type}-${asset.item.id}`}
                 onClick={() => handleSelectAsset(asset)}
                 className={`w-full text-left px-3 py-2 rounded transition-colors flex items-center gap-3 ${index === selectedIndex
-                    ? 'bg-light-accent dark:bg-cine-accent text-white'
-                    : 'hover:bg-light-bg dark:hover:bg-cine-bg text-light-text dark:text-white'
+                  ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black'
+                  : 'hover:bg-light-bg dark:hover:bg-cine-bg text-light-text dark:text-white'
                   }`}
               >
                 {/* Icon */}
                 <div className={`flex-shrink-0 w-8 h-8 rounded flex items-center justify-center ${index === selectedIndex
-                    ? 'bg-white/20'
-                    : 'bg-light-bg dark:bg-cine-bg'
+                  ? 'bg-white/20'
+                  : 'bg-light-bg dark:bg-cine-bg'
                   }`}>
                   {asset.type === 'character' && (
                     <span className="text-xs">👤</span>
@@ -195,8 +195,8 @@ export default function MentionInput({
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm truncate">{asset.item.name}</div>
                   <div className={`text-xs truncate ${index === selectedIndex
-                      ? 'text-white/70'
-                      : 'text-light-text-muted dark:text-cine-text-muted'
+                    ? 'text-white/70 dark:text-black/70'
+                    : 'text-light-text-muted dark:text-cine-text-muted'
                     }`}>
                     {asset.type === 'character' ? '角色' : '场景'} · {asset.item.description.slice(0, 30)}...
                   </div>
@@ -205,7 +205,7 @@ export default function MentionInput({
                 {/* Reference Image Indicator */}
                 {((asset.type === 'character' && (asset.item as Character).referenceImages?.length > 0) ||
                   (asset.type === 'location' && (asset.item as Location).referenceImages?.length > 0)) && (
-                    <div className={`flex-shrink-0 text-xs ${index === selectedIndex ? 'text-white/70' : 'text-light-accent dark:text-cine-accent'
+                    <div className={`flex-shrink-0 text-xs ${index === selectedIndex ? 'text-white/70 dark:text-black/70' : 'text-light-accent dark:text-cine-accent'
                       }`}>
                       {asset.type === 'character'
                         ? (asset.item as Character).referenceImages?.length
