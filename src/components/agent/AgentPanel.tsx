@@ -167,14 +167,14 @@ export default function AgentPanel() {
               const isExpanded = expandedMessages.has(msg.id);
               const historicalSteps: ThinkingStep[] | undefined = hasThinkingSteps && msg.metadata?.thinkingSteps
                 ? (msg.metadata.thinkingSteps as any[]).map((step: any) => ({
-                    id: step.id,
-                    type: step.type,
-                    content: step.content,
-                    status: step.status,
-                    duration: step.duration,
-                    details: step.details,
-                    timestamp: new Date(step.timestamp),
-                  }))
+                  id: step.id,
+                  type: step.type,
+                  content: step.content,
+                  status: step.status,
+                  duration: step.duration,
+                  details: step.details,
+                  timestamp: new Date(step.timestamp),
+                }))
                 : undefined;
 
               return (
@@ -184,7 +184,7 @@ export default function AgentPanel() {
                     }`}
                 >
                   {msg.role === 'assistant' && (
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-light-accent dark:bg-cine-accent flex items-center justify-center">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-black dark:bg-white/10 flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10">
                       <Bot size={16} className="text-white" />
                     </div>
                   )}
@@ -254,7 +254,7 @@ export default function AgentPanel() {
             {/* Thinking Process (only show during processing or if there are steps) */}
             {(isProcessing || thinkingSteps.length > 0) && (
               <div className="flex gap-3 justify-start">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-light-accent dark:bg-cine-accent flex items-center justify-center">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-black dark:bg-white/10 flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10">
                   <Bot size={16} className="text-white" />
                 </div>
 

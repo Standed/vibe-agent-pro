@@ -120,7 +120,7 @@ export default function Timeline() {
           </button>
 
           {/* Export Button */}
-          <button className="flex items-center gap-1.5 text-xs bg-light-accent dark:bg-cine-accent text-light-text dark:text-white px-4 py-1.5 rounded font-bold hover:bg-light-accent-hover dark:bg-cine-accent-hover transition-colors">
+          <button className="flex items-center gap-1.5 text-xs bg-light-accent dark:bg-cine-accent text-light-text dark:text-black px-4 py-1.5 rounded font-bold hover:bg-light-accent-hover dark:bg-cine-accent-hover transition-colors">
             <Download size={14} />
             <span>导出视频</span>
           </button>

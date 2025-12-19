@@ -59,7 +59,8 @@
       "Bash(timeout 10 npm run dev:*)",
       "Bash(timeout:*)",
       "Bash(vercel --version:*)",
-      "Bash(vercel:*)"
+      "Bash(vercel:*)",
+      "Bash(tee:*)"
     ]
   }
 }

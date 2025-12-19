@@ -1367,7 +1367,7 @@ export default function ProPanel() {
           <button
             onClick={() => setGenerationType('single')}
             className={`border rounded-lg p-3 transition-colors ${generationType === 'single'
-              ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+              ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
               : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
               }`}
           >
@@ -1380,7 +1380,7 @@ export default function ProPanel() {
             <button
               onClick={() => setGenerationType('edit')}
               className={`border rounded-lg p-3 transition-colors ${generationType === 'edit'
-                ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
                 : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
                 }`}
               title="编辑当前图片"
@@ -1396,7 +1396,7 @@ export default function ProPanel() {
               <button
                 onClick={() => setGenerationType('grid')}
                 className={`border rounded-lg p-3 transition-colors ${generationType === 'grid'
-                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
                   : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
                   }`}
               >
@@ -1408,7 +1408,7 @@ export default function ProPanel() {
                 onClick={() => setShowBatchConfig(true)}
                 disabled={isGenerating}
                 className={`border rounded-lg p-3 transition-colors ${showBatchConfig
-                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
                   : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
                   }`}
                 title="一键为当前场景所有空缺镜头生成图片"
@@ -1422,7 +1422,7 @@ export default function ProPanel() {
           <button
             onClick={() => setGenerationType('video')}
             className={`border rounded-lg p-3 transition-colors ${generationType === 'video'
-              ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+              ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
               : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
               }`}
           >
@@ -1453,7 +1453,7 @@ export default function ProPanel() {
                 <button
                   onClick={() => setBatchScope('scene')}
                   className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${batchScope === 'scene'
-                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white'
+                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white dark:text-black'
                     : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border text-light-text dark:text-white'
                     }`}
                 >
@@ -1462,7 +1462,7 @@ export default function ProPanel() {
                 <button
                   onClick={() => setBatchScope('project')}
                   className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${batchScope === 'project'
-                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white'
+                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white dark:text-black'
                     : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border text-light-text dark:text-white'
                     }`}
                 >
@@ -1478,7 +1478,7 @@ export default function ProPanel() {
                 <button
                   onClick={() => setBatchMode('grid')}
                   className={`flex-1 border rounded-lg px-3 py-3 text-sm transition-colors ${batchMode === 'grid'
-                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white'
+                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white dark:text-black'
                     : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
                     }`}
                 >
@@ -1488,7 +1488,7 @@ export default function ProPanel() {
                 <button
                   onClick={() => setBatchMode('seedream')}
                   className={`flex-1 border rounded-lg px-3 py-3 text-sm transition-colors ${batchMode === 'seedream'
-                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white'
+                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white dark:text-black'
                     : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
                     }`}
                 >
@@ -1517,7 +1517,7 @@ export default function ProPanel() {
             <button
               onClick={handleBatchGenerate}
               disabled={isGenerating}
-              className="w-full bg-light-accent dark:bg-cine-accent text-white py-3 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-light-accent dark:bg-cine-accent text-white dark:text-black py-3 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isGenerating ? (
                 <>
@@ -1559,7 +1559,7 @@ export default function ProPanel() {
               <button
                 onClick={() => setEditModel('gemini')}
                 className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${editModel === 'gemini'
-                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
                   : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
                   }`}
               >
@@ -1568,7 +1568,7 @@ export default function ProPanel() {
               <button
                 onClick={() => setEditModel('seedream')}
                 className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${editModel === 'seedream'
-                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
                   : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
                   }`}
               >
@@ -1663,7 +1663,7 @@ export default function ProPanel() {
                   key={size}
                   onClick={() => setGridSize(size)}
                   className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${gridSize === size
-                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-white'
+                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
                     : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
                     }`}
                 >
@@ -1764,7 +1764,7 @@ export default function ProPanel() {
           }
         }}
         disabled={isGenerating || !generationType}
-        className="w-full bg-light-accent dark:bg-cine-accent text-white py-3 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:bg-cine-accent-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full bg-light-accent dark:bg-cine-accent text-white dark:text-black py-3 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:bg-cine-accent-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isGenerating ? (
           <>
