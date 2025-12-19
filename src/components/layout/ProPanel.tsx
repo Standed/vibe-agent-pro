@@ -3,24 +3,21 @@
 import { Sparkles, Image as ImageIcon, Video, Upload, Loader2, Grid3x3, History, Wand2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { generateMultiViewGrid, fileToBase64, editImageWithGemini, urlsToReferenceImages } from '@/services/geminiService';
-import { AspectRatio, ImageSize, GridHistoryItem, GenerationHistoryItem, Shot } from '@/types/project';
-import { VolcanoEngineService } from '@/services/volcanoEngineService';
+import { AspectRatio, ImageSize, GridHistoryItem, GenerationHistoryItem, Shot, BatchMode, AIModel } from '@/types/project';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
 import GridHistoryModal from '@/components/grid/GridHistoryModal';
 import ShotGenerationHistory from '@/components/shot/ShotGenerationHistory';
 import { toast } from 'sonner';
-import { validateGenerationConfig } from '@/utils/promptSecurity';
-import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
-import { getUserCredits, getGridCost } from '@/lib/supabase/credits';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { logger } from '@/lib/logService';
-import { dataService } from '@/lib/dataService';
-import { storageService } from '@/lib/storageService';
+import { ModelSelector } from '@/components/pro/ModelSelector';
+import { BatchConfig } from '@/components/pro/BatchConfig';
+import { GenerationTypeSelector } from '@/components/pro/GenerationTypeSelector';
+import { PromptInput } from '@/components/pro/PromptInput';
+import { ShotDetailsPanel } from '@/components/pro/ShotDetailsPanel';
+import { useProGeneration } from '@/hooks/useProGeneration';
 
 type GenerationType = 'grid' | 'single' | 'video' | 'edit' | 'batch' | null;
 type EditModel = 'seedream' | 'gemini';
-type BatchMode = 'grid' | 'seedream';
 
 interface GridGenerationResult {
   fullImage: string;
@@ -32,9 +29,8 @@ interface GridGenerationResult {
 
 export default function ProPanel() {
   const { user } = useAuth();
-  const { project, currentSceneId, selectedShotId, updateShot, addGridHistory, saveFavoriteSlices, addGenerationHistory } = useProjectStore();
+  const { project, currentSceneId, selectedShotId } = useProjectStore();
   const [generationType, setGenerationType] = useState<GenerationType>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [gridSize, setGridSize] = useState<'2x2' | '3x3'>('2x2');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(AspectRatio.WIDE);
@@ -46,6 +42,9 @@ export default function ProPanel() {
   const [batchMode, setBatchMode] = useState<BatchMode>('grid');
   const [batchScope, setBatchScope] = useState<'scene' | 'project'>('scene');
   const [showBatchConfig, setShowBatchConfig] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<AIModel>('seedream');
+  const [jimengModel, setJimengModel] = useState('jimeng-4.0');
+  const [jimengVideoModel, setJimengVideoModel] = useState('video-S3.0-Pro');
 
   const shots = project?.shots || [];
   const scenes = project?.scenes || [];
@@ -59,21 +58,6 @@ export default function ProPanel() {
   const currentScene = scenes.find((scene) =>
     scene.shotIds.includes(selectedShotId || '')
   );
-
-  const requireAuthForAI = () => {
-    if (!user) {
-      toast.error('请先登录以使用 AI 功能', {
-        action: {
-          label: '去登录',
-          onClick: () => {
-            window.location.href = '/auth/login';
-          },
-        },
-      });
-      return false;
-    }
-    return true;
-  };
 
   // Sync selected scene ID safely
   useEffect(() => {
@@ -99,1835 +83,318 @@ export default function ProPanel() {
     }
   }, [isShotSelected, isSceneSelected]);
 
+  const {
+    isGenerating,
+    handleGenerateSingleImage,
+    handleGenerateGrid,
+    handleGridAssignment,
+    handleSelectGridHistory: handleSelectGridHistoryFromHook,
+    handleGenerateVideo,
+    handleRegenerate,
+    handleDownload,
+    handleFavorite,
+    handleDubbing,
+    handleApplyHistory,
+    handleEditImage,
+    handleBatchGenerate,
+  } = useProGeneration({
+    prompt,
+    setPrompt,
+    gridSize,
+    aspectRatio,
+    setAspectRatio,
+    referenceImages,
+    selectedModel,
+    jimengModel,
+    jimengVideoModel,
+    editModel,
+    batchMode,
+    batchScope,
+    setShowBatchConfig,
+    setGridResult,
+    setGenerationType,
+  });
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     setReferenceImages((prev) => [...prev, ...files]);
   };
 
-  const handleGenerateSingleImage = async () => {
-    if (!prompt.trim()) {
-      toast.error('请输入提示词');
-      return;
-    }
-
-    if (!requireAuthForAI()) return;
-
-    // 🔒 安全验证：检查提示词是否安全
-    const validation = validateGenerationConfig({ prompt });
-    if (!validation.isValid) {
-      toast.error('提示词包含不安全内容', {
-        description: validation.errors.join('\n')
-      });
-      return;
-    }
-
-    setIsGenerating(true);
-    try {
-      const volcanoService = new VolcanoEngineService();
-
-      // Get selected shot for context
-      const selectedShot = project?.shots.find(s => s.id === selectedShotId);
-
-      // Enrich prompt with character and location context
-      const { enrichedPrompt, usedCharacters, usedLocations, referenceImageUrls } = enrichPromptWithAssets(
-        prompt,
-        project,
-        selectedShot?.description
-      );
-
-      // Show toast if assets are being used
-      if (usedCharacters.length > 0 || usedLocations.length > 0) {
-        const assetInfo = [];
-        if (usedCharacters.length > 0) {
-          assetInfo.push(`角色: ${usedCharacters.map(c => c.name).join(', ')}`);
-        }
-        if (usedLocations.length > 0) {
-          assetInfo.push(`场景: ${usedLocations.map(l => l.name).join(', ')}`);
-        }
-        toast.info('正在使用资源库参考', {
-          description: assetInfo.join(' | ')
-        });
-      }
-
-      // 使用项目的画面比例生成图片
-      const projectAspectRatio = project?.settings.aspectRatio;
-
-      // 🖼️ 准备参考图逻辑：
-      // 1. 如果用户上传了参考图 (referenceImages)，则仅使用用户上传的图，忽略资源库匹配
-      // 2. 如果用户未上传，则使用资源库自动匹配的图 (enrichPromptWithAssets 返回的 referenceImageUrls)
-      let finalReferenceImages: string[] = [];
-
-      if (referenceImages.length > 0) {
-        // 情况 A: 用户上传了参考图
-        // 注意：这里假设 referenceImages 已经是可访问的 URL (如 blob URL 或 base64)
-        // 如果是 File 对象，可能需要先上传或转 base64。目前 ProPanel 实现中 referenceImages 似乎是 string[]
-        finalReferenceImages = referenceImages as unknown as string[];
-        console.log('[ProPanel] Using user uploaded reference images:', finalReferenceImages.length);
-      } else {
-        // 情况 B: 使用资源库匹配
-        if (referenceImageUrls && referenceImageUrls.length > 0) {
-          finalReferenceImages = referenceImageUrls;
-          console.log('[ProPanel] Using asset library reference images:', finalReferenceImages.length);
-        }
-      }
-
-      const base64Url = await volcanoService.generateSingleImage(
-        enrichedPrompt,
-        projectAspectRatio,
-        finalReferenceImages // 传递参考图
-      );
-
-      // 1. 立即更新 UI (使用 Base64)
-      if (selectedShotId) {
-        updateShot(selectedShotId, {
-          referenceImage: base64Url,
-          status: 'done',
-        });
-
-        // 2. 后台上传 R2
-        storageService.uploadBase64ToR2(
-          base64Url,
-          `projects/${project?.id}/shots/${selectedShotId}`,
-          `gen_${Date.now()}.png`,
-          user?.id || 'anonymous'
-        ).then((r2Url) => {
-          // 上传成功后更新为 R2 链接
-          updateShot(selectedShotId, {
-            referenceImage: r2Url,
-            status: 'done',
-          });
-
-          // Add to generation history (using R2 URL)
-          const historyItem: GenerationHistoryItem = {
-            id: `gen_${Date.now()}`,
-            type: 'image',
-            timestamp: new Date(),
-            result: r2Url,
-            prompt: prompt,
-            parameters: {
-              model: 'SeeDream',
-              aspectRatio: aspectRatio,
-            },
-            status: 'success',
-          };
-          addGenerationHistory(selectedShotId, historyItem);
-        }).catch(err => {
-          console.error('Background upload failed:', err);
-          // Fallback: save history with base64
-          const historyItem: GenerationHistoryItem = {
-            id: `gen_${Date.now()}`,
-            type: 'image',
-            timestamp: new Date(),
-            result: base64Url,
-            prompt: prompt,
-            parameters: {
-              model: 'SeeDream (Local)',
-              aspectRatio: aspectRatio,
-            },
-            status: 'success',
-          };
-          addGenerationHistory(selectedShotId, historyItem);
-        });
-      }
-
-
-
-      toast.success('单图生成成功！');
-    } catch (error) {
-      console.error('Single image generation error:', error);
-      const errorMessage = error instanceof Error ? error.message : '单图生成失败';
-      toast.error('单图生成失败', {
-        description: `${errorMessage}\n\n请检查：\n1. Volcano Engine API 配置是否正确\n2. SeeDream 模型 ID 是否已设置\n3. API 密钥是否有效`
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleGenerateGrid = async () => {
-    // 🔍 调试：确认函数被调用
-    console.log('[ProPanel] ========== handleGenerateGrid CALLED ==========');
-    console.log('[ProPanel] prompt:', prompt);
-    console.log('[ProPanel] selectedSceneId:', selectedSceneId);
-
-    if (!requireAuthForAI()) return;
-
-    if (!prompt.trim()) {
-      toast.error('请输入提示词');
-      return;
-    }
-
-    // 🔒 安全验证：检查提示词是否安全
-    const validation = validateGenerationConfig({ prompt });
-    if (!validation.isValid) {
-      toast.error('提示词包含不安全内容', {
-        description: validation.errors.join('\n')
-      });
-      return;
-    }
-
-    if (!selectedSceneId) {
-      toast.warning('请先选择一个场景');
-      return;
-    }
-
-    // 💰 积分检查（仅对已登录用户）
-    if (user) {
-      const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
-      const requiredCredits = getGridCost(rows, cols);
-      const currentCredits = await getUserCredits();
-
-      if (currentCredits < requiredCredits) {
-        toast.error('积分不足', {
-          description: `生成 ${gridSize} Grid 需要 ${requiredCredits} 积分，当前余额：${currentCredits} 积分`,
-          duration: 5000,
-        });
-        return;
-      }
-
-      // 提示用户即将消耗积分
-      toast.info(`将消耗 ${requiredCredits} 积分`, {
-        description: `当前余额：${currentCredits} 积分`,
-      });
-    }
-
-    setIsGenerating(true);
-    try {
-      // Find the selected scene
-      const targetScene = scenes.find((scene) => scene.id === selectedSceneId);
-
-      if (!targetScene) {
-        toast.error('未找到选中的场景');
-        return;
-      }
-
-      // Get shots for this scene
-      const sceneShots = shots.filter((s) => s.sceneId === targetScene.id);
-      const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
-      const totalSlices = rows * cols;
-
-      // 动态选择未分配图片的镜头（跳过已有 referenceImage 的镜头）
-      const sortedSceneShots = [...sceneShots].sort((a, b) => (a.order || 0) - (b.order || 0));
-      const unassignedShots = sortedSceneShots.filter((shot) => !shot.referenceImage);
-
-      if (unassignedShots.length === 0) {
-        toast.warning('该场景所有镜头都已分配图片', {
-          description: '如需重新生成，请先删除镜头的现有图片'
-        });
-        return;
-      }
-
-      // 先取未分配的镜头，不足则从场景中相邻（按 order）补齐
-      const targetShots: typeof sceneShots = [];
-      for (const shot of unassignedShots) {
-        if (targetShots.length >= totalSlices) break;
-        targetShots.push(shot);
-      }
-      if (targetShots.length < totalSlices) {
-        for (const shot of sortedSceneShots) {
-          if (targetShots.length >= totalSlices) break;
-          if (targetShots.find((s) => s.id === shot.id)) continue;
-          targetShots.push(shot);
-        }
-      }
-
-      if (targetShots.length < totalSlices) {
-        const confirmed = confirm(
-          `当前场景只有 ${targetShots.length} 个未分配镜头，但 Grid 大小为 ${gridSize}（${totalSlices} 个切片）。\n\n` +
-          `生成的 Grid 将只为这 ${targetShots.length} 个镜头提供切片，剩余切片可收藏备用。\n\n是否继续？`
-        );
-        if (!confirmed) {
-          return;
-        }
-      }
-
-      // Build enhanced prompt combining scene, shots descriptions, and user input
-      let enhancedPrompt = '';
-
-      // Add scene context
-      if (targetScene.description) {
-        enhancedPrompt += `场景：${targetScene.description}\n`;
-      }
-      if (project?.metadata.artStyle) {
-        enhancedPrompt += `画风：${project.metadata.artStyle}\n`;
-      }
-
-      // Add shot descriptions
-      if (targetShots.length > 0) {
-        enhancedPrompt += `\n分镜要求（${targetShots.length} 个镜头）：\n`;
-        targetShots.forEach((shot, idx) => {
-          // For 3x3, simplify shot descriptions to avoid too much detail
-          if (gridSize === '3x3') {
-            // Simplified: only shot size, camera movement, and brief description
-            enhancedPrompt += `${idx + 1}. ${shot.shotSize} - ${shot.cameraMovement}`;
-            if (shot.description) {
-              // Truncate description to ~50 chars for 3x3
-              const briefDesc = shot.description.length > 50
-                ? shot.description.substring(0, 50) + '...'
-                : shot.description;
-              enhancedPrompt += ` - ${briefDesc}`;
-            }
-            enhancedPrompt += '\n';
-          } else {
-            // Full description for 2x2
-            enhancedPrompt += `${idx + 1}. ${shot.shotSize} - ${shot.cameraMovement}\n`;
-            if (shot.description) {
-              enhancedPrompt += `   ${shot.description}\n`;
-            }
-          }
-        });
-      }
-
-      // Add user's specific requirements
-      if (prompt.trim()) {
-        enhancedPrompt += `\n额外要求：${prompt}`;
-      }
-
-      // 🔍 调试：输出增强提示词
-      console.log('[ProPanel Grid Debug] ========== START ==========');
-      console.log('[ProPanel Grid Debug] selectedSceneId:', selectedSceneId);
-      console.log('[ProPanel Grid Debug] targetScene.name:', targetScene.name);
-      console.log('[ProPanel Grid Debug] targetScene.description:', targetScene.description);
-      console.log('[ProPanel Grid Debug] project?.metadata.artStyle:', project?.metadata.artStyle);
-      console.log('[ProPanel Grid Debug] targetShots:', targetShots.map(s => ({
-        id: s.id,
-        order: s.order,
-        shotSize: s.shotSize,
-        cameraMovement: s.cameraMovement,
-        description: s.description,
-        narration: s.narration,
-        dialogue: s.dialogue
-      })));
-      // 🔍 资产提示词增强：把 mainCharacters/mainScenes 也写入文本，方便匹配参考图
-      // 角色/场景提示去重，避免重复行撑大 prompt
-      const assetCharacters = new Set<string>();
-      const assetScenes = new Set<string>();
-      targetShots.forEach((shot) => {
-        shot.mainCharacters?.forEach((c) => assetCharacters.add(c));
-        shot.mainScenes?.forEach((s) => assetScenes.add(s));
-      });
-      const assetNameHints = [
-        assetCharacters.size ? `角色: ${Array.from(assetCharacters).join(', ')}` : '',
-        assetScenes.size ? `场景: ${Array.from(assetScenes).join(', ')}` : '',
-      ]
-        .filter(Boolean)
-        .join('\n');
-
-      const { enrichedPrompt, referenceImageUrls, referenceImageMap, usedCharacters, usedLocations } = enrichPromptWithAssets(
-        [enhancedPrompt, assetNameHints].filter(Boolean).join('\n'),
-        project
-      );
-
-      const finalPrompt = enrichedPrompt;
-
-      // 使用资源库时提示
-      if (usedCharacters.length > 0 || usedLocations.length > 0) {
-        const assetInfo: string[] = [];
-        if (usedCharacters.length > 0) {
-          assetInfo.push(`角色: ${usedCharacters.map((c) => c.name).join(', ')}`);
-        }
-        if (usedLocations.length > 0) {
-          assetInfo.push(`场景: ${usedLocations.map((l) => l.name).join(', ')}`);
-        }
-        toast.info('正在使用参考图保持一致性', {
-          description: assetInfo.join(' | ')
-        });
-      }
-
-      console.log('[ProPanel Grid Debug] targetShots.length:', targetShots.length);
-      console.log('[ProPanel Grid Debug] finalPrompt (with refs):', finalPrompt);
-      console.log('[ProPanel Grid Debug] user input prompt:', prompt);
-      console.log('[ProPanel Grid Debug] ========== END ==========');
-
-      // 聚合参考图：上传 + 角色/场景资源库 + 场景/镜头的引用
-      const refImagesFromUpload = await Promise.all(
-        referenceImages.map(async (file) => {
-          const base64 = await fileToBase64(file);
-          return {
-            mimeType: file.type,
-            data: base64,
-          };
-        })
-      );
-
-      const refUrlSet = new Set<string>();
-      const addUrls = (urls?: string[]) => {
-        if (urls && urls.length > 0) {
-          // 只取该角色/场景的第一张参考图，避免重复
-          refUrlSet.add(urls[0]);
-        }
-      };
-
-      targetShots.forEach((shot) => {
-        shot.mainCharacters?.forEach((name) => {
-          const c = project?.characters.find((ch) => ch.name === name);
-          addUrls(c?.referenceImages);
-        });
-        shot.mainScenes?.forEach((name) => {
-          const l = project?.locations.find((loc) => loc.name === name);
-          addUrls(l?.referenceImages);
-        });
-      });
-
-      // 同时把 enrichPromptWithAssets 返回的参考图 URL 一并加入
-      referenceImageUrls.forEach((url) => refUrlSet.add(url));
-
-      // 参考图顺序保持与 referenceImageMap 一致，避免编号错位
-      const orderedAssetUrls = referenceImageMap.map((ref) => ref.imageUrl);
-      const extraUrls = Array.from(refUrlSet).filter((url) => !orderedAssetUrls.includes(url));
-      const MAX_ASSET_URLS = 10; // 避免参考图过多导致请求体过大
-      const finalAssetUrls = [...orderedAssetUrls, ...extraUrls].slice(0, MAX_ASSET_URLS);
-      const refImagesFromAssets = await urlsToReferenceImages(finalAssetUrls);
-
-      // 先放资产参考图（与编号对应），再放用户上传的补充图
-      const refImages = [...refImagesFromAssets, ...refImagesFromUpload];
-
-      // 构建参考图描述（用于 Prompt 对应）
-      const refCaptions: string[] = [];
-
-      // 1. 资产参考图描述
-      finalAssetUrls.forEach(url => {
-        const assetRef = referenceImageMap.find(r => r.imageUrl === url);
-        if (assetRef) {
-          refCaptions.push(`${assetRef.type === 'character' ? 'Character' : 'Location'}: ${assetRef.name}`);
-        } else {
-          refCaptions.push('Reference Image');
-        }
-      });
-
-      // 2. 用户上传参考图描述
-      refImagesFromUpload.forEach(() => {
-        refCaptions.push('User uploaded reference');
-      });
-
-      // 🔍 调试：输出参考图信息
-      console.log('[ProPanel Grid Debug] refUrlSet:', refUrlSet);
-      console.log('[ProPanel Grid Debug] referenceImageMap:', referenceImageMap);
-      console.log('[ProPanel Grid Debug] refImages.length:', refImages.length);
-      console.log('[ProPanel Grid Debug] refCaptions:', refCaptions);
-
-      console.log('[ProPanel] 🚀 准备调用 generateMultiViewGrid...');
-      const result = await generateMultiViewGrid(
-        finalPrompt,
-        rows,
-        cols,
-        aspectRatio,
-        ImageSize.K4,
-        refImages,
-        refCaptions // 传递参考图描述
-      ).catch((error) => {
-        console.error('[ProPanel] ❌ generateMultiViewGrid 抛出异常:', error);
-        throw error;
-      });
-
-      console.log('[ProPanel] ✅ generateMultiViewGrid 返回成功');
-      console.log('[ProPanel] fullImage 长度:', result.fullImage?.length || 0);
-      console.log('[ProPanel] slices 数量:', result.slices?.length || 0);
-
-      if (!result || !result.fullImage || !result.slices || result.slices.length === 0) {
-        throw new Error('Grid 生成结果无效');
-      }
-
-      // 持久化 Grid 历史（场景级）
-      addGridHistory(targetScene.id, {
-        id: `grid_${Date.now()}`,
-        timestamp: new Date(),
-        fullGridUrl: result.fullImage,
-        slices: result.slices,
-        gridSize,
-        prompt: finalPrompt,
-        aspectRatio,
-      });
-
-      // 积分扣除在 API Route 完成，这里仅记录日志
-      if (user) {
-        const creditsConsumed = getGridCost(rows, cols);
-        await logger.logAIGeneration(
-          `grid-${rows}x${cols}`,
-          creditsConsumed,
-          true,
-          { sceneId: targetScene.id, sceneName: targetScene.name }
-        );
-      }
-
-      // 🔄 尝试上传完整图和切片到 R2（可选，失败时回退到 base64）
-      let fullImageUrl = result.fullImage;
-      let sliceUrls = result.slices;
-
-      console.log('[ProPanel] 📤 开始上传到 R2...');
-      console.log('[ProPanel] 待上传：fullImage 长度', result.fullImage.length, '+ slices 数量', result.slices.length);
-
-      try {
-        toast.info('正在上传图片到云存储...', { duration: 2000 });
-        const { storageService } = await import('@/lib/storageService');
-        const folder = `projects/${project?.id || 'temp'}/grids`; // 修复：处理 project 可能为 null
-
-        console.log('[ProPanel] 开始上传 fullImage...');
-        // 上传完整图
-        fullImageUrl = await storageService.uploadBase64ToR2(
-          result.fullImage,
-          folder,
-          `grid_full_${Date.now()}.png`
-        );
-        console.log('[ProPanel] ✅ fullImage 上传完成:', fullImageUrl.substring(0, 50) + '...');
-
-        console.log('[ProPanel] 开始批量上传 slices...');
-        // 批量上传所有切片
-        sliceUrls = await storageService.uploadBase64ArrayToR2(
-          result.slices,
-          folder
-        );
-        console.log('[ProPanel] ✅ slices 上传完成，数量:', sliceUrls.length);
-
-        toast.success('图片上传成功！');
-        console.log('[ProPanel] ✅ Grid 图片已上传到 R2');
-      } catch (uploadError: any) {
-        console.warn('[ProPanel] ⚠️ R2 upload failed, using base64 fallback:', uploadError);
-        toast.warning('图片上传失败，使用本地存储');
-        // 上传失败时回退到 base64（不影响功能）
-        fullImageUrl = result.fullImage;
-        sliceUrls = result.slices;
-      }
-
-      console.log('[ProPanel] 准备调用 setGridResult...');
-      console.log('[ProPanel] fullImageUrl 长度:', fullImageUrl?.length || 0);
-      console.log('[ProPanel] sliceUrls 数量:', sliceUrls?.length || 0);
-
-      // Show Grid preview modal with URLs (R2 or base64)
-      const gridResultData = {
-        fullImage: fullImageUrl,
-        slices: sliceUrls,
-        sceneId: targetScene.id,
-        gridRows: rows,
-        gridCols: cols,
-      };
-      console.log('[ProPanel] 准备更新 gridResult 状态:', gridResultData);
-
-      // 使用 setTimeout 确保状态更新在下一个事件循环中执行
-      setTimeout(() => {
-        console.log('[ProPanel] 🔄 执行 setGridResult...');
-        setGridResult(gridResultData);
-        console.log('[ProPanel] ✅ setGridResult 执行完成');
-      }, 0);
-
-      console.log('[ProPanel] gridResult 状态已更新为:', {
-        fullImage: fullImageUrl?.substring(0, 50) + '...',
-        slicesCount: sliceUrls?.length,
-        sceneId: targetScene.id,
-        gridRows: rows,
-        gridCols: cols,
-      });
-
-      // 💾 保存到聊天历史（Pro 模式）
-      if (user && project) { // 修复：添加 project 检查
-        try {
-          const now = new Date();
-          await dataService.saveChatMessage({
-            id: crypto.randomUUID(),
-            userId: user.id,
-            projectId: project.id,
-            sceneId: targetScene.id,
-            scope: 'scene',
-            role: 'user',
-            content: `生成 ${gridSize} Grid: ${finalPrompt}`,
-            timestamp: now,
-            createdAt: now, // 添加缺失的字段
-            updatedAt: now, // 添加缺失的字段
-            metadata: {
-              gridData: {
-                fullImage: fullImageUrl, // 修复：使用 fullImage 而不是 fullGridUrl
-                slices: sliceUrls, // 修复：使用 slices 而不是 gridImages
-                sceneId: targetScene.id,
-                gridRows: rows,
-                gridCols: cols,
-                gridSize,
-                aspectRatio,
-                prompt: finalPrompt,
-              },
-            },
-          });
-
-          await dataService.saveChatMessage({
-            id: crypto.randomUUID(),
-            userId: user.id,
-            projectId: project.id,
-            sceneId: targetScene.id,
-            scope: 'scene',
-            role: 'assistant',
-            content: `已生成 ${gridSize} Grid，共 ${sliceUrls.length} 个切片。请在预览窗口中分配到分镜。`,
-            timestamp: now,
-            createdAt: now, // 添加缺失的字段
-            updatedAt: now, // 添加缺失的字段
-            metadata: {
-              gridData: {
-                fullImage: fullImageUrl, // 修复：使用 fullImage 而不是 fullGridUrl
-                slices: sliceUrls, // 修复：使用 slices 而不是 gridImages
-                sceneId: targetScene.id,
-                gridRows: rows,
-                gridCols: cols,
-                gridSize,
-                aspectRatio,
-                prompt: finalPrompt,
-              },
-            },
-          });
-
-          console.log('[ProPanel] ✅ 聊天记录已保存');
-        } catch (error) {
-          console.error('[ProPanel] ⚠️ 保存聊天记录失败:', error);
-        }
-      }
-    } catch (error: any) {
-      console.error('Grid generation error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Grid 生成失败';
-
-      // 记录失败日志
-      if (user) {
-        const [rows, cols] = gridSize === '2x2' ? [2, 2] : [3, 3];
-        const creditsConsumed = getGridCost(rows, cols);
-        await logger.logAIGeneration(
-          `grid-${rows}x${cols}`,
-          creditsConsumed,
-          false,
-          { error: errorMessage, sceneId: selectedSceneId }
-        );
-      }
-
-      toast.error('Grid 生成失败', {
-        description: `${errorMessage}\n\n请检查：\n1. Gemini API 配置是否正确\n2. 提示词是否完整\n3. API 密钥是否有效`
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // Handle Grid assignment from modal
-  const handleGridAssignment = (assignments: Record<string, string>, favoriteSlices?: string[]) => {
-    if (!gridResult) return;
-
-    // Update shots with assigned images AND add to generation history
-    Object.entries(assignments).forEach(([shotId, imageUrl]) => {
-      updateShot(shotId, {
-        referenceImage: imageUrl,
-        fullGridUrl: gridResult.fullImage,
-        status: 'done',
-      });
-
-      // ✨ 添加到 Shot 的生成历史记录
-      const historyItem: GenerationHistoryItem = {
-        id: `gen_${Date.now()}_${shotId}`,
-        type: 'image',
-        timestamp: new Date(),
-        result: imageUrl,
-        prompt: prompt,
-        parameters: {
-          model: 'Gemini Grid',
-          gridSize: gridSize,
-          aspectRatio: aspectRatio,
-          fullGridUrl: gridResult.fullImage,
-        },
-        status: 'success',
-      };
-      addGenerationHistory(shotId, historyItem);
-    });
-
-    // Save Grid to scene history
-    const gridHistory: GridHistoryItem = {
-      id: `grid_${Date.now()}`,
-      timestamp: new Date(),
-      fullGridUrl: gridResult.fullImage,
-      slices: gridResult.slices,
-      gridSize,
-      prompt,
-      aspectRatio,
-      assignments,
-    };
-    addGridHistory(gridResult.sceneId, gridHistory);
-
-    // Save favorited slices if any
-    if (favoriteSlices && favoriteSlices.length > 0) {
-      saveFavoriteSlices(gridResult.sceneId, favoriteSlices);
-    }
-
-    const assignedCount = Object.keys(assignments).length;
-    const favoriteCount = favoriteSlices?.length || 0;
-
-    let message = `已为 ${assignedCount} 个镜头分配图片`;
-    if (favoriteCount > 0) {
-      message += `，${favoriteCount} 个切片已收藏`;
-    }
-
-    toast.success('Grid 分配成功！', {
-      description: message
-    });
-    setGridResult(null);
-  };
-
-  // Handle selecting a Grid from history
   const handleSelectGridHistory = (historyItem: GridHistoryItem) => {
-    const [rows, cols] = historyItem.gridSize === '2x2' ? [2, 2] : [3, 3];
-    setGridResult({
-      fullImage: historyItem.fullGridUrl,
-      slices: historyItem.slices,
-      sceneId: selectedSceneId,
-      gridRows: rows,
-      gridCols: cols,
-    });
+    handleSelectGridHistoryFromHook(historyItem, selectedSceneId);
   };
 
-  const handleGenerateVideo = async () => {
-    if (!requireAuthForAI()) return;
-
-    if (!prompt.trim()) {
-      toast.error('请输入提示词');
-      return;
-    }
-
-    // 🔒 安全验证：检查提示词是否安全
-    const validation = validateGenerationConfig({
-      prompt,
-      videoPrompt: prompt
-    });
-    if (!validation.isValid) {
-      toast.error('提示词包含不安全内容', {
-        description: validation.errors.join('\n')
-      });
-      return;
-    }
-
-    if (!selectedShot) {
-      toast.warning('请先选择一个镜头');
-      return;
-    }
-
-    // 检查是否有图片（Grid 图片或参考图片）
-    const hasImage = selectedShot.referenceImage || (selectedShot.gridImages && selectedShot.gridImages.length > 0);
-
-    if (!hasImage) {
-      toast.warning('请先生成图片', {
-        description: '视频生成需要先有参考图片'
-      });
-      return;
-    }
-
-    // 💰 积分检查（仅对已登录用户）
-    if (user) {
-      const requiredCredits = 20; // 视频生成需要 20 积分
-      const currentCredits = await getUserCredits();
-
-      if (currentCredits < requiredCredits) {
-        toast.error('积分不足', {
-          description: `生成视频需要 ${requiredCredits} 积分，当前余额：${currentCredits} 积分`,
-          duration: 5000,
-        });
-        return;
-      }
-
-      // 提示用户即将消耗积分
-      toast.info(`将消耗 ${requiredCredits} 积分`, {
-        description: `当前余额：${currentCredits} 积分`,
-      });
-    }
-
-    setIsGenerating(true);
-    const loadingToast = toast.loading('正在提交视频生成任务，预计需要 2-3 分钟...');
-
-    try {
-      const volcanoService = new VolcanoEngineService();
-
-      // 使用第一张 Grid 图片或参考图片
-      const imageUrl = selectedShot.gridImages?.[0] || selectedShot.referenceImage || '';
-
-      // 生成视频提示词（基于用户输入的提示词）
-      const videoPrompt = prompt || selectedShot.description || '镜头运动，平稳流畅';
-
-      // 步骤1：生成视频任务
-      const videoTask = await volcanoService.generateSceneVideo(
-        videoPrompt,
-        imageUrl // 直接使用 base64 或 URL
-      );
-
-      // 步骤2：轮询等待视频生成完成
-      updateShot(selectedShotId!, { status: 'processing' });
-
-      const videoUrl = await volcanoService.waitForVideoCompletion(
-        videoTask.id,
-        (status) => {
-          console.log('视频生成状态:', status);
-        }
-      );
-
-      // 步骤3：更新镜头数据
-      updateShot(selectedShotId!, {
-        videoClip: videoUrl,
-        status: 'done',
-      });
-
-      // Add to generation history
-      const historyItem: GenerationHistoryItem = {
-        id: `gen_${Date.now()}`,
-        type: 'video',
-        timestamp: new Date(),
-        result: videoUrl,
-        prompt: videoPrompt,
-        parameters: {
-          model: 'VolcanoEngine I2V',
-          referenceImages: [imageUrl],
-        },
-        status: 'success',
-      };
-      addGenerationHistory(selectedShotId!, historyItem);
-
-      // 积分扣除在 API Route 完成，这里仅记录日志
-      if (user) {
-        const creditsConsumed = 20;
-        await logger.logAIGeneration(
-          'video',
-          creditsConsumed,
-          true,
-          { shotId: selectedShotId, shotSize: selectedShot.shotSize }
-        );
-      }
-
-      toast.success('视频生成成功！', {
-        id: loadingToast,
-        description: user ? `视频已保存到镜头 | 已消耗 20 积分` : '视频已保存到镜头'
-      });
-    } catch (error) {
-      console.error('Video generation error:', error);
-      updateShot(selectedShotId!, { status: 'error' });
-
-      const errorMessage = error instanceof Error ? error.message : '未知错误';
-
-      // 记录失败日志
-      if (user) {
-        await logger.logAIGeneration(
-          'video',
-          20,
-          false,
-          { error: errorMessage, shotId: selectedShotId }
-        );
-      }
-
-      toast.error('视频生成失败', {
-        id: loadingToast,
-        description: `${errorMessage}\n\n请检查：\n1. Volcano Engine API 配置是否正确\n2. 模型 endpoint_id 是否已创建\n3. API 密钥是否有效`
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // History action handlers
-  const handleRegenerate = async (item: GenerationHistoryItem) => {
-    if (!selectedShotId) return;
-
-    // Set prompt and reference images from history
-    setPrompt(item.prompt);
-
-    // Set generation type based on history item type
-    if (item.type === 'image') {
-      setGenerationType('single');
-
-      // Set parameters from history
-      if (item.parameters.aspectRatio) {
-        setAspectRatio(item.parameters.aspectRatio as AspectRatio);
-      }
-
-      toast.info('已加载历史参数', {
-        description: '请点击"生成单图"按钮重新生成'
-      });
-    } else if (item.type === 'video') {
-      setGenerationType('video');
-      toast.info('已加载历史参数', {
-        description: '请点击"生成视频"按钮重新生成'
-      });
-    }
-  };
-
-  const handleDownload = (item: GenerationHistoryItem) => {
-    // Download the image or video
-    const link = document.createElement('a');
-    link.href = item.result;
-    link.download = `${item.type}_${item.id}.${item.type === 'image' ? 'png' : 'mp4'}`;
-    link.click();
-  };
-
-  const handleFavorite = (item: GenerationHistoryItem) => {
-    // TODO: Implement favorite functionality (could save to a favorites list)
-    toast.info('收藏功能即将上线！');
-  };
-
-  const handleDubbing = (item: GenerationHistoryItem) => {
-    // TODO: Implement dubbing functionality
-    toast.info('配音功能即将上线！');
-  };
-
-  const handleApplyHistory = (item: GenerationHistoryItem) => {
-    if (!selectedShotId) return;
-
-    if (item.type === 'image') {
-      updateShot(selectedShotId, {
-        referenceImage: item.result,
-        fullGridUrl: item.parameters.fullGridUrl as string | undefined, // Restore grid source if available
-        status: 'done',
-      });
-      toast.success('已应用此版本图片');
-    } else if (item.type === 'video') {
-      updateShot(selectedShotId, {
-        videoClip: item.result,
-        status: 'done',
-      });
-      toast.success('已应用此版本视频');
-    }
-  };
-
-  const handleEditImage = async () => {
-    if (!prompt.trim()) {
-      toast.error('请输入编辑提示词');
-      return;
-    }
-
-    if (!selectedShotId || !selectedShot?.referenceImage) {
-      toast.error('请先选择有图片的镜头');
-      return;
-    }
-
-    // 🔒 安全验证
-    const validation = validateGenerationConfig({ prompt });
-    if (!validation.isValid) {
-      toast.error('提示词包含不安全内容', {
-        description: validation.errors.join('\n')
-      });
-      return;
-    }
-
-    setIsGenerating(true);
-    const loadingToast = toast.loading(`使用 ${editModel === 'gemini' ? 'Gemini' : 'SeeDream'} 编辑图片中...`);
-
-    try {
-      const projectAspectRatio = project?.settings.aspectRatio || AspectRatio.WIDE;
-      let editedImageUrl: string;
-
-      if (editModel === 'gemini') {
-        // 使用 Gemini 编辑
-        editedImageUrl = await editImageWithGemini(
-          selectedShot.referenceImage,
-          prompt,
-          projectAspectRatio
-        );
-      } else {
-        // 使用 SeeDream 编辑
-        const volcanoService = new VolcanoEngineService();
-        editedImageUrl = await volcanoService.editImage(
-          selectedShot.referenceImage,
-          prompt,
-          projectAspectRatio
-        );
-      }
-
-      // 更新镜头图片
-      updateShot(selectedShotId, {
-        referenceImage: editedImageUrl,
-        status: 'done',
-      });
-
-      // 添加到生成历史
-      const historyItem: GenerationHistoryItem = {
-        id: `gen_${Date.now()}`,
-        type: 'image',
-        timestamp: new Date(),
-        result: editedImageUrl,
-        prompt: prompt,
-        parameters: {
-          model: editModel === 'gemini' ? 'Gemini Image Edit' : 'SeeDream Edit',
-          aspectRatio: projectAspectRatio,
-          originalImage: selectedShot.referenceImage,
-        },
-        status: 'success',
-      };
-      addGenerationHistory(selectedShotId, historyItem);
-
-      toast.success('图片编辑成功！', {
-        id: loadingToast,
-      });
-    } catch (error) {
-      console.error('Image edit error:', error);
-      const errorMessage = error instanceof Error ? error.message : '图片编辑失败';
-      toast.error('图片编辑失败', {
-        id: loadingToast,
-        description: `${errorMessage}\n\n请检查：\n1. API 配置是否正确\n2. 图片格式是否支持\n3. 提示词是否有效`
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleBatchGenerate = async () => {
-    // Only validate scene selection for scene-level generation
-    if (batchScope === 'scene' && !selectedSceneId) {
-      toast.warning('请先选择一个场景');
-      return;
-    }
-
-    setIsGenerating(true);
-
-    // Find target shots based on scope
-    let targetShots: Shot[] = [];
-
-    if (batchScope === 'scene') {
-      // Scene-level batch generation
-      const targetScene = scenes.find(s => s.id === selectedSceneId);
-      if (!targetScene) {
-        toast.error('请先选择一个场景');
-        setIsGenerating(false);
-        return;
-      }
-
-      const unassignedShots = shots.filter(s => s.sceneId === selectedSceneId && !s.referenceImage);
-
-      if (unassignedShots.length === 0) {
-        const confirmAll = confirm('该场景所有镜头都已有图片。是否重新生成所有镜头的图片？');
-        if (!confirmAll) {
-          setIsGenerating(false);
-          return;
-        }
-        targetShots = shots.filter(s => s.sceneId === selectedSceneId);
-      } else {
-        targetShots = unassignedShots;
-      }
-    } else {
-      // Project-level batch generation
-      const unassignedShots = shots.filter(s => !s.referenceImage);
-
-      if (unassignedShots.length === 0) {
-        const confirmAll = confirm('项目中所有镜头都已有图片。是否重新生成所有镜头的图片？');
-        if (!confirmAll) {
-          setIsGenerating(false);
-          return;
-        }
-        targetShots = shots;
-      } else {
-        targetShots = unassignedShots;
-      }
-    }
-
-    const modeLabel = batchMode === 'grid' ? 'Grid (Gemini)' : 'SeeDream (火山引擎)';
-    const scopeLabel = batchScope === 'scene' ? '当前场景' : '整个项目';
-    const initialToast = toast.info(`开始批量生成 ${targetShots.length} 个镜头...`, {
-      description: `${scopeLabel} | 使用 ${modeLabel} 模式`
-    });
-
-    try {
-      const volcanoService = new VolcanoEngineService();
-      let successCount = 0;
-      let failCount = 0;
-      let currentToast = initialToast;
-
-      // Process sequentially to avoid rate limits
-      for (let i = 0; i < targetShots.length; i++) {
-        const shot = targetShots[i];
-        try {
-          // Update toast with current progress
-          toast.loading(`正在生成 [${i + 1}/${targetShots.length}] 镜头 #${shot.order}`, {
-            id: currentToast,
-            description: `预计还需 ${Math.ceil((targetShots.length - i) * 3)} 秒`
-          });
-
-          // Mark shot as generating
-          updateShot(shot.id, { status: 'generating' as any });
-
-          // Construct prompt + 资产提示
-          let shotPrompt = shot.description || 'Cinematic shot';
-          const shotScene = scenes.find(s => s.id === shot.sceneId);
-          if (shotScene?.description) shotPrompt = `Scene: ${shotScene.description}. ` + shotPrompt;
-          if (project?.metadata.artStyle) shotPrompt += `. Style: ${project.metadata.artStyle}`;
-
-          const assetNameHints: string[] = [];
-          if (shot.mainCharacters?.length) assetNameHints.push(`角色: ${shot.mainCharacters.join(', ')}`);
-          if (shot.mainScenes?.length) assetNameHints.push(`场景: ${shot.mainScenes.join(', ')}`);
-
-          // Enrich prompt with character and location context（带参考图编号）
-          const { enrichedPrompt, referenceImageUrls, referenceImageMap } = enrichPromptWithAssets(
-            [shotPrompt, assetNameHints.join(' | ')].filter(Boolean).join('\n'),
-            project,
-            shot.description
-          );
-          shotPrompt = enrichedPrompt;
-
-          // 参考图顺序与提示词编号对齐
-          const orderedAssetUrls = referenceImageMap.map((ref) => ref.imageUrl);
-          const extraUrls = referenceImageUrls.filter((url) => !orderedAssetUrls.includes(url));
-          const finalAssetUrls = [...orderedAssetUrls, ...extraUrls];
-
-          if (batchMode === 'grid') {
-            // 使用 Grid 模式 (Gemini)
-            // 转换参考图 URL 为 Gemini 格式
-            const refImages = finalAssetUrls.length > 0
-              ? await urlsToReferenceImages(finalAssetUrls)
-              : [];
-
-            const result = await generateMultiViewGrid(
-              shotPrompt,
-              2, 2,
-              project?.settings.aspectRatio || AspectRatio.WIDE,
-              ImageSize.K4,
-              refImages // 传递参考图
-            );
-
-            // 1. 立即更新 UI (Base64)
-            updateShot(shot.id, {
-              referenceImage: result.slices[0],
-              fullGridUrl: result.fullImage,
-              gridImages: result.slices,
-              status: 'done'
-            });
-
-            // 2. 后台上传 R2
-            const folder = `projects/${project?.id}/grids`;
-            Promise.all([
-              storageService.uploadBase64ToR2(result.fullImage, folder, `grid_full_${Date.now()}.png`, user?.id || 'anonymous'),
-              storageService.uploadBase64ArrayToR2(result.slices, folder, user?.id || 'anonymous')
-            ]).then(([fullGridUrl, slices]) => {
-              updateShot(shot.id, {
-                referenceImage: slices[0],
-                fullGridUrl: fullGridUrl,
-                gridImages: slices,
-                status: 'done'
-              });
-
-              addGenerationHistory(shot.id, {
-                id: `gen_${Date.now()}`,
-                type: 'image',
-                timestamp: new Date(),
-                result: slices[0],
-                prompt: shotPrompt,
-                parameters: {
-                  model: 'Gemini Grid',
-                  gridSize: '2x2',
-                  fullGridUrl: fullGridUrl
-                },
-                status: 'success'
-              });
-            }).catch(err => {
-              console.error('Grid background upload failed:', err);
-              addGenerationHistory(shot.id, {
-                id: `gen_${Date.now()}`,
-                type: 'image',
-                timestamp: new Date(),
-                result: result.slices[0],
-                prompt: shotPrompt,
-                parameters: {
-                  model: 'Gemini Grid (Local)',
-                  gridSize: '2x2',
-                  fullGridUrl: result.fullImage
-                },
-                status: 'success'
-              });
-            });
-          } else {
-            // 使用 SeeDream 模式 (Volcano)
-            try {
-              const base64Url = await volcanoService.generateSingleImage(
-                shotPrompt,
-                project?.settings.aspectRatio
-              );
-
-              // 1. 立即更新 UI
-              updateShot(shot.id, {
-                referenceImage: base64Url,
-                status: 'done'
-              });
-
-              // 2. 后台上传 R2
-              storageService.uploadBase64ToR2(
-                base64Url,
-                `projects/${project?.id}/shots/${shot.id}`,
-                `gen_${Date.now()}.png`,
-                user?.id || 'anonymous'
-              ).then((r2Url) => {
-                updateShot(shot.id, {
-                  referenceImage: r2Url,
-                  status: 'done'
-                });
-
-                addGenerationHistory(shot.id, {
-                  id: `gen_${Date.now()}`,
-                  type: 'image',
-                  timestamp: new Date(),
-                  result: r2Url,
-                  prompt: shotPrompt,
-                  parameters: {
-                    model: 'SeeDream',
-                    aspectRatio: project?.settings.aspectRatio
-                  },
-                  status: 'success'
-                });
-              }).catch(err => {
-                console.error(`Shot ${shot.id} background upload failed:`, err);
-                // Fallback history with base64
-                addGenerationHistory(shot.id, {
-                  id: `gen_${Date.now()}`,
-                  type: 'image',
-                  timestamp: new Date(),
-                  result: base64Url,
-                  prompt: shotPrompt,
-                  parameters: {
-                    model: 'SeeDream (Local)',
-                    aspectRatio: project?.settings.aspectRatio
-                  },
-                  status: 'success'
-                });
-              });
-            } catch (seedreamError: any) {
-              // 检测是否为模型未激活错误
-              const isModelNotOpen = seedreamError.message?.includes('ModelNotOpen') ||
-                seedreamError.message?.includes('404');
-
-              if (isModelNotOpen) {
-                // 降级到 Gemini Grid
-                toast.warning(`SeeDream 模型未激活，降级使用 Gemini Grid`, {
-                  description: `镜头 #${shot.order}`
-                });
-
-                // 转换参考图 URL 为 Gemini 格式
-                const refImages = finalAssetUrls.length > 0
-                  ? await urlsToReferenceImages(finalAssetUrls)
-                  : [];
-
-                const result = await generateMultiViewGrid(
-                  shotPrompt,
-                  2, 2,
-                  project?.settings.aspectRatio || AspectRatio.WIDE,
-                  ImageSize.K4,
-                  refImages // 传递参考图
-                );
-
-                updateShot(shot.id, {
-                  referenceImage: result.slices[0],
-                  fullGridUrl: result.fullImage,
-                  gridImages: result.slices,
-                  status: 'done'
-                });
-
-                addGenerationHistory(shot.id, {
-                  id: `gen_${Date.now()}`,
-                  type: 'image',
-                  timestamp: new Date(),
-                  result: result.slices[0],
-                  prompt: shotPrompt,
-                  parameters: {
-                    model: 'Gemini Grid (降级)',
-                    gridSize: '2x2',
-                    fullGridUrl: result.fullImage
-                  },
-                  status: 'success'
-                });
-              } else {
-                throw seedreamError;
-              }
-            }
-          }
-
-          successCount++;
-        } catch (error: any) {
-          console.error(`Failed to generate for shot ${shot.id}:`, error);
-          const errorMsg = error.message || '生成失败';
-          toast.error(`镜头 #${shot.order} 生成失败`, {
-            description: errorMsg.length > 100 ? errorMsg.substring(0, 100) + '...' : errorMsg
-          });
-          updateShot(shot.id, { status: 'error' });
-          failCount++;
-        }
-      }
-
-      toast.success('批量生成完成', {
-        id: currentToast,
-        description: `✅ 成功: ${successCount} 个 | ❌ 失败: ${failCount} 个`
-      });
-    } catch (e) {
-      console.error(e);
-      toast.error('批量生成过程中断');
-    } finally {
-      setIsGenerating(false);
-      setShowBatchConfig(false);
-    }
-  };
+  if (!project) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-light-text-muted dark:text-cine-text-muted">
+        请先选择或创建一个项目
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full overflow-y-auto p-4 space-y-6">
-      {/* Generation Type */}
-      <div>
-        <h3 className="text-sm font-bold mb-3">
-          生成类型
-          {isSceneSelected && <span className="text-xs text-light-text-muted dark:text-cine-text-muted ml-2">(场景级)</span>}
-          {isShotSelected && <span className="text-xs text-light-text-muted dark:text-cine-text-muted ml-2">(镜头级)</span>}
-        </h3>
-        <div className={`grid gap-2 ${isShotSelected ? 'grid-cols-3' : 'grid-cols-3'}`}>
-          <button
-            onClick={() => setGenerationType('single')}
-            className={`border rounded-lg p-3 transition-colors ${generationType === 'single'
-              ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
-              : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-              }`}
-          >
-            <ImageIcon size={20} className="mx-auto mb-1" />
-            <div className="text-xs">单图生成</div>
-          </button>
+    <div className="flex flex-col h-full bg-light-bg dark:bg-cine-bg overflow-hidden">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
 
-          {/* Edit button - Only show for shot-level with existing image */}
-          {isShotSelected && selectedShot?.referenceImage && (
-            <button
-              onClick={() => setGenerationType('edit')}
-              className={`border rounded-lg p-3 transition-colors ${generationType === 'edit'
-                ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
-                : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-                }`}
-              title="编辑当前图片"
-            >
-              <Wand2 size={20} className="mx-auto mb-1" />
-              <div className="text-xs">图片编辑</div>
-            </button>
-          )}
-
-          {/* Grid button - Only show for scene-level */}
-          {isSceneSelected && (
-            <>
-              <button
-                onClick={() => setGenerationType('grid')}
-                className={`border rounded-lg p-3 transition-colors ${generationType === 'grid'
-                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
-                  : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-                  }`}
-              >
-                <Grid3x3 size={20} className="mx-auto mb-1" />
-                <div className="text-xs">Grid 多视图</div>
-              </button>
-
-              <button
-                onClick={() => setShowBatchConfig(true)}
-                disabled={isGenerating}
-                className={`border rounded-lg p-3 transition-colors ${showBatchConfig
-                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
-                  : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-                  }`}
-                title="一键为当前场景所有空缺镜头生成图片"
-              >
-                <Sparkles size={20} className="mx-auto mb-1 text-light-accent dark:text-cine-accent" />
-                <div className="text-xs">批量生成</div>
-              </button>
-            </>
-          )}
-
-          <button
-            onClick={() => setGenerationType('video')}
-            className={`border rounded-lg p-3 transition-colors ${generationType === 'video'
-              ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
-              : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-              }`}
-          >
-            <Video size={20} className="mx-auto mb-1" />
-            <div className="text-xs">视频生成</div>
-          </button>
-        </div>
-      </div>
-
-      {showBatchConfig && (
-        <>
-          {/* Batch Generation Configuration */}
-          <div className="bg-light-accent/5 dark:bg-cine-accent/5 border border-light-accent/30 dark:border-cine-accent/30 rounded-lg p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-light-text dark:text-white">批量生成配置</h3>
-              <button
-                onClick={() => setShowBatchConfig(false)}
-                className="text-xs text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white"
-              >
-                ✕ 关闭
-              </button>
-            </div>
-
-            {/* Generation Scope Selection */}
-            <div>
-              <h4 className="text-xs font-bold mb-2 text-light-text dark:text-white">生成范围</h4>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setBatchScope('scene')}
-                  className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${batchScope === 'scene'
-                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white dark:text-black'
-                    : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border text-light-text dark:text-white'
-                    }`}
-                >
-                  当前场景
-                </button>
-                <button
-                  onClick={() => setBatchScope('project')}
-                  className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${batchScope === 'project'
-                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white dark:text-black'
-                    : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border text-light-text dark:text-white'
-                    }`}
-                >
-                  整个项目
-                </button>
-              </div>
-            </div>
-
-            {/* Generation Mode Selection */}
-            <div>
-              <h4 className="text-xs font-bold mb-2 text-light-text dark:text-white">生成模式</h4>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setBatchMode('grid')}
-                  className={`flex-1 border rounded-lg px-3 py-3 text-sm transition-colors ${batchMode === 'grid'
-                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white dark:text-black'
-                    : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-                    }`}
-                >
-                  <div className="font-bold">Grid 多视图</div>
-                  <div className="text-xs opacity-80 mt-1">Gemini 生成 2x2 切片</div>
-                </button>
-                <button
-                  onClick={() => setBatchMode('seedream')}
-                  className={`flex-1 border rounded-lg px-3 py-3 text-sm transition-colors ${batchMode === 'seedream'
-                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-white dark:text-black'
-                    : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-                    }`}
-                >
-                  <div className="font-bold">SeeDream 单图</div>
-                  <div className="text-xs opacity-80 mt-1">火山引擎高质量生成</div>
-                </button>
-              </div>
-            </div>
-
-            {/* Info */}
-            <div className="text-xs text-light-text-muted dark:text-cine-text-muted bg-light-bg/50 dark:bg-cine-black/30 rounded p-3">
-              <div className="font-bold mb-1">📋 说明：</div>
-              <ul className="space-y-1 list-disc list-inside">
-                <li>
-                  {batchScope === 'scene'
-                    ? '将为当前场景的所有未生成图片的镜头批量生成'
-                    : '将为整个项目的所有未生成图片的镜头批量生成'}
-                </li>
-                <li>已有图片的镜头会跳过（可手动重新生成）</li>
-                <li>Grid 模式：生成 4 张变体，自动选择第一张</li>
-                <li>SeeDream 模式：直接生成单张高质量图片</li>
-              </ul>
-            </div>
-
-            {/* Start Button */}
-            <button
-              onClick={handleBatchGenerate}
-              disabled={isGenerating}
-              className="w-full bg-light-accent dark:bg-cine-accent text-white dark:text-black py-3 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  批量生成中...
-                </>
-              ) : (
-                <>
-                  <Sparkles size={18} />
-                  开始批量生成
-                </>
-              )}
-            </button>
-          </div>
-        </>
-      )}
-
-      {generationType === 'edit' && selectedShot?.referenceImage && (
-        <>
-          {/* Current Image Preview */}
-          <div>
-            <h3 className="text-sm font-bold mb-3">当前图片</h3>
-            <div className="relative group">
-              <img
-                src={selectedShot.referenceImage}
-                alt="Current Image"
-                className="w-full rounded-lg border border-light-border dark:border-cine-border"
-              />
-              <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                原图
-              </div>
-            </div>
-          </div>
-
-          {/* Model Selection */}
-          <div>
-            <h3 className="text-sm font-bold mb-3">编辑模型</h3>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setEditModel('gemini')}
-                className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${editModel === 'gemini'
-                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
-                  : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-                  }`}
-              >
-                Gemini 3 Pro
-              </button>
-              <button
-                onClick={() => setEditModel('seedream')}
-                className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${editModel === 'seedream'
-                  ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
-                  : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-                  }`}
-              >
-                SeeDream 4.5
-              </button>
-            </div>
-            <div className="mt-2 text-xs text-light-text-muted dark:text-cine-text-muted">
-              {editModel === 'gemini'
-                ? '使用 Gemini 编辑：支持风格转换、构图调整、细节修改等各种编辑'
-                : '使用 SeeDream 编辑：基于原图生成变体，支持风格和内容的灵活调整'}
-            </div>
-          </div>
-        </>
-      )}
-
-      {generationType === 'grid' && (
-        <>
-          {/* Scene Selector */}
-          <div>
-            <h3 className="text-sm font-bold mb-3">选择场景</h3>
-            <select
-              value={selectedSceneId}
-              onChange={(e) => setSelectedSceneId(e.target.value)}
-              className="w-full bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:border-cine-accent"
-            >
-              <option value="">-- 请选择场景 --</option>
-              {scenes.map((scene) => {
-                const shotCount = shots.filter((s) => s.sceneId === scene.id).length;
-                return (
-                  <option key={scene.id} value={scene.id}>
-                    {scene.name} ({shotCount} 个镜头)
-                  </option>
-                );
-              })}
-            </select>
-            {selectedSceneId && (
-              <div className="mt-2 space-y-2">
-                <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                  提示：Grid 大小建议与镜头数量匹配（4个镜头→2x2，9个镜头→3x3）
-                </div>
-
-                {/* Grid History Preview */}
-                {(() => {
-                  const selectedScene = scenes.find((s) => s.id === selectedSceneId);
-                  const hasHistory = selectedScene?.gridHistory && selectedScene.gridHistory.length > 0;
-
-                  if (hasHistory) {
-                    const latestGrid = selectedScene!.gridHistory![0];
-                    return (
-                      <div className="bg-light-bg dark:bg-cine-black/30 border border-light-border dark:border-cine-border rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="text-xs font-medium text-light-accent dark:text-cine-accent">
-                            历史记录 ({selectedScene!.gridHistory!.length} 条)
-                          </div>
-                          <button
-                            onClick={() => setShowGridHistory(true)}
-                            className="text-xs text-light-accent dark:text-cine-accent hover:text-light-accent dark:text-cine-accent-hover transition-colors"
-                          >
-                            查看全部 →
-                          </button>
-                        </div>
-                        <div className="flex gap-2">
-                          <img
-                            src={latestGrid.fullGridUrl}
-                            alt="Latest Grid"
-                            className="w-20 h-20 rounded border border-light-border dark:border-cine-border object-cover cursor-pointer hover:border-light-accent dark:border-cine-accent transition-colors"
-                            onClick={() => handleSelectGridHistory(latestGrid)}
-                            title="点击重新使用此 Grid"
-                          />
-                          <div className="flex-1 text-xs text-light-text-muted dark:text-cine-text-muted">
-                            <div className="line-clamp-2 mb-1">{latestGrid.prompt}</div>
-                            <div className="text-[10px]">
-                              {latestGrid.gridSize} · {latestGrid.aspectRatio}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
-            )}
-          </div>
-
-          {/* Grid Size */}
-          <div>
-            <h3 className="text-sm font-bold mb-3">Grid 大小</h3>
-            <div className="flex gap-2">
-              {(['2x2', '3x3'] as const).map((size) => (
-                <button
-                  key={size}
-                  onClick={() => setGridSize(size)}
-                  className={`flex-1 border rounded-lg px-3 py-2 text-sm transition-colors ${gridSize === size
-                    ? 'bg-light-accent dark:bg-cine-accent border-light-accent dark:border-cine-accent text-light-text dark:text-black'
-                    : 'bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border-light-border dark:border-cine-border'
-                    }`}
-                >
-                  {size} ({size === '2x2' ? '4视图' : '9视图'})
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Aspect Ratio */}
-          <div>
-            <h3 className="text-sm font-bold mb-3">画面比例</h3>
-            <select
-              value={aspectRatio}
-              onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
-              className="w-full bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:border-cine-accent"
-            >
-              <option value={AspectRatio.WIDE}>16:9 (宽屏)</option>
-              <option value={AspectRatio.STANDARD}>4:3 (标准)</option>
-              <option value={AspectRatio.CINEMA}>21:9 (电影)</option>
-              <option value={AspectRatio.SQUARE}>1:1 (方形)</option>
-              <option value={AspectRatio.PORTRAIT}>3:4 (竖屏)</option>
-              <option value={AspectRatio.MOBILE}>9:16 (手机)</option>
-            </select>
-          </div>
-
-          {/* Reference Images */}
-          <div>
-            <h3 className="text-sm font-bold mb-3">参考图片</h3>
-            <label className="block">
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-              <div className="w-full bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors">
-                <Upload size={24} className="mx-auto mb-2 text-light-text-muted dark:text-cine-text-muted" />
-                <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                  点击上传参考图片（可选）
-                </div>
-              </div>
-            </label>
-            {referenceImages.length > 0 && (
-              <div className="mt-2 text-xs text-light-text-muted dark:text-cine-text-muted">
-                已选择 {referenceImages.length} 张图片
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Prompt */}
-      <div>
-        <h3 className="text-sm font-bold mb-3">提示词</h3>
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder={
-            generationType === 'grid'
-              ? '描述角色或场景...\n例如：一位穿着黑色西装的赛博朋克侦探，背景是霓虹灯闪烁的街道'
-              : generationType === 'edit'
-                ? '描述你想要的修改...\n例如：\n- 改为赛博朋克风格\n- 将背景改为白天的街道\n- 增加更多人物和细节\n- 完全重新构图，改为俯视角度'
-                : '描述你想要生成的画面...'
-          }
-          className="w-full h-32 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:border-cine-accent"
+        {/* Generation Type Selector */}
+        <GenerationTypeSelector
+          generationType={generationType}
+          setGenerationType={setGenerationType}
+          isShotSelected={isShotSelected}
+          isSceneSelected={!!isSceneSelected}
         />
-      </div>
 
-      {/* Style Presets */}
-      <div>
-        <h3 className="text-sm font-bold mb-3">风格预设</h3>
-        <div className="grid grid-cols-2 gap-2">
-          {['电影级', '动画', '写实', '赛博朋克'].map((style) => (
-            <button
-              key={style}
-              onClick={() => setPrompt((prev) => `${prev}, ${style}风格`)}
-              className="bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-xs transition-colors"
-            >
-              {style}
-            </button>
-          ))}
-        </div>
-      </div>
+        {/* Model Selection */}
+        <ModelSelector
+          selectedModel={selectedModel}
+          setSelectedModel={setSelectedModel}
+          jimengModel={jimengModel}
+          setJimengModel={setJimengModel}
+          jimengVideoModel={jimengVideoModel}
+          setJimengVideoModel={setJimengVideoModel}
+          generationType={generationType}
+        />
 
-      {/* Generate Button */}
-      <button
-        onClick={() => {
-          if (generationType === 'grid') {
-            handleGenerateGrid();
-          } else if (generationType === 'single') {
-            handleGenerateSingleImage();
-          } else if (generationType === 'video') {
-            handleGenerateVideo();
-          } else if (generationType === 'edit') {
-            handleEditImage();
-          }
-        }}
-        disabled={isGenerating || !generationType}
-        className="w-full bg-light-accent dark:bg-cine-accent text-white dark:text-black py-3 px-4 rounded-lg font-bold hover:bg-light-accent-hover dark:bg-cine-accent-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {isGenerating ? (
-          <>
-            <Loader2 size={18} className="animate-spin" />
-            生成中...
-          </>
-        ) : (
-          <>
-            <Sparkles size={18} />
-            {generationType === 'single'
-              ? '生成单图'
-              : generationType === 'grid'
-                ? '生成 Grid'
-                : generationType === 'video'
-                  ? '生成视频'
-                  : generationType === 'edit'
-                    ? '编辑图片'
-                    : '选择生成类型'}
-          </>
-        )}
-      </button>
+        {/* Batch Generation Configuration */}
+        <BatchConfig
+          showBatchConfig={showBatchConfig}
+          setShowBatchConfig={setShowBatchConfig}
+          batchScope={batchScope}
+          setBatchScope={setBatchScope}
+          batchMode={batchMode}
+          setBatchMode={setBatchMode}
+          isGenerating={isGenerating}
+          handleBatchGenerate={() => handleBatchGenerate(selectedSceneId)}
+        />
 
-      {/* Shot Details */}
-      {selectedShot && (
-        <div className="pt-4 border-t border-light-border dark:border-cine-border">
-          <h3 className="text-sm font-bold mb-3">当前镜头详情</h3>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-light-text-muted dark:text-cine-text-muted">编号:</span>
-              <span className="font-mono text-xs">{selectedShot.id.split('_')[2] || '01'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-light-text-muted dark:text-cine-text-muted">景别:</span>
-              <span>{selectedShot.shotSize}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-light-text-muted dark:text-cine-text-muted">运镜:</span>
-              <span>{selectedShot.cameraMovement}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-light-text-muted dark:text-cine-text-muted">时长:</span>
-              <span>{selectedShot.duration}s</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-light-text-muted dark:text-cine-text-muted">状态:</span>
-              <span
-                className={`text-xs px-2 py-1 rounded ${selectedShot.status === 'done'
-                  ? 'bg-green-500/20 text-green-400'
-                  : selectedShot.status === 'processing'
-                    ? 'bg-yellow-500/20 text-yellow-400'
-                    : selectedShot.status === 'error'
-                      ? 'bg-red-500/20 text-red-400'
-                      : 'bg-gray-500/20 text-gray-400'
-                  }`}
-              >
-                {selectedShot.status}
-              </span>
-            </div>
-            {selectedShot.description && (
-              <div className="mt-3 pt-3 border-t border-light-border dark:border-cine-border">
-                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-1">视觉描述:</div>
-                <div className="text-xs text-light-text-muted dark:text-cine-text-muted leading-relaxed">
-                  {selectedShot.description}
-                </div>
+        {/* Edit Mode Configuration */}
+        {generationType === 'edit' && (
+          <div className="bg-light-bg-secondary dark:bg-cine-panel rounded-xl p-4 border border-light-border dark:border-cine-border space-y-4 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-light-text dark:text-white flex items-center gap-2">
+                <Wand2 size={16} className="text-light-accent dark:text-cine-accent" />
+                图片编辑模式
+              </h3>
+              <div className="flex bg-light-bg dark:bg-cine-bg rounded-lg p-1 border border-light-border dark:border-cine-border">
+                <button
+                  onClick={() => setEditModel('gemini')}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${editModel === 'gemini'
+                    ? 'bg-light-accent dark:bg-cine-accent text-white shadow-sm'
+                    : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white'
+                    }`}
+                >
+                  Gemini
+                </button>
+                <button
+                  onClick={() => setEditModel('seedream')}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${editModel === 'seedream'
+                    ? 'bg-light-accent dark:bg-cine-accent text-white shadow-sm'
+                    : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white'
+                    }`}
+                >
+                  SeeDream
+                </button>
               </div>
-            )}
+            </div>
 
-            {/* Dialogue */}
-            {selectedShot.dialogue && (
-              <div className="mt-3 pt-3 border-t border-light-border dark:border-cine-border">
-                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-1">对话:</div>
-                <div className="text-xs text-light-text dark:text-white bg-light-bg dark:bg-cine-black/50 p-2 rounded leading-relaxed">
-                  &ldquo;{selectedShot.dialogue}&rdquo;
-                </div>
-              </div>
-            )}
-
-            {/* Narration */}
-            {selectedShot.narration && (
-              <div className="mt-3 pt-3 border-t border-light-border dark:border-cine-border">
-                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-1">旁白:</div>
-                <div className="text-xs text-light-text-muted dark:text-cine-text-muted bg-light-bg-secondary dark:bg-cine-bg-secondary p-2 rounded leading-relaxed italic">
-                  {selectedShot.narration}
-                </div>
-              </div>
-            )}
-
-            {/* Grid Source Info */}
-            {selectedShot.fullGridUrl && (
-              <div className="mt-3 pt-3 border-t border-light-border dark:border-cine-border">
-                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mb-2">图片来源:</div>
-                <div className="bg-light-bg dark:bg-cine-black/50 p-2 rounded space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Grid3x3 size={14} className="text-light-accent dark:text-cine-accent" />
-                    <span className="text-xs text-light-accent dark:text-cine-accent">来自 Grid 多视图切片</span>
-                  </div>
-                  {selectedShot.fullGridUrl && (
-                    <div className="relative group">
-                      <img
-                        src={selectedShot.fullGridUrl}
-                        alt="Grid Source"
-                        className="w-full rounded border border-light-border dark:border-cine-border"
-                      />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors rounded flex items-center justify-center">
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-light-text dark:text-white">
-                          完整 Grid 图
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {selectedShot.referenceImage && (
-                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                      <div className="mb-1">当前镜头使用的切片:</div>
-                      <img
-                        src={selectedShot.referenceImage}
-                        alt="Current Slice"
-                        className="w-full rounded border border-light-accent dark:border-cine-accent"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Generation History */}
-            {selectedShot.generationHistory && selectedShot.generationHistory.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-light-border dark:border-cine-border">
-                <ShotGenerationHistory
-                  history={selectedShot.generationHistory}
-                  onRegenerate={handleRegenerate}
-                  onApply={handleApplyHistory}
-                  onDownload={handleDownload}
-                  onFavorite={handleFavorite}
-                  onDubbing={handleDubbing}
+            {selectedShot?.referenceImage ? (
+              <div className="relative aspect-video rounded-lg overflow-hidden border border-light-border dark:border-cine-border group">
+                <img
+                  src={selectedShot.referenceImage}
+                  alt="Original"
+                  className="w-full h-full object-cover"
                 />
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="text-white text-xs font-medium">当前原图</span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-xs text-light-text-muted dark:text-cine-text-muted border border-dashed border-light-border dark:border-cine-border rounded-lg">
+                请先选择一张有图片的镜头进行编辑
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Grid Preview Modal */}
-      {gridResult && project && (
+        {/* Grid Generation Configuration */}
+        {generationType === 'grid' && (
+          <div className="bg-light-bg-secondary dark:bg-cine-panel rounded-xl p-4 border border-light-border dark:border-cine-border space-y-4 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Grid3x3 size={16} className="text-light-accent dark:text-cine-accent" />
+                <span className="text-sm font-bold text-light-text dark:text-white">Grid 生成设置</span>
+              </div>
+              <button
+                onClick={() => setShowGridHistory(true)}
+                className="text-xs flex items-center gap-1 text-light-text-muted dark:text-cine-text-muted hover:text-light-accent dark:hover:text-cine-accent transition-colors"
+              >
+                <History size={14} />
+                历史记录
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider mb-1.5 block">
+                  Grid 大小
+                </label>
+                <div className="flex bg-light-bg dark:bg-cine-bg rounded-lg p-1 border border-light-border dark:border-cine-border">
+                  <button
+                    onClick={() => setGridSize('2x2')}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${gridSize === '2x2'
+                      ? 'bg-light-accent dark:bg-cine-accent text-white shadow-sm'
+                      : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white'
+                      }`}
+                  >
+                    2x2 (4图)
+                  </button>
+                  <button
+                    onClick={() => setGridSize('3x3')}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${gridSize === '3x3'
+                      ? 'bg-light-accent dark:bg-cine-accent text-white shadow-sm'
+                      : 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white'
+                      }`}
+                  >
+                    3x3 (9图)
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider mb-1.5 block">
+                  画幅比例
+                </label>
+                <select
+                  value={aspectRatio}
+                  onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
+                  className="w-full bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
+                >
+                  <option value={AspectRatio.WIDE}>16:9 宽画幅</option>
+                  <option value={AspectRatio.CINEMA}>2.39:1 电影级</option>
+                  <option value={AspectRatio.SQUARE}>1:1 正方形</option>
+                  <option value={AspectRatio.PORTRAIT}>9:16 竖屏</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Reference Image Upload */}
+            <div>
+              <label className="text-[10px] font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider mb-1.5 block">
+                参考图 (可选)
+              </label>
+              <div className="flex items-center gap-2">
+                <label className="flex-1 cursor-pointer group">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <div className="flex items-center justify-center gap-2 py-2 border border-dashed border-light-border dark:border-cine-border rounded-lg text-xs text-light-text-muted dark:text-cine-text-muted group-hover:border-light-accent dark:group-hover:border-cine-accent group-hover:text-light-accent dark:group-hover:text-cine-accent transition-all">
+                    <Upload size={14} />
+                    <span>上传参考图 ({referenceImages.length})</span>
+                  </div>
+                </label>
+                {referenceImages.length > 0 && (
+                  <button
+                    onClick={() => setReferenceImages([])}
+                    className="p-2 text-light-text-muted dark:text-cine-text-muted hover:text-red-500 transition-colors"
+                    title="清除所有参考图"
+                  >
+                    <span className="text-xs">清除</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Prompt Input & Generate Button */}
+        <div className="space-y-4">
+          <PromptInput
+            prompt={prompt}
+            setPrompt={setPrompt}
+            generationType={generationType}
+          />
+
+          <button
+            onClick={() => {
+              if (generationType === 'grid') {
+                handleGenerateGrid(selectedSceneId);
+              } else if (generationType === 'video') {
+                handleGenerateVideo();
+              } else if (generationType === 'edit') {
+                handleEditImage();
+              } else {
+                handleGenerateSingleImage();
+              }
+            }}
+            disabled={isGenerating}
+            className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-light-accent/20 dark:shadow-cine-accent/20 transition-all hover:scale-[1.02] active:scale-[0.98] ${isGenerating
+              ? 'bg-light-bg-secondary dark:bg-cine-panel text-light-text-muted dark:text-cine-text-muted cursor-not-allowed'
+              : 'bg-gradient-to-r from-light-accent to-purple-600 dark:from-cine-accent dark:to-purple-500 text-white'
+              }`}
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                <span>
+                  {generationType === 'video' ? '视频生成中...' :
+                    generationType === 'grid' ? 'Grid 生成中...' :
+                      generationType === 'edit' ? 'AI 编辑中...' :
+                        'AI 生成中...'}
+                </span>
+              </>
+            ) : (
+              <>
+                {generationType === 'video' ? <Video size={16} /> :
+                  generationType === 'edit' ? <Wand2 size={16} /> :
+                    <Sparkles size={16} />}
+                <span>
+                  {generationType === 'video' ? '生成视频 (20积分)' :
+                    generationType === 'grid' ? `生成 Grid (${gridSize === '2x2' ? '4' : '8'}积分)` :
+                      generationType === 'edit' ? '开始编辑' :
+                        '立即生成'}
+                </span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Shot Details & History */}
+        {selectedShotId && selectedShot && (
+          <ShotDetailsPanel
+            selectedShot={selectedShot}
+            handleDownload={handleDownload}
+            handleRegenerate={handleRegenerate}
+            handleApplyHistory={handleApplyHistory}
+            handleFavorite={handleFavorite}
+            handleDubbing={handleDubbing}
+          />
+        )}
+      </div>
+
+      {/* Modals */}
+      {gridResult && (
         <GridPreviewModal
           gridImages={gridResult.slices}
           fullGridUrl={gridResult.fullImage}
-          shots={shots}
+          shots={shots.filter(s => s.sceneId === gridResult.sceneId)}
           sceneId={gridResult.sceneId}
-          sceneOrder={scenes.find((s) => s.id === gridResult.sceneId)?.order}
           gridRows={gridResult.gridRows}
           gridCols={gridResult.gridCols}
-          onAssign={handleGridAssignment}
+          sceneOrder={scenes.find(s => s.id === gridResult.sceneId)?.order}
+          onAssign={(assignments, favoriteSlices) => handleGridAssignment(gridResult, assignments, favoriteSlices)}
           onClose={() => setGridResult(null)}
         />
       )}
 
-      {/* Grid History Modal */}
-      {showGridHistory && selectedSceneId && (
+      {showGridHistory && (
         <GridHistoryModal
           sceneId={selectedSceneId}
-          sceneName={scenes.find((s) => s.id === selectedSceneId)?.name || ''}
-          gridHistory={scenes.find((s) => s.id === selectedSceneId)?.gridHistory || []}
-          shots={shots}
+          sceneName={scenes.find(s => s.id === selectedSceneId)?.name || '未知场景'}
+          gridHistory={scenes.find(s => s.id === selectedSceneId)?.gridHistory || []}
+          shots={shots.filter(s => s.sceneId === selectedSceneId)}
           onSelectHistory={handleSelectGridHistory}
           onClose={() => setShowGridHistory(false)}
         />

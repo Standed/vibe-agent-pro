@@ -5,10 +5,11 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { Bot, Sliders, ChevronRight, ChevronLeft } from 'lucide-react';
 import AgentPanel from '../agent/AgentPanel';
 import ChatPanelWithHistory from './ChatPanelWithHistory';
+import ProPanel from './ProPanel';
 
 export default function RightPanel() {
   const { controlMode, setControlMode, rightSidebarCollapsed, toggleRightSidebar } = useProjectStore();
-  const [panelWidth, setPanelWidth] = useState(384);
+  const [panelWidth, setPanelWidth] = useState(480); // 从 384 增加到 480
   const [resizing, setResizing] = useState(false);
   const resizeState = useRef<{ startX: number; startWidth: number } | null>(null);
 
@@ -103,3 +104,4 @@ export default function RightPanel() {
     </div>
   );
 }
+

@@ -46,6 +46,9 @@ export enum GridMode {
   GRID_3x3 = '3x3'
 }
 
+export type BatchMode = 'grid' | 'seedream' | 'jimeng';
+export type AIModel = 'seedream' | 'jimeng';
+
 // Grid Generation Result (for modal preview)
 export interface GridGenerationResult {
   fullImage: string;
