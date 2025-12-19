@@ -129,21 +129,19 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
 
   // ✅ 后台异步更新 last_login_at（不阻塞登录流程）
   if (authData.user) {
-    // 使用 Promise 但不 await，让它在后台执行
-    (supabase as any)
-      .from('profiles')
-      .update({ last_login_at: new Date().toISOString() })
-      .eq('id', authData.user.id)
-      .then(({ error: updateError }: any) => {
-        if (updateError) {
-          console.warn('[Auth] ⚠️ 后台更新 last_login_at 失败:', updateError);
-        } else {
-          // console.log('[Auth] ✅ 后台更新 last_login_at 成功');
-        }
+    // 使用 API 代理更新，避免触发 RLS 递归问题
+    fetch('/api/supabase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        table: 'profiles',
+        operation: 'update',
+        userId: authData.user.id,
+        data: { last_login_at: new Date().toISOString() },
+        filters: { eq: { id: authData.user.id } }
       })
-      .catch((err: any) => {
-        console.warn('[Auth] ⚠️ 后台更新 last_login_at 异常:', err);
-      });
+    }).catch(err => console.warn('[Auth] ⚠️ 后台更新 last_login_at 异常:', err));
   }
 
   // console.log('[Auth] ✅ signIn 函数完成，准备返回结果');
@@ -266,12 +264,62 @@ export async function getUserProfile(userId?: string) {
     return { data: null, error: new Error('User not found') };
   }
 
+  // 1. 尝试直接从 Supabase 获取 (最快)
   const { data, error } = await (supabase as any)
     .from('profiles')
     .select('*')
     .eq('id', uid)
     .single();
 
+  if (!error && data) {
+    return { data, error: null };
+  }
+
+  // 2. 如果直接获取失败 (通常是 RLS 权限问题)，尝试通过 API 代理获取 (使用 Service Role)
+  console.log('[Auth] 直接获取 Profile 失败或为空，尝试使用 API 代理...');
+
+  try {
+    const response = await fetch('/api/supabase', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include', // ✅ 确保发送 cookie
+      body: JSON.stringify({
+        table: 'profiles',
+        operation: 'select',
+        userId: uid,
+        filters: {
+          eq: { id: uid }
+        },
+        single: true
+      })
+    });
+
+    if (response.ok) {
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          console.log('[Auth] ✅ 通过 API 代理成功获取 Profile:', result.data.email);
+          return { data: result.data, error: null };
+        } else {
+          console.warn('[Auth] API 代理返回数据为空或失败:', result);
+        }
+      } else {
+        const text = await response.text();
+        console.warn('[Auth] API 代理返回非 JSON 响应:', text.substring(0, 100));
+      }
+    } else {
+      console.warn('[Auth] API 代理请求失败:', response.status, response.statusText);
+      const text = await response.text();
+      console.warn('[Auth] 错误详情:', text.substring(0, 200));
+    }
+  } catch (proxyErr) {
+    console.error('[Auth] API 代理请求异常:', proxyErr);
+  }
+
+  // 如果都失败了，返回原始错误
   return { data, error };
 }
 
