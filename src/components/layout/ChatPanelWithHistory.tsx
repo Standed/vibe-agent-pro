@@ -31,6 +31,9 @@ import { formatShotLabel } from '@/utils/shotOrder';
 import { storageService } from '@/lib/storageService';
 import { dataService } from '@/lib/dataService';
 import { jimengService } from '@/services/jimengService';
+import { useJimengGeneration } from '@/hooks/useJimengGeneration';
+import { JimengOptions } from '@/components/jimeng/JimengOptions';
+import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
 
 // Model types
 type GenerationModel = 'seedream' | 'gemini-direct' | 'gemini-grid' | 'jimeng';
@@ -99,12 +102,17 @@ export default function ChatPanelWithHistory() {
     locations: Location[];
   }>({ characters: [], locations: [] });
 
+  // Jimeng Hook
+  const jimengGeneration = useJimengGeneration({
+    setMessages,
+    manualReferenceUrls,
+    mentionedAssets
+  });
+
   // Grid specific state
   const [gridSize, setGridSize] = useState<'2x2' | '3x3'>('2x2');
   // gridResult 现在从 store 获取，不再使用本地状态
 
-  // Jimeng specific state
-  const [jimengModel, setJimengModel] = useState('jimeng-4.0');
   const [jimengVideoModel, setJimengVideoModel] = useState('video-S3.0-Pro');
 
   // 即梦图片选择器状态
@@ -828,162 +836,10 @@ export default function ChatPanelWithHistory() {
   };
 
   // Jimeng generation (即梦 4.0)
-  const handleJimengGeneration = async (
-    prompt: string,
-    capturedShotId: string | null,
-    capturedSceneId: string | null,
-    capturedContextKey: string
-  ) => {
-    const sessionid = localStorage.getItem('jimeng_session_id');
-    if (!sessionid) {
-      toast.error('请先在设置中配置即梦 sessionid', {
-        description: '进入设置 → API 配置 → 即梦 Session ID'
-      });
-      throw new Error('未配置即梦 sessionid');
-    }
+  // Jimeng generation (即梦 4.0) - Delegated to Hook
+  const handleJimengGeneration = jimengGeneration.generateImage;
 
-    const { promptForModel } = buildPromptWithReferences(prompt, { skipAssetRefs: false });
-    const projectAspectRatio = project?.settings.aspectRatio || AspectRatio.WIDE;
 
-    toast.info('正在通过即梦 4.0 生成图片...', { duration: 3000 });
-
-    console.log('[Jimeng] Generation params:', {
-      prompt: promptForModel.substring(0, 100),
-      model: 'jimeng-4.0',
-      aspectRatio: projectAspectRatio,
-      sessionid: sessionid ? '已配置' : '未配置'
-    });
-
-    // Submit generation task
-    const genResult = await jimengService.generateImage({
-      prompt: promptForModel,
-      model: 'jimeng-4.0',
-      aspectRatio: projectAspectRatio, // AspectRatio枚举值如 '16:9'
-      sessionid
-    });
-
-    console.log('[Jimeng] Generation result:', genResult);
-
-    // 根据官方实现，应该从 aigc_data 中获取 history_record_id
-    const historyId = genResult.data?.aigc_data?.history_record_id;
-    if (!historyId) {
-      console.error('[Jimeng] Failed to get history_record_id, response:', genResult);
-      throw new Error('即梦任务提交失败：' + (genResult.errmsg || '未知错误'));
-    }
-
-    // Poll for completion - 现在返回所有图片
-    const pollResult = await jimengService.pollTask(historyId, sessionid);
-    const imageUrls = pollResult.urls || [pollResult.url];
-
-    if (!imageUrls || imageUrls.length === 0) {
-      throw new Error('即梦生成失败：未返回图片 URL');
-    }
-
-    console.log('[Jimeng] Generated images:', imageUrls.length);
-
-    // 如果只有一张图片，直接使用；否则打开选择器
-    if (imageUrls.length === 1) {
-      // 单张图片直接处理
-      await handleJimengImageSelected(
-        imageUrls[0],
-        imageUrls[0],
-        prompt,
-        capturedShotId,
-        capturedSceneId,
-        capturedContextKey,
-        projectAspectRatio
-      );
-    } else {
-      // 多张图片，打开选择器让用户选择
-      setJimengSelectorData({
-        images: imageUrls,
-        prompt,
-        shotId: capturedShotId || undefined,
-        sceneId: capturedSceneId || undefined,
-        aspectRatio: projectAspectRatio,
-        contextKey: capturedContextKey,
-      });
-      toast.success(`即梦 4.0 生成了 ${imageUrls.length} 张图片，请选择一张保存`);
-    }
-  };
-
-  // 处理即梦图片选择后的保存逻辑
-  const handleJimengImageSelected = async (
-    r2Url: string,
-    originalUrl: string,
-    prompt: string,
-    capturedShotId: string | null,
-    capturedSceneId: string | null,
-    capturedContextKey: string,
-    aspectRatio: string
-  ) => {
-    // Update shot if selected
-    if (capturedShotId) {
-      updateShot(capturedShotId, {
-        referenceImage: r2Url,
-        status: 'done',
-      });
-
-      // Add to generation history
-      const historyItem: GenerationHistoryItem = {
-        id: `gen_${Date.now()}`,
-        type: 'image',
-        timestamp: new Date(),
-        result: r2Url,
-        prompt,
-        parameters: {
-          model: '即梦 4.0',
-          aspectRatio: aspectRatio as AspectRatio,
-        },
-        status: 'success',
-      };
-      addGenerationHistory(capturedShotId, historyItem);
-    }
-
-    // Add assistant message with result
-    const assistantMessage: ChatMessage = {
-      id: generateMessageId(),
-      role: 'assistant',
-      content: '已使用即梦 4.0 生成图片',
-      timestamp: new Date(),
-      images: [r2Url],
-      model: 'jimeng',
-      shotId: capturedShotId || undefined,
-      sceneId: capturedSceneId || undefined,
-    };
-
-    // 只在消息属于当前上下文时才添加到显示列表
-    if (contextKey === capturedContextKey) {
-      setMessages(prev => [...prev, assistantMessage]);
-    }
-
-    // 保存 assistant 消息到云端
-    if (user && project) {
-      try {
-        await dataService.saveChatMessage({
-          id: assistantMessage.id,
-          userId: user.id,
-          projectId: project.id,
-          scope: capturedShotId ? 'shot' : capturedSceneId ? 'scene' : 'project',
-          shotId: capturedShotId || undefined,
-          sceneId: capturedSceneId || undefined,
-          role: 'assistant',
-          content: assistantMessage.content,
-          timestamp: assistantMessage.timestamp,
-          metadata: {
-            images: [r2Url],
-            model: 'jimeng-4.0',
-          },
-          createdAt: assistantMessage.timestamp,
-          updatedAt: assistantMessage.timestamp,
-        });
-      } catch (error) {
-        console.error('[ChatPanelWithHistory] 保存 assistant 消息失败:', error);
-      }
-    }
-
-    toast.success('即梦 4.0 图片已保存！');
-  };
 
   // Gemini direct generation (single image without grid)
   const handleGeminiDirectGeneration = async (
@@ -994,7 +850,7 @@ export default function ChatPanelWithHistory() {
     capturedContextKey: string
   ) => {
     const skipAssetRefs = imageFiles.length > 0;
-    const { promptForModel, referenceImageUrls, usedCharacters, usedLocations } = buildPromptWithReferences(prompt, { skipAssetRefs });
+    const { enrichedPrompt: promptForModel, referenceImageUrls, usedCharacters, usedLocations } = enrichPromptWithAssets(prompt, skipAssetRefs ? null : project, undefined);
 
     // Collect all reference image URLs from mentioned assets
     const mentionedImageUrls: string[] = [
@@ -1355,7 +1211,7 @@ export default function ChatPanelWithHistory() {
       console.log('[ChatPanel Grid Debug] refUrlSet.size:', refUrlSet.size);
     } else {
       // 🖼️ 单镜头级：使用原有逻辑
-      const { promptForModel, referenceImageUrls } = buildPromptWithReferences(prompt);
+      const { enrichedPrompt: promptForModel, referenceImageUrls } = enrichPromptWithAssets(prompt, project, undefined);
       enhancedPrompt = promptForModel;
 
       // Collect reference images from mentioned assets
@@ -1958,49 +1814,61 @@ export default function ChatPanelWithHistory() {
           </div>
 
           {/* Input Box */}
-          <div className="flex gap-2 items-end">
-            {/* Upload Button */}
-            {/* Upload Button */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isGenerating}
-              className="flex-shrink-0 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white"
-              title="上传参考图"
-            >
-              <ImageIcon size={20} />
-            </button>
+          <div className="flex flex-col gap-2">
+            {selectedModel === 'jimeng' && (
+              <div className="px-1">
+                <JimengOptions
+                  model={jimengGeneration.model}
+                  resolution={jimengGeneration.resolution}
+                  onModelChange={jimengGeneration.setModel}
+                  onResolutionChange={jimengGeneration.setResolution}
+                />
+              </div>
+            )}
+            <div className="flex gap-2 items-end">
+              {/* Upload Button */}
+              {/* Upload Button */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isGenerating}
+                className="flex-shrink-0 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white"
+                title="上传参考图"
+              >
+                <ImageIcon size={20} />
+              </button>
 
-            {/* Text Input */}
-            <MentionInput
-              value={inputText}
-              onChange={setInputText}
-              onMention={handleMention}
-              onEnterSend={handleSend}
-              placeholder="输入提示词... (输入 @ 引用资源, Enter 发送, Shift+Enter 换行)"
-              disabled={isGenerating}
-              className="flex-1 bg-transparent border-none px-2 py-3 text-sm focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted"
-            />
+              {/* Text Input */}
+              <MentionInput
+                value={inputText}
+                onChange={setInputText}
+                onMention={handleMention}
+                onEnterSend={handleSend}
+                placeholder="输入提示词... (输入 @ 引用资源, Enter 发送, Shift+Enter 换行)"
+                disabled={isGenerating}
+                className="flex-1 bg-transparent border-none px-2 py-3 text-sm focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted"
+              />
 
-            {/* Send Button */}
-            <button
-              onClick={handleSend}
-              disabled={isGenerating || (!inputText.trim() && uploadedImages.length === 0)}
-              className="flex-shrink-0 w-10 h-10 rounded-full bg-light-accent dark:bg-cine-accent text-white dark:text-black hover:scale-105 active:scale-95 transition-all flex items-center justify-center shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isGenerating ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <Send size={18} />
-              )}
-            </button>
+              {/* Send Button */}
+              <button
+                onClick={handleSend}
+                disabled={isGenerating || (!inputText.trim() && uploadedImages.length === 0)}
+                className="flex-shrink-0 w-10 h-10 rounded-full bg-light-accent dark:bg-cine-accent text-white dark:text-black hover:scale-105 active:scale-95 transition-all flex items-center justify-center shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isGenerating ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Send size={18} />
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Tips */}
@@ -2105,28 +1973,13 @@ export default function ChatPanelWithHistory() {
         )}
 
         {/* Jimeng Image Selector */}
-        {jimengSelectorData && (
-          <JimengImageSelector
-            images={jimengSelectorData.images}
-            prompt={jimengSelectorData.prompt}
-            shotId={jimengSelectorData.shotId}
-            sceneId={jimengSelectorData.sceneId}
-            aspectRatio={jimengSelectorData.aspectRatio}
-            onSelect={async (r2Url, originalUrl) => {
-              await handleJimengImageSelected(
-                r2Url,
-                originalUrl,
-                jimengSelectorData.prompt,
-                jimengSelectorData.shotId || null,
-                jimengSelectorData.sceneId || null,
-                jimengSelectorData.contextKey,
-                jimengSelectorData.aspectRatio || '16:9'
-              );
-              setJimengSelectorData(null);
-            }}
-            onClose={() => setJimengSelectorData(null)}
-          />
-        )}
+        <ImageSelectionModal
+          isOpen={jimengGeneration.isModalOpen}
+          onClose={() => jimengGeneration.setIsModalOpen(false)}
+          onConfirm={jimengGeneration.saveImage}
+          imageUrls={jimengGeneration.generatedImages}
+          isLoading={jimengGeneration.isSaving}
+        />
       </div>
     </div>
   );

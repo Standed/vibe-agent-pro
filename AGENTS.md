@@ -112,5 +112,35 @@ if ('error' in authResult) return authResult.error;
 
 ---
 
-**最后更新**: 2025-12-18
+## 🎨 Jimeng Integration Details (即梦集成细节)
+
+**参考来源**: `n8n-nodes-jimeng` (Reverse Engineered)
+
+### 1. 核心依赖
+- **crc-32**: 用于计算上传文件的 CRC32 校验和 (API 强制要求)。
+- **image-size**: 用于获取上传图片的真实宽高 (API 强制要求)。
+- **crypto**: Node.js 内置，用于 AWS V4 签名计算。
+
+### 2. 图片上传流程 (必须步骤)
+即梦不支持直接传入 URL，必须先将图片上传到其对象存储 (ImageX)。
+流程如下：
+1.  **下载**: 获取参考图 URL 的 Buffer 数据。
+2.  **申请 (ApplyImageUpload)**: 调用 `/mweb/v1/get_upload_token` 获取 AWS V4 凭证，然后请求 `ApplyImageUpload` 获取上传地址 (`UploadHosts`, `StoreUri`, `Auth`)。
+3.  **上传 (POST)**: 将二进制数据 POST 到上传地址，Header 需包含 `Authorization` 和 `Content-Crc32`。
+4.  **提交 (CommitImageUpload)**: 调用 `CommitImageUpload` 确认上传，获取最终的 `Uri` (即 `uploadId`)。
+
+### 3. 图生图 (Blend) 模式
+当存在参考图时，必须使用 `blend` 模式构造请求，而非 `generate`。
+- **Ability Key**: `"blend"`
+- **Generate Type**: `"blend"`
+- **Ability List**: 必须包含一个 `byte_edit` 类型的对象，其中 `image_uri_list` 和 `image_list` 指向上传后的 `uploadId`。
+- **Prompt**: 插件逻辑会在 Prompt 后追加 `##`。
+
+### 4. 签名算法
+上传接口使用标准的 **AWS Signature Version 4** 算法。
+- **Service**: `imagex`
+- **Region**: `cn-north-1`
+- **Headers**: 必须包含 `X-Amz-Date`, `X-Amz-Security-Token`, `X-Amz-Content-Sha256`。
+
+**最后更新**: 2025-12-20
 **版本**: v0.5.0 (Internal Beta Ready)
