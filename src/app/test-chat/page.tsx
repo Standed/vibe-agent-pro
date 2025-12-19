@@ -354,10 +354,10 @@ export default function TestChatPage() {
         <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h3 className="font-semibold text-blue-900 mb-2">📖 使用说明</h3>
           <ol className="list-decimal list-inside space-y-1 text-sm text-blue-800">
-            <li>点击"初始化"按钮获取当前用户和项目ID</li>
+            <li>点击 &ldquo;初始化&rdquo; 按钮获取当前用户和项目ID</li>
             <li>如果没有项目，可以手动输入一个项目ID</li>
-            <li>点击"运行完整测试"执行所有测试用例</li>
-            <li>或使用"快速保存"和"查询所有"进行单项测试</li>
+            <li>点击 &ldquo;运行完整测试&rdquo; 执行所有测试用例</li>
+            <li>或使用 &ldquo;快速保存&rdquo; 和 &ldquo;查询所有&rdquo; 进行单项测试</li>
             <li>在 Supabase Dashboard 中查看 chat_messages 表验证结果</li>
           </ol>
         </div>
