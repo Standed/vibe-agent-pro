@@ -1,17 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// 使用 Service Role Key（服务端安全，绕过 RLS）
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
+// 延迟创建 Supabase 客户端，避免构建时报错
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+let supabaseAdmin: any | null = null;
+
+function getSupabaseAdmin(): any {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Missing Supabase environment variables for projects API');
   }
-);
+
+  if (!supabaseAdmin) {
+    supabaseAdmin = createClient(
+      supabaseUrl,
+      supabaseServiceKey,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    );
+  }
+
+  return supabaseAdmin;
+}
 
 /**
  * GET /api/projects?userId=xxx
@@ -31,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     console.log('[API] 📋 获取项目列表, userId:', userId);
 
-    const { data: projects, error } = await supabaseAdmin
+    const { data: projects, error } = await getSupabaseAdmin()
       .from('projects')
       .select('id, title, description, art_style, created_at, updated_at, scene_count, shot_count, metadata')
       .eq('user_id', userId)
@@ -72,7 +87,7 @@ export async function POST(request: NextRequest) {
     console.log('[API] 💾 保存项目, id:', project.id, 'title:', project.metadata.title, 'userId:', userId);
 
     // 保存项目基本信息
-    const { data: projectData, error: projectError } = await supabaseAdmin
+    const { data: projectData, error: projectError } = await getSupabaseAdmin()
       .from('projects')
       .upsert({
         id: project.id,
@@ -129,7 +144,7 @@ export async function DELETE(request: NextRequest) {
     console.log('[API] 🗑️ 删除项目, id:', projectId, 'userId:', userId);
 
     // Supabase RLS + CASCADE 会自动删除关联的 scenes, shots, characters, audio_assets
-    const { error } = await supabaseAdmin
+    const { error } = await getSupabaseAdmin()
       .from('projects')
       .delete()
       .eq('id', projectId)

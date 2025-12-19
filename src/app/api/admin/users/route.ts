@@ -2,10 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authenticateRequest } from '@/lib/auth-middleware';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+// 延迟创建 Supabase 客户端，避免构建时报错
+let supabaseAdmin: any | null = null;
+
+function getSupabaseAdmin(): any {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Missing Supabase environment variables for admin API');
+  }
+
+  if (!supabaseAdmin) {
+    supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+  }
+
+  return supabaseAdmin;
+}
 
 /**
  * 获取用户列表
@@ -19,7 +32,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: '权限不足' }, { status: 403 });
     }
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
         .from('profiles')
         .select('*')
         .order('created_at', { ascending: false });
@@ -58,7 +71,7 @@ export async function PATCH(request: NextRequest) {
         if (updates.is_whitelisted !== undefined) allowedUpdates.is_whitelisted = updates.is_whitelisted;
         if (updates.is_active !== undefined) allowedUpdates.is_active = updates.is_active;
 
-        const { data, error } = await supabaseAdmin
+        const { data, error } = await getSupabaseAdmin()
             .from('profiles')
             .update(allowedUpdates)
             .eq('id', targetUserId)
@@ -70,7 +83,7 @@ export async function PATCH(request: NextRequest) {
         }
 
         // 记录管理员操作日志
-        await supabaseAdmin.from('admin_logs').insert({
+        await getSupabaseAdmin().from('admin_logs').insert({
             admin_id: user.id,
             action: 'update_user',
             target_id: targetUserId,
