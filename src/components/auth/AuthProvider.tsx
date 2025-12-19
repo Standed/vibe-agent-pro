@@ -44,12 +44,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // 如果数据库中没有 profile，但我们有用户信息，可以先构造一个临时 profile
       if (!data || error) {
+        console.warn('[AuthProvider] 无法获取用户 Profile，使用临时 Profile (Fail Open)');
         finalProfile = {
           id: userId,
           email: userEmail || '',
           role: 'user',
           credits: INITIAL_CREDITS.user,
-          is_whitelisted: false,
+          is_whitelisted: true, // ✅ 临时默认为 true，防止因网络问题导致误登出
           is_active: true
         };
       }
@@ -66,16 +67,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         finalProfile.avatar_url = defaultAvatar;
 
         // 异步更新数据库（仅当数据库已有记录时）
+        // 异步更新数据库（仅当数据库已有记录时）
         if (data) {
-          (supabase as any).from('profiles').update({ avatar_url: defaultAvatar }).eq('id', userId).catch(() => { });
+          // 不使用 .catch() 以避免 TypeError，如果 update 返回 Promise 则忽略错误
+          const updatePromise = (supabase as any).from('profiles').update({ avatar_url: defaultAvatar }).eq('id', userId);
+          if (updatePromise && typeof updatePromise.then === 'function') {
+            updatePromise.then(null, () => { });
+          }
         }
       }
 
       setProfile(finalProfile);
     } catch (err) {
       console.error('[AuthProvider] fetchProfile 异常:', err);
-      // 发生异常也至少设置一个基础状态，防止页面卡死
-      setProfile({ id: userId, email: userEmail || '', role: 'user' } as any);
+      // 发生异常也至少设置一个基础状态，防止页面卡死，并默认给予白名单权限（Fail Open）
+      setProfile({
+        id: userId,
+        email: userEmail || '',
+        role: 'user',
+        is_whitelisted: true,
+        is_active: true
+      } as any);
     }
   };
 
@@ -218,8 +230,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          await fetchProfile(session.user.id, session.user.email);
+          // ✅ 必须先设置 cookie，否则 fetchProfile 内部调用 API 代理时会因缺少 cookie 而被重定向到登录页
           setSessionCookie(session);
+          await fetchProfile(session.user.id, session.user.email);
         } else {
           setProfile(null);
           setSessionCookie(null);
@@ -371,11 +384,14 @@ export function useRequireWhitelist() {
         return;
       }
 
+      // 只有当 profile 存在且明确为非白名单时才登出
+      // 如果 profile 为 null (可能是加载失败)，不要登出，以免误杀
       if (profile) {
         const isAdminEmail = user.email && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(user.email.toLowerCase());
         const isWhitelisted = (profile as any).is_whitelisted || profile.role === 'admin' || isAdminEmail;
 
         if (!isWhitelisted) {
+          console.warn('[AuthProvider] ⛔ 白名单检查失败。Profile:', profile);
           const message = encodeURIComponent('您的账号尚未开通白名单权限，请联系管理员。');
           signOut().then(() => {
             window.location.href = `/auth/login?error=${message}`;

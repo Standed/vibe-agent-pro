@@ -38,20 +38,39 @@ const SESSION_COOKIE_NAME = 'supabase-session';
 
 const readAccessTokenFromCookies = (request: NextRequest): string | null => {
   const cookieHeader = request.headers.get('cookie');
-  if (!cookieHeader) return null;
+  if (!cookieHeader) {
+    // console.log('[Auth Middleware] No cookie header');
+    return null;
+  }
 
   const cookies = cookieHeader.split(';').map((c) => c.trim());
   const sessionCookie = cookies.find((c) => c.startsWith(`${SESSION_COOKIE_NAME}=`));
-  if (!sessionCookie) return null;
+  if (!sessionCookie) {
+    // console.log('[Auth Middleware] No session cookie found');
+    return null;
+  }
 
   try {
-    const raw = decodeURIComponent(sessionCookie.split('=')[1]);
+    const cookieValue = sessionCookie.split('=')[1];
+    const raw = decodeURIComponent(cookieValue);
+    // console.log('[Auth Middleware] Raw cookie value length:', raw.length);
+
     const parsed = JSON.parse(raw);
     if (parsed?.access_token && typeof parsed.access_token === 'string') {
       return parsed.access_token;
+    } else {
+      console.warn('[Auth Middleware] Cookie parsed but no access_token');
     }
   } catch (err) {
     console.warn('[Auth Middleware] 解析会话 cookie 失败:', err);
+    // 尝试直接解析（防止未编码的情况）
+    try {
+      const cookieValue = sessionCookie.split('=')[1];
+      const parsed = JSON.parse(cookieValue);
+      if (parsed?.access_token) return parsed.access_token;
+    } catch (e) {
+      // ignore
+    }
   }
   return null;
 };
