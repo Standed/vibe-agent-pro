@@ -6,6 +6,8 @@ export interface JimengGenerateParams {
     aspectRatio?: string;
     negativePrompt?: string;
     sessionid?: string;
+    imageUrls?: string[];
+    resolutionType?: '1k' | '2k' | '4k';
 }
 
 export interface JimengTaskStatus {
