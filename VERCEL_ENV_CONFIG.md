@@ -54,10 +54,16 @@ NEXT_PUBLIC_R2_PUBLIC_URL=https://pub-522ca521cf3a4baab54032e3dfddbd2d.r2.dev
 # ========================================
 # Gemini API 配置（仅服务端）⚠️ 重要
 # ========================================
-GEMINI_API_KEY=AIzaSyB1TdojVDUM2mzrbWrmoYqzJNFwhVYlqAA
-GEMINI_TEXT_API_KEY=AIzaSyB1TdojVDUM2mzrbWrmoYqzJNFwhVYlqAA
-GEMINI_IMAGE_API_KEY=AIzaSyB1TdojVDUM2mzrbWrmoYqzJNFwhVYlqAA
-GEMINI_AGENT_API_KEY=AIzaSyB1TdojVDUM2mzrbWrmoYqzJNFwhVYlqAA
+GEMINI_API_KEY=AIzaSyDziHoMunoHB3gh7Lno0wjFDkVgQ272nFQ
+GEMINI_TEXT_API_KEY=AIzaSyDziHoMunoHB3gh7Lno0wjFDkVgQ272nFQ
+GEMINI_IMAGE_API_KEY=AIzaSyDziHoMunoHB3gh7Lno0wjFDkVgQ272nFQ
+GEMINI_AGENT_API_KEY=AIzaSyDziHoMunoHB3gh7Lno0wjFDkVgQ272nFQ
+
+# Gemini 模型配置（按功能区分）
+GEMINI_STORYBOARD_MODEL=gemini-3-pro-preview
+GEMINI_AGENT_MODEL=gemini-3-pro-preview
+GEMINI_TEXT_MODEL=gemini-3-pro-preview
+GEMINI_ANALYZE_MODEL=gemini-3-pro-preview
 GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
 
 # ========================================
