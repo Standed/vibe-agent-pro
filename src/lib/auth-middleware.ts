@@ -3,20 +3,28 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
 import { getUserRoleByEmail, getInitialCredits } from '@/config/users';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase environment variables for auth middleware');
+// 延迟创建 Supabase 客户端，避免构建时报错
+let supabaseAdmin: any | null = null;
+
+function getSupabaseAdmin(): any {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Missing Supabase environment variables for auth middleware');
+  }
+
+  if (!supabaseAdmin) {
+    supabaseAdmin = createClient<Database>(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
+  }
+
+  return supabaseAdmin;
 }
-
-// 服务端 Supabase 客户端（使用 service role key）
-const supabaseAdmin = createClient<Database>(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
 
 export interface AuthenticatedUser {
   id: string;
@@ -73,10 +81,11 @@ export async function authenticateRequest(
     }
 
     // 验证 token
+    const admin = getSupabaseAdmin();
     const {
       data: { user },
       error: authError,
-    } = await supabaseAdmin.auth.getUser(token);
+    } = await admin.auth.getUser(token);
 
     if (authError || !user) {
       return {
@@ -88,11 +97,11 @@ export async function authenticateRequest(
     }
 
     // 获取用户的 profile 信息（包括积分和角色）
-    const { data: profile, error: profileError } = await supabaseAdmin
+    const { data: profile, error: profileError } = await admin
       .from('profiles')
       .select('id, email, role, credits, is_whitelisted')
       .eq('id', user.id)
-      .single<{ id: string; email: string; role: 'user' | 'admin' | 'vip'; credits: number; is_whitelisted: boolean }>();
+      .single();
 
     // 🔧 如果 profile 不存在，自动创建一个（根据邮箱判断角色并分配对应积分）
     if (profileError || !profile) {
@@ -105,7 +114,7 @@ export async function authenticateRequest(
 
       console.log(`[Auth Middleware] 用户邮箱: ${userEmail}, 角色: ${userRole}, 初始积分: ${initialCredits}`);
 
-      const { data: newProfile, error: createError } = await (supabaseAdmin as any)
+      const { data: newProfile, error: createError } = await (getSupabaseAdmin() as any)
         .from('profiles')
         .insert({
           id: user.id,
@@ -218,7 +227,7 @@ export async function consumeCredits(
   description?: string
 ): Promise<{ success: boolean; error?: string; creditsAfter?: number }> {
   try {
-    const { data, error } = await (supabaseAdmin as any).rpc('consume_credits', {
+    const { data, error } = await getSupabaseAdmin().rpc('consume_credits', {
       p_user_id: userId,
       p_amount: amount,
       p_operation_type: operationType,
@@ -236,7 +245,7 @@ export async function consumeCredits(
     }
 
     // 读取最新余额，便于前端更新
-    const { data: profile, error: profileError } = await supabaseAdmin
+    const { data: profile, error: profileError } = await getSupabaseAdmin()
       .from('profiles')
       .select('credits')
       .eq('id', userId)
@@ -265,7 +274,7 @@ export async function checkRateLimit(
 ): Promise<{ success: true } | { error: NextResponse }> {
   try {
     const now = new Date();
-    const { data: profile, error } = await supabaseAdmin
+    const { data: profile, error } = await getSupabaseAdmin()
       .from('profiles')
       .select('last_chat_at, chat_count_in_min, last_image_at, image_count_in_min')
       .eq('id', userId)
@@ -304,7 +313,7 @@ export async function checkRateLimit(
     }
 
     // 更新数据库
-    await (supabaseAdmin as any)
+    await getSupabaseAdmin()
       .from('profiles')
       .update({
         [lastAtField]: now.toISOString(),
