@@ -4,18 +4,13 @@
   "installCommand": "npm install",
   "framework": "nextjs",
   "regions": ["hkg1"],
-  "functions": {
-    "api/**/*.ts": {
-      "runtime": "nodejs20.x"
-    }
-  },
   "env": {
     "NEXT_PUBLIC_APP_NAME": "Video Agent Pro"
   },
   "build": {
     "env": {
       "SKIP_ENV_VALIDATION": "1",
-      "NODE_VERSION": "20"
+      "NODE_VERSION": "20.x"
     }
   },
   "headers": [
