@@ -58,6 +58,12 @@ GEMINI_API_KEY=<YOUR_GEMINI_API_KEY>
 GEMINI_TEXT_API_KEY=<YOUR_GEMINI_API_KEY>
 GEMINI_IMAGE_API_KEY=<YOUR_GEMINI_API_KEY>
 GEMINI_AGENT_API_KEY=<YOUR_GEMINI_API_KEY>
+
+# Gemini 模型配置（按功能区分）
+GEMINI_STORYBOARD_MODEL=gemini-3-pro-preview
+GEMINI_AGENT_MODEL=gemini-3-pro-preview
+GEMINI_TEXT_MODEL=gemini-3-pro-preview
+GEMINI_ANALYZE_MODEL=gemini-3-pro-preview
 GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
 
 # ========================================
