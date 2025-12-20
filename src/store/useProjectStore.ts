@@ -37,6 +37,12 @@ interface ProjectStore {
   rightSidebarCollapsed: boolean;
   gridResult: GridGenerationResult | null; // Grid 生成结果（用于显示 Modal）
   isSaving: boolean; // 是否正在保存到云端 (R2 上传或数据库同步)
+  generationRequest: {
+    prompt: string;
+    model: 'jimeng' | 'gemini-grid' | 'gemini-direct' | 'seedream';
+    jimengModel?: 'jimeng-4.5' | 'jimeng-4.1' | 'jimeng-4.0';
+    jimengResolution?: '2k' | '4k';
+  } | null;
 
   // Project Actions
   loadProject: (project: Project) => void;
@@ -49,6 +55,7 @@ interface ProjectStore {
     aspectRatio?: string
   ) => void;
   updateScript: (script: string) => void;
+  setGenerationRequest: (request: ProjectStore['generationRequest']) => void;
 
   // Scene Actions
   addScene: (scene: Scene) => void;
@@ -120,6 +127,7 @@ export const useProjectStore = create<ProjectStore>()(
     rightSidebarCollapsed: false,
     gridResult: null,
     isSaving: false,
+    generationRequest: null,
 
     // Project Actions
     loadProject: (project) =>
@@ -128,6 +136,8 @@ export const useProjectStore = create<ProjectStore>()(
         recalcShotOrders(project);
         return { project };
       }),
+
+    setGenerationRequest: (request) => set({ generationRequest: request }),
 
     renumberScenesAndShots: () =>
       set((state) => {

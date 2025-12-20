@@ -172,6 +172,19 @@ export default function InfiniteCanvas() {
 
   const handleGenerate = (shotId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+
+    // Find the shot to get its description
+    const shot = project?.shots.find(s => s.id === shotId);
+    if (shot) {
+      // 1. 设置生成请求
+      useProjectStore.getState().setGenerationRequest({
+        prompt: shot.description || '',
+        model: 'jimeng',
+        jimengModel: 'jimeng-4.5',
+        jimengResolution: '2k'
+      });
+    }
+
     selectShot(shotId);
     setControlMode('pro');
     if (rightSidebarCollapsed) {

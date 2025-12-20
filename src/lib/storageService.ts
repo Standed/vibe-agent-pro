@@ -244,10 +244,26 @@ class StorageService {
    * 将 base64 字符串转换为 File 对象
    */
   private base64ToFile(base64: string, filename: string): File {
-    const arr = base64.split(',');
-    const mimeMatch = arr[0].match(/:(.*?);/);
-    const mime = mimeMatch ? mimeMatch[1] : 'image/png';
-    const bstr = atob(arr[1]);
+    let mime = 'image/png';
+    let bstr = '';
+
+    try {
+      if (base64.includes(',')) {
+        const arr = base64.split(',');
+        const mimeMatch = arr[0].match(/:(.*?);/);
+        if (mimeMatch) {
+          mime = mimeMatch[1];
+        }
+        bstr = atob(arr[1]);
+      } else {
+        // Assume raw base64 string
+        bstr = atob(base64);
+      }
+    } catch (e) {
+      console.error('[storageService] base64 decode failed:', e);
+      throw new Error('Invalid base64 string');
+    }
+
     let n = bstr.length;
     const u8arr = new Uint8Array(n);
 

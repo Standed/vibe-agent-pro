@@ -19,6 +19,7 @@ interface ChatMessage {
     model?: any;
     shotId?: string;
     sceneId?: string;
+    metadata?: any;
 }
 
 interface UseJimengGenerationProps {
@@ -50,6 +51,7 @@ export function useJimengGeneration({
     const [isSaving, setIsSaving] = useState(false);
     const [context, setContext] = useState<{
         prompt: string;
+        basePrompt: string;
         shotId: string | null;
         sceneId: string | null;
         contextKey: string;
@@ -99,6 +101,7 @@ export function useJimengGeneration({
         // 保存上下文
         setContext({
             prompt: promptForModel,
+            basePrompt: prompt,
             shotId: capturedShotId,
             sceneId: capturedSceneId,
             contextKey: capturedContextKey,
@@ -108,8 +111,8 @@ export function useJimengGeneration({
 
         toast.info(`即梦任务已提交 (${model}, ${resolution})，正在后台生成...`, { duration: 3000 });
 
-        // 非阻塞调用
-        jimengService.generateImage({
+        // Return the promise so the caller can await it
+        return jimengService.generateImage({
             prompt: promptForModel,
             model: model,
             aspectRatio: projectAspectRatio,
@@ -131,15 +134,11 @@ export function useJimengGeneration({
                 if (autoSelect) {
                     // 自动选择第一张并保存
                     toast.info('Agent 自动选择第一张图片保存...');
-                    // 注意：这里需要确保 context 已经设置，但由于是异步的，context 应该在闭包中可用
-                    // 或者我们直接使用当前的参数调用 saveImage 的变体，或者确保 saveImage 可以接受参数
-                    // 为了简化，我们直接调用 saveImage，但要注意 saveImage 依赖 context state
-                    // 由于 setContext 是异步的，这里可能取不到最新的 context
-                    // 所以最好将 context 作为参数传递给 saveImage，或者在这里手动构建 context
 
                     // 重新构建 context 用于保存
                     const tempContext = {
                         prompt: promptForModel,
+                        basePrompt: prompt,
                         shotId: capturedShotId,
                         sceneId: capturedSceneId,
                         contextKey: capturedContextKey,
@@ -148,8 +147,6 @@ export function useJimengGeneration({
                     };
                     setContext(tempContext); // 保持状态同步
 
-                    // 延迟一点执行保存，确保状态更新（虽然 React state update 是异步的，但我们可以直接传参给 saveImage）
-                    // 修改 saveImage 接受 context 参数会更稳健
                     await saveImage(urls[0], tempContext);
                 } else {
                     setIsModalOpen(true);
@@ -161,6 +158,7 @@ export function useJimengGeneration({
         }).catch(err => {
             console.error('[Jimeng] Generation failed:', err);
             toast.error('即梦生成失败: ' + err.message);
+            throw err; // Re-throw to let caller know it failed
         });
     };
 
@@ -173,9 +171,23 @@ export function useJimengGeneration({
 
         try {
             // Upload to R2
+            // Upload to R2
             try {
                 const folder = `projects/${project.id}/shots/${activeContext.shotId || 'chat'}`;
-                imageUrl = await storageService.uploadBase64ToR2(imageUrl, folder, `gen_${Date.now()}.png`, user.id);
+
+                if (imageUrl.startsWith('http')) {
+                    // Fetch and convert to File
+                    const response = await fetch(imageUrl);
+                    const blob = await response.blob();
+                    const file = new File([blob], `gen_${Date.now()}.png`, { type: blob.type });
+
+                    // Upload using uploadFile
+                    const result = await storageService.uploadFile(file, folder, user.id);
+                    imageUrl = result.url;
+                } else {
+                    // Assume Base64
+                    imageUrl = await storageService.uploadBase64ToR2(imageUrl, folder, `gen_${Date.now()}.png`, user.id);
+                }
             } catch (error) {
                 console.error('R2 upload failed, using original url:', error);
             }
@@ -213,6 +225,14 @@ export function useJimengGeneration({
                 model: 'jimeng',
                 shotId: activeContext.shotId || undefined,
                 sceneId: activeContext.sceneId || undefined,
+                metadata: {
+                    prompt: activeContext.prompt,
+                    basePrompt: activeContext.basePrompt,
+                    model: 'jimeng',
+                    jimengModel: model,
+                    jimengResolution: resolution,
+                    referenceImages: activeContext.referenceImages
+                }
             };
 
             // 只有当上下文匹配时才添加到当前视图（这里简化处理，直接添加，因为 ChatPanel 会过滤）
@@ -236,7 +256,9 @@ export function useJimengGeneration({
                         model: 'jimeng',
                         referenceImages: activeContext.referenceImages,
                         jimengModel: model,
-                        jimengResolution: resolution
+                        jimengResolution: resolution,
+                        prompt: activeContext.prompt,
+                        basePrompt: activeContext.basePrompt
                     },
                     createdAt: assistantMessage.timestamp,
                     updatedAt: assistantMessage.timestamp,

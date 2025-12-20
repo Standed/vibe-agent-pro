@@ -13,6 +13,7 @@ export interface JimengGenerateParams {
 export interface JimengTaskStatus {
     historyId: string;
     sessionid?: string;
+    maxAttempts?: number;
 }
 
 class JimengService {
