@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Edit2, Plus, MoreHorizontal, Check } from 'lucide-react';
 import type { ShotSize, CameraMovement, Shot } from '@/types/project';
+import { translateShotSize, translateCameraMovement } from '@/utils/translations';
 import { formatShotLabel } from '@/utils/shotOrder';
 import AddShotDialog from '@/components/shot/AddShotDialog';
 import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
@@ -389,28 +390,32 @@ export default function InfiniteCanvas() {
                                     <img
                                       src={shot.referenceImage}
                                       alt={shotLabel}
-                                      className="w-full h-full object-cover"
+                                      className="w-full h-full object-cover cursor-pointer"
+                                      onClick={(e) => { e.stopPropagation(); handlePreview(shot.referenceImage!); }}
                                     />
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                                      <button onClick={(e) => handlePreview(shot.referenceImage!, e)} className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800"><Eye size={14} /></button>
-                                      <button onClick={(e) => handleDownload(shot.referenceImage!, shot.order, e)} className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800"><Download size={14} /></button>
-                                      <button onClick={(e) => handleEditShot(shot, e)} className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800"><Edit2 size={14} /></button>
-                                      <button onClick={(e) => handleGenerate(shot.id, e)} className="p-1.5 bg-light-accent hover:bg-light-accent-hover rounded text-white"><RefreshCw size={14} /></button>
+                                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
+                                      <button onClick={(e) => handleDownload(shot.referenceImage!, shot.order, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="下载"><Download size={12} /></button>
+                                      <button onClick={(e) => handleEditShot(shot, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="编辑"><Edit2 size={12} /></button>
+                                      <button onClick={(e) => handleGenerate(shot.id, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="重新生成"><RefreshCw size={12} /></button>
                                     </div>
                                   </>
                                 ) : shot.gridImages && shot.gridImages.length > 0 ? (
                                   <>
-                                    <img src={shot.gridImages[0]} alt={shotLabel} className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                                      <button onClick={(e) => handlePreview(shot.gridImages![0], e)} className="p-1.5 bg-white/90 hover:bg-white rounded text-gray-800"><Eye size={14} /></button>
-                                      <button onClick={(e) => handleGenerate(shot.id, e)} className="p-1.5 bg-light-accent hover:bg-light-accent-hover rounded text-white"><RefreshCw size={14} /></button>
+                                    <img
+                                      src={shot.gridImages[0]}
+                                      alt={shotLabel}
+                                      className="w-full h-full object-cover cursor-pointer"
+                                      onClick={(e) => { e.stopPropagation(); handlePreview(shot.gridImages![0]); }}
+                                    />
+                                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
+                                      <button onClick={(e) => handleGenerate(shot.id, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="重新生成"><RefreshCw size={12} /></button>
                                     </div>
                                   </>
                                 ) : (
                                   <>
                                     <ImageIcon size={24} className="text-light-text-muted dark:text-cine-text-muted" />
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                      <button onClick={(e) => handleGenerate(shot.id, e)} className="p-2 bg-light-accent hover:bg-light-accent-hover rounded-lg text-white flex items-center gap-1 text-xs"><Sparkles size={14} /> 生成图片</button>
+                                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
+                                      <button onClick={(e) => handleGenerate(shot.id, e)} className="px-3 py-1.5 rounded-full bg-light-accent hover:bg-light-accent-hover text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm flex items-center gap-1 text-xs"><Sparkles size={12} /> 生成图片</button>
                                     </div>
                                   </>
                                 )}
@@ -428,7 +433,7 @@ export default function InfiniteCanvas() {
                                   <span className="font-mono text-light-text-muted dark:text-cine-text-muted">{shotLabel}</span>
                                   <span className="text-light-text-muted dark:text-cine-text-muted">{shot.duration}s</span>
                                 </div>
-                                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 truncate">{shot.shotSize}</div>
+                                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 truncate">{translateShotSize(shot.shotSize)} · {translateCameraMovement(shot.cameraMovement)}</div>
                               </div>
                             </div>
                           );
@@ -466,10 +471,10 @@ export default function InfiniteCanvas() {
 
       {/* Modals */}
       {imagePreview && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 interactive" onClick={() => setImagePreview(null)}>
-          <div className="relative max-w-7xl max-h-full">
-            <img src={imagePreview} alt="Preview" className="max-w-full max-h-[90vh] object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />
-            <button onClick={() => setImagePreview(null)} className="absolute top-4 right-4 p-2 bg-white/90 hover:bg-white rounded-full text-gray-800"><X size={20} /></button>
+        <div className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setImagePreview(null)}>
+          <div className="relative w-full h-full flex items-center justify-center">
+            <img src={imagePreview} alt="Preview" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
+            <button onClick={() => setImagePreview(null)} className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-colors"><X size={20} /></button>
           </div>
         </div>
       )}

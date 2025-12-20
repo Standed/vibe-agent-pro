@@ -21,6 +21,7 @@ interface GenerationResultProps {
     onSliceSelect?: () => void;
     onReusePrompt?: () => void;
     onReuseImage?: (url: string) => void;
+    onApplyToShot?: (url: string) => void;
 }
 
 export function GenerationResult({
@@ -30,7 +31,8 @@ export function GenerationResult({
     onImageClick,
     onSliceSelect,
     onReusePrompt,
-    onReuseImage
+    onReuseImage,
+    onApplyToShot
 }: GenerationResultProps) {
     // Determine display label based on model
     const getModelLabel = () => {
@@ -49,53 +51,98 @@ export function GenerationResult({
     return (
         <div className="space-y-3">
             {/* Images Grid */}
-            <div className={`grid gap-2 ${displayImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                {displayImages.map((img, idx) => (
-                    <div key={idx} className="space-y-2">
-                        <div className="relative group aspect-video rounded-xl border border-black/5 dark:border-white/10 overflow-hidden cursor-pointer hover:border-zinc-900 dark:hover:border-white transition-colors bg-zinc-100 dark:bg-zinc-900">
-                            <Image
-                                src={img}
-                                alt={`Result ${idx + 1}`}
-                                fill
-                                className="object-cover transition-transform duration-500 group-hover:scale-105"
-                                unoptimized
-                                onClick={() => onImageClick?.(img, idx)}
-                            />
+            <div className={`grid gap-2 ${displayImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} ${(displayImages.length === 1 && (gridData?.aspectRatio === AspectRatio.MOBILE || gridData?.aspectRatio === AspectRatio.PORTRAIT))
+                    ? 'w-fit'
+                    : 'w-[360px]'
+                }`}>
+                {displayImages.map((img, idx) => {
+                    // Calculate dynamic aspect ratio and width for single images
+                    const isSingle = displayImages.length === 1;
+                    const ratio = gridData?.aspectRatio;
 
-                            {/* Grid Badge */}
-                            {isGrid && (
-                                <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md text-white text-[10px] px-2 py-1 rounded-md flex items-center gap-1 font-medium">
-                                    <Grid3x3 size={12} />
-                                    Grid {gridData.gridRows && gridData.gridCols ? `${gridData.gridRows}x${gridData.gridCols}` : gridData.gridSize}
-                                </div>
-                            )}
+                    let containerClass = "relative group rounded-xl border border-black/5 dark:border-white/10 overflow-hidden cursor-pointer hover:border-zinc-900 dark:hover:border-white transition-colors bg-zinc-100 dark:bg-zinc-900";
 
-                            {/* Hover Actions */}
-                            <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2">
-                                {onReuseImage && (
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); onReuseImage(img); }}
-                                        className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm transition-colors"
-                                        title="使用此图作为参考"
-                                    >
-                                        <ImageIcon size={14} />
-                                    </button>
+                    if (isSingle) {
+                        switch (ratio) {
+                            case AspectRatio.MOBILE: // 9:16
+                                containerClass += " w-[200px] aspect-[9/16]";
+                                break;
+                            case AspectRatio.PORTRAIT: // 3:4
+                                containerClass += " w-[270px] aspect-[3/4]";
+                                break;
+                            case AspectRatio.SQUARE: // 1:1
+                                containerClass += " w-full aspect-square";
+                                break;
+                            case AspectRatio.STANDARD: // 4:3
+                                containerClass += " w-full aspect-[4/3]";
+                                break;
+                            case AspectRatio.CINEMA: // 21:9
+                                containerClass += " w-full aspect-[21/9]";
+                                break;
+                            default: // 16:9 or unknown
+                                containerClass += " w-full aspect-video";
+                        }
+                    } else {
+                        // Grid items keep standard video aspect
+                        containerClass += " aspect-video";
+                    }
+
+                    return (
+                        <div key={idx} className="space-y-2">
+                            <div className={containerClass}>
+                                <Image
+                                    src={img}
+                                    alt={`Result ${idx + 1}`}
+                                    fill
+                                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                                    unoptimized
+                                    onClick={() => onImageClick?.(img, idx)}
+                                />
+
+                                {/* Grid Badge */}
+                                {isGrid && (
+                                    <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md text-white text-[10px] px-2 py-1 rounded-md flex items-center gap-1 font-medium">
+                                        <Grid3x3 size={12} />
+                                        Grid {gridData.gridRows && gridData.gridCols ? `${gridData.gridRows}x${gridData.gridCols}` : gridData.gridSize}
+                                    </div>
                                 )}
-                            </div>
-                        </div>
 
-                        {/* Grid Slice Button */}
-                        {isGrid && gridData.slices && gridData.slices.length > 0 && onSliceSelect && (
-                            <button
-                                onClick={onSliceSelect}
-                                className="w-full px-3 py-2 text-xs font-medium bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-lg hover:bg-zinc-50 dark:hover:bg-white/10 hover:border-zinc-300 dark:hover:border-white/20 transition-all flex items-center justify-center gap-2 text-zinc-700 dark:text-zinc-300"
-                            >
-                                <Grid3x3 size={14} />
-                                选择切片
-                            </button>
-                        )}
-                    </div>
-                ))}
+                                {/* Hover Actions */}
+                                <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2">
+                                    {onReuseImage && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onReuseImage(img); }}
+                                            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm transition-colors"
+                                            title="使用此图作为参考"
+                                        >
+                                            <ImageIcon size={14} />
+                                        </button>
+                                    )}
+                                    {onApplyToShot && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onApplyToShot(img); }}
+                                            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm transition-colors"
+                                            title="应用到当前分镜"
+                                        >
+                                            <Grid3x3 size={14} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Grid Slice Button */}
+                            {isGrid && gridData.slices && gridData.slices.length > 0 && onSliceSelect && (
+                                <button
+                                    onClick={onSliceSelect}
+                                    className="w-full px-3 py-2 text-xs font-medium bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-lg hover:bg-zinc-50 dark:hover:bg-white/10 hover:border-zinc-300 dark:hover:border-white/20 transition-all flex items-center justify-center gap-2 text-zinc-700 dark:text-zinc-300"
+                                >
+                                    <Grid3x3 size={14} />
+                                    选择切片
+                                </button>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
 
             {/* Footer Info & Actions */}
