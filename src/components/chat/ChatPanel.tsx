@@ -12,6 +12,7 @@ import { GridSliceSelector } from '@/components/ui/GridSliceSelector';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { formatShotLabel } from '@/utils/shotOrder';
 import { dataService } from '@/lib/dataService';
+import { storageService } from '@/lib/storageService';
 import { useJimengGeneration } from '@/hooks/useJimengGeneration';
 import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
 import { ChatBubble } from './ChatBubble';
@@ -204,7 +205,47 @@ export default function ChatPanel() {
     // Handlers
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
-            setUploadedImages((prev) => [...prev, ...Array.from(e.target.files!)]);
+            const files = Array.from(e.target.files);
+            const validFiles = files.filter(file => {
+                if (file.size > 10 * 1024 * 1024) {
+                    toast.error(`文件 ${file.name} 超过 10MB 限制`);
+                    return false;
+                }
+                return true;
+            });
+            if (validFiles.length > 0) {
+                setUploadedImages((prev) => [...prev, ...validFiles]);
+            }
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const files = Array.from(e.dataTransfer.files);
+            const validFiles = files.filter(file => {
+                if (!file.type.startsWith('image/')) {
+                    toast.error(`文件 ${file.name} 不是图片`);
+                    return false;
+                }
+                if (file.size > 10 * 1024 * 1024) {
+                    toast.error(`文件 ${file.name} 超过 10MB 限制`);
+                    return false;
+                }
+                return true;
+            });
+
+            if (validFiles.length > 0) {
+                setUploadedImages((prev) => [...prev, ...validFiles]);
+                toast.success(`已添加 ${validFiles.length} 张图片`);
+            }
         }
     };
 
@@ -243,6 +284,23 @@ export default function ChatPanel() {
         setUploadedImages([]);
         setIsGenerating(true);
 
+        // Upload images to R2 first
+        let uploadedUrls: string[] = [];
+        if (uploadedImages.length > 0) {
+            try {
+                const uploadPromises = uploadedImages.map(file =>
+                    storageService.uploadFile(file, `chat-uploads/${user.id}`, user.id)
+                );
+                const results = await Promise.all(uploadPromises);
+                uploadedUrls = results.map(r => r.url);
+            } catch (error) {
+                console.error("Failed to upload images", error);
+                toast.error("图片上传失败");
+                setIsGenerating(false);
+                return;
+            }
+        }
+
         // Save User Message
         try {
             await dataService.saveChatMessage({
@@ -256,7 +314,7 @@ export default function ChatPanel() {
                 content: inputText,
                 timestamp: userMessage.timestamp,
                 metadata: {
-                    images: [] // TODO: Upload user images to R2 if needed
+                    images: uploadedUrls
                 },
                 createdAt: userMessage.timestamp,
                 updatedAt: userMessage.timestamp,
@@ -272,7 +330,8 @@ export default function ChatPanel() {
                     userMessage.content,
                     currentShotId,
                     currentSceneIdCaptured,
-                    contextKey
+                    contextKey,
+                    uploadedUrls // Pass uploaded URLs
                 );
                 // jimengGeneration handles saving assistant message internally
             }
@@ -282,8 +341,8 @@ export default function ChatPanel() {
                 const { enrichedPrompt, referenceImageUrls } = enrichPromptWithAssets(userMessage.content, project, undefined);
                 const finalPrompt = enrichedPrompt;
 
-                // Combine manual uploads + asset refs
-                const allRefUrls = [...referenceImageUrls, ...manualReferenceUrls];
+                // Combine manual uploads + asset refs + NEW uploaded images
+                const allRefUrls = [...referenceImageUrls, ...manualReferenceUrls, ...uploadedUrls];
                 const referenceImagesData = await urlsToReferenceImages(allRefUrls);
 
                 let resultImages: string[] = [];
@@ -430,7 +489,11 @@ export default function ChatPanel() {
     };
 
     return (
-        <div className="h-full flex flex-col bg-zinc-50 dark:bg-black">
+        <div
+            className="h-full flex flex-col bg-zinc-50 dark:bg-black"
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+        >
             {/* Header */}
             <div className="flex-shrink-0 border-b border-black/5 dark:border-white/5 px-6 py-4 bg-white/50 dark:bg-[#0a0a0a]/50 backdrop-blur-xl z-20">
                 <div className="flex items-center justify-between">

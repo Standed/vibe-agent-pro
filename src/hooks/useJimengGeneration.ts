@@ -67,6 +67,7 @@ export function useJimengGeneration({
         capturedShotId: string | null,
         capturedSceneId: string | null,
         capturedContextKey: string,
+        extraImageUrls: string[] = [],
         autoSelect: boolean = false
     ) => {
         const sessionid = localStorage.getItem('jimeng_session_id');
@@ -77,6 +78,11 @@ export function useJimengGeneration({
             throw new Error('未配置即梦 sessionid');
         }
 
+        if (!project) {
+            toast.error('未找到项目信息');
+            return;
+        }
+
         const { enrichedPrompt: promptForModel, referenceImageUrls, usedCharacters, usedLocations } = enrichPromptWithAssets(prompt, project, undefined);
         const projectAspectRatio = project?.settings.aspectRatio || AspectRatio.WIDE;
 
@@ -85,7 +91,8 @@ export function useJimengGeneration({
             ...mentionedAssets.characters.flatMap(c => c.referenceImages || []),
             ...mentionedAssets.locations.flatMap(l => l.referenceImages || []),
         ];
-        const allReferenceUrls = Array.from(new Set([...referenceImageUrls, ...mentionedImageUrls, ...manualReferenceUrls]));
+        // Combine manual uploads + asset refs + extra uploaded images
+        const allReferenceUrls = Array.from(new Set([...referenceImageUrls, ...mentionedImageUrls, ...manualReferenceUrls, ...extraImageUrls]));
 
         // 显示使用的资源提示
         if (allReferenceUrls.length > 0) {
@@ -170,7 +177,6 @@ export function useJimengGeneration({
         let imageUrl = selectedUrl;
 
         try {
-            // Upload to R2
             // Upload to R2
             try {
                 const folder = `projects/${project.id}/shots/${activeContext.shotId || 'chat'}`;
@@ -285,11 +291,11 @@ export function useJimengGeneration({
         setModel,
         resolution,
         setResolution,
+        generateImage,
+        saveImage,
         generatedImages,
         isModalOpen,
         setIsModalOpen,
-        isSaving,
-        generateImage,
-        saveImage
+        isSaving
     };
 }
