@@ -183,8 +183,19 @@ export function useJimengGeneration({
 
                 if (imageUrl.startsWith('http')) {
                     // Fetch and convert to File
-                    const response = await fetch(imageUrl);
-                    const blob = await response.blob();
+                    let blob: Blob;
+                    try {
+                        const response = await fetch(imageUrl);
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        blob = await response.blob();
+                    } catch (e) {
+                        console.warn('Direct fetch failed, trying proxy...', e);
+                        const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+                        const response = await fetch(proxyUrl);
+                        if (!response.ok) throw new Error('Proxy fetch failed');
+                        blob = await response.blob();
+                    }
+
                     const file = new File([blob], `gen_${Date.now()}.png`, { type: blob.type });
 
                     // Upload using uploadFile

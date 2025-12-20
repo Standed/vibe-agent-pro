@@ -450,6 +450,14 @@ export default function ChatPanel() {
         const meta = (message as any).metadata;
         let prompt = meta?.basePrompt || meta?.prompt || message.gridData?.prompt || message.content;
 
+        // If prompt is a system message (e.g. "Generated image..."), try to find the original prompt
+        if (prompt && (prompt.startsWith('已生成') || prompt.startsWith('Generated'))) {
+            // If we can't find a valid prompt in metadata, don't set it to the system message
+            if (!meta?.basePrompt && !meta?.prompt && !message.gridData?.prompt) {
+                prompt = '';
+            }
+        }
+
         // Auto-clean enriched prompt if it contains system markers
         // This handles legacy messages or cases where enriched prompt was pasted
         if (prompt && typeof prompt === 'string') {
@@ -457,7 +465,9 @@ export default function ChatPanel() {
             prompt = prompt.split(/【角色信息】|【参考图像】/)[0].trim();
         }
 
-        setInputText(prompt);
+        if (prompt) {
+            setInputText(prompt);
+        }
 
         // Restore Model & Settings
         if (message.model) {

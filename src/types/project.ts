@@ -3,7 +3,10 @@
 export type ShotSize =
   | 'Extreme Wide Shot'
   | 'Wide Shot'
+  | 'Full Shot'
+  | 'Medium Wide Shot'
   | 'Medium Shot'
+  | 'Medium Close-Up'
   | 'Close-Up'
   | 'Extreme Close-Up';
 
@@ -17,7 +20,13 @@ export type CameraMovement =
   | 'Dolly Out'
   | 'Zoom In'
   | 'Zoom Out'
-  | 'Handheld';
+  | 'Truck Left'
+  | 'Truck Right'
+  | 'Pedestal Up'
+  | 'Pedestal Down'
+  | 'Handheld'
+  | 'Arc'
+  | 'Crane';
 
 export type GenerationMode = 'grid' | 'single';
 export type ShotStatus = 'draft' | 'pending' | 'processing' | 'done' | 'error';
