@@ -8,10 +8,23 @@ export const SHOT_SIZE_TRANSLATIONS: Record<ShotSize, string> = {
     'Medium Shot': '中景',
     'Medium Close-Up': '中特写',
     'Close-Up': '特写',
-    'Extreme Close-Up': '大特写'
+    'Extreme Close-Up': '大特写',
+    'Low Angle Shot': '低角度',
+    'High Angle Shot': '高角度',
+    'Over the Shoulder Shot': '过肩镜头',
+    'Point of View Shot': '主观镜头',
+    'Bird\'s Eye View': '鸟瞰镜头',
+    'Dutch Angle': '荷兰角',
+    'Establishing Shot': '建立镜头'
 };
 
 export const CAMERA_MOVEMENT_TRANSLATIONS: Record<CameraMovement, string> = {
+    'Pan': '摇镜头',
+    'Tilt': '俯仰镜头',
+    'Dolly': '推拉镜头',
+    'Zoom': '变焦',
+    'Truck': '横移',
+    'Pedestal': '升降',
     'Static': '固定镜头',
     'Pan Left': '左摇',
     'Pan Right': '右摇',

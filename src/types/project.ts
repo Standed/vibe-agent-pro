@@ -8,9 +8,22 @@ export type ShotSize =
   | 'Medium Shot'
   | 'Medium Close-Up'
   | 'Close-Up'
-  | 'Extreme Close-Up';
+  | 'Extreme Close-Up'
+  | 'Low Angle Shot'
+  | 'High Angle Shot'
+  | 'Over the Shoulder Shot'
+  | 'Point of View Shot'
+  | 'Bird\'s Eye View'
+  | 'Dutch Angle'
+  | 'Establishing Shot';
 
 export type CameraMovement =
+  | 'Pan'
+  | 'Tilt'
+  | 'Dolly'
+  | 'Zoom'
+  | 'Truck'
+  | 'Pedestal'
   | 'Static'
   | 'Pan Left'
   | 'Pan Right'
