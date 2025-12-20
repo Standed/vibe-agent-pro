@@ -1,6 +1,6 @@
 'use client';
 
-import { Film, Trash2 } from 'lucide-react';
+import { Film, Trash2, Sparkles } from 'lucide-react';
 import Image from 'next/image';
 import type { Shot } from '@/types/project';
 
@@ -11,6 +11,7 @@ interface ShotListItemProps {
   onDelete: () => void;
   onEdit?: () => void;
   label?: string;
+  onImageClick?: () => void;
 }
 
 export default function ShotListItem({
@@ -20,6 +21,7 @@ export default function ShotListItem({
   onDelete,
   onEdit,
   label,
+  onImageClick,
 }: ShotListItemProps) {
   return (
     <div
@@ -29,16 +31,22 @@ export default function ShotListItem({
         }`}
     >
       {/* Shot Content - Clickable */}
-      <button onClick={onSelect} className="w-full text-left p-3">
+      <div onClick={onSelect} className="w-full text-left p-3 cursor-pointer">
         <div className="flex items-start gap-3">
           {/* Thumbnail */}
-          <div className="w-16 h-16 flex-shrink-0 bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden border border-light-border/50 dark:border-cine-border/50 shadow-sm">
+          <div
+            className="w-16 h-16 flex-shrink-0 bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden border border-light-border/50 dark:border-cine-border/50 shadow-sm relative group/image cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              onImageClick?.();
+            }}
+          >
             {shot.referenceImage ? (
               <Image
                 src={shot.referenceImage}
                 alt={`Shot ${shot.order}`}
                 fill
-                className="object-cover transition-transform duration-500 group-hover/item:scale-110"
+                className="object-cover transition-transform duration-500 group-hover/image:scale-110"
                 unoptimized
               />
             ) : (
@@ -46,6 +54,20 @@ export default function ShotListItem({
                 <Film size={20} className="opacity-50" />
               </div>
             )}
+
+            {/* Generate Button Overlay */}
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[1px]">
+              <button
+                className="text-[10px] font-medium text-white bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover px-2 py-1 rounded-md shadow-lg flex items-center gap-1 backdrop-blur-md transform scale-90 hover:scale-100 transition-all"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onImageClick?.();
+                }}
+              >
+                <Sparkles size={10} className="text-white" />
+                生成
+              </button>
+            </div>
           </div>
 
           {/* Shot Info */}
@@ -75,7 +97,7 @@ export default function ShotListItem({
             )}
           </div>
         </div>
-      </button>
+      </div>
 
       {/* Edit Button */}
       {onEdit && (

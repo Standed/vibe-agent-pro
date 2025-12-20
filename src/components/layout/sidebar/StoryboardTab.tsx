@@ -23,6 +23,7 @@ interface StoryboardTabProps {
     handleShotClick: (shotId: string) => void;
     openShotEditor: (shot: Shot) => void;
     handleDeleteShot: (shotId: string, shotOrder: number, sceneName: string) => void;
+    handleShotImageClick: (shot: Shot) => void;
 }
 
 export const StoryboardTab: React.FC<StoryboardTabProps> = ({
@@ -44,6 +45,7 @@ export const StoryboardTab: React.FC<StoryboardTabProps> = ({
     handleShotClick,
     openShotEditor,
     handleDeleteShot,
+    handleShotImageClick,
 }) => {
     return (
         <div className="p-4">
@@ -227,6 +229,7 @@ export const StoryboardTab: React.FC<StoryboardTabProps> = ({
                                                         onEdit={() => openShotEditor(shot)}
                                                         onDelete={() => handleDeleteShot(shot.id, shot.order, scene.name)}
                                                         label={formatShotLabel(scene.order, shot.order, shot.globalOrder)}
+                                                        onImageClick={() => handleShotImageClick(shot)}
                                                     />
                                                     <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                                         <button

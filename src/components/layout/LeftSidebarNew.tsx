@@ -492,6 +492,24 @@ export default function LeftSidebarNew() {
             handleShotClick={handleShotClick}
             openShotEditor={openShotEditor}
             handleDeleteShot={handleDeleteShot}
+            handleShotImageClick={(shot) => {
+              // 1. 设置生成请求 (先设置，以免被后续的副作用清除)
+              useProjectStore.getState().setGenerationRequest({
+                prompt: shot.description || '',
+                model: 'jimeng',
+                jimengModel: 'jimeng-4.5',
+                jimengResolution: '2k'
+              });
+
+              // 2. 选中镜头
+              selectShot(shot.id);
+
+              // 3. 切换到 Pro 模式并确保侧边栏展开
+              setControlMode('pro');
+              if (useProjectStore.getState().rightSidebarCollapsed) {
+                useProjectStore.getState().toggleRightSidebar();
+              }
+            }}
           />
         )}
 

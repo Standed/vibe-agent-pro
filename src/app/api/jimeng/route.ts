@@ -715,6 +715,8 @@ export async function POST(request: NextRequest) {
 
         if (action === 'check-status') {
             const { historyId } = payload;
+            // Revert to long-polling as requested by user.
+            // Server will wait until completion or timeout (default 60s).
             const result = await client.pollImageTask(historyId);
             return NextResponse.json(result);
         }

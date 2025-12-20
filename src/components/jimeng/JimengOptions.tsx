@@ -84,7 +84,7 @@ export function JimengOptions({
                             animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
                             exit={{ opacity: 0, y: 8, scale: 0.95, filter: 'blur(8px)' }}
                             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                            className="absolute top-full left-0 mt-2 w-72 p-2 seko-popover z-50 flex flex-col gap-1"
+                            className="absolute bottom-full left-0 mb-2 w-72 p-2 seko-popover z-50 flex flex-col gap-1"
                         >
                             <div className="px-2 py-1.5 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                                 选择模型
