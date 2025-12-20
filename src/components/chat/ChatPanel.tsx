@@ -151,6 +151,40 @@ export default function ChatPanel() {
                 }));
 
                 setMessages(converted);
+
+                // Initialize Input Text Logic
+                const pendingRequest = useProjectStore.getState().generationRequest;
+                if (!pendingRequest) {
+                    if (converted.length > 0) {
+                        // Use last user message
+                        const lastUserMsg = [...converted].reverse().find(m => m.role === 'user');
+                        if (lastUserMsg) {
+                            const meta = (lastUserMsg as any).metadata;
+                            let prompt = meta?.basePrompt || meta?.prompt || lastUserMsg.content;
+
+                            // Clean up prompt if needed
+                            if (prompt && typeof prompt === 'string') {
+                                prompt = prompt.split(/【角色信息】|【参考图像】/)[0].trim();
+                            }
+                            setInputText(prompt);
+                        } else {
+                            setInputText('');
+                        }
+                    } else {
+                        // First time: use shot description if in shot scope
+                        if (selectedShotId && project?.shots) {
+                            const currentShot = project.shots.find(s => s.id === selectedShotId);
+                            if (currentShot) {
+                                setInputText(currentShot.description || '');
+                            } else {
+                                setInputText('');
+                            }
+                        } else {
+                            setInputText('');
+                        }
+                    }
+                }
+
             } catch (error) {
                 console.error('[ChatPanel] Load history failed:', error);
                 setMessages([]);
@@ -159,14 +193,8 @@ export default function ChatPanel() {
 
         loadHistory();
         setMentionedAssets({ characters: [], locations: [] });
-
-        // Check store directly to avoid closure staleness
-        const pendingRequest = useProjectStore.getState().generationRequest;
-        if (!pendingRequest) {
-            setInputText('');
-        }
         setManualReferenceUrls([]);
-    }, [project?.id, selectedShotId, currentSceneId, user]);
+    }, [project?.id, selectedShotId, currentSceneId, user, project?.shots]);
 
     // Handle Generation Request from other components (e.g. Storyboard)
     // Placed AFTER loadHistory to ensure input isn't cleared by loadHistory
