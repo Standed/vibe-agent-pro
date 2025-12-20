@@ -72,18 +72,31 @@ export function ChatBubble({
                         {message.content}
                     </div>
 
-                    {/* Generation Result (Assistant only) */}
-                    {!isUser && hasImages && (
-                        <div className="w-full max-w-md bg-white dark:bg-zinc-900/50 border border-black/5 dark:border-white/10 rounded-2xl p-3 shadow-sm backdrop-blur-sm">
-                            <GenerationResult
-                                images={message.images!}
-                                model={message.model}
-                                gridData={message.gridData}
-                                onImageClick={(url, idx) => onImageClick?.(url, idx, message)}
-                                onSliceSelect={() => onSliceSelect?.(message)}
-                                onReusePrompt={() => onReusePrompt?.(message.gridData?.prompt || message.model?.prompt || message.content)}
-                                onReuseImage={onReuseImage}
-                            />
+                    {/* Images (User or Assistant) */}
+                    {hasImages && (
+                        <div className={cn(
+                            "w-full max-w-md bg-white dark:bg-zinc-900/50 border border-black/5 dark:border-white/10 rounded-2xl p-3 shadow-sm backdrop-blur-sm",
+                            isUser ? "order-first mb-1" : "order-last mt-1"
+                        )}>
+                            {isUser ? (
+                                <div className="grid grid-cols-2 gap-2">
+                                    {message.images!.map((img, idx) => (
+                                        <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-black/5 dark:border-white/10">
+                                            <img src={img} alt="User upload" className="w-full h-full object-cover" />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <GenerationResult
+                                    images={message.images!}
+                                    model={message.model}
+                                    gridData={message.gridData}
+                                    onImageClick={(url, idx) => onImageClick?.(url, idx, message)}
+                                    onSliceSelect={() => onSliceSelect?.(message)}
+                                    onReusePrompt={() => onReusePrompt?.(message.gridData?.prompt || message.model?.prompt || message.content)}
+                                    onReuseImage={onReuseImage}
+                                />
+                            )}
                         </div>
                     )}
 
