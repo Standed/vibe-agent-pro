@@ -3,6 +3,7 @@
 import { Film, Trash2, Sparkles } from 'lucide-react';
 import Image from 'next/image';
 import type { Shot } from '@/types/project';
+import { translateShotSize } from '@/utils/translations';
 
 interface ShotListItemProps {
   shot: Shot;
@@ -77,7 +78,7 @@ export default function ShotListItem({
                 {label || `#${shot.order}`}
               </span>
               <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted">
-                {shot.shotSize}
+                {translateShotSize(shot.shotSize)}
               </span>
               <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-light-bg dark:bg-cine-bg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted">
                 {shot.duration}s

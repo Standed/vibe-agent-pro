@@ -2,6 +2,7 @@ import React from 'react';
 import { Grid3x3 } from 'lucide-react';
 import { Shot, GenerationHistoryItem } from '@/types/project';
 import ShotGenerationHistory from '@/components/shot/ShotGenerationHistory';
+import { translateShotSize, translateCameraMovement } from '@/utils/translations';
 
 interface ShotDetailsPanelProps {
     selectedShot: Shot;
@@ -30,11 +31,11 @@ export const ShotDetailsPanel: React.FC<ShotDetailsPanelProps> = ({
                 </div>
                 <div className="flex justify-between">
                     <span className="text-light-text-muted dark:text-cine-text-muted">景别:</span>
-                    <span>{selectedShot.shotSize}</span>
+                    <span>{translateShotSize(selectedShot.shotSize)}</span>
                 </div>
                 <div className="flex justify-between">
                     <span className="text-light-text-muted dark:text-cine-text-muted">运镜:</span>
-                    <span>{selectedShot.cameraMovement}</span>
+                    <span>{translateCameraMovement(selectedShot.cameraMovement)}</span>
                 </div>
                 <div className="flex justify-between">
                     <span className="text-light-text-muted dark:text-cine-text-muted">时长:</span>
