@@ -42,9 +42,16 @@ const postJson = async <T>(
 
       try {
         console.log('[postJson] 准备调用 authenticatedFetch...');
+
+        // 检查载荷大小，Vercel 限制为 4.5MB，我们预留空间，限制在 4MB 以内
+        const bodyStr = JSON.stringify(body);
+        if (bodyStr.length > 4 * 1024 * 1024) {
+          throw new Error(`请求载荷过大 (${(bodyStr.length / 1024 / 1024).toFixed(2)}MB)，请减少参考图数量或缩短提示词。`);
+        }
+
         const resp = await authenticatedFetch(url, {
           method: 'POST',
-          body: JSON.stringify(body),
+          body: bodyStr,
           signal: controller.signal
         });
         console.log('[postJson] authenticatedFetch 返回，状态码:', resp.status);
@@ -357,12 +364,6 @@ export const generateSingleImage = async (
 
 ${prompt}
 
-Technical Requirements:
-- Cinematic lighting and composition
-- High fidelity, 8K resolution
-- Professional color grading
-- Sharp focus and detail
-
 Style Constraints:
 - No text, captions, or UI elements
 - No watermarks
@@ -485,8 +486,8 @@ Do NOT write full sentences. Do NOT describe the subject again if the user alrea
   }
 };
 
-const MAX_REF_IMAGE_DIMENSION = 1400;
-const OPTIMIZED_JPEG_QUALITY = 0.82;
+const MAX_REF_IMAGE_DIMENSION = 2048; // 恢复为 2048px 以保证质量
+const OPTIMIZED_JPEG_QUALITY = 0.9;   // 恢复为 0.9 质量
 
 /**
  * Downscale and compress a data URL to reduce payload size
@@ -518,10 +519,18 @@ const optimizeDataUrl = (dataUrl: string, mimeHint?: string): Promise<ReferenceI
         return;
       }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const optimized = canvas.toDataURL(targetMime === 'image/png' ? 'image/png' : 'image/jpeg', OPTIMIZED_JPEG_QUALITY);
+      const optimized = canvas.toDataURL('image/jpeg', OPTIMIZED_JPEG_QUALITY);
+
+      // 如果压缩后仍然超过 1.5MB，进一步降低质量和尺寸，防止单张图占用过多载荷
+      if (optimized.length > 1.5 * 1024 * 1024) {
+        console.warn('[geminiService] 图片仍然过大 (>1.5MB)，进行二次压缩以平衡质量与体积...');
+        resolve(optimizeDataUrl(optimized, targetMime));
+        return;
+      }
+
       const [, data] = optimized.split(',');
       resolve({
-        mimeType: optimized.match(/^data:([^;]+)/)?.[1] || targetMime,
+        mimeType: 'image/jpeg',
         data: data || '',
       });
     };

@@ -38,18 +38,9 @@ export async function POST(request: NextRequest) {
   const whitelistCheck = checkWhitelist(user);
   if ('error' in whitelistCheck) return whitelistCheck.error;
 
-  // 2. 计算所需积分
-  const requiredCredits = calculateCredits('UPLOAD_PROCESS', user.role);
   const operationDesc = getOperationDescription('UPLOAD_PROCESS');
-
-  // 3. 检查积分
-  const creditsCheck = checkCredits(user, requiredCredits);
-  if ('error' in creditsCheck) {
-    return creditsCheck.error;
-  }
-
   const requestId = `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}, credits: ${user.credits}, cost: ${requiredCredits}`);
+  console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}`);
 
   try {
     const formData = await request.formData();
@@ -83,24 +74,6 @@ export async function POST(request: NextRequest) {
 
     // 返回公开 URL
     const url = `${PUBLIC_URL}/${key}`;
-
-    // 4. 消耗积分
-    const consumeResult = await consumeCredits(
-      user.id,
-      requiredCredits,
-      'upload-file',
-      `${operationDesc} (${file.name})`
-    );
-
-    if (!consumeResult.success) {
-      console.error(`[${requestId}] 💳 Failed to consume credits:`, consumeResult.error);
-      return NextResponse.json(
-        { error: '积分扣除失败: ' + consumeResult.error },
-        { status: 500 }
-      );
-    }
-
-    console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
 
     return NextResponse.json({
       url,

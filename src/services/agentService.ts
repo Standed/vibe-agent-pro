@@ -4,6 +4,7 @@
  */
 
 import { AGENT_TOOLS, ToolCall, formatToolsForPrompt } from './agentTools';
+import { calculateCredits } from '@/config/credits';
 
 const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3-pro-preview'; // Agent推理模型
 
@@ -326,6 +327,42 @@ export interface AgentAction {
   message: string; // Message to display to user
   toolCalls?: ToolCall[]; // Tool calls to execute
   requiresToolExecution?: boolean; // Whether tools need to be executed
+  estimatedCredits?: number; // Estimated credits to consume
+}
+
+/**
+ * 预估工具调用所需的积分
+ */
+export function estimateCredits(toolCalls: ToolCall[], userRole: 'user' | 'admin' | 'vip' = 'user'): number {
+  let total = 0;
+  for (const tc of toolCalls) {
+    switch (tc.name) {
+      case 'generateShotImage': {
+        const mode = tc.arguments.mode;
+        if (mode === 'grid') {
+          const gridSize = tc.arguments.gridSize || '2x2';
+          const [rows, cols] = gridSize.split('x').map(Number);
+          total += calculateCredits(`GEMINI_GRID_${rows}X${cols}` as any, userRole);
+        } else if (mode === 'gemini') {
+          total += calculateCredits('GEMINI_IMAGE', userRole);
+        } else if (mode === 'seedream') {
+          total += calculateCredits('SEEDREAM_GENERATE', userRole);
+        }
+        break;
+      }
+      case 'batchGenerateSceneImages':
+      case 'batchGenerateProjectImages': {
+        // 批量操作通常消耗较多，这里做一个保守预估
+        // 实际上 batch 内部会根据镜头数动态消耗，这里先给一个基础预估
+        total += calculateCredits('BATCH_OPERATION', userRole);
+        break;
+      }
+      case 'generateCharacterThreeView':
+        total += calculateCredits('GEMINI_IMAGE', userRole);
+        break;
+    }
+  }
+  return total;
 }
 
 /**
@@ -663,14 +700,16 @@ export async function processUserCommand(
 
     if (functionCall) {
       // Gemini wants to call a tool
+      const toolCalls = [{
+        name: functionCall.name,
+        arguments: functionCall.args || {}
+      }];
       return {
         type: 'tool_use',
-        toolCalls: [{
-          name: functionCall.name,
-          arguments: functionCall.args || {}
-        }],
+        toolCalls,
         message: `正在调用工具: ${functionCall.name}`,
-        requiresToolExecution: true
+        requiresToolExecution: true,
+        estimatedCredits: estimateCredits(toolCalls)
       };
     }
 
@@ -685,6 +724,7 @@ export async function processUserCommand(
         // If type is tool_use, ensure requiresToolExecution is set
         if (action.type === 'tool_use' && action.toolCalls && action.toolCalls.length > 0) {
           action.requiresToolExecution = true;
+          action.estimatedCredits = estimateCredits(action.toolCalls);
         }
         return action;
       }
@@ -803,14 +843,16 @@ export async function continueWithToolResults(
 
     if (functionCall) {
       // Gemini wants to call another tool
+      const toolCalls = [{
+        name: functionCall.name,
+        arguments: functionCall.args || {}
+      }];
       return {
         type: 'tool_use',
-        toolCalls: [{
-          name: functionCall.name,
-          arguments: functionCall.args || {}
-        }],
+        toolCalls,
         message: `正在调用工具: ${functionCall.name}`,
-        requiresToolExecution: true
+        requiresToolExecution: true,
+        estimatedCredits: estimateCredits(toolCalls)
       };
     }
 
@@ -825,6 +867,7 @@ export async function continueWithToolResults(
         // If type is tool_use, ensure requiresToolExecution is set
         if (action.type === 'tool_use' && action.toolCalls && action.toolCalls.length > 0) {
           action.requiresToolExecution = true;
+          action.estimatedCredits = estimateCredits(action.toolCalls);
         }
         return action;
       }

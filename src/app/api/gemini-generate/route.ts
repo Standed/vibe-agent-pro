@@ -45,6 +45,15 @@ export async function POST(request: NextRequest) {
     }
 
     const requestBody = JSON.stringify(payload);
+
+    // 🛡️ 载荷大小检查：Vercel 限制为 4.5MB，我们限制在 4MB 以内以确保安全
+    if (requestBody.length > 4 * 1024 * 1024) {
+      console.error(`[Gemini Generate] ❌ Payload too large: ${(requestBody.length / 1024 / 1024).toFixed(2)}MB`);
+      return NextResponse.json(
+        { error: `请求载荷过大 (${(requestBody.length / 1024 / 1024).toFixed(2)}MB)，请尝试减少上下文或图片。` },
+        { status: 413 }
+      );
+    }
     const BASE_URL = process.env.GEMINI_API_BASE_URL || 'https://generativelanguage.googleapis.com';
     const url = `${BASE_URL}/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 

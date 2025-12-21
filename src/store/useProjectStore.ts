@@ -43,6 +43,12 @@ interface ProjectStore {
     jimengModel?: 'jimeng-4.5' | 'jimeng-4.1' | 'jimeng-4.0';
     jimengResolution?: '2k' | '4k';
   } | null;
+  generationProgress: {
+    total: number;
+    current: number;
+    status: 'idle' | 'running' | 'success' | 'error';
+    message?: string;
+  };
 
   // Project Actions
   loadProject: (project: Project) => void;
@@ -56,6 +62,7 @@ interface ProjectStore {
   ) => void;
   updateScript: (script: string) => void;
   setGenerationRequest: (request: ProjectStore['generationRequest']) => void;
+  setGenerationProgress: (progress: Partial<ProjectStore['generationProgress']>) => void;
 
   // Scene Actions
   addScene: (scene: Scene) => void;
@@ -128,6 +135,11 @@ export const useProjectStore = create<ProjectStore>()(
     gridResult: null,
     isSaving: false,
     generationRequest: null,
+    generationProgress: {
+      total: 0,
+      current: 0,
+      status: 'idle',
+    },
 
     // Project Actions
     loadProject: (project) =>
@@ -138,6 +150,11 @@ export const useProjectStore = create<ProjectStore>()(
       }),
 
     setGenerationRequest: (request) => set({ generationRequest: request }),
+
+    setGenerationProgress: (progress) =>
+      set((state) => {
+        state.generationProgress = { ...state.generationProgress, ...progress };
+      }),
 
     renumberScenesAndShots: () =>
       set((state) => {

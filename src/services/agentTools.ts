@@ -358,6 +358,7 @@ export interface StoreCallbacks {
   addShot?: (shot: Shot) => void;
   renumberScenesAndShots?: () => void;
   setSavingStatus?: (isSaving: boolean) => void;
+  setGenerationProgress?: (progress: Partial<{ total: number; current: number; status: 'idle' | 'running' | 'success' | 'error'; message?: string }>) => void;
 }
 
 /**
@@ -1305,6 +1306,7 @@ export class AgentToolExecutor {
     const targetShots = force ? sceneShots : sceneShots.filter(shot => !shot.referenceImage);
 
     if (targetShots.length === 0) {
+      this.storeCallbacks?.setGenerationProgress?.({ status: 'idle' });
       return {
         tool: 'batchGenerateSceneImages',
         result: {
@@ -1314,6 +1316,14 @@ export class AgentToolExecutor {
         success: true,
       };
     }
+
+    // Start progress
+    this.storeCallbacks?.setGenerationProgress?.({
+      total: targetShots.length,
+      current: 0,
+      status: 'running',
+      message: `正在为场景生成图片...`
+    });
 
     try {
       if (mode === 'grid') {
@@ -1360,13 +1370,32 @@ export class AgentToolExecutor {
         };
       } else {
         // SeeDream or Gemini mode - generate with concurrency pool
+        let completedCount = 0;
         const results = await runWithConcurrency(
           targetShots,
           IMAGE_CONCURRENCY,
-          async (shot) => this.generateShotImage(shot.id, mode, undefined, prompt, force)
+          async (shot) => {
+            const res = await this.generateShotImage(shot.id, mode, undefined, prompt, force);
+            completedCount++;
+            this.storeCallbacks?.setGenerationProgress?.({
+              current: completedCount,
+              message: `正在生成分镜图片 (${completedCount}/${targetShots.length})...`
+            });
+            return res;
+          }
         );
 
         const successCount = results.filter(r => r.success).length;
+        this.storeCallbacks?.setGenerationProgress?.({
+          status: successCount === targetShots.length ? 'success' : 'error',
+          message: successCount === targetShots.length ? '批量生成完成' : `生成完成，成功 ${successCount}，失败 ${targetShots.length - successCount}`
+        });
+
+        // Reset progress after a delay
+        setTimeout(() => {
+          this.storeCallbacks?.setGenerationProgress?.({ status: 'idle' });
+        }, 3000);
+
         return {
           tool: 'batchGenerateSceneImages',
           result: {
@@ -1593,6 +1622,7 @@ export class AgentToolExecutor {
     const targetShots = force ? this.project.shots : this.project.shots.filter(shot => !shot.referenceImage);
 
     if (targetShots.length === 0) {
+      this.storeCallbacks?.setGenerationProgress?.({ status: 'idle' });
       return {
         tool: 'batchGenerateProjectImages',
         result: {
@@ -1601,6 +1631,14 @@ export class AgentToolExecutor {
         success: true,
       };
     }
+
+    // Start progress
+    this.storeCallbacks?.setGenerationProgress?.({
+      total: targetShots.length,
+      current: 0,
+      status: 'running',
+      message: `正在为项目批量生成图片...`
+    });
 
     try {
       if (mode === 'grid') {
@@ -1635,13 +1673,32 @@ export class AgentToolExecutor {
         };
       } else {
         // SeeDream or Gemini mode
+        let completedCount = 0;
         const results = await runWithConcurrency(
           targetShots,
           IMAGE_CONCURRENCY,
-          async (shot) => this.generateShotImage(shot.id, mode, undefined, prompt, force)
+          async (shot) => {
+            const res = await this.generateShotImage(shot.id, mode, undefined, prompt, force);
+            completedCount++;
+            this.storeCallbacks?.setGenerationProgress?.({
+              current: completedCount,
+              message: `正在生成分镜图片 (${completedCount}/${targetShots.length})...`
+            });
+            return res;
+          }
         );
 
         const successCount = results.filter(r => r.success).length;
+        this.storeCallbacks?.setGenerationProgress?.({
+          status: successCount === targetShots.length ? 'success' : 'error',
+          message: successCount === targetShots.length ? '项目批量生成完成' : `生成完成，成功 ${successCount}，失败 ${targetShots.length - successCount}`
+        });
+
+        // Reset progress after a delay
+        setTimeout(() => {
+          this.storeCallbacks?.setGenerationProgress?.({ status: 'idle' });
+        }, 3000);
+
         return {
           tool: 'batchGenerateProjectImages',
           result: {
