@@ -156,6 +156,7 @@ const collectInvalidUuidFields = (
 const USER_ID_FIELD: Partial<Record<AllowedTable, string>> = {
   projects: 'user_id',
   chat_messages: 'user_id',
+  profiles: 'id', // ✅ 确保用户只能查询/更新自己的 Profile
 };
 
 const injectUserIdToData = (table: AllowedTable, data: any, userId: string) => {

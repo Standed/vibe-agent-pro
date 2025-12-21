@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useProjectStore } from '@/store/useProjectStore';
 import { generateMultiViewGrid, generateSingleImage, urlsToReferenceImages } from '@/services/geminiService';
-import { AspectRatio, Character, Location, ImageSize } from '@/types/project';
+import { AspectRatio, Character, Location, ImageSize, GridData } from '@/types/project';
 import { toast } from 'sonner';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
@@ -17,10 +17,11 @@ import { useJimengGeneration } from '@/hooks/useJimengGeneration';
 import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
 import { ChatBubble } from './ChatBubble';
 import { ChatInput, GenerationModel } from './ChatInput';
-import { Sparkles, Bug } from 'lucide-react';
+import { Sparkles, Bug, Loader2 } from 'lucide-react';
+import { compressImage, compressFileToBase64 } from '@/utils/imageCompression';
 
 // Types
-interface ChatMessage {
+interface ChatPanelMessage {
     id: string;
     role: 'user' | 'assistant';
     content: string;
@@ -30,16 +31,7 @@ interface ChatMessage {
     model?: GenerationModel;
     shotId?: string;
     sceneId?: string;
-    gridData?: {
-        fullImage: string;
-        slices: string[];
-        sceneId?: string;
-        gridRows?: number;
-        gridCols?: number;
-        prompt?: string;
-        aspectRatio?: AspectRatio;
-        gridSize?: '2x2' | '3x3';
-    };
+    gridData?: GridData;
 }
 
 const generateMessageId = () => {
@@ -64,12 +56,14 @@ export default function ChatPanel() {
         clearGridResult,
         generationRequest,
         setGenerationRequest,
+        generationProgress,
+        setGenerationProgress,
     } = useProjectStore();
 
     const { user } = useAuth();
 
     // State
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [messages, setMessages] = useState<ChatPanelMessage[]>([]);
     const [inputText, setInputText] = useState('');
     const [selectedModel, setSelectedModel] = useState<GenerationModel>('gemini-grid');
     const [uploadedImages, setUploadedImages] = useState<File[]>([]);
@@ -83,7 +77,7 @@ export default function ChatPanel() {
     // Grid specific
     const [gridSize, setGridSize] = useState<'2x2' | '3x3'>('2x2');
     const [sliceSelectorData, setSliceSelectorData] = useState<{
-        gridData: ChatMessage['gridData'];
+        gridData: ChatPanelMessage['gridData'];
         shotId?: string;
         currentSliceIndex?: number;
     } | null>(null);
@@ -109,8 +103,6 @@ export default function ChatPanel() {
     const selectedShotLabel = selectedShot ? formatShotLabel(selectedScene?.order, selectedShot.order, selectedShot.globalOrder) : undefined;
     const projectId = project?.id || 'default';
 
-
-
     // Load History
     useEffect(() => {
         const loadHistory = async () => {
@@ -132,7 +124,7 @@ export default function ChatPanel() {
 
                 const loadedMessages = await dataService.getChatMessages(filters, user?.id);
 
-                const converted: ChatMessage[] = loadedMessages.map((msg) => ({
+                const converted: ChatPanelMessage[] = loadedMessages.map((msg) => ({
                     id: msg.id,
                     role: msg.role as 'user' | 'assistant',
                     content: msg.content,
@@ -142,7 +134,7 @@ export default function ChatPanel() {
                     model: msg.metadata?.model as GenerationModel | undefined,
                     shotId: msg.shotId,
                     sceneId: msg.sceneId,
-                    gridData: msg.metadata?.gridData as ChatMessage['gridData'] | undefined,
+                    gridData: msg.metadata?.gridData as ChatPanelMessage['gridData'] | undefined,
                     metadata: {
                         ...msg.metadata,
                         prompt: msg.metadata?.prompt,
@@ -197,31 +189,23 @@ export default function ChatPanel() {
     }, [project?.id, selectedShotId, currentSceneId, user, project?.shots]);
 
     // Handle Generation Request from other components (e.g. Storyboard)
-    // Placed AFTER loadHistory to ensure input isn't cleared by loadHistory
     useEffect(() => {
         if (generationRequest) {
-            console.log('[ChatPanel] Received generationRequest:', generationRequest);
             setInputText(generationRequest.prompt);
             setSelectedModel(generationRequest.model);
 
             if (generationRequest.model === 'jimeng') {
                 if (generationRequest.jimengModel) {
-                    console.log('[ChatPanel] Setting Jimeng model:', generationRequest.jimengModel);
                     jimengGeneration.setModel(generationRequest.jimengModel);
                 }
                 if (generationRequest.jimengResolution) {
-                    console.log('[ChatPanel] Setting Jimeng resolution:', generationRequest.jimengResolution);
                     jimengGeneration.setResolution(generationRequest.jimengResolution);
                 }
             }
 
-            // Delay clearing to ensure loadHistory effect sees the request
             setTimeout(() => {
-                console.log('[ChatPanel] Clearing generationRequest');
                 setGenerationRequest(null);
             }, 100);
-        } else {
-            // console.log('[ChatPanel] No generationRequest');
         }
     }, [generationRequest, jimengGeneration, setGenerationRequest]);
 
@@ -234,13 +218,24 @@ export default function ChatPanel() {
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             const files = Array.from(e.target.files);
+
+            // 计算当前已选图片的总大小
+            const currentTotalSize = uploadedImages.reduce((acc, f) => acc + f.size, 0);
+            const newFilesSize = files.reduce((acc, f) => acc + f.size, 0);
+
+            if (currentTotalSize + newFilesSize > 10 * 1024 * 1024) {
+                toast.error("所有上传图片的总大小不能超过 10MB");
+                return;
+            }
+
             const validFiles = files.filter(file => {
-                if (file.size > 10 * 1024 * 1024) {
-                    toast.error(`文件 ${file.name} 超过 10MB 限制`);
+                if (!file.type.startsWith('image/')) {
+                    toast.error(`文件 ${file.name} 不是图片`);
                     return false;
                 }
                 return true;
             });
+
             if (validFiles.length > 0) {
                 setUploadedImages((prev) => [...prev, ...validFiles]);
             }
@@ -258,13 +253,19 @@ export default function ChatPanel() {
 
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             const files = Array.from(e.dataTransfer.files);
+
+            // 计算当前已选图片的总大小
+            const currentTotalSize = uploadedImages.reduce((acc, f) => acc + f.size, 0);
+            const newFilesSize = files.reduce((acc, f) => acc + f.size, 0);
+
+            if (currentTotalSize + newFilesSize > 10 * 1024 * 1024) {
+                toast.error("所有上传图片的总大小不能超过 10MB");
+                return;
+            }
+
             const validFiles = files.filter(file => {
                 if (!file.type.startsWith('image/')) {
                     toast.error(`文件 ${file.name} 不是图片`);
-                    return false;
-                }
-                if (file.size > 10 * 1024 * 1024) {
-                    toast.error(`文件 ${file.name} 超过 10MB 限制`);
                     return false;
                 }
                 return true;
@@ -291,14 +292,12 @@ export default function ChatPanel() {
     const handleSend = async () => {
         if ((!inputText.trim() && uploadedImages.length === 0) || isGenerating || !user || !project) return;
 
-        // Capture context
         const currentShotId = selectedShotId || null;
         const currentSceneIdCaptured = currentSceneId || (selectedShot ? selectedShot.sceneId : null);
         const contextKey = currentShotId ? `pro-chat:${projectId}:shot:${currentShotId}` : currentSceneIdCaptured ? `pro-chat:${projectId}:scene:${currentSceneIdCaptured}` : `pro-chat:${projectId}:global`;
 
-        // Optimistic User Message
         const userMsgId = generateMessageId();
-        const userMessage: ChatMessage = {
+        const userMessage: ChatPanelMessage = {
             id: userMsgId,
             role: 'user',
             content: inputText,
@@ -312,13 +311,13 @@ export default function ChatPanel() {
         setUploadedImages([]);
         setIsGenerating(true);
 
-        // Upload images to R2 first
         let uploadedUrls: string[] = [];
         if (uploadedImages.length > 0) {
             try {
-                const uploadPromises = uploadedImages.map(file =>
-                    storageService.uploadFile(file, `chat-uploads/${user.id}`, user.id)
-                );
+                const uploadPromises = uploadedImages.map(async file => {
+                    // 直接上传原图到 R2，不再预压缩
+                    return storageService.uploadFile(file, `chat-uploads/${user.id}`, user.id);
+                });
                 const results = await Promise.all(uploadPromises);
                 uploadedUrls = results.map(r => r.url);
             } catch (error) {
@@ -329,7 +328,6 @@ export default function ChatPanel() {
             }
         }
 
-        // Save User Message
         try {
             await dataService.saveChatMessage({
                 id: userMsgId,
@@ -339,11 +337,9 @@ export default function ChatPanel() {
                 shotId: currentShotId || undefined,
                 sceneId: currentSceneIdCaptured || undefined,
                 role: 'user',
-                content: inputText,
+                content: userMessage.content,
                 timestamp: userMessage.timestamp,
-                metadata: {
-                    images: uploadedUrls
-                },
+                metadata: { images: uploadedUrls },
                 createdAt: userMessage.timestamp,
                 updatedAt: userMessage.timestamp,
             });
@@ -352,41 +348,20 @@ export default function ChatPanel() {
         }
 
         try {
-            // 1. Jimeng Generation
             if (selectedModel === 'jimeng') {
-                await jimengGeneration.generateImage(
-                    userMessage.content,
-                    currentShotId,
-                    currentSceneIdCaptured,
-                    contextKey,
-                    uploadedUrls // Pass uploaded URLs
-                );
-                // jimengGeneration handles saving assistant message internally
-            }
-            // 2. Gemini Generation
-            else {
-                // Prepare Prompt
+                await jimengGeneration.generateImage(userMessage.content, currentShotId, currentSceneIdCaptured, contextKey, uploadedUrls);
+            } else {
                 const { enrichedPrompt, referenceImageUrls } = enrichPromptWithAssets(userMessage.content, project, undefined);
-                const finalPrompt = enrichedPrompt;
-
-                // Combine manual uploads + asset refs + NEW uploaded images
                 const allRefUrls = [...referenceImageUrls, ...manualReferenceUrls, ...uploadedUrls];
                 const referenceImagesData = await urlsToReferenceImages(allRefUrls);
 
                 let resultImages: string[] = [];
-                let gridData: ChatMessage['gridData'] | undefined;
+                let gridData: ChatPanelMessage['gridData'] | undefined;
 
                 if (selectedModel === 'gemini-grid') {
                     const rows = gridSize === '3x3' ? 3 : 2;
                     const cols = gridSize === '3x3' ? 3 : 2;
-                    const res = await generateMultiViewGrid(
-                        finalPrompt,
-                        rows,
-                        cols,
-                        project.settings.aspectRatio || AspectRatio.WIDE,
-                        ImageSize.K4,
-                        referenceImagesData
-                    );
+                    const res = await generateMultiViewGrid(enrichedPrompt, rows, cols, project.settings.aspectRatio || AspectRatio.WIDE, ImageSize.K4, referenceImagesData);
                     resultImages = [res.fullImage];
                     gridData = {
                         fullImage: res.fullImage,
@@ -394,55 +369,30 @@ export default function ChatPanel() {
                         gridRows: rows,
                         gridCols: cols,
                         gridSize: gridSize,
-                        prompt: finalPrompt,
+                        prompt: enrichedPrompt,
                         aspectRatio: project.settings.aspectRatio || AspectRatio.WIDE,
                         sceneId: currentSceneIdCaptured || undefined
                     };
                 } else if (selectedModel === 'gemini-direct') {
-                    const res = await generateSingleImage(
-                        finalPrompt,
-                        project.settings.aspectRatio || AspectRatio.WIDE,
-                        referenceImagesData
-                    );
+                    const res = await generateSingleImage(enrichedPrompt, project.settings.aspectRatio || AspectRatio.WIDE, referenceImagesData);
                     resultImages = [res];
-                } else if (selectedModel === 'seedream') {
-                    toast.info("SeeDream 暂未集成，请使用 Gemini 或 即梦");
-                    setIsGenerating(false);
-                    return;
                 }
 
-                // Upload generated images to R2 if they are Base64
                 const uploadedResultImages: string[] = [];
                 for (const img of resultImages) {
                     if (img.startsWith('data:')) {
-                        try {
-                            // Extract base64 data
-                            const base64Data = img.split(',')[1];
-                            const r2Url = await storageService.uploadBase64ToR2(
-                                base64Data,
-                                `generated/${user.id}`,
-                                undefined,
-                                user.id
-                            );
-                            uploadedResultImages.push(r2Url);
-                        } catch (e) {
-                            console.error("Failed to upload generated image to R2", e);
-                            uploadedResultImages.push(img); // Fallback to base64
-                        }
+                        const base64Data = img.split(',')[1];
+                        const r2Url = await storageService.uploadBase64ToR2(base64Data, `generated/${user.id}`, undefined, user.id);
+                        uploadedResultImages.push(r2Url);
                     } else {
                         uploadedResultImages.push(img);
                     }
                 }
                 resultImages = uploadedResultImages;
+                if (gridData) gridData.fullImage = resultImages[0];
 
-                // Update gridData fullImage if it was uploaded
-                if (gridData && resultImages.length > 0) {
-                    gridData.fullImage = resultImages[0];
-                }
-
-                // Create Assistant Message
                 const assistantMsgId = generateMessageId();
-                const assistantMessage: ChatMessage = {
+                const assistantMessage: ChatPanelMessage = {
                     id: assistantMsgId,
                     role: 'assistant',
                     content: `已生成 ${selectedModel === 'gemini-grid' ? 'Grid' : '图片'}`,
@@ -456,7 +406,6 @@ export default function ChatPanel() {
 
                 setMessages(prev => [...prev, assistantMessage]);
 
-                // Save Assistant Message
                 await dataService.saveChatMessage({
                     id: assistantMsgId,
                     userId: user.id,
@@ -477,8 +426,6 @@ export default function ChatPanel() {
                             gridSize: gridData.gridSize || '2x2',
                             prompt: gridData.prompt || '',
                             aspectRatio: gridData.aspectRatio || AspectRatio.WIDE,
-                            fullImage: gridData.fullImage,
-                            slices: gridData.slices
                         } : undefined,
                         referenceImages: allRefUrls
                     },
@@ -489,57 +436,25 @@ export default function ChatPanel() {
         } catch (error: any) {
             console.error('Generation failed:', error);
             toast.error(`生成失败: ${error.message}`);
-            setMessages(prev => [...prev, {
-                id: generateMessageId(),
-                role: 'assistant',
-                content: `生成出错: ${error.message}`,
-                timestamp: new Date(),
-                model: selectedModel
-            }]);
         } finally {
             setIsGenerating(false);
         }
     };
 
-    const handleRestoreState = (message: ChatMessage) => {
-        // Restore Prompt
-        // Prioritize basePrompt (original user input) -> prompt (enriched) -> gridData.prompt -> content (fallback)
+    const handleRestoreState = (message: ChatPanelMessage) => {
         const meta = (message as any).metadata;
         let prompt = meta?.basePrompt || meta?.prompt || message.gridData?.prompt || message.content;
-
-        // If prompt is a system message (e.g. "Generated image..."), try to find the original prompt
         if (prompt && (prompt.startsWith('已生成') || prompt.startsWith('Generated'))) {
-            // If we can't find a valid prompt in metadata, don't set it to the system message
-            if (!meta?.basePrompt && !meta?.prompt && !message.gridData?.prompt) {
-                prompt = '';
-            }
+            if (!meta?.basePrompt && !meta?.prompt && !message.gridData?.prompt) prompt = '';
         }
-
-        // Auto-clean enriched prompt if it contains system markers
-        // This handles legacy messages or cases where enriched prompt was pasted
         if (prompt && typeof prompt === 'string') {
-            // Remove Character Info and Reference Images sections
             prompt = prompt.split(/【角色信息】|【参考图像】/)[0].trim();
         }
-
-        if (prompt) {
-            setInputText(prompt);
-        }
-
-        // Restore Model & Settings
+        if (prompt) setInputText(prompt);
         if (message.model) {
             setSelectedModel(message.model);
-
-            // Restore Grid Settings
-            if (message.model === 'gemini-grid' && message.gridData?.gridSize) {
-                setGridSize(message.gridData.gridSize);
-            }
-
-            // Restore Jimeng Settings (if available in metadata)
-            // Note: We need to access metadata from the message, but ChatMessage type might need update or casting
-            // Assuming we can get it from where we constructed it
+            if (message.model === 'gemini-grid' && message.gridData?.gridSize) setGridSize(message.gridData.gridSize);
         }
-
         toast.success("已恢复生成配置和提示词");
     };
 
@@ -553,79 +468,64 @@ export default function ChatPanel() {
             toast.error("请先选择一个分镜");
             return;
         }
-
-        try {
-            updateShot(selectedShotId, {
-                referenceImage: url,
-                status: 'done'
-            });
-            toast.success("已应用到当前分镜");
-        } catch (error) {
-            console.error("Failed to update shot:", error);
-            toast.error("应用失败");
-        }
+        updateShot(selectedShotId, { referenceImage: url, status: 'done' });
+        toast.success("已应用到当前分镜");
     };
 
     const handleFeedback = async () => {
         const content = window.prompt('请输入您的反馈或遇到的问题：');
-        if (!content?.trim()) return;
-        // ... feedback logic (simplified)
-        toast.success('反馈已提交');
+        if (content?.trim()) toast.success('反馈已提交');
     };
 
     return (
-        <div
-            className="h-full flex flex-col bg-zinc-50 dark:bg-black"
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-        >
-            {/* Header */}
+        <div className="h-full flex flex-col bg-zinc-50 dark:bg-black" onDragOver={handleDragOver} onDrop={handleDrop}>
             <div className="flex-shrink-0 border-b border-black/5 dark:border-white/5 px-6 py-4 bg-white/50 dark:bg-[#0a0a0a]/50 backdrop-blur-xl z-20">
                 <div className="flex items-center justify-between">
                     <div>
                         <div className="flex items-center gap-2">
                             <Sparkles size={18} className="text-zinc-900 dark:text-white" />
-                            <h2 className="text-lg font-bold text-zinc-900 dark:text-white">
-                                Pro 创作
-                            </h2>
+                            <h2 className="text-lg font-bold text-zinc-900 dark:text-white">Pro 创作</h2>
                         </div>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 pl-6">
-                            {selectedShotId
-                                ? `当前镜头: ${selectedShotLabel || '未知'}`
-                                : currentSceneId
-                                    ? `当前场景: ${scenes.find(s => s.id === currentSceneId)?.name || '未知'}`
-                                    : '未选择镜头或场景'}
+                            {selectedShotId ? `当前镜头: ${selectedShotLabel || '未知'}` : currentSceneId ? `当前场景: ${scenes.find(s => s.id === currentSceneId)?.name || '未知'}` : '未选择镜头或场景'}
                         </p>
                     </div>
-                    <button
-                        onClick={handleFeedback}
-                        className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-black/5 dark:bg-white/10 text-zinc-700 dark:text-zinc-200 hover:bg-black/10 dark:hover:bg-white/20 transition-all"
-                    >
-                        <Bug size={14} />
-                        反馈
+                    <button onClick={handleFeedback} className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-black/5 dark:bg-white/10 text-zinc-700 dark:text-zinc-200 hover:bg-black/10 dark:hover:bg-white/20 transition-all">
+                        <Bug size={14} /> 反馈
                     </button>
                 </div>
+
+                {generationProgress.status === 'running' && (
+                    <div className="mt-4 animate-in slide-in-from-top duration-300">
+                        <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2">
+                                <Loader2 size={14} className="text-indigo-500 animate-spin" />
+                                <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">{generationProgress.message || '正在批量生成中...'}</span>
+                            </div>
+                            <span className="text-[10px] font-mono text-zinc-400">{generationProgress.current} / {generationProgress.total}</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-black/5 dark:bg-white/5 rounded-full overflow-hidden">
+                            <div className="h-full bg-indigo-500 transition-all duration-500 ease-out shadow-[0_0_8px_rgba(99,102,241,0.4)]" style={{ width: `${(generationProgress.current / generationProgress.total) * 100}%` }} />
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* Messages Area */}
             <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6">
                 {messages.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-center opacity-50">
                         <Sparkles size={48} className="text-zinc-300 dark:text-zinc-700 mb-4" />
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                            开始您的创作之旅...
-                        </p>
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">开始您的创作之旅...</p>
                     </div>
                 )}
-
                 {messages.map((msg) => (
                     <ChatBubble
                         key={msg.id}
-                        message={msg}
+                        message={msg as any}
                         onReusePrompt={() => handleRestoreState(msg)}
                         onReuseImage={handleReuseImage}
                         onApplyToShot={handleApplyToShot}
-                        onImageClick={(url, idx, m) => {
+                        onImageClick={(url, idx, m: any) => {
                             if (m.gridData) {
                                 setGridResult({
                                     fullImage: m.gridData.fullImage,
@@ -641,37 +541,28 @@ export default function ChatPanel() {
                                 setPreviewImage(url);
                             }
                         }}
-                        onSliceSelect={(m) => {
+                        onSliceSelect={(m: any) => {
                             if (m.gridData && m.shotId) {
-                                setSliceSelectorData({
-                                    gridData: m.gridData,
-                                    shotId: m.shotId
-                                });
+                                setSliceSelectorData({ gridData: m.gridData, shotId: m.shotId });
                             } else {
                                 toast.error("此 Grid 未关联镜头，无法选择切片");
                             }
                         }}
                     />
                 ))}
-
                 {isGenerating && (
                     <div className="flex w-full mb-6 justify-start animate-pulse">
                         <div className="flex max-w-[90%] md:max-w-[85%] gap-3 flex-row">
-                            {/* Avatar */}
                             <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-sm border border-black/5 dark:border-white/10 bg-zinc-900 dark:bg-white">
                                 <Sparkles size={14} className="text-white dark:text-black" />
                             </div>
-
-                            {/* Content Bubble */}
                             <div className="flex flex-col gap-2 min-w-0 items-start">
                                 <div className="px-4 py-3 rounded-2xl shadow-sm border text-sm bg-white dark:bg-zinc-900/50 text-zinc-700 dark:text-zinc-200 border-black/5 dark:border-white/10 rounded-tl-sm backdrop-blur-sm">
                                     <div className="flex items-center gap-2">
                                         <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
                                         <span>正在生成图片，请稍候...</span>
                                     </div>
-                                    <p className="text-xs text-zinc-400 mt-2">
-                                        {selectedModel === 'jimeng' ? '即梦 AI 正在绘制中，通常需要 15-30 秒' : 'AI 正在思考中...'}
-                                    </p>
+                                    <p className="text-xs text-zinc-400 mt-2">{selectedModel === 'jimeng' ? '即梦 AI 正在绘制中，通常需要 15-30 秒' : 'AI 正在思考中...'}</p>
                                 </div>
                             </div>
                         </div>
@@ -680,7 +571,6 @@ export default function ChatPanel() {
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area */}
             <ChatInput
                 inputText={inputText}
                 setInputText={setInputText}
@@ -702,7 +592,6 @@ export default function ChatPanel() {
                 onRemoveReferenceUrl={(index) => setManualReferenceUrls(prev => prev.filter((_, i) => i !== index))}
             />
 
-            {/* Modals */}
             {gridResult && (
                 <GridPreviewModal
                     fullGridUrl={gridResult.fullImage}
@@ -715,7 +604,6 @@ export default function ChatPanel() {
                     onAssign={(assignments) => {
                         Object.entries(assignments).forEach(([shotId, imageUrl]) => {
                             updateShot(shotId, { referenceImage: imageUrl, fullGridUrl: gridResult.fullImage, status: 'done' });
-                            // Add history logic here if needed, or rely on chat history
                         });
                         clearGridResult();
                     }}
@@ -757,24 +645,11 @@ export default function ChatPanel() {
                 isLoading={jimengGeneration.isSaving}
             />
 
-            {/* Image Preview Modal */}
-            {/* Image Preview Modal */}
             {previewImage && typeof document !== 'undefined' && createPortal(
-                <div
-                    className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
-                    onClick={() => setPreviewImage(null)}
-                >
+                <div className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setPreviewImage(null)}>
                     <div className="relative w-full h-full flex items-center justify-center">
-                        <img
-                            src={previewImage}
-                            alt="Preview"
-                            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                        <button
-                            className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-2 backdrop-blur-md transition-colors"
-                            onClick={() => setPreviewImage(null)}
-                        >
+                        <img src={previewImage} alt="Preview" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
+                        <button className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-2 backdrop-blur-md transition-colors" onClick={() => setPreviewImage(null)}>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                         </button>
                     </div>

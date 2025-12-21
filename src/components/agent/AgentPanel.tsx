@@ -19,7 +19,7 @@ export default function AgentPanel() {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
 
-  const { isProcessing, thinkingSteps, summary, sendMessage, clearSession, stop } = useAgent();
+  const { isProcessing, thinkingSteps, summary, sendMessage, clearSession, stop, pendingConfirmation } = useAgent();
 
   // 从云端加载聊天历史
   useEffect(() => {
@@ -344,6 +344,41 @@ export default function AgentPanel() {
           提示: Agent 会自动使用增强上下文和并行执行，大幅提升处理效率
         </div>
       </div>
+
+      {/* Confirmation Overlay */}
+      {pendingConfirmation && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-black/20 backdrop-blur-sm">
+          <div className="w-full max-w-sm glass-card p-6 shadow-2xl border border-white/20 animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                <Sparkles className="text-blue-500" size={20} />
+              </div>
+              <h3 className="font-bold text-lg text-gray-900 dark:text-white">积分消耗确认</h3>
+            </div>
+
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
+              {pendingConfirmation.message}
+              <br />
+              预计将消耗 <span className="font-bold text-blue-500 dark:text-blue-400">{pendingConfirmation.credits}</span> 积分。
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={pendingConfirmation.onCancel}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={pendingConfirmation.onConfirm}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg"
+              >
+                确认继续
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

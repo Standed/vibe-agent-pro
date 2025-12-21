@@ -310,11 +310,11 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                         <select
                           value={genMode}
                           onChange={(e) => setGenMode(e.target.value as any)}
-                          className="appearance-none pl-3 pr-8 py-1.5 text-xs font-medium bg-white dark:bg-black/20 border border-black/5 dark:border-white/10 rounded-lg focus:outline-none cursor-pointer hover:bg-white/80 dark:hover:bg-white/5 transition-colors"
+                          className="appearance-none pl-3 pr-8 py-1.5 text-xs font-medium bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 rounded-lg focus:outline-none cursor-pointer hover:bg-white/80 dark:hover:bg-zinc-800 transition-colors text-zinc-900 dark:text-white"
                         >
-                          <option value="jimeng">即梦 AI</option>
-                          <option value="gemini">Gemini</option>
-                          <option value="seedream">SeeDream</option>
+                          <option value="jimeng" className="dark:bg-zinc-900">即梦 AI</option>
+                          <option value="gemini" className="dark:bg-zinc-900">Gemini</option>
+                          <option value="seedream" className="dark:bg-zinc-900">SeeDream</option>
                         </select>
                         <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-400 pointer-events-none" />
                       </div>
@@ -324,11 +324,11 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                           <select
                             value={jimengModel}
                             onChange={(e) => setJimengModel(e.target.value as JimengModel)}
-                            className="appearance-none pl-3 pr-8 py-1.5 text-xs font-medium bg-white dark:bg-black/20 border border-black/5 dark:border-white/10 rounded-lg focus:outline-none cursor-pointer hover:bg-white/80 dark:hover:bg-white/5 transition-colors"
+                            className="appearance-none pl-3 pr-8 py-1.5 text-xs font-medium bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 rounded-lg focus:outline-none cursor-pointer hover:bg-white/80 dark:hover:bg-zinc-800 transition-colors text-zinc-900 dark:text-white"
                           >
-                            <option value="jimeng-4.5">图片 4.5</option>
-                            <option value="jimeng-4.1">图片 4.1</option>
-                            <option value="jimeng-4.0">图片 4.0</option>
+                            <option value="jimeng-4.5" className="dark:bg-zinc-900">图片 4.5</option>
+                            <option value="jimeng-4.1" className="dark:bg-zinc-900">图片 4.1</option>
+                            <option value="jimeng-4.0" className="dark:bg-zinc-900">图片 4.0</option>
                           </select>
                           <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-400 pointer-events-none" />
                         </div>
@@ -366,8 +366,8 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                         onChange={(e) => setAspectRatio(e.target.value as '21:9' | '16:9')}
                         className="text-[10px] font-medium bg-transparent text-zinc-700 dark:text-zinc-300 border-none p-0 focus:ring-0 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
                       >
-                        <option value="21:9">21:9 超宽</option>
-                        <option value="16:9">16:9 宽屏</option>
+                        <option value="21:9" className="dark:bg-zinc-900">21:9 超宽</option>
+                        <option value="16:9" className="dark:bg-zinc-900">16:9 宽屏</option>
                       </select>
                     </div>
                     <span className="text-[10px] text-zinc-400">消耗 1 次生成额度</span>

@@ -40,6 +40,12 @@ export interface UseAgentResult {
   sendMessage: (message: string) => Promise<void>;
   clearSession: () => Promise<void>;
   stop: () => void;
+  pendingConfirmation: {
+    credits: number;
+    message: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+  } | null;
 }
 
 export function useAgent(): UseAgentResult {
@@ -53,6 +59,7 @@ export function useAgent(): UseAgentResult {
     addGenerationHistory,
     addGridHistory,
     renumberScenesAndShots,
+    setGenerationProgress,
   } = useProjectStore();
 
   const { isAuthenticated, user } = useAuth();
@@ -65,6 +72,8 @@ export function useAgent(): UseAgentResult {
   );
   const [lastMessageHash, setLastMessageHash] = useState<string>('');
   const cancelRef = useRef(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState<{ credits: number; message: string } | null>(null);
+  const confirmationResolverRef = useRef<((value: boolean) => void) | null>(null);
 
   // Auto-update session manager when project changes
   useEffect(() => {
@@ -263,6 +272,37 @@ export function useAgent(): UseAgentResult {
         throw new Error('USER_CANCELLED');
       }
 
+      // ⭐ 积分确认逻辑：如果预计消耗积分 > 0，暂停执行并等待用户确认
+      if (action.requiresToolExecution && action.estimatedCredits && action.estimatedCredits > 0) {
+        const stepIdConfirm = addStep({
+          type: 'thinking',
+          content: `等待积分确认 (预计消耗 ${action.estimatedCredits} 积分)...`,
+          status: 'running',
+        });
+
+        setPendingConfirmation({
+          credits: action.estimatedCredits,
+          message: action.message || '该操作将消耗积分'
+        });
+
+        const confirmed = await new Promise<boolean>((resolve) => {
+          confirmationResolverRef.current = resolve;
+        });
+
+        if (!confirmed) {
+          updateStep(stepIdConfirm, {
+            status: 'failed',
+            content: '用户取消了积分扣费操作',
+          });
+          throw new Error('USER_CANCELLED');
+        }
+
+        updateStep(stepIdConfirm, {
+          status: 'completed',
+          content: '积分确认成功，开始执行...',
+        });
+      }
+
       // Step 5: Execute tools if needed (并行执行)
       let allToolResults: any[] = [];
       let maxIterations = 5;
@@ -292,6 +332,7 @@ export function useAgent(): UseAgentResult {
           addGenerationHistory,
           addGridHistory,
           renumberScenesAndShots,
+          setGenerationProgress,
         };
 
         // ⭐ 关键修复：每次迭代都获取最新的 project 状态
@@ -672,6 +713,27 @@ export function useAgent(): UseAgentResult {
     setIsProcessing(false);
     setThinkingSteps([]);
     setSummary('');
+    setPendingConfirmation(null);
+    if (confirmationResolverRef.current) {
+      confirmationResolverRef.current(false);
+      confirmationResolverRef.current = null;
+    }
+  }, []);
+
+  const confirmAction = useCallback(() => {
+    if (confirmationResolverRef.current) {
+      confirmationResolverRef.current(true);
+      confirmationResolverRef.current = null;
+      setPendingConfirmation(null);
+    }
+  }, []);
+
+  const cancelAction = useCallback(() => {
+    if (confirmationResolverRef.current) {
+      confirmationResolverRef.current(false);
+      confirmationResolverRef.current = null;
+      setPendingConfirmation(null);
+    }
   }, []);
 
   return {
@@ -681,5 +743,10 @@ export function useAgent(): UseAgentResult {
     sendMessage,
     clearSession,
     stop,
+    pendingConfirmation: pendingConfirmation ? {
+      ...pendingConfirmation,
+      onConfirm: confirmAction,
+      onCancel: cancelAction,
+    } : null,
   };
 }
