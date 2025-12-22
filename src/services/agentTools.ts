@@ -148,8 +148,9 @@ export class AgentToolExecutor {
       });
 
       const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Server execution failed');
+      if (!response.ok || !data.success || (data.result && data.result.success === false)) {
+        const errorMsg = data.error || (data.result && data.result.message) || 'Server execution failed';
+        throw new Error(errorMsg);
       }
 
       return {
@@ -187,8 +188,9 @@ export class AgentToolExecutor {
       });
 
       const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Server execution failed');
+      if (!response.ok || !data.success || (data.result && data.result.success === false)) {
+        const errorMsg = data.error || (data.result && data.result.message) || 'Server execution failed';
+        throw new Error(errorMsg);
       }
 
       return {
@@ -503,11 +505,23 @@ export class AgentToolExecutor {
 
     this.incrementPendingTasks();
     try {
-      const resultUrl = await generateCharacterThreeView(
+      const base64Url = await generateCharacterThreeView(
         prompt || `${character.name}, ${character.description}, ${character.appearance}`,
         artStyle,
         await urlsToReferenceImages(character.referenceImages || [])
       );
+
+      // Upload to R2
+      let resultUrl = base64Url;
+      const folder = `projects/characters/${this.userId || 'anonymous'}`;
+      try {
+        if (base64Url.startsWith('data:')) {
+          const base64Data = base64Url.split(',')[1];
+          resultUrl = await storageService.uploadBase64ToR2(base64Data, folder, undefined, this.userId);
+        }
+      } catch (uploadError) {
+        console.error('Failed to upload character image to R2, falling back to base64:', uploadError);
+      }
 
       // Update character
       if (this.storeCallbacks?.updateCharacter) {
@@ -592,6 +606,28 @@ export class AgentToolExecutor {
           refs
         );
         finalResult = { imageUrl: resultUrl };
+      }
+
+
+
+      // Upload resultUrl to R2 if it is Base64
+      try {
+        if (resultUrl && resultUrl.startsWith('data:')) {
+          const base64Data = resultUrl.split(',')[1];
+          const r2Url = await storageService.uploadBase64ToR2(
+            base64Data,
+            `projects/shots/${this.userId || 'anonymous'}`,
+            `shot_gen_${shotId}_${Date.now()}.png`,
+            this.userId
+          );
+          resultUrl = r2Url;
+
+          // Also update finalResult for chat persistence
+          if (finalResult.imageUrl) finalResult.imageUrl = r2Url;
+          if (finalResult.fullGridUrl) finalResult.fullGridUrl = r2Url;
+        }
+      } catch (uploadError) {
+        console.error('Failed to upload shot image to R2:', uploadError);
       }
 
       // Update shot

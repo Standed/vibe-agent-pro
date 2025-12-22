@@ -4,8 +4,12 @@ import { SoraPromptService } from './SoraPromptService';
 import { UnifiedDataService } from '@/lib/dataService';
 import sizeOf from 'image-size';
 import { promisify } from 'util';
+import fetch from 'node-fetch';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
-const sizeOfAsync = promisify(sizeOf);
+// sizeOf 同步调用在脚本/后端环境下更稳定且无兼容性问题
 
 /**
  * Sora 总导演服务
@@ -56,28 +60,28 @@ export class SoraOrchestrator {
             // 构建剧本
             const script = {
                 "character_setting": this.buildCharacterSettings(involvedCharacters),
-                "shots": chunkShots.map(shot => this.convertShotToSoraShot(shot, involvedCharacters, scene))
+                "shots": chunkShots.map(shot => this.convertShotToSoraShot(shot, involvedCharacters, scene, project.metadata.artStyle))
             };
 
-            // 时长计算 (Padding & Clamping)
+            // 时长计算
             const chunkDuration = chunkShots.reduce((sum, s) => sum + (s.duration || 5), 0);
 
-            // 策略调整 (User Request):
-            // 1. 基础缓冲: +2s 用于剪辑余量
-            // 2. 最小时长: 10s (针对单镜头或极短场景，补足到 10s 以提升生成质量和可用性)
-            // 3. 最长时长: 15s (Sora 2 限制)
+            // 策略调整 (User Request): 视频时长以 15s 为主，极个别短镜头使用 10s
+            let requestSeconds = 15;
+            const rawDuration = chunkDuration + 1; // 1s buffer for more content
 
-            let requestSeconds = Math.ceil(chunkDuration + 2);
-            if (requestSeconds < 10) requestSeconds = 10; // 强制补足到 10s
-            if (requestSeconds > 15) requestSeconds = 15; // 限制在 15s
+            // 只有当总时长很短且分镜极少时，才使用 10s
+            if (rawDuration < 8 && chunkShots.length <= 1) {
+                requestSeconds = 10;
+            }
 
             // 智能分辨率
             const targetSize = this.determineResolution(project.settings.aspectRatio);
 
-            console.log(`[SoraOrchestrator] Generating Task ${i + 1}/${chunks.length}: ${requestSeconds}s, ${targetSize}`);
+            console.log(`[SoraOrchestrator] Generating Task ${i + 1}/${chunks.length}: ${requestSeconds}s (Raw: ${rawDuration.toFixed(1)}), ${targetSize}`);
 
             const task = await this.kaponai.createVideo({
-                model: 'sora-2', // Cost Optimization (5 credits)
+                model: 'sora-2', // User requested cost saving
                 prompt: script,
                 seconds: requestSeconds,
                 size: targetSize
@@ -92,7 +96,7 @@ export class SoraOrchestrator {
         }
 
         // Use the first task ID for backward compatibility, store all in tasks
-        scene.soraGeneration.taskId = taskIds[0];
+        scene.soraGeneration.taskId = taskIds[0] || '';
         scene.soraGeneration.tasks = taskIds;
         scene.soraGeneration.status = 'processing';
         scene.soraGeneration.progress = 0;
@@ -110,7 +114,7 @@ export class SoraOrchestrator {
         const chunks: Shot[][] = [];
         let currentChunk: Shot[] = [];
         let currentDuration = 0;
-        const MAX_DURATION = 13; // 2s buffer -> 15s max
+        const MAX_DURATION = 14; // Target 15s total, 1s safety buffer
 
         for (const shot of shots) {
             const shotDur = shot.duration || 5;
@@ -156,29 +160,36 @@ export class SoraOrchestrator {
         console.log(`[Orchestrator] Parallel registering ${charsToRegister.length} characters...`);
 
         // 并行执行注册流程
+        const errors: string[] = [];
         await Promise.all(charsToRegister.map(async (char) => {
+            let tempFilePath: string | null = null;
             try {
                 let refVideoUrl = char.soraIdentity?.referenceVideoUrl;
 
                 // Step A: 生成参考视频 (如果缺失)
                 if (!refVideoUrl && char.referenceImages && char.referenceImages.length > 0) {
                     console.log(`[Orchestrator] Generating Ref Video for ${char.name}...`);
-                    const refPrompt = this.promptService.generateCharacterReferencePrompt(char);
-                    const optimalSize = await this.getOptimalSize(char.referenceImages[0]);
 
+                    // 1. Download image to temp file
+                    const imageUrl = char.referenceImages[0];
+                    tempFilePath = await this.downloadTempFile(imageUrl);
+                    console.log(`[Orchestrator] Downloaded temp image for ${char.name}: ${tempFilePath}`);
+
+                    const refPrompt = this.promptService.generateCharacterReferencePrompt(char);
+                    const optimalSize = await this.getOptimalSize(tempFilePath);
+
+                    // 2. Create Video using FILE path
                     const refTask = await this.kaponai.createVideo({
                         model: 'sora-2',
                         prompt: refPrompt,
                         seconds: 10,
                         size: optimalSize,
-                        input_reference: char.referenceImages[0]
+                        input_reference: tempFilePath
                     });
 
-                    // 这里的 Wait 是阻塞的，但多个 Wait 并行
                     const completed = await this.kaponai.waitForCompletion(refTask.id);
                     refVideoUrl = completed.video_url || `https://models.kapon.cloud/v1/videos/${refTask.id}/content`;
 
-                    // 更新并立即持久化 URL，防止后续步骤失败导致丢失
                     if (!char.soraIdentity) char.soraIdentity = { username: '', referenceVideoUrl: '', status: 'pending' };
                     char.soraIdentity.referenceVideoUrl = refVideoUrl;
                     char.soraIdentity.taskId = refTask.id;
@@ -187,14 +198,13 @@ export class SoraOrchestrator {
                 }
 
                 if (!refVideoUrl) {
-                    console.warn(`[Orchestrator] Skip ${char.name}: No ref video source.`);
-                    return;
+                    throw new Error(`无法获取角色的参考视频源。`);
                 }
 
                 // Step B: 注册角色获取 ID
                 const charRes = await this.kaponai.createCharacter({
                     url: refVideoUrl,
-                    timestamps: "1,5"
+                    timestamps: "1,3"
                 });
 
                 if (!char.soraIdentity) char.soraIdentity = { username: '', referenceVideoUrl: '', status: 'pending' };
@@ -203,25 +213,78 @@ export class SoraOrchestrator {
                 console.log(`[Orchestrator] Registered ${char.name} as @${charRes.username}`);
 
                 await this.dataService.saveCharacter(projectId, char);
-            } catch (e) {
+            } catch (e: any) {
                 console.error(`[Orchestrator] Failed to register ${char.name}:`, e);
+                errors.push(`${char.name}: ${e.message}`);
+            } finally {
+                if (tempFilePath) this.deleteTempFile(tempFilePath);
             }
         }));
+
+        if (errors.length > 0) {
+            throw new Error(`角色注册失败：${errors.join(', ')}`);
+        }
     }
 
     /**
-     * 辅助：构建 Kaponai 需要的 character_setting
+     * Helper: Download URL to a temporary file
+     */
+    private async downloadTempFile(urlOrPath: string): Promise<string> {
+        // 使用更鲁棒的扩展名识别
+        let ext = 'png';
+        try {
+            if (urlOrPath.startsWith('http')) {
+                const urlObj = new URL(urlOrPath);
+                ext = path.extname(urlObj.pathname).toLowerCase().replace('.', '') || 'png';
+            } else {
+                ext = path.extname(urlOrPath).toLowerCase().replace('.', '') || 'png';
+            }
+        } catch (e) {
+            // 解析失败按 png 处理
+        }
+
+        if (!['png', 'jpg', 'jpeg', 'webp'].includes(ext)) {
+            ext = 'png';
+        }
+
+        const tempFilename = `sora_ref_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+        const tempPath = path.join(os.tmpdir(), tempFilename);
+
+        if (fs.existsSync(urlOrPath)) {
+            // 如果是本地路径，复制一份到临时目录以统一个生命周期（不破坏源码图片）
+            fs.copyFileSync(urlOrPath, tempPath);
+        } else {
+            const response = await fetch(urlOrPath);
+            if (!response.ok) throw new Error(`Failed to download image: ${response.statusText}`);
+            const buffer = await response.arrayBuffer();
+            fs.writeFileSync(tempPath, Buffer.from(buffer));
+        }
+
+        return tempPath;
+    }
+
+    private deleteTempFile(filePath: string) {
+        if (fs.existsSync(filePath)) {
+            try {
+                fs.unlinkSync(filePath);
+            } catch (e) {
+                console.warn(`Failed to delete temp file ${filePath}`, e);
+            }
+        }
+    }
+
+    /**
+     * 辅助：构建 Kaponai 要求的详细 character_setting
      */
     private buildCharacterSettings(characters: Character[]): Record<string, any> {
         const settings: Record<string, any> = {};
         characters.forEach(char => {
             if (char.soraIdentity?.username) {
                 const key = `@${char.soraIdentity.username}`;
+
+                // 直接使用 @username 作为唯一的 Key，移除冗余的 name 字段
                 settings[key] = {
-                    "name": char.name,
-                    "appearance": `${char.appearance} 角色编码：${key}`,
-                    "age": 25,
-                    "voice": "Hero Brave"
+                    "appearance": char.description || char.appearance
                 };
             }
         });
@@ -229,20 +292,36 @@ export class SoraOrchestrator {
     }
 
     /**
-     * 辅助：将项目 Shot 转换为 Kaponai Sora Shot
+     * 辅助：将项目 Shot 转换为 Kaponai Sora Shot (匹配新 JSON 模板)
      */
-    private convertShotToSoraShot(shot: Shot, characters: Character[], scene: Scene): any {
-        const visualPrompt = this.promptService.generateVideoPrompt(shot, characters, scene);
+    private convertShotToSoraShot(shot: Shot, characters: Character[], scene: Scene, artStyle: string = "cinematic"): any {
+        // 1. 生成注入了 @编号 的叙事文本（已包含用户要求的中文质量指令）
+        const injectedNarrative = this.promptService.generateVideoPrompt(shot, characters, artStyle, scene);
+
+        // 2. 识别主角色 ID
+        let actorId = "None";
+        if (shot.mainCharacters && shot.mainCharacters.length > 0) {
+            const mainChar = characters.find(c => c.name === shot.mainCharacters![0]);
+            if (mainChar?.soraIdentity?.username) {
+                actorId = `@${mainChar.soraIdentity.username}`;
+            }
+        }
+
+        // 3. 显式注入分镜景别
+        const shotSizePrefix = shot.shotSize ? `Shot Type: ${shot.shotSize}. ` : "";
+        const finalAction = `${shotSizePrefix}${injectedNarrative}`;
 
         return {
-            "action": visualPrompt.slice(0, 50),
-            "action_description": visualPrompt,
+            "action": finalAction,
             "camera": shot.cameraMovement || "Static",
-            "duration": shot.duration || 5,
+            "dialogue": {
+                "role": actorId,
+                "text": shot.dialogue || ""
+            },
+            "duration": Math.min(shot.duration || 5, 10),
             "location": scene.location || "Unknown",
-            "visual": visualPrompt,
-            "time": "Day",
-            "weather": "Clear"
+            "style_tags": `${artStyle}`,
+            "time": "Day"
         };
     }
 
@@ -254,8 +333,30 @@ export class SoraOrchestrator {
     private async getOptimalSize(imagePathOrUrl: string): Promise<string> {
         try {
             if (!imagePathOrUrl) return '1280x720';
-            return '1280x720';
+
+            // 如果是 URL，先下载（虽然在 Orchestrator 流程中通常先下载了，但这里做个兜底）
+            let localPath = imagePathOrUrl;
+            let isTemp = false;
+            if (imagePathOrUrl.startsWith('http')) {
+                localPath = await this.downloadTempFile(imagePathOrUrl);
+                isTemp = true;
+            }
+
+            if (!fs.existsSync(localPath)) return '1280x720';
+
+            const buffer = fs.readFileSync(localPath);
+            const dimensions = sizeOf(buffer);
+            if (isTemp) this.deleteTempFile(localPath);
+
+            if (!dimensions || !dimensions.width || !dimensions.height) return '1280x720';
+
+            // 动态判断比例
+            if (dimensions.height > dimensions.width) {
+                return '720x1280'; // 竖屏
+            }
+            return '1280x720'; // 横屏或方屏
         } catch (e) {
+            console.error(`[Orchestrator] Failed to detect image size:`, e);
             return '1280x720';
         }
     }
@@ -275,7 +376,14 @@ export class SoraOrchestrator {
         const charactersWithoutImages = project.characters.filter(c => !c.referenceImages || c.referenceImages.length === 0);
         if (charactersWithoutImages.length > 0) {
             const names = charactersWithoutImages.map(c => c.name).join(', ');
-            throw new Error(`缺少参考图的角色: ${names}`);
+            // Return actionable error instead of throwing, so Agent can handle it gracefully.
+            return {
+                success: false,
+                status: 'error',
+                code: 'missing_character_reference',
+                message: `无法开始生成。检测到角色 [${names}] 缺少参考图（三视图）。`,
+                suggestion: `请告知用户：Sora 视频生成需要角色参考图以保持一致性。请先为角色 [${names}] 上传或生成三视图，然后再试。`
+            };
         }
 
         const targetScenes = project.scenes.filter(s => {
@@ -309,13 +417,37 @@ export class SoraOrchestrator {
             completed++;
         }
 
-        if (onProgress) onProgress({ total: targetScenes.length, current: completed, status: 'idle', message: 'Done' });
+        const failedCount = results.filter(r => r.status === 'failed').length;
+        const status = failedCount > 0 ? 'error' : 'idle';
+        const message = failedCount > 0
+            ? `已完成，但有 ${failedCount} 个场景提交失败。请查看控制台日志。`
+            : '所有视频任务提交成功。';
+
+        if (onProgress) onProgress({ total: targetScenes.length, current: completed, status, message });
+
+        const submittedCount = results.filter(r => r.status === 'submitted').length;
+
+        // Critical: If ALL failed, return success: false to trigger agent error handling
+        if (submittedCount === 0 && failedCount > 0) {
+            return {
+                success: false,
+                status: 'failed',
+                message: '所有场景视频生成任务提交均失败，请检查模型参数或网络。',
+                details: results,
+                total: targetScenes.length,
+                submitted: 0,
+                failed: failedCount
+            };
+        }
 
         return {
+            success: true,
             total: targetScenes.length,
-            submitted: results.filter(r => r.status === 'submitted').length,
-            failed: results.filter(r => r.status === 'failed').length,
+            submitted: submittedCount,
+            failed: failedCount,
             details: results
         };
+
+
     }
 }

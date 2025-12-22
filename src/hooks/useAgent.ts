@@ -395,10 +395,39 @@ export function useAgent(): UseAgentResult {
         }
 
         updateStep(stepId4, {
-          status: 'completed',
+          status: failedTools.length === results.length ? 'failed' : (failedTools.length > 0 ? 'completed' : 'completed'), // If ALL failed, status is failed
           duration: Date.now() - iterationStart,
           details: `完成 ${results.length} 个工具调用${failedTools.length > 0 ? ` (${failedTools.length} 个失败)` : ''}`,
         });
+
+        // ⭐ 关键错误检查 (Critical Error Check)
+        // 如果任何工具返回了明确的业务阻断错误（如缺少参考图），立即终止循环并返回结果
+        const criticalError = results.find(r =>
+          r.result?.status === 'error' &&
+          r.result?.code === 'missing_character_reference'
+        );
+
+        if (criticalError || (failedTools.length > 0 && failedTools.length === results.length)) {
+          const errMsg = criticalError
+            ? (criticalError.result?.suggestion || criticalError.result?.message || '操作被阻断')
+            : '所有工具调用均失败。';
+
+          addStep({
+            type: 'error',
+            content: criticalError ? `检测到阻断性错误: ${errMsg}` : `执行提前终止: ${errMsg}`,
+            status: 'failed',
+          });
+
+          // 强制构造一个终止 Action
+          action = {
+            type: 'none',
+            message: `🛑 无法继续执行。\n\n${errMsg}`,
+            requiresToolExecution: false
+          };
+
+          // 跳出 action 循环，进入最终 summary 阶段
+          break;
+        }
 
         // Continue with tool results
         const stepId5 = addStep({
@@ -603,7 +632,8 @@ export function useAgent(): UseAgentResult {
         lines.push(`跳过：${skippedLabels.join('、')}`);
       }
       if (lines.length > 0) {
-        finalSummary = lines.join('；');
+        // Append execution summary instead of overwriting
+        finalSummary = `${finalSummary}\n\n📊 执行统计：\n${lines.join('；')}`;
       }
 
       // 系统日志：记录本次 Agent 生成结果（不写入聊天记录）
@@ -640,6 +670,9 @@ export function useAgent(): UseAgentResult {
           scope: 'project',
           role: 'assistant',
           content: finalSummary,
+          metadata: {
+            thinkingSteps: thinkingSteps, // Persist thinking steps for UI expansion
+          },
           timestamp: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),

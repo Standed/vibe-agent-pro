@@ -200,7 +200,7 @@ export default function AgentPanel() {
 
                       {/* Timestamp */}
                       <div className={`text-xs mt-1 ${msg.role === 'user'
-                        ? 'text-white/70'
+                        ? 'text-gray-500 dark:text-gray-400'
                         : 'text-light-text-muted dark:text-cine-text-muted'
                         }`}>
                         {new Date(msg.timestamp).toLocaleTimeString('zh-CN', {

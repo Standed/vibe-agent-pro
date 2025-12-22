@@ -142,10 +142,16 @@ class SupabaseBackend implements DataBackend {
           }),
         });
 
+        if (!response.ok) {
+          const text = await response.text();
+          console.error(`[SupabaseBackend] API 请求失败 (${response.status}):`, text.substring(0, 200));
+          throw new Error(`API 响应错误 (${response.status}): ${text.substring(0, 100)}...`);
+        }
+
         const result = await response.json();
 
-        if (!response.ok || result.error) {
-          throw new Error(result.error || 'API 调用失败');
+        if (result.error) {
+          throw new Error(result.error);
         }
 
         return result.data;

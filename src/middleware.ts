@@ -38,8 +38,8 @@ export async function middleware(req: NextRequest) {
 
   console.log('[Middleware] Has auth cookie:', hasAuthCookie, 'Path:', path);
 
-  // 如果不是公开路径且没有登录，重定向到登录页
-  if (!isPublicPath && !hasAuthCookie) {
+  // 如果不是公开路径且没有登录，且不是 API 路径（API 路径应返回 401 而非重定向到 HTML 登录页）
+  if (!isPublicPath && !hasAuthCookie && !path.startsWith('/api/')) {
     const redirectUrl = new URL('/auth/login', req.url);
     // 保存原始 URL，登录后可以跳转回来
     redirectUrl.searchParams.set('redirect', path);
