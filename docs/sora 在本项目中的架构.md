@@ -7,6 +7,7 @@
 | 模块 | 变更内容 | 目的 |
 | :--- | :--- | :--- |
 | **Data Persistence** | `UnifiedDataService` in Orchestrator | **数据持久化 (Fixed)**。Sora 任务 ID 和角色注册信息 (@username) 现已实时写入数据库，防止任务丢失。 |
+| **Performance** | Parallel Registration | **并发角色注册**。使用 `Promise.all` 并行生成角色参考视频与注册 ID，大幅减少多角色场景的等待时间。 |
 | **SoraPromptService** | Pipe Structure | **Prompt 结构化优化**。采用 **[Subject] [Action] [Environment] [Camera] [Style]** 结构，并加入防闪烁 (Anti-flicker) 关键词。 |
 | **SoraOrchestrator** | Smart Splitting & Padding | **时长策略升级**：<br>1. **自动拆分**：>15s 场景自动拆分为多个任务 (Greedy Packing)。<br>2. **智能补足**：<5s 镜头强制补足至 **10s**，提升可用性。<br>3. **区间限制**：生成时长严格控制在 **10s - 15s** (Sora 2 最佳甜区)。 |
 | **Agent Tools** | `generate_scene_video`<br>`batchGenerateProjectVideosSora` | 支持返回任务 ID 数组，适配场景拆分逻辑。 |
