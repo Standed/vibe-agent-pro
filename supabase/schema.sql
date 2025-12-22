@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS public.shots (
   -- 实际文件存储在 Cloudflare R2，数据库仅存储访问 URL
   reference_image TEXT,      -- 参考图片 URL
   video_clip TEXT,           -- 生成视频 URL
+  video_prompt TEXT,         -- 视频生成提示词
 
   -- Grid 图片（URL 数组，存储在 R2）
   grid_images JSONB DEFAULT '[]'::jsonb,

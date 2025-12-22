@@ -1,4 +1,4 @@
-import { CharacterDesign } from '@/services/storyboardService';
+import { CharacterDesign } from '@/types/storyboard';
 import { Character } from '@/types/project';
 
 export const buildCharacterTemplate = (artStyle?: string) => {

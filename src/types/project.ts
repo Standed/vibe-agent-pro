@@ -97,6 +97,13 @@ export interface Character {
   description: string;
   appearance: string;
   referenceImages: string[];
+  // Sora 专属身份信息 (可选，保持向后兼容)
+  soraIdentity?: {
+    username: string;          // e.g., "@fmraejvq"
+    referenceVideoUrl: string; // 10s 参考视频 URL
+    status: 'pending' | 'generating' | 'registered' | 'failed';
+    taskId?: string;           // 生成参考视频的任务 ID
+  };
 }
 
 export interface Location {
@@ -237,6 +244,9 @@ export interface Shot {
   // 生成配置
   generationConfig?: GenerationConfig;
 
+  // Sora 视频生成专用提示词 (由 SoraPromptService 动态生成)
+  videoPrompt?: string;
+
   // 生成历史记录
   generationHistory?: GenerationHistoryItem[];
 
@@ -272,6 +282,15 @@ export interface Scene {
   modified?: Date;
   gridHistory?: GridHistoryItem[]; // Grid generation history
   savedGridSlices?: string[]; // Favorited/unused Grid slices
+
+  // Sora 长视频生成状态 (可选)
+  soraGeneration?: {
+    taskId: string;
+    status: 'pending' | 'processing' | 'success' | 'failed';
+    videoUrl?: string; // 最终合并长视频或切片视频
+    progress?: number;
+    tasks?: string[];  // 如果包含多个切片任务
+  };
 }
 
 export interface TimelineClip {

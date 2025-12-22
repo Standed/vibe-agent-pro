@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, Loader2, User, Bot, Trash2, Sparkles, Image as ImageIcon, Grid3x3, CircleStop, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, Loader2, User, Bot, Trash2, Sparkles, Image as ImageIcon, Grid3x3, Grid2x2, Video, CircleStop, ChevronDown, ChevronUp } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { ChatMessage } from '@/types/project';
 import { useAgent } from '@/hooks/useAgent';
@@ -279,34 +279,34 @@ export default function AgentPanel() {
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 font-medium">
             快捷操作：
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => setInput('使用 SeeDream 为当前场景所有未生成的分镜生成图片')}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200"
+              onClick={() => setInput('使用 Gemini 直出模式为整个项目生成图片')}
+              className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
             >
-              <Sparkles size={14} className="text-light-accent dark:text-cine-accent" />
-              SeeDream 批量生成
+              <Sparkles size={14} className="text-blue-500" />
+              Gemini 直出生成所有分镜
             </button>
             <button
-              onClick={() => setInput('使用 Gemini Grid (2x2) 为当前场景生成多视图并自动分配')}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200"
+              onClick={() => setInput('使用 Gemini Grid (2x2) 为整个项目生成多视图')}
+              className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
             >
-              <Grid3x3 size={14} className="text-blue-500" />
-              Grid 2x2 自动分配
+              <Grid2x2 size={14} className="text-indigo-500" />
+              Gemini Grid 2x2 生成所有分镜
             </button>
             <button
-              onClick={() => setInput('使用 Gemini Grid (3x3) 为当前场景生成多视图并自动分配')}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200"
+              onClick={() => setInput('使用 Sora2 为整个项目生成视频')}
+              className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
             >
-              <Grid3x3 size={14} className="text-blue-500" />
-              Grid 3x3 自动分配
+              <Video size={14} className="text-purple-500" />
+              Sora2 生成所有分镜视频
             </button>
             <button
-              onClick={() => setInput('为整个项目的所有未生成分镜使用 SeeDream 生成图片')}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200"
+              onClick={() => setInput('使用即梦(Jimeng)为整个项目生成图片')}
+              className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
             >
-              <ImageIcon size={14} className="text-green-500" />
-              全项目批量生成
+              <ImageIcon size={14} className="text-orange-500" />
+              使用即梦生成所有分镜
             </button>
           </div>
         </div>
