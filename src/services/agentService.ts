@@ -6,7 +6,7 @@
 import { AGENT_TOOLS, ToolCall, formatToolsForPrompt } from './agentToolDefinitions';
 import { calculateCredits } from '@/config/credits';
 
-const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3-pro-preview'; // Agent推理模型
+const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3-flash-preview'; // Agent推理模型
 
 // Allow configurable timeouts:短步骤用短超时，AI 生成/推理用长超时
 const parseTimeout = (val: string | undefined, fallback: number) => {
@@ -714,7 +714,7 @@ export async function processUserCommand(
     }
 
     // Gemini returned text response
-    const text = candidate.content?.parts?.[0]?.text || '';
+    const text = candidate.content?.parts?.map((p: any) => p.text).join('\n') || '';
 
     // Try to parse as JSON action
     try {

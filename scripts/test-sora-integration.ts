@@ -100,7 +100,7 @@ async function main() {
     console.log('\n🧪 Testing Orchestrator Flow (Simulated)...');
     try {
         // This will likely fail due to real API call failure (no key or network), but we check if it reaches that point
-        await orchestrator.generateSceneVideo(mockProject, 'scene-001');
+        await orchestrator.generateSceneVideo(mockProject, 'scene-001', 'mock-user-id');
     } catch (e: any) {
         console.log('Expected API Error (Verification complete):', e.message);
         if (e.message.includes('API_KEY') || e.message.includes('fetch') || e.message.includes('Kaponai')) {

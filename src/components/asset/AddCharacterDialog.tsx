@@ -54,7 +54,8 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newImages: string[] = [];
+    const uploadingToast = toast.loading('正在上传图片...');
+    const uploadPromises: Promise<string | null>[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -62,26 +63,48 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
         toast.error(`文件 ${file.name} 不是图片格式`);
         continue;
       }
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error(`文件 ${file.name} 超过 5MB 限制`);
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error(`文件 ${file.name} 超过 10MB 限制`);
         continue;
       }
-      try {
-        const dataUrl = await fileToDataURL(file);
-        newImages.push(dataUrl);
-      } catch (error) {
-        console.error('Failed to read file:', error);
-        toast.error(`读取文件 ${file.name} 失败`);
-      }
+
+      uploadPromises.push(
+        (async () => {
+          try {
+            const folder = `projects/characters/${user?.id || 'anonymous'}`;
+            // Upload to R2 (or fallback)
+            const { url } = await storageService.uploadFile(file, folder, user?.id || 'anonymous');
+            return url;
+          } catch (error) {
+            console.error(`Failed to upload ${file.name}:`, error);
+            toast.error(`${file.name} 上传失败`);
+            return null;
+          }
+        })()
+      );
     }
 
-    const combined = [...referenceImages, ...newImages];
-    setReferenceImages(combined);
-    if (combined.length === newImages.length) {
-      setSelectedRefIndex(0);
+    try {
+      const results = await Promise.all(uploadPromises);
+      const successfulUrls = results.filter((url): url is string => url !== null);
+
+      if (successfulUrls.length > 0) {
+        setReferenceImages(prev => {
+          const combined = [...prev, ...successfulUrls];
+          if (prev.length === 0 && successfulUrls.length > 0) {
+            // If this is the first batch, reset selection to 0 in a separate effect or handled by parent
+            // But setSelectedRefIndex(0) relies on render cycle check potentially?
+            // Actually setSelectedRefIndex(0) is safe here as state update triggers.
+            setTimeout(() => setSelectedRefIndex(0), 0);
+          }
+          return combined;
+        });
+        toast.success(`已添加 ${successfulUrls.length} 张图片`);
+      }
+    } finally {
+      toast.dismiss(uploadingToast);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    if (newImages.length > 0) toast.success(`已添加 ${newImages.length} 张图片`);
   };
 
   const fileToDataURL = (file: File): Promise<string> => {
@@ -394,7 +417,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">点击上传参考图</p>
-                  <p className="text-xs text-zinc-400 mt-1">支持 JPG, PNG (Max 5MB)</p>
+                  <p className="text-xs text-zinc-400 mt-1">支持 JPG, PNG (Max 10MB)</p>
                 </div>
               </button>
 

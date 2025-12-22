@@ -2,6 +2,12 @@
 
 import { supabase } from './client';
 import type { User, Session, AuthError } from '@supabase/supabase-js';
+import {
+  parseJWT as parseJWTUtil,
+  isTokenExpired as isTokenExpiredUtil,
+  setSessionCookie as setSessionCookieUtil,
+  readSessionCookie as readSessionCookieUtil
+} from './cookie-utils';
 
 export interface SignUpData {
   email: string;
@@ -21,69 +27,13 @@ export interface AuthResponse {
   error: AuthError | null;
 }
 
-const SESSION_COOKIE_NAME = 'supabase-session';
+// Re-export from cookie-utils for backward compatibility
+export const parseJWT = parseJWTUtil;
+export const isTokenExpired = isTokenExpiredUtil;
+export const readSessionCookie = readSessionCookieUtil;
+export const setSessionCookie = (session?: Session | null) =>
+  setSessionCookieUtil(session?.access_token, session?.refresh_token);
 
-/**
- * 解析 JWT token 获取 payload
- */
-export const parseJWT = (token: string): any | null => {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-
-    const payload = parts[1];
-    const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
-    return JSON.parse(decoded);
-  } catch (err) {
-    console.warn('[Auth] 解析 JWT 失败:', err);
-    return null;
-  }
-};
-
-/**
- * 检查 JWT token 是否过期
- */
-export const isTokenExpired = (token: string): boolean => {
-  const payload = parseJWT(token);
-  if (!payload || !payload.exp) return true;
-
-  const now = Math.floor(Date.now() / 1000);
-  return payload.exp < now;
-};
-
-export const setSessionCookie = (session?: Session | null) => {
-  if (typeof document === 'undefined') return;
-  if (session?.access_token && session?.refresh_token) {
-    const payload = JSON.stringify({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-    });
-    // 设置 7 天过期时间，避免页面刷新后丢失
-    const expires = new Date();
-    expires.setDate(expires.getDate() + 7);
-    document.cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(payload)}; path=/; expires=${expires.toUTCString()}; SameSite=Lax`;
-  } else {
-    document.cookie = `${SESSION_COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-  }
-};
-
-export const readSessionCookie = (): { access_token: string; refresh_token: string } | null => {
-  if (typeof document === 'undefined') return null;
-  const match = document.cookie.split('; ').find((row) => row.startsWith(`${SESSION_COOKIE_NAME}=`));
-  if (!match) return null;
-  try {
-    const value = decodeURIComponent(match.split('=')[1]);
-    const parsed = JSON.parse(value);
-    if (parsed.access_token && parsed.refresh_token) {
-      return { access_token: parsed.access_token, refresh_token: parsed.refresh_token };
-    }
-  } catch (err) {
-    console.warn('[Auth] 解析会话 cookie 失败，已清理:', err);
-  }
-  // 清理损坏的 cookie
-  document.cookie = `${SESSION_COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-  return null;
-};
 
 /**
  * 用户注册
