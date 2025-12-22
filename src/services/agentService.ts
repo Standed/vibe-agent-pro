@@ -3,7 +3,7 @@
  * Uses Gemini for better tool calling capabilities
  */
 
-import { AGENT_TOOLS, ToolCall, formatToolsForPrompt } from './agentTools';
+import { AGENT_TOOLS, ToolCall, formatToolsForPrompt } from './agentToolDefinitions';
 import { calculateCredits } from '@/config/credits';
 
 const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3-pro-preview'; // Agent推理模型

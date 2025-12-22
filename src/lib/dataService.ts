@@ -257,6 +257,9 @@ class SupabaseBackend implements DataBackend {
             description: character.description,
             appearance: character.appearance,
             reference_images: character.referenceImages,
+            metadata: {
+              soraIdentity: character.soraIdentity
+            }
           })),
         });
       }
@@ -336,7 +339,7 @@ class SupabaseBackend implements DataBackend {
         table: 'characters',
         operation: 'select',
         filters: { eq: { project_id: id } },
-        select: 'id, project_id, name, description, appearance, reference_images',
+        select: 'id, project_id, name, description, appearance, reference_images, metadata',
       });
 
       const audioAssetsPromise = this.callSupabaseAPI({
@@ -403,6 +406,7 @@ class SupabaseBackend implements DataBackend {
           description: c.description || '',
           appearance: c.appearance || '',
           referenceImages: c.reference_images || [],
+          soraIdentity: c.metadata?.soraIdentity || undefined,
         })),
         audioAssets: (audioAssets || []).map((a: any) => ({
           id: a.id,
@@ -539,6 +543,9 @@ class SupabaseBackend implements DataBackend {
         description: character.description,
         appearance: character.appearance,
         reference_images: character.referenceImages,
+        metadata: {
+          soraIdentity: character.soraIdentity
+        }
       },
     });
   }
@@ -702,7 +709,7 @@ class SupabaseBackend implements DataBackend {
 // 统一数据服务
 // ========================
 
-class UnifiedDataService {
+export class UnifiedDataService {
   private backend: DataBackend | null = null;
   private currentUserId: string | null = null;
 
