@@ -34,7 +34,7 @@ export class SoraPromptService {
 
         // 3. 返回包含中文指令的叙事文本
         // 重要 (User Request): 追加质量与配音指令
-        const qualitySuffix = "。中文配音，无字幕，高清，无配乐，画面无闪烁。请根据这个参考图片里的场景帮我生成动画。";
+        const qualitySuffix = "。中文配音，不要增减旁白，无字幕，高清，无配乐，画面无闪烁。请根据这个参考图片里的场景帮我生成动画。";
         return `${visual.trim()}${qualitySuffix}`;
     }
 
