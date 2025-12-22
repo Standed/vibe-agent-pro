@@ -143,46 +143,55 @@ export class SoraOrchestrator {
 
     /**
      * 辅助：确保所有角色都在 Kaponai 注册过，并持久化 ID
+     * 优化：并行处理所有未注册角色，减少等待时间
      */
     private async ensureCharactersRegistered(projectId: string, characters: Character[], userId: string): Promise<void> {
-        for (const char of characters) {
-            if (char.soraIdentity?.username && char.soraIdentity.status === 'registered') {
-                continue;
-            }
+        // 过滤出需要注册的角色
+        const charsToRegister = characters.filter(char =>
+            !char.soraIdentity?.username || char.soraIdentity.status !== 'registered'
+        );
 
-            console.log(`[Orchestrator] Registering character: ${char.name}...`);
-            let refVideoUrl = char.soraIdentity?.referenceVideoUrl;
+        if (charsToRegister.length === 0) return;
 
-            // Step A: 生成参考视频
-            if (!refVideoUrl && char.referenceImages && char.referenceImages.length > 0) {
-                const refPrompt = this.promptService.generateCharacterReferencePrompt(char);
-                const optimalSize = await this.getOptimalSize(char.referenceImages[0]);
+        console.log(`[Orchestrator] Parallel registering ${charsToRegister.length} characters...`);
 
-                const refTask = await this.kaponai.createVideo({
-                    model: 'sora-2',
-                    prompt: refPrompt,
-                    seconds: 10,
-                    size: optimalSize,
-                    input_reference: char.referenceImages[0]
-                });
-
-                const completed = await this.kaponai.waitForCompletion(refTask.id);
-                refVideoUrl = completed.video_url || `https://models.kapon.cloud/v1/videos/${refTask.id}/content`;
-
-                if (!char.soraIdentity) char.soraIdentity = { username: '', referenceVideoUrl: '', status: 'pending' };
-                char.soraIdentity.referenceVideoUrl = refVideoUrl;
-                char.soraIdentity.taskId = refTask.id;
-
-                await this.dataService.saveCharacter(projectId, char);
-            }
-
-            if (!refVideoUrl) {
-                console.warn(`[Orchestrator] Skip ${char.name}: No ref video source.`);
-                continue;
-            }
-
-            // Step B: 注册角色
+        // 并行执行注册流程
+        await Promise.all(charsToRegister.map(async (char) => {
             try {
+                let refVideoUrl = char.soraIdentity?.referenceVideoUrl;
+
+                // Step A: 生成参考视频 (如果缺失)
+                if (!refVideoUrl && char.referenceImages && char.referenceImages.length > 0) {
+                    console.log(`[Orchestrator] Generating Ref Video for ${char.name}...`);
+                    const refPrompt = this.promptService.generateCharacterReferencePrompt(char);
+                    const optimalSize = await this.getOptimalSize(char.referenceImages[0]);
+
+                    const refTask = await this.kaponai.createVideo({
+                        model: 'sora-2',
+                        prompt: refPrompt,
+                        seconds: 10,
+                        size: optimalSize,
+                        input_reference: char.referenceImages[0]
+                    });
+
+                    // 这里的 Wait 是阻塞的，但多个 Wait 并行
+                    const completed = await this.kaponai.waitForCompletion(refTask.id);
+                    refVideoUrl = completed.video_url || `https://models.kapon.cloud/v1/videos/${refTask.id}/content`;
+
+                    // 更新并立即持久化 URL，防止后续步骤失败导致丢失
+                    if (!char.soraIdentity) char.soraIdentity = { username: '', referenceVideoUrl: '', status: 'pending' };
+                    char.soraIdentity.referenceVideoUrl = refVideoUrl;
+                    char.soraIdentity.taskId = refTask.id;
+
+                    await this.dataService.saveCharacter(projectId, char);
+                }
+
+                if (!refVideoUrl) {
+                    console.warn(`[Orchestrator] Skip ${char.name}: No ref video source.`);
+                    return;
+                }
+
+                // Step B: 注册角色获取 ID
                 const charRes = await this.kaponai.createCharacter({
                     url: refVideoUrl,
                     timestamps: "1,5"
@@ -194,11 +203,10 @@ export class SoraOrchestrator {
                 console.log(`[Orchestrator] Registered ${char.name} as @${charRes.username}`);
 
                 await this.dataService.saveCharacter(projectId, char);
-
             } catch (e) {
                 console.error(`[Orchestrator] Failed to register ${char.name}:`, e);
             }
-        }
+        }));
     }
 
     /**
