@@ -13,6 +13,10 @@ interface NewProjectDialogProps {
     aspectRatio: string
   ) => Promise<void>;
   onClose: () => void;
+  initialDescription?: string;
+  initialTitle?: string;
+  initialArtStyle?: string;
+  initialAspectRatio?: string;
 }
 
 const aspectRatioOptions = [
@@ -52,12 +56,19 @@ const aspectRatioOptions = [
 export default function NewProjectDialog({
   onConfirm,
   onClose,
+  initialDescription = '',
+  initialTitle = '',
+  initialArtStyle = '',
+  initialAspectRatio = AspectRatio.MOBILE,
 }: NewProjectDialogProps) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [artStyle, setArtStyle] = useState('');
+  const [title, setTitle] = useState(initialTitle);
+  const [description, setDescription] = useState(initialDescription);
+  const [artStyle, setArtStyle] = useState(initialArtStyle);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<string>(
-    AspectRatio.MOBILE
+    // Ensure the aspect ratio from AI matches one of our enums, otherwise fallback to MOBILE
+    Object.values(AspectRatio).includes(initialAspectRatio as AspectRatio)
+      ? initialAspectRatio
+      : AspectRatio.MOBILE
   );
   const [isCreating, setIsCreating] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -66,6 +77,17 @@ export default function NewProjectDialog({
     setMounted(true);
     return () => setMounted(false);
   }, []);
+
+  // Update state when initial props change (e.g. when AI returns)
+  useEffect(() => {
+    if (initialTitle) setTitle(initialTitle);
+    if (initialDescription) setDescription(initialDescription);
+    if (initialArtStyle) setArtStyle(initialArtStyle);
+    if (initialAspectRatio && Object.values(AspectRatio).includes(initialAspectRatio as AspectRatio)) {
+      setSelectedAspectRatio(initialAspectRatio);
+    }
+  }, [initialTitle, initialDescription, initialArtStyle, initialAspectRatio]);
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

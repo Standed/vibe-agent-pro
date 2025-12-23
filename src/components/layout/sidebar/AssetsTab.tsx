@@ -44,6 +44,12 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
                     </button>
                     <div className="flex items-center gap-2">
                         <button
+                            onClick={() => toast.info('Import from Global Library coming soon')}
+                            className="text-xs text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-colors flex items-center gap-1"
+                        >
+                            <span>导入</span>
+                        </button>
+                        <button
                             onClick={() => setShowAddCharacterDialog(true)}
                             className="text-xs text-light-accent dark:text-cine-accent hover:text-light-accent-hover dark:hover:text-cine-accent-hover transition-colors flex items-center gap-1"
                         >

@@ -106,6 +106,7 @@ export default function ChatPanel() {
     // Load History
     useEffect(() => {
         const loadHistory = async () => {
+            const pendingRequestRef = useProjectStore.getState().generationRequest; // Capture at start
             if (!project || !user) {
                 setMessages([]);
                 return;
@@ -145,8 +146,11 @@ export default function ChatPanel() {
                 setMessages(converted);
 
                 // Initialize Input Text Logic
-                const pendingRequest = useProjectStore.getState().generationRequest;
-                if (!pendingRequest) {
+                // We check both the captured request (at start of effect) and current state
+                // to avoid race conditions where a request might be cleared by the time we get here
+                // or might have arrived while we were loading history.
+                const currentRequest = useProjectStore.getState().generationRequest;
+                if (!pendingRequestRef && !currentRequest) {
                     if (converted.length > 0) {
                         // Use last user message
                         const lastUserMsg = [...converted].reverse().find(m => m.role === 'user');

@@ -2,6 +2,7 @@ import { Project, Scene, Shot, Character } from '@/types/project';
 import { KaponaiService } from './KaponaiService';
 import { SoraPromptService } from './SoraPromptService';
 import { UnifiedDataService } from '@/lib/dataService';
+import { storageService } from '@/lib/storageService';
 import sizeOf from 'image-size';
 import { promisify } from 'util';
 import fetch from 'node-fetch';
@@ -221,6 +222,31 @@ export class SoraOrchestrator {
 
                 if (!refVideoUrl) {
                     throw new Error(`无法获取角色的参考视频源。`);
+                }
+
+                // Step A.5: 上传到 R2 (持久化)
+                try {
+                    console.log(`[Orchestrator] Uploading reference video to R2...`);
+                    const tempVideoPath = await this.downloadTempFile(refVideoUrl);
+                    const videoBuffer = fs.readFileSync(tempVideoPath);
+                    const videoBase64 = videoBuffer.toString('base64');
+                    const r2Filename = `sora_ref_${char.id}_${Date.now()}.mp4`;
+                    const dataUri = `data:video/mp4;base64,${videoBase64}`;
+
+                    // Upload to R2
+                    const r2Url = await storageService.uploadBase64ToR2(
+                        dataUri,
+                        `characters/${char.id}`,
+                        r2Filename,
+                        userId
+                    );
+
+                    console.log(`[Orchestrator] Uploaded to R2: ${r2Url}`);
+                    refVideoUrl = r2Url; // Update to R2 URL for registration
+
+                    this.deleteTempFile(tempVideoPath);
+                } catch (uploadErr) {
+                    console.error(`[Orchestrator] R2 Upload failed, proceeding with original URL:`, uploadErr);
                 }
 
                 // Step B: 注册角色获取 ID

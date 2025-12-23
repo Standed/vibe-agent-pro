@@ -5,7 +5,8 @@ import { ScriptAnalysis, CharacterDesign, StoryboardShot, SceneGroup } from '@/t
 // Re-export for compatibility
 export type { ScriptAnalysis, CharacterDesign, StoryboardShot, SceneGroup };
 
-const MODEL_NAME = "gemini-3-flash-preview";
+// Use configured storyboard model, fallback to a preview model if not set
+const MODEL_NAME = process.env.GEMINI_STORYBOARD_MODEL || "gemini-3-flash-preview";
 
 export class StoryboardService {
   constructor() { }
@@ -102,12 +103,13 @@ export class StoryboardService {
   /**
    * Generate character designs
    */
-  async generateCharacterDesigns(params: { script: string, characterNames: string[], artStyle: string, projectSummary: string, shots: any[] }): Promise<Record<string, CharacterDesign>> {
+  async generateCharacterDesigns(params: { script: string, characterNames: string[], artStyle: string, projectSummary: string, shots: any[], existingContext?: string }): Promise<Record<string, CharacterDesign>> {
     const prompt = `
         Design characters based on the script and style.
         Style: ${params.artStyle}
         Characters to design: ${params.characterNames.join(', ')}
         Project Summary: ${params.projectSummary}
+        ${params.existingContext ? `IMPORTANT: Consistent with existing character descriptions: ${params.existingContext}` : ''}
         IMPORTANT: All output MUST be in Simplified Chinese (简体中文).
         
         Return JSON object where key is character name:

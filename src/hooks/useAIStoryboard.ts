@@ -129,6 +129,8 @@ export const useAIStoryboard = () => {
                         artStyle: project.metadata.artStyle,
                         projectSummary: `${project.metadata.title || ''} ${project.metadata.description || ''}`.trim(),
                         shots: generatedShots,
+                        // Pass existing characters' descriptions as context to avoid conflicts
+                        existingContext: project.characters.map(c => `${c.name}: ${c.description || ''}`).join('\n')
                     });
 
                     // First pass

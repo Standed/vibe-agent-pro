@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Edit2, MoreHorizontal, X, ImageIcon, Check } from 'lucide-react';
-import { Shot, ShotSize, CameraMovement } from '@/types/project';
+import { Shot, ShotSize, CameraMovement, SHOT_SIZE_OPTIONS, CAMERA_MOVEMENT_OPTIONS } from '@/types/project';
+import { translateShotSize, translateCameraMovement } from '@/utils/translations';
 
 interface ShotEditorProps {
     editingShot: Shot | null;
@@ -23,8 +24,6 @@ interface ShotEditorProps {
         duration: number;
     }>>;
     saveShotEdit: () => void;
-    shotSizeOptions: ShotSize[];
-    cameraMovementOptions: CameraMovement[];
     shotHistoryImages: string[];
     selectedHistoryImage: string | null;
     setSelectedHistoryImage: (url: string | null) => void;
@@ -39,8 +38,6 @@ export const ShotEditor: React.FC<ShotEditorProps> = ({
     shotForm,
     setShotForm,
     saveShotEdit,
-    shotSizeOptions,
-    cameraMovementOptions,
     shotHistoryImages,
     selectedHistoryImage,
     setSelectedHistoryImage,
@@ -74,27 +71,15 @@ export const ShotEditor: React.FC<ShotEditorProps> = ({
                             <div className="flex items-center gap-2 text-[10px] text-light-text-muted dark:text-cine-text-muted mt-0.5">
                                 <span>镜头 #{editingShot.order}</span>
                                 <span className="opacity-30">•</span>
-                                <span>{editingShot.shotSize}</span>
+                                <span>{translateShotSize(editingShot.shotSize)}</span>
                             </div>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5">
-                            <button className="px-3 py-1.5 text-xs font-medium rounded-lg hover:bg-white dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-all">
-                                Web search
-                            </button>
-                            <button className="px-3 py-1.5 text-xs font-medium rounded-lg hover:bg-white dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-all">
-                                Copy
-                            </button>
-                            <button className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted transition-all">
-                                <MoreHorizontal size={16} />
-                            </button>
-                        </div>
-                        <div className="w-px h-6 bg-black/5 dark:bg-white/10 mx-1"></div>
                         <button
                             onClick={() => setEditingShot(null)}
-                            className="p-2 rounded-xl hover:bg-red-500/10 text-light-text-muted dark:text-cine-text-muted hover:text-red-500 transition-all"
+                            className="p-2 rounded-xl border border-black/5 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-light-text-muted dark:text-cine-text-muted hover:text-red-500 transition-all"
                         >
                             <X size={20} />
                         </button>
@@ -150,8 +135,8 @@ export const ShotEditor: React.FC<ShotEditorProps> = ({
                                             className="w-full bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl p-2.5 text-sm text-light-text dark:text-white focus:outline-none focus:border-light-accent dark:focus:border-cine-accent transition-all"
                                         >
                                             <option value="">选择景别</option>
-                                            {shotSizeOptions.map((size) => (
-                                                <option key={size} value={size}>{size}</option>
+                                            {SHOT_SIZE_OPTIONS.map((size) => (
+                                                <option key={size} value={size}>{translateShotSize(size)} ({size})</option>
                                             ))}
                                         </select>
                                     </div>
@@ -163,8 +148,8 @@ export const ShotEditor: React.FC<ShotEditorProps> = ({
                                             className="w-full bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl p-2.5 text-sm text-light-text dark:text-white focus:outline-none focus:border-light-accent dark:focus:border-cine-accent transition-all"
                                         >
                                             <option value="">选择运动</option>
-                                            {cameraMovementOptions.map((move) => (
-                                                <option key={move} value={move}>{move}</option>
+                                            {CAMERA_MOVEMENT_OPTIONS.map((move) => (
+                                                <option key={move} value={move}>{translateCameraMovement(move)} ({move})</option>
                                             ))}
                                         </select>
                                     </div>

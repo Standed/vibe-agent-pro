@@ -193,7 +193,7 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
     e.preventDefault();
     if (!name.trim()) { toast.error('请输入场景地点名称'); return; }
     if (!description.trim()) { toast.error('请输入场景描述'); return; }
-    if (referenceImages.length === 0) { toast.error('请至少上传 1 张参考图'); return; }
+    // if (referenceImages.length === 0) { toast.error('请至少上传 1 张参考图'); return; } // 已移除校验
 
     let finalImages = [...referenceImages];
     if (finalImages.length > 1 && selectedRefIndex >= 0 && selectedRefIndex < finalImages.length) {
@@ -317,8 +317,8 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
             {/* Reference Images */}
             <div className="space-y-3">
               <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 flex items-center justify-between">
-                <span>参考图片 <span className="text-red-500">*</span></span>
-                <span className="text-xs font-normal text-zinc-400">至少 1 张</span>
+                <span>参考图片 <span className="text-zinc-400 font-normal">(可选)</span></span>
+
               </label>
 
               {/* AI Generate Button */}
