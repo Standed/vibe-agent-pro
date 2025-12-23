@@ -50,3 +50,35 @@ export function translateShotSize(size: ShotSize): string {
 export function translateCameraMovement(movement: CameraMovement): string {
     return CAMERA_MOVEMENT_TRANSLATIONS[movement] || movement;
 }
+
+export function getShotSizeFromValue(value: string): ShotSize | undefined {
+    if (!value) return undefined;
+    const v = value.trim();
+
+    // 1. 尝试完全匹配 key (例如 'Close-Up')
+    const keys = Object.keys(SHOT_SIZE_TRANSLATIONS) as ShotSize[];
+    const matchByKey = keys.find(k => k.toLowerCase() === v.toLowerCase());
+    if (matchByKey) return matchByKey;
+
+    // 2. 尝试匹配中文翻译值 (例如 '特写')
+    const entry = Object.entries(SHOT_SIZE_TRANSLATIONS).find(([_, label]) => label === v);
+    if (entry) return entry[0] as ShotSize;
+
+    return undefined;
+}
+
+export function getCameraMovementFromValue(value: string): CameraMovement | undefined {
+    if (!value) return undefined;
+    const v = value.trim();
+
+    // 1. 尝试完全匹配 key (例如 'Pan')
+    const keys = Object.keys(CAMERA_MOVEMENT_TRANSLATIONS) as CameraMovement[];
+    const matchByKey = keys.find(k => k.toLowerCase() === v.toLowerCase());
+    if (matchByKey) return matchByKey;
+
+    // 2. 尝试匹配中文翻译值 (例如 '摇镜头')
+    const entry = Object.entries(CAMERA_MOVEMENT_TRANSLATIONS).find(([_, label]) => label === v);
+    if (entry) return entry[0] as CameraMovement;
+
+    return undefined;
+}
