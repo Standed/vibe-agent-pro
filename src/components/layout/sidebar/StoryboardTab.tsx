@@ -17,6 +17,7 @@ interface StoryboardTabProps {
     handleSaveSceneName: (sceneId: string) => void;
     handleCancelEditScene: () => void;
     handleStartEditScene: (sceneId: string, currentName: string) => void;
+    handleEditSceneDetails: (sceneId: string) => void;
     handleDeleteScene: (sceneId: string, sceneName: string) => void;
     handleAddShotClick: (sceneId: string, insertIndex?: number) => void;
     selectedShotId: string | null;
@@ -39,6 +40,7 @@ export const StoryboardTab: React.FC<StoryboardTabProps> = ({
     handleSaveSceneName,
     handleCancelEditScene,
     handleStartEditScene,
+    handleEditSceneDetails,
     handleDeleteScene,
     handleAddShotClick,
     selectedShotId,
@@ -162,10 +164,11 @@ export const StoryboardTab: React.FC<StoryboardTabProps> = ({
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    handleStartEditScene(scene.id, scene.name);
+                                                    // handleStartEditScene(scene.id, scene.name);
+                                                    handleEditSceneDetails(scene.id);
                                                 }}
                                                 className="p-1.5 hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 rounded transition-colors flex-shrink-0"
-                                                title="编辑场景名称"
+                                                title="编辑场景详情"
                                             >
                                                 <Edit2 size={14} className="text-light-text-muted dark:text-cine-text-muted" />
                                             </button>

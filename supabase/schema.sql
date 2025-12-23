@@ -116,6 +116,29 @@ CREATE INDEX IF NOT EXISTS projects_created_at_idx ON public.projects(created_at
 CREATE INDEX IF NOT EXISTS projects_updated_at_idx ON public.projects(updated_at DESC);
 
 -- =============================================
+-- 4.1. 剧集表 (Series)
+-- =============================================
+CREATE TABLE IF NOT EXISTS public.series (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  cover_image TEXT,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS series_user_id_idx ON public.series(user_id);
+
+-- 更新项目表以支持 Series
+ALTER TABLE public.projects 
+  ADD COLUMN IF NOT EXISTS series_id UUID REFERENCES public.series(id),
+  ADD COLUMN IF NOT EXISTS episode_order INTEGER DEFAULT 1;
+
+CREATE INDEX IF NOT EXISTS projects_series_id_idx ON public.projects(series_id);
+
+-- =============================================
 -- 5. 场景表
 -- =============================================
 CREATE TABLE IF NOT EXISTS public.scenes (
@@ -194,7 +217,9 @@ CREATE INDEX IF NOT EXISTS shots_created_at_idx ON public.shots(created_at DESC)
 -- =============================================
 CREATE TABLE IF NOT EXISTS public.characters (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
+  -- 允许 project_id 为空（全局角色），但如果为空，user_id 必须有值
+  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
 
   -- 基本信息
   name TEXT NOT NULL,
@@ -207,7 +232,7 @@ CREATE TABLE IF NOT EXISTS public.characters (
   turnaround_image TEXT,                    -- 三视图 URL
   reference_images JSONB DEFAULT '[]'::jsonb,  -- 参考图片 URL 数组
 
-  -- 元数据
+  -- 元数据 (含 Sora Identity 等)
   metadata JSONB DEFAULT '{}'::jsonb,
 
   -- 时间戳
@@ -217,6 +242,7 @@ CREATE TABLE IF NOT EXISTS public.characters (
 
 -- 索引
 CREATE INDEX IF NOT EXISTS characters_project_id_idx ON public.characters(project_id);
+CREATE INDEX IF NOT EXISTS characters_user_id_idx ON public.characters(user_id);
 
 -- =============================================
 -- 8. 音频资源表
@@ -420,12 +446,27 @@ CREATE POLICY "Users can manage own shots"
     )
   );
 
--- 角色表
+    )
+  );
+
+-- 剧集表 (Series)
+ALTER TABLE public.series ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own series"
+  ON public.series FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- 角色表 (更新策略以支持全局角色)
 ALTER TABLE public.characters ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can manage own characters"
   ON public.characters FOR ALL
   USING (
+    -- 拥有该角色 (全局)
+    auth.uid() = user_id
+    OR
+    -- 属于自己的项目 (项目级 - 兼容旧数据)
     EXISTS (
       SELECT 1 FROM public.projects
       WHERE projects.id = characters.project_id
@@ -645,6 +686,64 @@ BEGIN
 END;
 $$;
 
+-- 退款积分函数 (用于 Sora 生成失败回退)
+CREATE OR REPLACE FUNCTION public.refund_credits(
+  p_user_id UUID,
+  p_amount INTEGER,
+  p_description TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_current_credits INTEGER;
+  v_new_credits INTEGER;
+  v_transaction_id UUID;
+BEGIN
+  -- 锁定用户行
+  SELECT credits INTO v_current_credits
+  FROM public.profiles
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  -- 增加积分 (退款)
+  v_new_credits := v_current_credits + p_amount;
+
+  UPDATE public.profiles
+  SET credits = v_new_credits,
+      updated_at = NOW()
+  WHERE id = p_user_id;
+
+  -- 记录交易
+  INSERT INTO public.credit_transactions (
+    user_id,
+    transaction_type,
+    amount,
+    balance_before,
+    balance_after,
+    description,
+    operation_type
+  ) VALUES (
+    p_user_id,
+    'refund',
+    p_amount,
+    v_current_credits,
+    v_new_credits,
+    p_description,
+    'sora-refund'
+  ) RETURNING id INTO v_transaction_id;
+
+  RETURN jsonb_build_object(
+    'success', TRUE,
+    'transaction_id', v_transaction_id,
+    'credits_before', v_current_credits,
+    'credits_after', v_new_credits,
+    'amount_refunded', p_amount
+  );
+END;
+$$;
+
 -- 获取用户积分余额
 CREATE OR REPLACE FUNCTION public.get_user_credits(p_user_id UUID)
 RETURNS INTEGER
@@ -700,6 +799,63 @@ CREATE TRIGGER update_error_reports_updated_at BEFORE UPDATE ON public.error_rep
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- =============================================
+-- 13. Sora 异步任务表
+-- =============================================
+CREATE TABLE IF NOT EXISTS public.sora_tasks (
+  id TEXT PRIMARY KEY, -- 使用 Sora 任务 ID (例如 video_...)
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
+  scene_id UUID REFERENCES public.scenes(id) ON DELETE CASCADE,
+  shot_id UUID REFERENCES public.shots(id) ON DELETE CASCADE,
+  character_id UUID REFERENCES public.characters(id) ON DELETE SET NULL, -- 新增: 关联角色 (一致性工作流)
+  
+  -- 状态: queued, processing, completed, failed
+  status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'processing', 'completed', 'failed')),
+  progress INTEGER DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
+  
+  -- 类型: shot_generation, character_reference
+  type TEXT DEFAULT 'shot_generation', 
+
+  -- 元数据
+  model TEXT DEFAULT 'sora-2',
+  prompt TEXT,
+  target_duration INTEGER,
+  target_size TEXT,
+  
+  -- 资源链接
+  kaponai_url TEXT, -- Kaponai 临时下载链接
+  r2_url TEXT,      -- 持久化后的 R2 链接
+  
+  -- 积分管理
+  point_cost INTEGER DEFAULT 0,
+  
+  -- 错误信息
+  error_message TEXT,
+  
+  -- 时间戳
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS sora_tasks_project_id_idx ON public.sora_tasks(project_id);
+CREATE INDEX IF NOT EXISTS sora_tasks_user_id_idx ON public.sora_tasks(user_id);
+CREATE INDEX IF NOT EXISTS sora_tasks_status_idx ON public.sora_tasks(status);
+
+-- 添加更新时间触发器
+CREATE TRIGGER update_sora_tasks_updated_at BEFORE UPDATE ON public.sora_tasks
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- 启用 RLS
+ALTER TABLE public.sora_tasks ENABLE ROW LEVEL SECURITY;
+
+-- 用户只能查看和管理自己的任务
+CREATE POLICY "Users can manage own sora tasks"
+  ON public.sora_tasks FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- =============================================
 -- 14. 触发器：新用户注册时自动创建 profile
 -- =============================================
 
@@ -748,6 +904,60 @@ ON CONFLICT (id) DO NOTHING;
 -- =============================================
 -- 启用 chat_messages 表的实时更新
 ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE sora_tasks;
+
+-- =============================================
+-- 16. 定时任务 (Cron Jobs) - Sora 状态轮询
+-- =============================================
+-- 启用扩展 (如果尚未启用)
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
+-- ---------------------------------------------------------------------
+-- 生产环境 (Production): xysaiai.com
+-- ---------------------------------------------------------------------
+-- 每分钟调用一次 Next.js API 接口进行状态更新和自动注册
+-- 请确保 CRON_SECRET 与环境变量一致 (此处演示为 Authorization header 这里未加 Bearer token 逻辑，如需鉴权请自行修改 headers)
+SELECT cron.schedule(
+    'check-sora-status-prod', -- 任务名称
+    '* * * * *',              -- 每分钟执行
+    $$
+    SELECT net.http_get(
+        url:='https://xysaiai.com/api/cron/check-sora-status',
+        headers:='{"Content-Type": "application/json"}' 
+    ) as request_id;
+    $$
+);
+
+-- ---------------------------------------------------------------------
+-- 本地测试 (Local Testing)
+-- ---------------------------------------------------------------------
+-- 本地 Docker 环境下，Supabase 数据库容器无法直接访问 localhost:3000。
+-- 方案 1: 使用 host.docker.internal (适用于 Mac/Windows Docker Desktop)
+-- SELECT cron.schedule(
+--    'check-sora-status-local', 
+--    '* * * * *',
+--    $$
+--    SELECT net.http_get(
+--        url:='http://host.docker.internal:3000/api/cron/check-sora-status',
+--        headers:='{"Content-Type": "application/json"}'
+--    ) as request_id;
+--    $$
+-- );
+
+-- 方案 2: 使用 Ngrok 穿透 (推荐，最稳定)
+-- 1. 运行 ngrok http 3000
+-- 2. 将下方 url 替换为 ngrok 提供的 https 地址
+-- SELECT cron.schedule(
+--    'check-sora-status-ngrok',
+--    '* * * * *',
+--    $$
+--    SELECT net.http_get(
+--        url:='https://your-ngrok-id.ngrok-free.app/api/cron/check-sora-status'
+--    ) as request_id;
+--    $$
+-- );
+
 
 -- 完成！
 -- =============================================

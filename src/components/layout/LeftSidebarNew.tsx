@@ -18,14 +18,17 @@ import AddShotDialog from '@/components/shot/AddShotDialog';
 import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import AddLocationDialog from '@/components/asset/AddLocationDialog';
 import { toast } from 'sonner';
-import type { Shot, ShotSize, CameraMovement, Character, Location } from '@/types/project';
+import { Shot, Scene, Project, ShotSize, CameraMovement, Character, Location, SHOT_SIZE_OPTIONS, CAMERA_MOVEMENT_OPTIONS } from '@/types/project';
+import { translateShotSize, translateCameraMovement } from '@/utils/translations';
+import { createPortal } from 'react-dom';
 import { useAIStoryboard } from '@/hooks/useAIStoryboard';
-import { ScriptTab } from './sidebar/ScriptTab';
 import { StoryboardTab } from './sidebar/StoryboardTab';
 import { AssetsTab } from './sidebar/AssetsTab';
 import { ShotEditor } from './sidebar/ShotEditor';
+import ShotTableEditor from '../project/ShotTableEditor'; // Added import for ShotTableEditor
+import DirectorMode from '../director/DirectorMode';
 
-type Tab = 'script' | 'storyboard' | 'assets';
+type Tab = 'planning' | 'storyboard' | 'assets';
 
 export default function LeftSidebarNew() {
   const router = useRouter();
@@ -66,7 +69,8 @@ export default function LeftSidebarNew() {
   const [showAddLocationDialog, setShowAddLocationDialog] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
-  const [showScriptEditor, setShowScriptEditor] = useState(false);
+  const [sceneIdHandlingLocation, setSceneIdHandlingLocation] = useState<string | null>(null);
+  const [showTableEditor, setShowTableEditor] = useState(false);
   const [editingShot, setEditingShot] = useState<Shot | null>(null);
   const [shotImagePreview, setShotImagePreview] = useState<string | null>(null);
   const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
@@ -89,8 +93,8 @@ export default function LeftSidebarNew() {
     duration: 3,
   });
 
-  const shotSizeOptions: ShotSize[] = ['Extreme Wide Shot', 'Wide Shot', 'Medium Shot', 'Close-Up', 'Extreme Close-Up'];
-  const cameraMovementOptions: CameraMovement[] = ['Static', 'Pan Left', 'Pan Right', 'Tilt Up', 'Tilt Down', 'Dolly In', 'Dolly Out', 'Zoom In', 'Zoom Out', 'Handheld'];
+  const shotSizeOptions = SHOT_SIZE_OPTIONS;
+  const cameraMovementOptions = CAMERA_MOVEMENT_OPTIONS;
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [resizing, setResizing] = useState(false);
   const resizeState = useRef<{ startX: number; startWidth: number } | null>(null);
@@ -429,14 +433,14 @@ export default function LeftSidebarNew() {
       <div className="px-6 pb-2">
         <div className="flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
           <button
-            onClick={() => setActiveTab('script')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${activeTab === 'script'
+            onClick={() => setActiveTab('planning')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${activeTab === 'planning'
               ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
               }`}
           >
             <FileText size={14} />
-            <span>剧本</span>
+            <span>策划</span>
           </button>
           <button
             onClick={() => setActiveTab('storyboard')}
@@ -463,12 +467,10 @@ export default function LeftSidebarNew() {
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto">
-        {activeTab === 'script' && (
-          <ScriptTab
-            project={project}
-            updateScript={updateScript}
-            isGenerating={isGenerating}
-            handleAIStoryboard={handleAIStoryboard}
+        {activeTab === 'planning' && (
+          <DirectorMode
+            isOpen={true}
+            onClose={() => setActiveTab('storyboard')}
           />
         )}
 
@@ -479,23 +481,47 @@ export default function LeftSidebarNew() {
             collapsedScenes={collapsedScenes}
             toggleSceneCollapse={toggleSceneCollapse}
             handleAddScene={handleAddScene}
-            setShowScriptEditor={setShowScriptEditor}
             editingSceneId={editingSceneId}
             editingSceneName={editingSceneName}
             setEditingSceneName={setEditingSceneName}
             handleSaveSceneName={handleSaveSceneName}
             handleCancelEditScene={handleCancelEditScene}
             handleStartEditScene={handleStartEditScene}
+            handleEditSceneDetails={(sceneId) => {
+              const scene = scenes.find(s => s.id === sceneId);
+              if (!scene) return;
+
+              setSceneIdHandlingLocation(sceneId);
+
+              const linkedLocation = project?.locations.find(l =>
+                l.name.toLowerCase() === (scene.location || scene.name).toLowerCase()
+              );
+
+              const initialLocationData = linkedLocation || {
+                id: '',
+                name: scene.location || scene.name,
+                description: scene.description,
+                type: 'interior',
+                referenceImages: []
+              };
+
+              setEditingLocation(initialLocationData as any);
+            }}
             handleDeleteScene={handleDeleteScene}
             handleAddShotClick={handleAddShotClick}
+            setShowScriptEditor={setShowTableEditor}
             selectedShotId={selectedShotId}
             handleShotClick={handleShotClick}
             openShotEditor={openShotEditor}
             handleDeleteShot={handleDeleteShot}
             handleShotImageClick={(shot) => {
               // 1. 设置生成请求 (先设置，以免被后续的副作用清除)
+              const scene = scenes.find(s => s.id === shot.sceneId);
+              const sceneContext = scene?.description ? `\n场景环境: ${scene.description}` : '';
+              const fullPrompt = `镜头画面: ${shot.description || ''}${sceneContext}`;
+
               useProjectStore.getState().setGenerationRequest({
-                prompt: shot.description || '',
+                prompt: fullPrompt,
                 model: 'jimeng',
                 jimengModel: 'jimeng-4.5',
                 jimengResolution: '2k'
@@ -530,34 +556,11 @@ export default function LeftSidebarNew() {
         )}
       </div>
 
-      {showScriptEditor && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-cine-dark border border-light-border dark:border-cine-border rounded-xl shadow-xl w-[800px] max-w-[95vw] max-h-[85vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-cine-border">
-              <div className="flex items-center gap-2">
-                <Film size={16} className="text-light-accent dark:text-cine-accent" />
-                <span className="text-sm font-bold text-light-text dark:text-white">分镜脚本编辑</span>
-              </div>
-              <button
-                onClick={() => setShowScriptEditor(false)}
-                className="p-1 rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
-              >
-                <ChevronRightIcon size={16} className="text-light-text-muted dark:text-cine-text-muted" />
-              </button>
-            </div>
-            <div className="p-4 flex-1 overflow-auto space-y-3">
-              <p className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                直接在此修改完整分镜脚本内容，保存后右侧 Pro 模式将按镜头/场景上下文展示历史。
-              </p>
-              <textarea
-                value={project?.script || ''}
-                onChange={(e) => updateScript(e.target.value)}
-                className="w-full h-full min-h-[400px] bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted"
-                placeholder="在此粘贴或编写分镜脚本..."
-              />
-            </div>
-          </div>
-        </div>
+      {showTableEditor && (
+        <ShotTableEditor
+          isOpen={showTableEditor}
+          onClose={() => setShowTableEditor(false)}
+        />
       )}
 
       {shotImagePreview && (
@@ -574,8 +577,6 @@ export default function LeftSidebarNew() {
         shotForm={shotForm}
         setShotForm={setShotForm}
         saveShotEdit={saveShotEdit}
-        shotSizeOptions={shotSizeOptions}
-        cameraMovementOptions={cameraMovementOptions}
         shotHistoryImages={shotHistoryImages}
         selectedHistoryImage={selectedHistoryImage}
         setSelectedHistoryImage={setSelectedHistoryImage}
@@ -623,12 +624,31 @@ export default function LeftSidebarNew() {
       )}
       {editingLocation && (
         <AddLocationDialog
-          mode="edit"
+          mode={editingLocation.id ? "edit" : "add"}
           initialLocation={editingLocation}
           onAdd={(updated) => {
-            updateLocation(editingLocation.id, updated);
+            // 1. Update/Add Location Asset
+            if (editingLocation.id) {
+              updateLocation(editingLocation.id, updated);
+            } else {
+              addLocation(updated);
+            }
+
+            // 2. Sync back to Scene (Critical for prompt generation)
+            if (sceneIdHandlingLocation) {
+              updateScene(sceneIdHandlingLocation, {
+                location: updated.name,
+                description: updated.description
+              });
+            }
+
+            setEditingLocation(null);
+            setSceneIdHandlingLocation(null);
           }}
-          onClose={() => setEditingLocation(null)}
+          onClose={() => {
+            setEditingLocation(null);
+            setSceneIdHandlingLocation(null);
+          }}
         />
       )}
     </div>

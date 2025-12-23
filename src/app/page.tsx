@@ -1,73 +1,142 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Film, Clock, Trash2, LogOut, Coins } from 'lucide-react';
-import { SettingsPanel } from '@/components/settings/SettingsPanel';
+import { Plus, Film, Clock, Trash2, LogOut, Coins, Folder, Sparkles, User, Image as ImageIcon } from 'lucide-react';
 import { UserNav } from '@/components/layout/UserNav';
 import { useI18n } from '@/components/providers/I18nProvider';
 import NewProjectDialog from '@/components/project/NewProjectDialog';
+import NewSeriesDialog from '@/components/project/NewSeriesDialog';
 import { useProjectStore } from '@/store/useProjectStore';
 import { dataService } from '@/lib/dataService';
-import type { Project } from '@/types/project';
+import type { Project, Series } from '@/types/project';
 import { useAuth, useRequireWhitelist } from '@/components/auth/AuthProvider';
 import { toast } from 'sonner';
 
 export default function Home() {
   const { t } = useI18n();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentSeriesId = searchParams.get('seriesId');
+
   const { createNewProject, project } = useProjectStore();
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
+  const [showNewSeriesDialog, setShowNewSeriesDialog] = useState(false);
+
   const [projects, setProjects] = useState<Project[]>([]);
+  const [series, setSeries] = useState<Series[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // AI Director Input State
+  const [aiDirectorInput, setAiDirectorInput] = useState('');
+  const [isAiBrainstorming, setIsAiBrainstorming] = useState(false);
+  const [aiProposal, setAiProposal] = useState<{
+    title?: string;
+    description?: string;
+    artStyle?: string;
+    aspectRatio?: string;
+  } | null>(null);
+
   const { user, profile, signOut, loading: authLoading } = useRequireWhitelist();
 
-  // 加载所有项目（当用户状态变化时重新加载）
+  // 加载数据
   useEffect(() => {
-    // ⚠️ 只在认证初始化完成后才加载项目
     if (!authLoading) {
-      loadProjects();
+      loadData();
     }
-  }, [user, authLoading]); // 依赖user和authLoading，登录/退出/初始化完成时重新加载
+  }, [user, authLoading, currentSeriesId]);
 
-  const loadProjects = async () => {
-    console.log('[HomePage] 🔄 开始加载项目列表...');
+  const loadData = async () => {
+    console.log('[HomePage] 🔄 开始加载数据...');
     setIsLoading(true);
     setLoadError(null);
 
-    // 如果用户未登录，直接显示空列表
     if (!user) {
-      console.log('[HomePage] ℹ️ 用户未登录，显示空项目列表');
       setProjects([]);
+      setSeries([]);
       setIsLoading(false);
       return;
     }
 
     try {
-      // 传递 userId 给 dataService，避免重新获取用户超时
-      const allProjects = await dataService.getAllProjects(user.id);
-      setProjects(allProjects);
-      console.log('[HomePage] ✅ 已加载项目列表:', allProjects.length, '个项目');
-    } catch (error) {
-      console.error('[HomePage] ❌ 加载项目失败:', error);
-      const errorMessage = error instanceof Error ? error.message : '加载失败';
-      setLoadError(errorMessage);
+      const [allProjects, allSeries] = await Promise.all([
+        dataService.getAllProjects(user.id),
+        dataService.getAllSeries()
+      ]);
+      console.log('[HomePage] Raw projects:', allProjects);
+      console.log('[HomePage] Raw series:', allSeries);
 
-      // 如果是认证失败，提示用户重新登录
-      if (errorMessage.includes('认证') || errorMessage.includes('登录')) {
-        toast.error('认证失败', {
-          description: '请重新登录以访问云端项目',
-        });
-      } else {
-        toast.error('加载项目失败', {
-          description: errorMessage,
-        });
-      }
+      setProjects(allProjects);
+      setSeries(allSeries);
+      console.log('[HomePage] ✅ 数据加载完成', { projects: allProjects.length, series: allSeries.length });
+    } catch (error) {
+      console.error('[HomePage] ❌ 加载失败:', error);
+      setLoadError(error instanceof Error ? error.message : '加载失败');
+      toast.error('加载数据失败');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const activeSeries = currentSeriesId ? series.find(s => s.id === currentSeriesId) : null;
+
+  // Filter items for display
+  const displayedItems = (() => {
+    if (currentSeriesId) {
+      return projects.filter(p => p.seriesId === currentSeriesId).map(p => ({ type: 'project' as const, data: p }));
+    } else {
+      const seriesItems = series.map(s => ({ type: 'series' as const, data: s }));
+      const projectItems = projects.filter(p => !p.seriesId).map(p => ({ type: 'project' as const, data: p }));
+      return [...seriesItems, ...projectItems];
+    }
+  })();
+
+  const handleAiDirectorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiDirectorInput.trim()) return;
+
+    setIsAiBrainstorming(true);
+    setAiProposal(null); // Reset previous proposal
+
+    try {
+      const response = await fetch('/api/ai/brainstorm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: aiDirectorInput })
+      });
+
+      if (!response.ok) throw new Error('AI request failed');
+
+      const data = await response.json();
+
+      // Map simple aspect ratio strings to our enum values if strictly needed,
+      // but NewProjectDialog handles validation.
+      let mappedAspectRatio = data.recommendedAspectRatio;
+      if (mappedAspectRatio === "16:9") mappedAspectRatio = "WIDE";
+      if (mappedAspectRatio === "9:16") mappedAspectRatio = "MOBILE";
+      if (mappedAspectRatio === "1:1") mappedAspectRatio = "SQUARE";
+      if (mappedAspectRatio === "4:3") mappedAspectRatio = "STANDARD";
+      if (mappedAspectRatio === "21:9") mappedAspectRatio = "CINEMA";
+
+      setAiProposal({
+        title: data.title,
+        description: data.description,
+        artStyle: data.artStyle,
+        aspectRatio: mappedAspectRatio
+      });
+
+      setShowNewProjectDialog(true);
+    } catch (error) {
+      console.error('Brainstorming failed:', error);
+      toast.error('AI 构思失败，请直接手动创建');
+      // Fallback: open dialog with raw input as description
+      setAiProposal({ description: aiDirectorInput });
+      setShowNewProjectDialog(true);
+    } finally {
+      setIsAiBrainstorming(false);
     }
   };
 
@@ -77,297 +146,280 @@ export default function Home() {
     artStyle: string,
     aspectRatio: string
   ) => {
-    console.log('[HomePage] 📝 创建新项目:', { title, description, artStyle, aspectRatio });
-
     try {
-      // 1. 在 store 中创建项目
       createNewProject(title, description, artStyle, aspectRatio);
-
-      // 2. 等待 React 更新完成
       await new Promise(resolve => setTimeout(resolve, 100));
-
-      // 3. 获取新创建的项目
       const currentProject = useProjectStore.getState().project;
-      console.log('[HomePage] 当前项目状态:', currentProject);
 
-      if (!currentProject) {
-        console.error('[HomePage] ❌ 项目创建失败：currentProject 为空');
-        toast.error('项目创建失败');
-        throw new Error('项目创建失败');
+      if (!currentProject) throw new Error('Project creation failed');
+
+      if (currentSeriesId) {
+        currentProject.seriesId = currentSeriesId;
       }
 
-      // 4. 保存项目到数据库
-      console.log('[HomePage] 💾 保存项目到数据库:', currentProject.id);
       await dataService.saveProject(currentProject, user?.id);
-      console.log('[HomePage] ✅ 项目已保存:', currentProject.id);
 
-      // 5. 保存成功后关闭弹窗
       setShowNewProjectDialog(false);
-
-      // 6. 使用 window.location.href 强制导航（避免 router.push 失败）
-      const targetUrl = `/project/${currentProject.id}`;
-      console.log('[HomePage] 🔄 准备跳转到:', targetUrl);
-
-      // 先尝试 router.push，如果 500ms 后还没跳转，使用 window.location.href
-      const navigated = router.push(targetUrl);
-      console.log('[HomePage] router.push 返回值:', navigated);
-
-      // 设置一个安全超时，确保导航发生
-      setTimeout(() => {
-        if (window.location.pathname === '/') {
-          console.log('[HomePage] ⚠️ router.push 未生效，使用 window.location.href 强制跳转');
-          window.location.href = targetUrl;
-        }
-      }, 500);
-
+      router.push(`/project/${currentProject.id}`);
     } catch (error) {
-      console.error('[HomePage] ❌ 创建项目失败:', error);
-      toast.error('创建项目失败，请重试');
-      throw error; // 重新抛出错误，让 NewProjectDialog 处理
+      console.error('[HomePage] ❌ Create failed:', error);
+      toast.error('创建项目失败');
+    }
+  };
+
+  const handleCreateSeries = async (title: string, description: string) => {
+    if (!user) return;
+    try {
+      const newSeries: Series = {
+        id: crypto.randomUUID(),
+        userId: user.id,
+        title,
+        description,
+        created: new Date(),
+        updated: new Date()
+      };
+      await dataService.saveSeries(newSeries);
+      toast.success('剧集创建成功');
+      setShowNewSeriesDialog(false);
+      loadData();
+    } catch (error) {
+      console.error('Failed to create series:', error);
+      toast.error('创建剧集失败');
     }
   };
 
   const handleDeleteProject = async (projectId: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
-    if (confirm('确定要删除这个项目吗？此操作不可恢复。')) {
+    if (confirm('确定要删除这个项目吗？')) {
       try {
         await dataService.deleteProject(projectId);
-        console.log('✅ 项目已删除:', projectId);
-        // 重新加载项目列表
-        loadProjects();
+        loadData();
       } catch (error) {
-        console.error('❌ 删除项目失败:', error);
-        alert('删除项目失败，请重试');
+        toast.error('删除失败');
       }
     }
   };
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const handleSignOut = async () => {
-    try {
-      console.log('[HomePage] 开始退出登录...');
-      await signOut();
-      toast.info('已退出登录');
-      // 强制跳转到登录页
-      window.location.href = '/auth/login';
-    } catch (err) {
-      console.error('[HomePage] 退出失败:', err);
-      window.location.href = '/auth/login';
+  const handleDeleteSeries = async (seriesId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (confirm('删除剧集将只删除剧集容器，内部项目将移至根目录。确定吗？')) {
+      try {
+        await dataService.deleteSeries(seriesId);
+        loadData();
+      } catch (error) {
+        toast.error('删除剧集失败');
+      }
     }
   };
 
-  const clearLocalAuth = async () => {
-    try {
-      if (typeof document !== 'undefined') {
-        // 清理正确的 cookie 名称：supabase-session
-        document.cookie = 'supabase-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-      }
-      if (typeof window !== 'undefined') {
-        try {
-          const { supabase } = await import('@/lib/supabase/client');
-          await supabase.auth.signOut();
-        } catch (err) {
-          console.warn('[HomePage] 清理 Supabase 会话失败，忽略:', err);
-        }
-        try {
-          window.localStorage?.clear?.();
-          window.sessionStorage?.clear?.();
-        } catch (err) {
-          console.warn('[HomePage] 清理 Storage 失败（可能被阻止），忽略:', err);
-        }
-        try {
-          window.indexedDB.deleteDatabase('VideoAgentDB');
-        } catch (err) {
-          console.warn('[HomePage] 删除 IndexedDB 失败，忽略:', err);
-        }
-      }
-      toast.success('已清理本地缓存，请重新登录');
-      router.push('/auth/login');
-    } catch (err) {
-      console.error('[HomePage] 清理本地缓存失败:', err);
-      toast.error('清理本地缓存失败，请手动刷新后重试');
-    }
-  };
+  const formatDate = (date: Date) => new Date(date).toLocaleDateString('zh-CN');
 
   return (
     <main className="min-h-screen bg-light-bg dark:bg-cine-black p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <header className="mb-12">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-4 mb-2">
-                <Image
-                  src="https://storage.googleapis.com/n8n-bucket-xys/%E7%AB%96%E7%89%88logo%E9%80%8F%E6%98%8E%E5%BA%95.png"
-                  alt="西羊石AI视频"
-                  width={48}
-                  height={48}
-                  className="h-12 w-auto object-contain"
-                />
-                <h1 className="text-4xl font-bold text-light-text dark:text-white">
-                  {t('common.appName')}
-                </h1>
-              </div>
-              <p className="text-light-text-muted dark:text-cine-text-muted text-lg">
-                西羊石 AI 影视创作工具
-              </p>
-            </div>
-            {/* User Navigation */}
-            <UserNav />
+        <header className="mb-8 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/" className="flex items-center gap-3">
+              <Image
+                src="https://storage.googleapis.com/n8n-bucket-xys/%E7%AB%96%E7%89%88logo%E9%80%8F%E6%98%8E%E5%BA%95.png"
+                alt="Logo"
+                width={40}
+                height={40}
+                className="object-contain"
+              />
+              <h1 className="text-2xl font-bold text-light-text dark:text-white hidden md:block">
+                {t('common.appName')}
+              </h1>
+            </Link>
+
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-700 mx-2"></div>
+
+            <Link
+              href="/assets"
+              className="flex items-center gap-2 text-light-text-muted dark:text-cine-text-muted hover:text-light-accent dark:hover:text-cine-accent transition-colors"
+            >
+              <ImageIcon size={18} />
+              <span className="text-sm font-medium">素材库</span>
+            </Link>
           </div>
+          <UserNav />
         </header>
 
-        {/* Create New Project Button */}
-        <div className="mb-8 flex items-center gap-3 flex-wrap">
-          <button
-            onClick={() => setShowNewProjectDialog(true)}
-            className="inline-flex items-center gap-2 bg-light-accent dark:bg-cine-accent text-white dark:text-cine-black px-6 py-3 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent/90 transition-colors"
-          >
-            <Plus size={20} />
-            {t('home.createProject')}
-          </button>
-          {!user && (
-            <div className="flex flex-wrap items-center gap-2 text-sm px-3 py-2 rounded-lg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted">
-              <span>当前为本地模式，登录后可同步到云端</span>
-              <button
-                className="text-light-accent dark:text-cine-accent underline"
-                onClick={() => router.push('/auth/login')}
-              >
-                去登录
-              </button>
+        {/* AI Director Hero Section */}
+        {!currentSeriesId && (
+          <section className="mb-12 text-center">
+            <h2 className="text-4xl md:text-5xl font-bold text-light-text dark:text-white mb-6">
+              What's your story today?
+            </h2>
+            <div className="max-w-3xl mx-auto relative">
+              <form onSubmit={handleAiDirectorSubmit} className="relative">
+                <input
+                  type="text"
+                  value={aiDirectorInput}
+                  onChange={(e) => setAiDirectorInput(e.target.value)}
+                  placeholder="描述你的创意，AI 导演将为你生成策划案..."
+                  className="w-full bg-white dark:bg-cine-panel border-2 border-light-border dark:border-cine-border rounded-full py-4 px-8 pr-32 text-lg focus:outline-none focus:border-light-accent dark:focus:border-cine-accent shadow-lg transition-all"
+                />
+                <button
+                  type="submit"
+                  disabled={isAiBrainstorming}
+                  className="absolute right-2 top-2 bottom-2 bg-light-accent dark:bg-cine-accent text-white dark:text-cine-bg px-6 rounded-full font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent/90 transition-colors flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {isAiBrainstorming ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>思考中...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Sparkles size={18} />
+                      <span>开始</span>
+                    </>
+                  )}
+                </button>
+              </form>
+              <p className="mt-4 text-light-text-muted dark:text-cine-text-muted text-sm">
+                试一试: "一个赛博朋克风格的侦探故事" 或 "关于咖啡制作的纪录片"
+              </p>
             </div>
-          )}
+          </section>
+        )}
+
+        {/* Breadcrumb if in Series */}
+        {currentSeriesId && activeSeries && (
+          <div className="mb-6 flex items-center gap-2 text-lg">
+            <Link href="/" className="text-light-text-muted hover:text-light-text dark:text-cine-text-muted dark:hover:text-white transition-colors">首页</Link>
+            <span className="text-gray-400">/</span>
+            <span className="font-bold text-light-text dark:text-white flex items-center gap-2">
+              <Folder size={20} className="text-light-accent dark:text-cine-accent" />
+              {activeSeries.title}
+            </span>
+          </div>
+        )}
+
+        {/* Content Controls */}
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="text-xl font-bold text-light-text dark:text-white">
+            {currentSeriesId ? '剧集列表' : '最近项目'}
+          </h3>
+          <div className="flex gap-2">
+            {!currentSeriesId && (
+              <button
+                onClick={() => setShowNewSeriesDialog(true)}
+                className="inline-flex items-center gap-2 bg-white dark:bg-cine-panel text-light-text dark:text-white border border-light-border dark:border-cine-border px-4 py-2 rounded-lg font-bold hover:border-light-accent dark:hover:border-cine-accent transition-colors"
+              >
+                <Folder size={18} />
+                新建剧集
+              </button>
+            )}
+            <button
+              onClick={() => setShowNewProjectDialog(true)}
+              className="inline-flex items-center gap-2 bg-light-accent dark:bg-cine-accent text-white dark:text-cine-bg px-4 py-2 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent/90 transition-colors"
+            >
+              <Plus size={18} />
+              {currentSeriesId ? '新建分集' : '新建项目'}
+            </button>
+          </div>
         </div>
 
-        {/* Projects Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
           {isLoading ? (
-            /* Loading State */
-            <div className="col-span-full text-center py-20">
-              <div className="text-light-text-muted dark:text-cine-text-muted">
-                加载中...
-              </div>
-              <button
-                onClick={loadProjects}
-                className="mt-4 inline-flex items-center gap-2 text-sm px-4 py-2 rounded-lg border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent transition-colors"
-              >
-                重试
-              </button>
-            </div>
-          ) : loadError ? (
-            <div className="col-span-full text-center py-20 border-2 border-dashed border-red-400/50 dark:border-red-500/50 rounded-lg">
-              <h3 className="text-xl font-bold mb-2 text-light-text dark:text-white">
-                项目加载失败
-              </h3>
-              <p className="text-light-text-muted dark:text-cine-text-muted mb-4">
-                {loadError}
-              </p>
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  onClick={loadProjects}
-                  className="px-4 py-2 bg-light-accent dark:bg-cine-accent text-white rounded-lg hover:bg-light-accent-hover dark:hover:bg-cine-accent/90 transition-colors"
-                >
-                  重试加载
-                </button>
-                {user && (
-                  <button
-                    onClick={handleSignOut}
-                    className="px-4 py-2 border border-light-border dark:border-cine-border rounded-lg text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent transition-colors"
-                  >
-                    退出登录
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : projects.length === 0 ? (
-            /* Empty State */
-            <div className="col-span-full text-center py-20 border-2 border-dashed border-light-border dark:border-cine-border rounded-lg">
-              <Film size={48} className="mx-auto mb-4 text-light-text-muted dark:text-cine-text-muted" />
-              <h3 className="text-xl font-bold mb-2 text-light-text dark:text-white">
-                {t('home.noProjects')}
-              </h3>
-              <p className="text-light-text-muted dark:text-cine-text-muted mb-4">
-                {t('home.noProjectsDescription')}
-              </p>
+            <div className="col-span-full py-20 text-center text-light-text-muted dark:text-cine-text-muted">加载中...</div>
+          ) : displayedItems.length === 0 ? (
+            <div className="col-span-full py-20 border-2 border-dashed border-light-border dark:border-cine-border rounded-lg text-center">
+              <p className="text-light-text-muted dark:text-cine-text-muted">没有项目</p>
             </div>
           ) : (
-            /* Project Cards */
-            projects.map((proj) => (
-              <Link
-                key={proj.id}
-                href={`/project/${proj.id}`}
-                className="group bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg overflow-hidden hover:border-light-accent dark:hover:border-cine-accent transition-all"
-              >
-                {/* Project Thumbnail */}
-                <div className="aspect-video bg-light-bg dark:bg-cine-black flex items-center justify-center relative">
-                  {proj.shots && proj.shots.length > 0 && proj.shots[0].referenceImage ? (
-                    <img
-                      src={proj.shots[0].referenceImage}
-                      alt={proj.metadata.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <Film size={48} className="text-light-text-muted dark:text-cine-text-muted opacity-30" />
-                  )}
-                  {/* Delete Button */}
-                  <button
-                    onClick={(e) => handleDeleteProject(proj.id, e)}
-                    className="absolute top-2 right-2 p-2 bg-red-500/80 hover:bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="删除项目"
+            displayedItems.map((item) => {
+              if (item.type === 'series') {
+                const s = item.data as Series;
+                return (
+                  <Link
+                    key={`series-${s.id}`}
+                    href={`/?seriesId=${s.id}`}
+                    className="group bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl p-4 hover:border-light-accent dark:hover:border-cine-accent transition-all relative"
                   >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+                    <div className="aspect-[4/3] bg-gray-100 dark:bg-gray-800 rounded-lg mb-4 flex items-center justify-center relative overflow-hidden">
+                      {s.coverImage ? (
+                        <img src={s.coverImage} alt={s.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <Folder size={48} className="text-light-accent dark:text-cine-accent opacity-50" />
+                      )}
+                      <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded max-w-full truncate">
+                        剧集
+                      </div>
+                    </div>
+                    <h4 className="font-bold text-light-text dark:text-white truncate">{s.title}</h4>
+                    <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">{formatDate(s.updated)}</p>
 
-                {/* Project Info */}
-                <div className="p-4">
-                  <h3 className="font-bold text-lg text-light-text dark:text-white mb-2 truncate">
-                    {proj.metadata.title}
-                  </h3>
-                  {proj.metadata.description && (
-                    <p className="text-sm text-light-text-muted dark:text-cine-text-muted mb-3 line-clamp-2">
-                      {proj.metadata.description}
-                    </p>
-                  )}
-                  <div className="flex items-center justify-between text-xs text-light-text-muted dark:text-cine-text-muted">
-                    <div className="flex items-center gap-1">
-                      <Clock size={14} />
-                      <span>{formatDate(proj.metadata.modified)}</span>
+                    <button
+                      onClick={(e) => handleDeleteSeries(s.id, e)}
+                      className="absolute top-2 right-2 p-2 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 rounded hover:bg-black/40"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </Link>
+                );
+              } else {
+                const p = item.data as Project;
+                return (
+                  <Link
+                    key={`proj-${p.id}`}
+                    href={`/project/${p.id}`}
+                    className="group bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl overflow-hidden hover:border-light-accent dark:hover:border-cine-accent transition-all relative"
+                  >
+                    <div className="aspect-video bg-gray-100 dark:bg-black relative">
+                      {p.shots && p.shots.length > 0 && p.shots[0].referenceImage ? (
+                        <img src={p.shots[0].referenceImage} alt={p.metadata.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Film size={32} className="text-gray-400" />
+                        </div>
+                      )}
+
+                      <button
+                        onClick={(e) => handleDeleteProject(p.id, e)}
+                        className="absolute top-2 right-2 p-2 bg-red-500/80 hover:bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
-                    <div className="flex items-center gap-3">
-                      {proj.scenes && <span>{proj.scenes.length} 场景</span>}
-                      {proj.shots && <span>{proj.shots.length} 镜头</span>}
+                    <div className="p-3">
+                      <h4 className="font-bold text-sm text-light-text dark:text-white truncate mb-1">{p.metadata.title}</h4>
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <span>{formatDate(p.metadata.modified)}</span>
+                        <span className="flex items-center gap-1"><Film size={10} /> {p.shots?.length || 0}</span>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </Link>
-            ))
+                  </Link>
+                )
+              }
+            })
           )}
         </div>
-      </div>
 
-      <div className="mt-12 text-center text-xs text-light-text-muted dark:text-cine-text-muted">
-        Copyright ©2026 xysai.ai All rights reserved.
-      </div>
+        {showNewProjectDialog && (
+          <NewProjectDialog
+            onConfirm={handleCreateProject}
+            onClose={() => setShowNewProjectDialog(false)}
+            initialDescription={aiProposal?.description || aiDirectorInput}
+            initialTitle={aiProposal?.title}
+            initialArtStyle={aiProposal?.artStyle}
+            initialAspectRatio={aiProposal?.aspectRatio}
+          />
+        )}
 
-      {/* New Project Dialog */}
-      {showNewProjectDialog && (
-        <NewProjectDialog
-          onConfirm={handleCreateProject}
-          onClose={() => setShowNewProjectDialog(false)}
-        />
-      )}
+        {showNewSeriesDialog && (
+          <NewSeriesDialog
+            onConfirm={handleCreateSeries}
+            onClose={() => setShowNewSeriesDialog(false)}
+          />
+        )}
+      </div>
     </main>
   );
 }

@@ -76,6 +76,45 @@ export async function consumeCredits(
 }
 
 /**
+ * 退款积分（用于 Sora 等异步任务失败回退）
+ */
+export async function refundCredits(
+  amount: number,
+  description: string = '任务失败回退'
+): Promise<ConsumeCreditsResult> {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: '请先登录' };
+    }
+
+    const { data, error } = await (supabase as any).rpc('refund_credits', {
+      p_user_id: user.id,
+      p_amount: amount,
+      p_description: description,
+    });
+
+    if (error) {
+      console.error('Refund credits error:', error);
+      return { success: false, error: error.message || '退款失败' };
+    }
+
+    return {
+      success: true,
+      creditsAfter: data.credits_after,
+      amountConsumed: data.amount_refunded,
+      transactionId: data.transaction_id,
+    };
+  } catch (error: any) {
+    console.error('Refund credits exception:', error);
+    return { success: false, error: error.message || '系统错误' };
+  }
+}
+
+/**
  * 获取当前用户积分余额
  */
 export async function getUserCredits(): Promise<number> {

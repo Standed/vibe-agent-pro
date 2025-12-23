@@ -1,13 +1,146 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { ChevronDown, ChevronUp, Play, Pause, SkipBack, SkipForward, Download, Film } from 'lucide-react';
+import { dataService } from '@/lib/dataService';
+import type { SoraTask } from '@/types/project';
+import {
+  ChevronDown,
+  ChevronUp,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Download,
+  Film,
+  RefreshCw,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+} from 'lucide-react';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { toast } from 'sonner';
 
 export default function Timeline() {
   const { timelineMode, setTimelineMode, project, selectShot } = useProjectStore();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [soraTasks, setSoraTasks] = useState<Map<string, SoraTask>>(new Map());
+
+  // Subscribe to Sora task updates
+  const { user } = useAuth(); // Get user for chat message
+
+  useEffect(() => {
+    if (!project?.id) return;
+
+    // Load existing tasks
+    dataService.getSoraTasks(project.id).then((tasks) => {
+      const taskMap = new Map<string, SoraTask>();
+      tasks.forEach((t) => taskMap.set(t.shotId || t.id, t));
+      setSoraTasks(taskMap);
+    });
+
+    // Subscribe to realtime updates
+    const unsubscribe = dataService.subscribeToSoraTasks(project.id, (task) => {
+      setSoraTasks((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(task.shotId || task.id, task);
+        return newMap;
+      });
+    });
+
+    return () => unsubscribe();
+  }, [project?.id]);
+
+  // Polling for Sora task status
+  useEffect(() => {
+    const pollInterval = setInterval(async () => {
+      const processingTasks = Array.from(soraTasks.values()).filter(
+        (t) => t.status === 'processing' || t.status === 'queued'
+      );
+
+      if (processingTasks.length === 0) return;
+
+      for (const task of processingTasks) {
+        try {
+          const res = await fetch(`/api/sora/status?taskId=${task.id}`);
+          if (!res.ok) continue;
+
+          const data = await res.json();
+          const remoteStatus = data.status; // 'SUCCESS', 'FAILED', 'RUNNING', 'QUEUED'
+
+          if (remoteStatus === 'SUCCESS') {
+            const videoUrl = data.result_url || data.url;
+
+            // 1. Update Task
+            const updatedTask: SoraTask = {
+              ...task,
+              status: 'completed',
+              progress: 100,
+              r2Url: videoUrl,
+              updatedAt: new Date(),
+            };
+            setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
+            await dataService.saveSoraTask(updatedTask);
+
+            // 2. Update Shot
+            if (task.shotId && task.sceneId) {
+              await dataService.saveShot(task.sceneId, {
+                id: task.shotId,
+                status: 'done',
+                videoClip: videoUrl,
+              } as any);
+            }
+
+            // 3. Add to Chat History (Feature Request)
+            if (user && project?.id) {
+              await dataService.saveChatMessage({
+                id: crypto.randomUUID(),
+                userId: user.id,
+                projectId: project.id,
+                sceneId: task.sceneId,
+                shotId: task.shotId,
+                scope: 'shot',
+                role: 'assistant',
+                content: '视频生成成功！',
+                timestamp: new Date(),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                metadata: {
+                  type: 'video_result',
+                  videoUrl: videoUrl,
+                  taskId: task.id,
+                }
+              });
+              toast.success('视频生成成功！已添加到聊天记录');
+            }
+
+          } else if (remoteStatus === 'FAILED') {
+            const errorMsg = data.error_msg || 'Unknown error';
+            const updatedTask: SoraTask = {
+              ...task,
+              status: 'failed',
+              errorMessage: errorMsg,
+              updatedAt: new Date(),
+            };
+            setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
+            await dataService.saveSoraTask(updatedTask);
+            toast.error(`视频生成失败: ${errorMsg}`);
+          } else {
+            // Update progress if available
+            if (data.progress && data.progress !== task.progress) {
+              const updatedTask = { ...task, progress: data.progress };
+              setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
+            }
+          }
+        } catch (error) {
+          console.error('Error polling sora task:', error);
+        }
+      }
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
+  }, [soraTasks, project?.id, user]);
 
   const toggleTimeline = () => {
     if (timelineMode === 'collapsed') {
@@ -24,10 +157,26 @@ export default function Timeline() {
     // TODO: 实际播放逻辑
   };
 
-  // Calculate total duration from all clips
-  const videoTrack = project?.timeline.find((t) => t.type === 'video');
-  const totalDuration = videoTrack?.clips.reduce(
-    (max, clip) => Math.max(max, clip.startTime + clip.duration),
+  // Get all shots sorted by scene order and shot order
+  const allShots = project?.shots
+    .slice()
+    .sort((a, b) => (a.globalOrder || 0) - (b.globalOrder || 0)) || [];
+
+  // Calculate cumulative start times for each shot
+  const shotsWithTiming = allShots.map((shot, index) => {
+    const startTime = allShots
+      .slice(0, index)
+      .reduce((sum, s) => sum + (s.duration || 3), 0);
+    return {
+      shot,
+      startTime,
+      duration: shot.duration || 3,
+    };
+  });
+
+  // Calculate total duration from all shots
+  const totalDuration = shotsWithTiming.reduce(
+    (max, item) => Math.max(max, item.startTime + item.duration),
     0
   ) || 60;
 
@@ -43,6 +192,53 @@ export default function Timeline() {
     timeMarkers.push(i);
   }
 
+  // Helper to get task status for a shot
+  const getTaskForShot = (shotId: string) => soraTasks.get(shotId);
+
+  // Render status indicator
+  const renderStatusIndicator = (task: SoraTask | undefined) => {
+    if (!task) return null;
+
+    switch (task.status) {
+      case 'queued':
+        return (
+          <div className="absolute top-1 right-1 flex items-center gap-1 bg-yellow-500/20 dark:bg-yellow-500/30 text-yellow-600 dark:text-yellow-400 text-[9px] px-1.5 py-0.5 rounded">
+            <Loader2 size={10} className="animate-spin" />
+            <span>排队中</span>
+          </div>
+        );
+      case 'processing':
+        return (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 rounded">
+            <Loader2 size={16} className="animate-spin text-cine-accent mb-1" />
+            <span className="text-[10px] text-white font-bold">{task.progress}%</span>
+            {/* Progress bar */}
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/30">
+              <div
+                className="h-full bg-cine-accent transition-all duration-300"
+                style={{ width: `${task.progress}%` }}
+              />
+            </div>
+          </div>
+        );
+      case 'completed':
+        return (
+          <div className="absolute top-1 right-1">
+            <CheckCircle2 size={14} className="text-green-500" />
+          </div>
+        );
+      case 'failed':
+        return (
+          <div className="absolute top-1 right-1 flex items-center gap-1 bg-red-500/20 dark:bg-red-500/30 text-red-600 dark:text-red-400 text-[9px] px-1.5 py-0.5 rounded">
+            <AlertCircle size={10} />
+            <span>失败</span>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
   if (timelineMode === 'collapsed') {
     return (
       <div className="h-12 bg-light-panel dark:bg-cine-dark border-t border-light-border dark:border-cine-border flex items-center justify-between px-4">
@@ -56,7 +252,7 @@ export default function Timeline() {
         <div className="flex items-center gap-3">
           <button
             onClick={togglePlayPause}
-            className="p-1.5 rounded hover:bg-light-bg dark:bg-cine-panel transition-colors"
+            className="p-1.5 rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
           >
             {isPlaying ? (
               <Pause size={16} className="text-light-accent dark:text-cine-accent" />
@@ -75,7 +271,9 @@ export default function Timeline() {
   const height = timelineMode === 'default' ? 'h-56' : 'h-96';
 
   return (
-    <div className={`${height} bg-light-panel dark:bg-cine-dark border-t border-light-border dark:border-cine-border flex flex-col transition-all duration-300`}>
+    <div
+      className={`${height} bg-light-panel dark:bg-cine-dark border-t border-light-border dark:border-cine-border flex flex-col transition-all duration-300`}
+    >
       {/* Timeline Header */}
       <div className="h-14 flex items-center justify-between px-4 border-b border-light-border dark:border-cine-border bg-light-bg dark:bg-cine-black/30">
         <div className="flex items-center gap-4">
@@ -89,12 +287,18 @@ export default function Timeline() {
 
           {/* Playback Controls */}
           <div className="flex items-center gap-1 border-l border-light-border dark:border-cine-border pl-4">
-            <button className="p-1.5 rounded hover:bg-light-bg dark:bg-cine-panel transition-colors" title="回到开始">
-              <SkipBack size={14} className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white" />
+            <button
+              className="p-1.5 rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
+              title="回到开始"
+            >
+              <SkipBack
+                size={14}
+                className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white"
+              />
             </button>
             <button
               onClick={togglePlayPause}
-              className="p-1.5 rounded hover:bg-light-bg dark:bg-cine-panel transition-colors"
+              className="p-1.5 rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
               title={isPlaying ? '暂停' : '播放'}
             >
               {isPlaying ? (
@@ -103,8 +307,14 @@ export default function Timeline() {
                 <Play size={16} className="text-light-accent dark:text-cine-accent" fill="currentColor" />
               )}
             </button>
-            <button className="p-1.5 rounded hover:bg-light-bg dark:bg-cine-panel transition-colors" title="跳到结尾">
-              <SkipForward size={14} className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white" />
+            <button
+              className="p-1.5 rounded hover:bg-light-bg dark:hover:bg-cine-panel transition-colors"
+              title="跳到结尾"
+            >
+              <SkipForward
+                size={14}
+                className="text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white"
+              />
             </button>
             <span className="text-xs text-light-text-muted dark:text-cine-text-muted font-mono ml-2">
               {formatTime(currentTime)} / {formatTime(totalDuration)}
@@ -113,14 +323,48 @@ export default function Timeline() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Regenerate Button */}
+          <button
+            onClick={() => {
+              const currentShotId = useProjectStore.getState().selectedShotId;
+              if (!currentShotId) {
+                // Show toast if no shot selected?
+                return;
+              }
+              const project = useProjectStore.getState().project;
+              const shot = project?.shots.find(s => s.id === currentShotId);
+              if (!shot) return;
+
+              const scene = project?.scenes.find(s => s.id === shot.sceneId);
+              const sceneContext = scene?.description ? `\n场景环境: ${scene.description}` : '';
+              const fullPrompt = `镜头画面: ${shot.description || ''}${sceneContext}`;
+
+              useProjectStore.getState().setGenerationRequest({
+                prompt: fullPrompt,
+                model: 'jimeng',
+                jimengModel: 'jimeng-4.5',
+                jimengResolution: '2k'
+              });
+
+              useProjectStore.getState().setControlMode('pro');
+              if (useProjectStore.getState().rightSidebarCollapsed) {
+                useProjectStore.getState().toggleRightSidebar();
+              }
+            }}
+            className="flex items-center gap-1.5 text-xs bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white px-3 py-1.5 rounded transition-colors"
+          >
+            <RefreshCw size={14} />
+            <span>重新生成</span>
+          </button>
+
           {/* Preview Button */}
-          <button className="flex items-center gap-1.5 text-xs bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:text-white px-3 py-1.5 rounded transition-colors">
+          <button className="flex items-center gap-1.5 text-xs bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white px-3 py-1.5 rounded transition-colors">
             <Film size={14} />
             <span>预览</span>
           </button>
 
           {/* Export Button */}
-          <button className="flex items-center gap-1.5 text-xs bg-light-accent dark:bg-cine-accent text-light-text dark:text-black px-4 py-1.5 rounded font-bold hover:bg-light-accent-hover dark:bg-cine-accent-hover transition-colors">
+          <button className="flex items-center gap-1.5 text-xs bg-light-accent dark:bg-cine-accent text-white dark:text-black px-4 py-1.5 rounded font-bold hover:opacity-90 transition-colors">
             <Download size={14} />
             <span>导出视频</span>
           </button>
@@ -132,10 +376,14 @@ export default function Timeline() {
         {/* Track Labels */}
         <div className="w-20 bg-light-bg dark:bg-cine-black/30 border-r border-light-border dark:border-cine-border flex flex-col">
           <div className="flex-1 flex items-center justify-center border-b border-light-border dark:border-cine-border">
-            <span className="text-[10px] font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider">Video</span>
+            <span className="text-[10px] font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider">
+              Video
+            </span>
           </div>
           <div className="flex-1 flex items-center justify-center">
-            <span className="text-[10px] font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider">Audio</span>
+            <span className="text-[10px] font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider">
+              Audio
+            </span>
           </div>
         </div>
 
@@ -150,7 +398,7 @@ export default function Timeline() {
                   className="absolute top-0 bottom-0 flex flex-col items-start"
                   style={{ left: `${(time / totalDuration) * 100}%` }}
                 >
-                  <div className="h-2 w-px bg-cine-border"></div>
+                  <div className="h-2 w-px bg-light-border dark:bg-cine-border"></div>
                   <span className="text-[9px] text-light-text-muted dark:text-cine-text-muted font-mono mt-0.5">
                     {formatTime(time)}
                   </span>
@@ -168,37 +416,69 @@ export default function Timeline() {
 
             {/* Video Track */}
             <div className="h-24 bg-light-bg dark:bg-cine-panel border-b border-light-border dark:border-cine-border relative p-2">
-              {videoTrack?.clips.map((clip) => {
-                const shot = project?.shots.find((s) => s.id === clip.shotId);
+              {shotsWithTiming.map(({ shot, startTime, duration }) => {
+                const task = getTaskForShot(shot.id);
+                const isProcessing = task?.status === 'processing';
+                const hasVideo = !!shot.videoClip;
+
                 return (
                   <div
-                    key={clip.id}
-                    onClick={() => shot && selectShot(shot.id)}
-                    className="absolute h-20 bg-light-accent/10 dark:bg-cine-accent/10 border-2 border-light-accent/50 dark:border-cine-accent/50 rounded cursor-pointer hover:border-light-accent dark:hover:border-cine-accent transition-all group"
+                    key={shot.id}
+                    onClick={() => selectShot(shot.id)}
+                    className={`absolute h-20 rounded cursor-pointer transition-all group ${isProcessing
+                      ? 'border-2 border-dashed border-cine-accent/50 bg-cine-accent/5'
+                      : hasVideo
+                        ? 'bg-emerald-500/10 dark:bg-emerald-500/10 border-2 border-emerald-500/50 dark:border-emerald-500/50 hover:border-emerald-500 dark:hover:border-emerald-500'
+                        : 'bg-light-accent/10 dark:bg-cine-accent/10 border-2 border-light-accent/50 dark:border-cine-accent/50 hover:border-light-accent dark:hover:border-cine-accent'
+                      }`}
                     style={{
-                      left: `${(clip.startTime / totalDuration) * 100}%`,
-                      width: `${(clip.duration / totalDuration) * 100}%`,
+                      left: `${(startTime / totalDuration) * 100}%`,
+                      width: `${(duration / totalDuration) * 100}%`,
                       top: '8px',
+                      minWidth: '60px',
                     }}
                   >
-                    {/* Clip thumbnail (if available) */}
-                    {shot?.referenceImage && (
-                      <div className="absolute inset-0 rounded overflow-hidden opacity-40 group-hover:opacity-60 transition-opacity">
-                        <img
-                          src={shot.referenceImage}
-                          alt="Shot"
-                          className="w-full h-full object-cover"
+                    {/* Video preview (if available) */}
+                    {hasVideo && shot.videoClip && (
+                      <div className="absolute inset-0 rounded overflow-hidden">
+                        <video
+                          src={shot.videoClip}
+                          muted
+                          loop
+                          playsInline
+                          className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
+                          onMouseEnter={(e) => (e.target as HTMLVideoElement).play()}
+                          onMouseLeave={(e) => {
+                            const video = e.target as HTMLVideoElement;
+                            video.pause();
+                            video.currentTime = 0;
+                          }}
                         />
+                        {/* Video badge */}
+                        <div className="absolute top-1 left-1 flex items-center gap-1 bg-emerald-500/80 text-white text-[8px] px-1.5 py-0.5 rounded font-bold">
+                          <Film size={8} />
+                          <span>视频</span>
+                        </div>
                       </div>
                     )}
+
+                    {/* Clip thumbnail (if no video but has image) */}
+                    {!hasVideo && shot.referenceImage && (
+                      <div className="absolute inset-0 rounded overflow-hidden opacity-40 group-hover:opacity-60 transition-opacity">
+                        <img src={shot.referenceImage} alt="Shot" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+
+                    {/* Status indicator overlay */}
+                    {renderStatusIndicator(task)}
 
                     {/* Clip info */}
                     <div className="relative z-10 p-2 flex flex-col justify-between h-full">
                       <div className="text-[10px] font-bold text-light-text dark:text-white truncate">
-                        {shot?.id.split('_').pop() || 'Shot'}
+                        {shot.id.split('_').pop() || 'Shot'}
                       </div>
                       <div className="text-[9px] text-light-text-muted dark:text-cine-text-muted font-mono">
-                        {clip.duration.toFixed(1)}s
+                        {duration.toFixed(1)}s
                       </div>
                     </div>
 
@@ -210,22 +490,21 @@ export default function Timeline() {
               })}
 
               {/* Drop zone hint */}
-              {!videoTrack?.clips.length && (
+              {shotsWithTiming.length === 0 && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                    从画布拖拽镜头到此处
+                    暂无分镜，请先生成分镜脚本
                   </span>
                 </div>
               )}
             </div>
 
+
             {/* Audio Track */}
             <div className="h-24 bg-light-bg dark:bg-cine-panel relative p-2">
               {/* Empty state */}
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                  暂无音频轨道
-                </span>
+                <span className="text-xs text-light-text-muted dark:text-cine-text-muted">暂无音频轨道</span>
               </div>
             </div>
           </div>

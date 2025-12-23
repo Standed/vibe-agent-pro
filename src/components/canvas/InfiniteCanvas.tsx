@@ -177,9 +177,13 @@ export default function InfiniteCanvas() {
     // Find the shot to get its description
     const shot = project?.shots.find(s => s.id === shotId);
     if (shot) {
-      // 1. 设置生成请求
+      // 1. 设置生成请求，包含场景上下文
+      const scene = project?.scenes.find(s => s.id === shot.sceneId);
+      const sceneContext = scene?.description ? `\n场景环境: ${scene.description}` : '';
+      const fullPrompt = `镜头画面: ${shot.description || ''}${sceneContext}`;
+
       useProjectStore.getState().setGenerationRequest({
-        prompt: shot.description || '',
+        prompt: fullPrompt,
         model: 'jimeng',
         jimengModel: 'jimeng-4.5',
         jimengResolution: '2k'

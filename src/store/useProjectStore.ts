@@ -72,6 +72,7 @@ interface ProjectStore {
   addGridHistory: (sceneId: string, gridHistory: GridHistoryItem) => void;
   saveFavoriteSlices: (sceneId: string, slices: string[]) => void;
   renumberScenesAndShots: () => void;
+  batchUpdateScenesAndShots: (scenes: Scene[], shots: Shot[]) => void;
 
   // Shot Actions
   addShot: (shot: Shot) => void;
@@ -343,6 +344,17 @@ export const useProjectStore = create<ProjectStore>()(
         }
       });
       // 自动保存到 IndexedDB
+      get().debouncedSaveProject();
+    },
+
+    batchUpdateScenesAndShots: (scenes, shots) => {
+      set((state) => {
+        if (!state.project) return;
+        state.project.scenes = scenes;
+        state.project.shots = shots;
+        normalizeSceneOrder(state.project);
+        recalcShotOrders(state.project);
+      });
       get().debouncedSaveProject();
     },
 

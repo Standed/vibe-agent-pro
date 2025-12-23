@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Upload, Trash2, Sparkles, Loader2, ChevronDown, Wand2 } from 'lucide-react';
+import { X, Plus, Upload, Trash2, Sparkles, Loader2, ChevronDown, Wand2, CheckCircle2, AlertCircle, Video, Pencil } from 'lucide-react';
 import type { Character } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { toast } from 'sonner';
@@ -25,6 +25,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
   const [description, setDescription] = useState(initialCharacter?.description || '');
   const [appearance, setAppearance] = useState(initialCharacter?.appearance || '');
   const [referenceImages, setReferenceImages] = useState<string[]>(initialCharacter?.referenceImages || []);
+  const [soraReferenceVideoUrl, setSoraReferenceVideoUrl] = useState<string>(initialCharacter?.soraReferenceVideoUrl || '');
   const [selectedRefIndex, setSelectedRefIndex] = useState<number>(0);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [generationPrompt, setGenerationPrompt] = useState('');
@@ -32,8 +33,110 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
   const [genMode, setGenMode] = useState<'seedream' | 'gemini' | 'jimeng'>('jimeng');
   const [jimengModel, setJimengModel] = useState<JimengModel>('jimeng-4.5');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [mounted, setMounted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+
+  const [isSoraProcessing, setIsSoraProcessing] = useState(initialCharacter?.soraIdentity?.status === 'generating' || false);
+  const [soraStatus, setSoraStatus] = useState<'none' | 'generating' | 'registering' | 'registered' | 'failed'>(
+    initialCharacter?.soraIdentity?.status as any || 'none'
+  );
+  const [soraUsername, setSoraUsername] = useState(initialCharacter?.soraIdentity?.username || '');
+  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Polling for Sora Task (if generating)
+  useEffect(() => {
+    const taskId = initialCharacter?.soraIdentity?.taskId;
+    if ((soraStatus === 'generating' || soraStatus === 'registering') && taskId) {
+      startPolling(taskId);
+    }
+    return () => stopPolling();
+  }, []);
+
+  const stopPolling = () => {
+    if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
+  };
+
+  const startPolling = (taskId: string) => {
+    stopPolling();
+    pollingTimerRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/sora/character/status?taskId=${taskId}`);
+        const data = await res.json();
+
+        if (data.status === 'completed') {
+          setSoraStatus('registered'); // Optimistic
+          setIsSoraProcessing(false);
+          stopPolling();
+          if (data.videoUrl) setSoraReferenceVideoUrl(data.videoUrl);
+          if (data.username) setSoraUsername(data.username);
+          toast.success('Sora 角色注册流程完成！');
+        } else if (data.status === 'failed') {
+          setSoraStatus('failed');
+          setIsSoraProcessing(false);
+          stopPolling();
+          toast.error('Sora 任务失败');
+        }
+      } catch (e) { console.error(e); }
+    }, 5000);
+  };
+
+  const handleSoraRegister = async () => {
+    if (!name.trim()) return toast.error('请先填写角色名称');
+
+    setIsSoraProcessing(true);
+    setSoraStatus('generating'); // or registering
+
+    try {
+      // Mode: direct if video exists, else generate
+      const mode = soraReferenceVideoUrl ? 'register_direct' : 'generate_and_register';
+
+      if (mode === 'generate_and_register' && referenceImages.length === 0) {
+        setIsSoraProcessing(false);
+        return toast.error('生成视频需要至少 1 张参考图');
+      }
+
+      const res = await fetch('/api/sora/character/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          characterId: initialCharacter?.id || undefined,
+          character: {
+            id: initialCharacter?.id || `temp_${Date.now()}`,
+            name,
+            description,
+            appearance,
+            referenceImages: referenceImages.length ? referenceImages : [],
+            soraReferenceVideoUrl
+          },
+          projectId: initialCharacter?.projectId,
+          mode
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      if (mode === 'register_direct') {
+        setSoraStatus('registered');
+        setSoraUsername(data.character.soraIdentity.username);
+        setIsSoraProcessing(false);
+        toast.success(`注册成功: ${data.character.soraIdentity.username}`);
+      } else {
+        setSoraStatus('generating');
+        toast.success('已开始生成参考视频并自动注册...');
+        if (data.task?.id) startPolling(data.task.id);
+      }
+
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message);
+      setIsSoraProcessing(false);
+      setSoraStatus('failed');
+    }
+  };
+
 
   useEffect(() => {
     setMounted(true);
@@ -197,6 +300,38 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     }
   };
 
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('video/')) {
+      toast.error('请上传视频文件');
+      return;
+    }
+
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error('视频文件不能超过 100MB');
+      return;
+    }
+
+    setIsUploadingVideo(true);
+    const uploadingToast = toast.loading('正在上传 Sora 参考视频...');
+
+    try {
+      const folder = `projects/characters/${user?.id || 'anonymous'}/videos`;
+      const { url } = await storageService.uploadFile(file, folder, user?.id || 'anonymous');
+      setSoraReferenceVideoUrl(url);
+      toast.success('Sora 参考视频上传成功！');
+    } catch (error: any) {
+      console.error('Video upload failed:', error);
+      toast.error('视频上传失败', { description: error.message });
+    } finally {
+      setIsUploadingVideo(false);
+      toast.dismiss(uploadingToast);
+      if (videoInputRef.current) videoInputRef.current.value = '';
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) { toast.error('请输入角色名称'); return; }
@@ -209,18 +344,40 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
       finalImages = [primary, ...finalImages];
     }
 
+    // 构建 Sora 身份信息
+    // 关键点：初始化为 null (而非 undefined)，确保当条件不满足时，数据库中的字段会被清空
+    let finalSoraIdentity: Character['soraIdentity'] | null = null;
+
+    // 数据模型中的有效状态
+    const validStatuses = ['pending', 'generating', 'registered', 'failed'];
+
+    if (validStatuses.includes(soraStatus) && (soraUsername || soraReferenceVideoUrl)) {
+      finalSoraIdentity = {
+        username: soraUsername || '',
+        referenceVideoUrl: soraReferenceVideoUrl || '',
+        status: soraStatus as any,
+        // 仅在继续生成任务时继承 Task ID，如果是手动注册视频/ID 则不需要
+        // 如果状态已注册，Task ID 属于历史数据，无需保留
+        taskId: initialCharacter?.soraIdentity?.taskId
+      };
+    }
+
     const character: Character = {
       id: initialCharacter?.id || `character_${Date.now()}`,
       name: name.trim(),
       description: description.trim(),
       appearance: appearance.trim(),
       referenceImages: finalImages,
+      // 关键点：如果为空，发送 null 以清空数据库字段
+      soraReferenceVideoUrl: soraReferenceVideoUrl || null as any,
+      soraIdentity: finalSoraIdentity as any // 强制发送 null 以清除 JSONB 数据
     };
 
     onAdd(character);
     toast.success(mode === 'add' ? `角色 "${name}" 已添加！` : `角色 "${name}" 已更新！`);
     onClose();
   };
+
 
   if (!mounted) return null;
 
@@ -478,7 +635,234 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                   className="w-full h-20 px-3 py-2 text-xs seko-input resize-none font-mono opacity-80 focus:opacity-100 transition-opacity"
                 />
               </div>
+
+              {/* Sora Reference Video Upload */}
+              <div className="mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800">
+                <label className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2 flex items-center gap-2">
+                  <span>Sora 参考视频</span>
+                  <span className="text-xs font-normal text-zinc-400">(可选)</span>
+                </label>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+                  上传 3-10s 的角色动态视频，可跳过"图生视频"步骤，直接注册 Sora 角色 ID。
+                </p>
+
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/*"
+                  onChange={(e) => {
+                    handleVideoUpload(e);
+                    // Ensure status is reset so we can register this new video
+                    if (soraStatus === 'registered') {
+                      setSoraStatus('none');
+                      setSoraUsername('');
+                    }
+                  }}
+                  className="hidden"
+                />
+
+                {soraReferenceVideoUrl ? (
+                  <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
+                    <video
+                      src={soraReferenceVideoUrl}
+                      controls
+                      className="w-full h-full object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const urlToDelete = soraReferenceVideoUrl;
+                        // Clear UI state immediately
+                        setSoraReferenceVideoUrl('');
+                        setSoraStatus('none');
+                        setSoraUsername('');
+
+                        // Attempt to delete from R2
+                        if (urlToDelete) {
+                          try {
+                            await storageService.deleteFile(urlToDelete);
+                            toast.success('云端视频源文件已清理');
+                          } catch (e) {
+                            console.warn('Failed to delete file from R2:', e);
+                            // Don't block UI on cleanup failure
+                          }
+                        }
+                      }}
+                      className="absolute top-2 right-2 p-2 rounded-full bg-black/60 text-white hover:bg-red-500 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => videoInputRef.current?.click()}
+                    disabled={isUploadingVideo}
+                    className="w-full group relative overflow-hidden rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-700 hover:border-emerald-400 dark:hover:border-emerald-500 bg-zinc-50/50 dark:bg-white/5 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-all duration-300 p-6 flex flex-col items-center justify-center gap-2"
+                  >
+                    {isUploadingVideo ? (
+                      <Loader2 className="w-6 h-6 text-emerald-500 animate-spin" />
+                    ) : (
+                      <Upload className="w-6 h-6 text-zinc-400 group-hover:text-emerald-500 transition-colors" />
+                    )}
+                    <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                      {isUploadingVideo ? '上传中...' : '点击上传 Sora 视频'}
+                    </p>
+                    <p className="text-xs text-zinc-400">MP4, MOV (最大 100MB)</p>
+                  </button>
+                )}
+              </div>
             </div>
+
+
+            {/* Sora Identity Section */}
+            <div className="mt-6 pt-6 border-t border-dashed border-zinc-200 dark:border-white/10">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                    <Video className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-zinc-900 dark:text-white">Sora 角色一致性</h3>
+                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400">注册角色 ID 以确保视频生成的一致性</p>
+                  </div>
+                </div>
+                <div className={cn(
+                  "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
+                  soraStatus === 'registered'
+                    ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
+                    : soraStatus === 'generating'
+                      ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20"
+                      : "bg-zinc-50 dark:bg-white/5 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-white/10"
+                )}>
+                  {soraStatus === 'registered' ? 'Active' :
+                    soraStatus === 'generating' ? 'Processing' : 'Inactive'}
+                </div>
+              </div>
+
+              <div className="relative group overflow-hidden rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50/50 dark:bg-white/5 transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-white/5">
+                {/* Status Background Effect */}
+                <div className={cn(
+                  "absolute inset-0 opacity-0 transition-opacity duration-500",
+                  soraStatus === 'registered' ? "bg-gradient-to-br from-emerald-500/5 to-transparent opacity-100" :
+                    soraStatus === 'generating' ? "bg-gradient-to-br from-amber-500/5 to-transparent opacity-100" : ""
+                )} />
+
+                <div className="relative p-5">
+                  {soraStatus === 'registered' ? (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center border-4 border-white dark:border-white/5 shadow-sm">
+                          <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-0.5">Sora Identity Reference</p>
+                          <div className="flex items-center gap-2 group/edit relative w-fit">
+                            <input
+                              type="text"
+                              value={soraUsername}
+                              onChange={(e) => {
+                                setSoraUsername(e.target.value);
+                                if (e.target.value.trim() === '') {
+                                  setSoraStatus('none');
+                                  // Optionally clear video if they want a fresh start, but maybe keep it?
+                                  // User said: "If I delete Sora code... hope to have place to create Sora video".
+                                  // If video persists, they can't create new video unless they delete video too.
+                                  // Safe to just reset status.
+                                }
+                              }}
+                              className="px-3 py-1.5 rounded-md bg-white dark:bg-black/50 border-2 border-zinc-200 dark:border-white/10 text-sm font-mono font-bold text-black dark:text-white w-48 shadow-sm focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                            />
+                            <Pencil className="w-3 h-3 text-zinc-400 opacity-0 group-hover/edit:opacity-100 transition-opacity absolute -right-5 top-1/2 -translate-y-1/2 cursor-pointer" />
+                          </div>
+                        </div>
+                      </div>
+                      {soraReferenceVideoUrl && (
+                        <div className="mt-1 p-2 rounded-lg bg-black/5 dark:bg-black/20 border border-black/5 dark:border-white/5 flex items-center gap-3">
+                          <div className="h-8 w-12 rounded bg-black flex items-center justify-center overflow-hidden">
+                            <video src={soraReferenceVideoUrl} className="w-full h-full object-cover opacity-80" />
+                          </div>
+                          <span className="text-[10px] text-zinc-500 dark:text-zinc-400">参考视频已绑定</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex gap-4">
+                        <div className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-2",
+                          isSoraProcessing
+                            ? "border-amber-100 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10"
+                            : "border-indigo-100 dark:border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/10"
+                        )}>
+                          {isSoraProcessing ? (
+                            <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-5 h-5 text-indigo-500" />
+                          )}
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-medium text-zinc-900 dark:text-white mb-1">
+                            {isSoraProcessing ? "正在处理中..." : "建立角色一致性"}
+                          </h4>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                            {soraReferenceVideoUrl
+                              ? "使用当前上传的参考视频直接注册 Sora 身份 ID。"
+                              : "系统将使用参考图片生成 10s 标准动态视频，并自动注册角色 ID (消耗积分)。"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleSoraRegister}
+                        disabled={isSoraProcessing}
+                        className={cn(
+                          "w-full py-3 text-sm font-bold rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 relative overflow-hidden group",
+                          isSoraProcessing
+                            ? "bg-zinc-100 dark:bg-white/5 text-zinc-400 cursor-not-allowed"
+                            : "bg-black/90 text-white dark:bg-white/90 dark:text-black backdrop-blur-md shadow-xl shadow-black/10 dark:shadow-white/5 hover:scale-[1.02] active:scale-[0.98] ring-1 ring-white/10 dark:ring-black/5"
+                        )}
+                      >
+                        {/* Glossy Reflection Effect */}
+                        {!isSoraProcessing && (
+                          <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                        )}
+
+                        {isSoraProcessing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>处理中...</span>
+                          </>
+                        ) : (
+                          <>
+                            {soraReferenceVideoUrl ? '立即注册角色 ID' : '生成视频并注册'}
+                            <Wand2 className="w-4 h-4 opacity-80 group-hover:rotate-12 transition-transform duration-300" />
+                          </>
+                        )}
+                      </button>
+                      <div className="mt-3 flex items-center justify-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
+                        <span className="text-[10px] text-zinc-500 dark:text-zinc-400">已有 Sora ID?</span>
+                        <input
+                          type="text"
+                          placeholder="输入 @ch_..."
+                          className="bg-transparent border-b-2 border-zinc-400 dark:border-white/20 text-xs py-1 focus:outline-none focus:border-emerald-500 w-28 text-zinc-900 dark:text-white placeholder-zinc-500 font-mono text-center font-medium"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val.length > 2) {
+                              setSoraUsername(val);
+                              setSoraStatus('registered');
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+
           </form>
 
           {/* Footer */}
