@@ -424,7 +424,10 @@ function generateSystemInstruction(): string {
 7. **Sora 视频生成规则（Agent 模式）**
    - 使用 batchGenerateProjectVideosSora 为整个项目批量生成视频
    - 使用 generateSceneVideo 为单个场景生成视频
-   - 用户指定分镜时，使用 generateShotsVideo 并传入 sceneId + shotIds
+   - 用户指定分镜时，使用 generateShotsVideo
+     - 场景内序号：传 sceneId + shotIndexes
+     - 全局序号：传 globalShotIndexes（基于 globalOrder），若跨场景需拆分
+     - 已有分镜ID：传 shotIds
    - **智能分镜合并**：Sora 会自动将连续的分镜合并为较长的视频片段（5-15s）
      - 连续分镜的剧情/动作/情绪连贯时，自动合并生成
      - 场景切换、时间跳跃时，分开生成独立视频
