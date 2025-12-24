@@ -211,6 +211,54 @@ export class AgentToolExecutor {
   }
 
   /**
+   * 使用 Sora 生成指定分镜视频 (Server Action via API)
+   */
+  private async generateShotsVideo(sceneId: string, shotIds: string[]): Promise<ToolResult> {
+    if (!this.project) return { tool: 'generateShotsVideo', result: null, success: false, error: '项目不存在' };
+    if (!Array.isArray(shotIds) || shotIds.length === 0) {
+      return { tool: 'generateShotsVideo', result: null, success: false, error: '缺少分镜ID' };
+    }
+
+    try {
+      const response = await fetch('/api/agent/tools/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tool: 'generateShotsVideo',
+          args: { sceneId, shotIds },
+          project: this.project,
+          userId: this.userId
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success || (data.result && data.result.success === false)) {
+        const errorMsg = data.error || (data.result && data.result.message) || 'Server execution failed';
+        throw new Error(errorMsg);
+      }
+
+      await this.backfillSoraTasks({
+        ...data.result,
+        sceneId,
+        shotIds
+      });
+
+      return {
+        tool: 'generateShotsVideo',
+        result: data.result,
+        success: true
+      };
+    } catch (e: any) {
+      return {
+        tool: 'generateShotsVideo',
+        result: null,
+        success: false,
+        error: `Sora 分镜生成失败: ${e.message}`
+      };
+    }
+  }
+
+  /**
    * 批量为项目生成 Sora 视频 (Server Action via API)
    */
   private async batchGenerateProjectVideosSora(force: boolean = false): Promise<ToolResult> {
@@ -308,6 +356,12 @@ export class AgentToolExecutor {
         case 'generateSceneVideo':
           return await this.generateSceneVideo(
             toolCall.arguments.sceneId
+          );
+
+        case 'generateShotsVideo':
+          return await this.generateShotsVideo(
+            toolCall.arguments.sceneId,
+            toolCall.arguments.shotIds
           );
 
         case 'batchGenerateProjectVideosSora':
