@@ -146,7 +146,7 @@ export interface Character {
   soraIdentity?: {
     username: string;          // e.g., "@fmraejvq"
     referenceVideoUrl: string; // 10s 参考视频 URL
-    status: 'pending' | 'generating' | 'registered' | 'failed';
+    status: 'pending' | 'generating' | 'registering' | 'registered' | 'failed';
     taskId?: string;           // 生成参考视频的任务 ID
   };
   // 角色归属
@@ -446,9 +446,11 @@ export interface SoraTask {
   projectId: string;
   sceneId?: string;
   shotId?: string;
+  shotIds?: string[];
+  shotRanges?: Array<{ shotId: string; start: number; end: number }>;
   characterId?: string; // 关联的角色 ID
   type?: 'shot_generation' | 'character_reference'; // 任务类型
-  status: 'queued' | 'processing' | 'completed' | 'failed';
+  status: 'queued' | 'processing' | 'generating' | 'completed' | 'failed';
   progress: number;
   model: string;
   prompt: string;

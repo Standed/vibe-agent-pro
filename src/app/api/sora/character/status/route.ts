@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KaponaiService } from '@/services/KaponaiService';
+import { uploadBufferToR2 } from '@/lib/cloudflare-r2';
 import { characterConsistencyService } from '@/services/CharacterConsistencyService';
 import { SoraTask, Character } from '@/types/project';
 
@@ -9,6 +10,15 @@ import { SoraTask, Character } from '@/types/project';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+const normalizeSoraStatus = (status?: string) => {
+    if (!status) return 'processing';
+    if (status === 'running' || status === 'in_progress' || status === 'generating') return 'processing';
+    if (status === 'queued' || status === 'processing' || status === 'completed' || status === 'failed') {
+        return status;
+    }
+    return status;
+};
 
 export async function GET(req: NextRequest) {
     try {
@@ -32,118 +42,129 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Task not found' }, { status: 404 });
         }
 
-        const task = taskData as SoraTask;
+        const task = taskData as any;
 
-        // If already completed, return info (maybe populate result url if missing in response but present in DB)
-        if (task.status === 'completed' || task.status === 'failed') {
-            return NextResponse.json({
-                status: task.status,
-                progress: 100,
-                videoUrl: task.r2Url || task.kaponaiUrl
-            });
+        const kaponaiService = new KaponaiService();
+        const isFinalState = task.status === 'completed' || task.status === 'failed';
+        let kaponaiStatus: any = null;
+
+        if (!isFinalState) {
+            kaponaiStatus = await kaponaiService.getVideoStatus(taskId);
         }
 
-        // 2. Check Status from Kaponai
-        const kaponaiService = new KaponaiService();
-        const kaponaiStatus = await kaponaiService.getVideoStatus(taskId);
+        let finalUsername: string | undefined = undefined;
+        let finalVideoUrl = task.r2_url || task.kaponai_url;
 
         // 3. Update DB if changed
-        if (kaponaiStatus.status !== task.status || kaponaiStatus.progress !== task.progress) {
+        const normalizedStatus = normalizeSoraStatus(kaponaiStatus?.status);
+        if (kaponaiStatus && (normalizedStatus !== task.status || kaponaiStatus.progress !== task.progress)) {
             const updates: Partial<SoraTask> = {
-                status: kaponaiStatus.status as any,
+                status: normalizedStatus as any,
                 progress: kaponaiStatus.progress,
-                updatedAt: new Date() // Type issue possible, but Supabase handles string ISO
+                updated_at: new Date().toISOString() as any
             };
 
-            if (kaponaiStatus.video_url) {
-                updates.kaponaiUrl = kaponaiStatus.video_url;
-            }
-            if (kaponaiStatus.error) {
-                updates.errorMessage = JSON.stringify(kaponaiStatus.error);
-            }
+            if (kaponaiStatus.video_url) updates.kaponai_url = kaponaiStatus.video_url as any;
 
             await supabase.from('sora_tasks').update(updates).eq('id', taskId);
+            if (!finalVideoUrl && kaponaiStatus.video_url) {
+                finalVideoUrl = kaponaiStatus.video_url;
+            }
+        }
 
-            // 4. AUTO-REGISTER LOGIC
-            // If task just completed and it is a character_reference task
-            if (kaponaiStatus.status === 'completed' && task.type === 'character_reference' && task.characterId && kaponaiStatus.video_url) {
+        const resolvedStatus = normalizedStatus || task.status;
+        const resolvedProgress = kaponaiStatus?.progress ?? task.progress;
+        const normalizedProgress = resolvedStatus === 'completed' ? 100 : resolvedProgress;
+
+        if (resolvedStatus === 'completed' && task.character_id) {
+            const { data: charData } = await supabase.from('characters').select('metadata').eq('id', task.character_id).single();
+            const existingUsername = charData?.metadata?.soraIdentity?.username?.trim();
+            if (existingUsername) {
+                finalUsername = existingUsername;
+            } else if (task.type === 'character_reference') {
                 try {
-                    // Fetch character to ensure we have latest data
-                    const { data: charData } = await supabase.from('characters').select('*').eq('id', task.characterId).single();
-                    if (charData) {
-                        const character = charData as Character; // Cast might need mapping if snake_case
-                        // Mapping snake_case to camelCase manually if needed, or relying on our types matching if Supabase returns typed
-                        // Note: Supabase JS returns data matching the table columns (snake_case) usually.
-                        // But our project type `Character` is camelCase.
-                        // We need to construct a robust object.
+                    if (!finalVideoUrl) {
+                        const latestStatus = await kaponaiService.getVideoStatus(taskId);
+                        if (latestStatus.video_url) {
+                            finalVideoUrl = latestStatus.video_url;
+                            await supabase.from('sora_tasks').update({
+                                kaponai_url: latestStatus.video_url,
+                                updated_at: new Date().toISOString()
+                            }).eq('id', taskId);
+                        }
+                    }
 
-                        const mappedChar: Character = {
-                            id: charData.id,
-                            name: charData.name,
-                            description: charData.description,
-                            appearance: charData.appearance,
-                            referenceImages: charData.reference_images,
-                            soraReferenceVideoUrl: charData.sora_reference_video_url, // Might be empty
-                            soraIdentity: charData.metadata?.soraIdentity, // important
-                            userId: charData.user_id,
-                            projectId: charData.project_id
-                        };
+                    if (finalVideoUrl && !task.r2_url) {
+                        const vidRes = await fetch(finalVideoUrl);
+                        if (vidRes.ok) {
+                            const buffer = Buffer.from(await vidRes.arrayBuffer());
+                            const filename = `sora_ref_${task.character_id}_${Date.now()}.mp4`;
+                            const key = `${task.user_id}/characters/${task.character_id}/${filename}`;
+                            const r2Url = await uploadBufferToR2({
+                                buffer,
+                                key,
+                                contentType: 'video/mp4'
+                            });
+                            finalVideoUrl = r2Url;
+                            await supabase.from('sora_tasks').update({
+                                r2_url: r2Url,
+                                updated_at: new Date().toISOString()
+                            }).eq('id', taskId);
+                        }
+                    }
 
-                        // Call service to register
-                        // Note: The service uses `dataService` (client-side fetch) which might fail on server?
-                        // CharacterConsistencyService imports `dataService`. `dataService` uses `authenticatedFetch` -> `window.fetch`.
-                        // `window` is not available in Next.js API route. 
-                        // CRITICAL: We cannot use `CharacterConsistencyService` logic AS IS if it relies on client-side specific auth/fetch.
-                        // We must verify `CharacterConsistencyService`.
-
-                        // Re-implement registration logic here directly to avoid client-side dep issues.
-                        // (Or refactor Service to be isomorphic)
-
-                        console.log('[AutoRegister] Triggering registration for', mappedChar.name);
-                        const regKey = process.env.KAPONAI_API_KEY;
-                        // Use KaponaiService directly
+                    if (finalVideoUrl) {
+                        console.log('[AutoRegister] Triggering registration for task', taskId);
                         const regResult = await kaponaiService.createCharacter({
-                            url: kaponaiStatus.video_url
+                            url: finalVideoUrl,
+                            timestamps: '1,3'
                         });
 
                         if (regResult.username) {
-                            const updatedIdentity = {
-                                username: regResult.username,
-                                referenceVideoUrl: kaponaiStatus.video_url,
-                                status: 'registered'
-                            };
-
+                            finalUsername = regResult.username;
                             await supabase.from('characters').update({
                                 metadata: {
-                                    ...charData.metadata,
-                                    soraIdentity: updatedIdentity
-                                },
-                                // Also update the direct field if we want
-                                // sora_reference_video_url: kaponaiStatus.video_url 
-                            }).eq('id', task.characterId);
-
-                            console.log('[AutoRegister] Success:', regResult.username);
+                                    ...charData?.metadata,
+                                    soraIdentity: {
+                                        username: regResult.username,
+                                        referenceVideoUrl: finalVideoUrl,
+                                        status: 'registered',
+                                        taskId: taskId
+                                    },
+                                    soraReferenceVideoUrl: finalVideoUrl
+                                }
+                            }).eq('id', task.character_id);
                         }
                     }
                 } catch (err) {
                     console.error('[AutoRegister] Failed:', err);
+                    if (task.character_id && finalVideoUrl) {
+                        await supabase.from('characters').update({
+                            metadata: {
+                                ...charData?.metadata,
+                                soraIdentity: {
+                                    username: '',
+                                    referenceVideoUrl: finalVideoUrl,
+                                    status: 'failed',
+                                    taskId: taskId
+                                },
+                                soraReferenceVideoUrl: finalVideoUrl
+                            }
+                        }).eq('id', task.character_id);
+                    }
                 }
             }
         }
 
-        let finalUsername = undefined;
-        // If completed, try to get the username from the DB again to pass it back to frontend
-        if (kaponaiStatus.status === 'completed' && task.characterId) {
-            const { data: latestChar } = await supabase.from('characters').select('metadata').eq('id', task.characterId).single();
-            if (latestChar?.metadata?.soraIdentity?.username) {
-                finalUsername = latestChar.metadata.soraIdentity.username;
-            }
-        }
+        const responseStatus =
+            resolvedStatus === 'completed' && !finalUsername && task.type === 'character_reference'
+                ? 'registering'
+                : resolvedStatus;
 
         return NextResponse.json({
-            status: kaponaiStatus.status,
-            progress: kaponaiStatus.progress,
-            videoUrl: kaponaiStatus.video_url,
+            status: responseStatus,
+            progress: normalizedProgress,
+            videoUrl: finalVideoUrl,
             username: finalUsername
         });
     } catch (error: any) {

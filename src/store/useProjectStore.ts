@@ -83,7 +83,7 @@ interface ProjectStore {
   addGenerationHistory: (shotId: string, historyItem: GenerationHistoryItem) => void;
 
   // Character Actions
-  addCharacter: (character: Character) => void;
+  addCharacter: (character: Character, options?: { keepOpen?: boolean }) => void;
   updateCharacter: (id: string, updates: Partial<Character>) => void;
   deleteCharacter: (id: string) => void;
 
@@ -454,7 +454,7 @@ export const useProjectStore = create<ProjectStore>()(
     },
 
     // Character Actions
-    addCharacter: (character) => {
+    addCharacter: (character, _options) => {
       set((state) => {
         const project = state.project;
         if (!project) return;

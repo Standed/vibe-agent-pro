@@ -128,6 +128,43 @@ export class AgentToolExecutor {
     this.userId = userId;
   }
 
+  private async backfillSoraTasks(result: any): Promise<void> {
+    if (!this.project?.id || !this.userId || !result) return;
+
+    const tasks: Array<{ id: string; sceneId?: string; type?: 'shot_generation' | 'character_reference' }> = [];
+
+    if (Array.isArray(result.taskIds)) {
+      result.taskIds.forEach((id: string) => {
+        if (id) tasks.push({ id, sceneId: result.sceneId, type: 'shot_generation' });
+      });
+    }
+
+    if (Array.isArray(result.details)) {
+      result.details.forEach((item: any) => {
+        if (!Array.isArray(item?.tasks)) return;
+        item.tasks.forEach((id: string) => {
+          if (id) tasks.push({ id, sceneId: item.sceneId, type: 'shot_generation' });
+        });
+      });
+    }
+
+    if (tasks.length === 0) return;
+
+    try {
+      await fetch('/api/sora/tasks/backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: this.project.id,
+          userId: this.userId,
+          tasks,
+        }),
+      });
+    } catch (error) {
+      console.warn('[AgentTools] Failed to backfill sora tasks:', error);
+    }
+  }
+
   /**
    * 使用 Sora 此生场景视频 (Server Action via API)
    */
@@ -152,6 +189,11 @@ export class AgentToolExecutor {
         const errorMsg = data.error || (data.result && data.result.message) || 'Server execution failed';
         throw new Error(errorMsg);
       }
+
+      await this.backfillSoraTasks({
+        ...data.result,
+        sceneId,
+      });
 
       return {
         tool: 'generateSceneVideo',
@@ -192,6 +234,8 @@ export class AgentToolExecutor {
         const errorMsg = data.error || (data.result && data.result.message) || 'Server execution failed';
         throw new Error(errorMsg);
       }
+
+      await this.backfillSoraTasks(data.result);
 
       return {
         tool: 'batchGenerateProjectVideosSora',

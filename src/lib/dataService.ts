@@ -18,6 +18,8 @@ import { AspectRatio } from '@/types/project';
 import { getCurrentUser } from './supabase/auth';
 import { authenticatedFetch } from './api-client';
 import { supabase } from './supabase/client';
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from './supabase/database.types';
 
 interface DataBackend {
   saveProject(project: Project): Promise<void>;
@@ -66,6 +68,7 @@ interface DataBackend {
   deleteSeries(id: string): Promise<void>;
   // Global Characters (asset library)
   getGlobalCharacters(): Promise<Character[]>;
+  getCharacterById(id: string): Promise<Character | undefined>;
 }
 
 const DEFAULT_SETTINGS: ProjectSettings = {
@@ -85,6 +88,18 @@ class SupabaseBackend implements DataBackend {
 
   constructor(userId: string) {
     this.userId = userId;
+  }
+
+  private getServerSupabase() {
+    if (typeof window !== 'undefined') return null;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) {
+      throw new Error('Missing Supabase environment variables for server client');
+    }
+    return createClient<Database>(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
   }
 
   /**
@@ -281,7 +296,8 @@ class SupabaseBackend implements DataBackend {
             appearance: character.appearance,
             reference_images: character.referenceImages,
             metadata: {
-              soraIdentity: character.soraIdentity
+              soraIdentity: character.soraIdentity,
+              soraReferenceVideoUrl: character.soraReferenceVideoUrl || null
             },
             user_id: this.userId, // 强制绑定用户
           })),
@@ -403,6 +419,7 @@ class SupabaseBackend implements DataBackend {
           location: s.metadata?.location || '',
           position: s.metadata?.position || { x: 0, y: 0 },
           status: s.metadata?.status || 'draft',
+          soraGeneration: s.metadata?.soraGeneration || undefined,
           gridHistory: s.grid_history || [],
           savedGridSlices: s.saved_grid_slices || [],
         })),
@@ -432,6 +449,7 @@ class SupabaseBackend implements DataBackend {
           description: c.description || '',
           appearance: c.appearance || '',
           referenceImages: c.reference_images || [],
+          soraReferenceVideoUrl: c.metadata?.soraReferenceVideoUrl || undefined,
           soraIdentity: c.metadata?.soraIdentity || undefined,
         })),
         audioAssets: (audioAssets || []).map((a: any) => ({
@@ -510,6 +528,7 @@ class SupabaseBackend implements DataBackend {
           location: scene.location,
           position: scene.position,
           status: scene.status,
+          soraGeneration: scene.soraGeneration,
         },
       },
     });
@@ -568,7 +587,8 @@ class SupabaseBackend implements DataBackend {
       appearance: character.appearance,
       reference_images: character.referenceImages,
       metadata: {
-        soraIdentity: character.soraIdentity
+        soraIdentity: character.soraIdentity,
+        soraReferenceVideoUrl: character.soraReferenceVideoUrl || null
       },
       user_id: this.userId, // 强制绑定用户
     };
@@ -741,7 +761,10 @@ class SupabaseBackend implements DataBackend {
   }
 
   async saveSoraTask(task: SoraTask): Promise<void> {
-    const { error } = await (supabase as any)
+    const serverClient = this.getServerSupabase();
+    const client = serverClient || (supabase as any);
+    const normalizedStatus = task.status === 'generating' ? 'processing' : task.status;
+    const { error } = await client
       .from('sora_tasks')
       .upsert({
         id: task.id,
@@ -749,7 +772,11 @@ class SupabaseBackend implements DataBackend {
         project_id: task.projectId,
         scene_id: task.sceneId,
         shot_id: task.shotId,
-        status: task.status,
+        shot_ids: task.shotIds || null,
+        shot_ranges: task.shotRanges || null,
+        character_id: task.characterId,
+        type: task.type,
+        status: normalizedStatus,
         progress: task.progress,
         model: task.model,
         prompt: task.prompt,
@@ -769,7 +796,9 @@ class SupabaseBackend implements DataBackend {
   }
 
   async getSoraTasks(projectId: string): Promise<SoraTask[]> {
-    const { data, error } = await (supabase as any)
+    const serverClient = this.getServerSupabase();
+    const client = serverClient || (supabase as any);
+    const { data, error } = await client
       .from('sora_tasks')
       .select('*')
       .eq('project_id', projectId)
@@ -786,6 +815,10 @@ class SupabaseBackend implements DataBackend {
       projectId: row.project_id,
       sceneId: row.scene_id,
       shotId: row.shot_id,
+      shotIds: row.shot_ids || undefined,
+      shotRanges: row.shot_ranges || undefined,
+      characterId: row.character_id,
+      type: row.type,
       status: row.status,
       progress: row.progress,
       model: row.model,
@@ -825,6 +858,10 @@ class SupabaseBackend implements DataBackend {
               projectId: row.project_id,
               sceneId: row.scene_id,
               shotId: row.shot_id,
+              shotIds: row.shot_ids || undefined,
+              shotRanges: row.shot_ranges || undefined,
+              characterId: row.character_id,
+              type: row.type,
               status: row.status,
               progress: row.progress,
               model: row.model,
@@ -949,8 +986,31 @@ class SupabaseBackend implements DataBackend {
       description: c.description || '',
       appearance: c.appearance || '',
       referenceImages: c.reference_images || [],
+      soraReferenceVideoUrl: c.metadata?.soraReferenceVideoUrl || undefined,
       soraIdentity: c.metadata?.soraIdentity || undefined,
     }));
+  }
+
+  async getCharacterById(id: string): Promise<Character | undefined> {
+    const row = await this.callSupabaseAPI({
+      table: 'characters',
+      operation: 'select',
+      filters: { eq: { id, user_id: this.userId } },
+      single: true,
+    });
+    if (!row) return undefined;
+    const c = Array.isArray(row) ? row[0] : row;
+    return {
+      id: c.id,
+      userId: c.user_id,
+      projectId: c.project_id || null,
+      name: c.name,
+      description: c.description || '',
+      appearance: c.appearance || '',
+      referenceImages: c.reference_images || [],
+      soraReferenceVideoUrl: c.metadata?.soraReferenceVideoUrl || undefined,
+      soraIdentity: c.metadata?.soraIdentity || undefined,
+    };
   }
 }
 
@@ -1126,6 +1186,11 @@ export class UnifiedDataService {
   async getGlobalCharacters(): Promise<Character[]> {
     await this.ensureInitialized();
     return this.backend!.getGlobalCharacters();
+  }
+
+  async getCharacterById(id: string): Promise<Character | undefined> {
+    await this.ensureInitialized();
+    return this.backend!.getCharacterById(id);
   }
 
 

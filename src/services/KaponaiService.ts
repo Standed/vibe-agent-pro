@@ -43,7 +43,7 @@ export class KaponaiService {
                         console.warn(`[Kaponai] 创建角色尝试 ${attempt} 失败 (状态码: ${response.status})，准备重试...`);
                         lastError = new Error(`Kaponai Create Character Error: ${response.status} ${error}`);
                         if (attempt < 3) {
-                            await new Promise(r => setTimeout(r, 5000 * attempt)); // 指数退避
+                            await new Promise(r => setTimeout(r, 2000 * attempt)); // Reduced backoff
                             continue;
                         }
                     }
@@ -55,7 +55,7 @@ export class KaponaiService {
                 lastError = error;
                 // 网络层面的错误也值得重试
                 if (attempt < 3 && (error.code === 'ECONNRESET' || error.message.includes('fetch failed'))) {
-                    await new Promise(r => setTimeout(r, 5000 * attempt));
+                    await new Promise(r => setTimeout(r, 2000 * attempt));
                     continue;
                 }
                 throw error;
@@ -70,7 +70,7 @@ export class KaponaiService {
     async createVideo(params: KaponaiVideoParams): Promise<KaponaiResponse<any>> {
         const url = `${this.baseUrl}/v1/videos`;
 
-        // 如果包含本地文件路劲作为 input_reference，使用 FormData
+        // 如果包含本地文件路径作为 input_reference，使用 FormData
         if (typeof params.input_reference === 'string' && fs.existsSync(params.input_reference)) {
             const formData = new FormData();
             formData.append('model', params.model);
@@ -152,7 +152,7 @@ export class KaponaiService {
             } catch (error: any) {
                 console.warn(`[Kaponai] 查询状态尝试 ${attempt} 失败: ${error.message}`);
                 lastError = error;
-                if (attempt < 3) await new Promise(r => setTimeout(r, 2000 * attempt));
+                if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * attempt));
             }
         }
         throw lastError;

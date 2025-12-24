@@ -359,6 +359,9 @@ export interface Database {
           project_id: string
           scene_id: string | null
           shot_id: string | null
+          shot_ids: string[] | null
+          shot_ranges: Json | null
+          character_id: string | null
           status: 'queued' | 'processing' | 'completed' | 'failed'
           progress: number
           model: string
@@ -378,6 +381,9 @@ export interface Database {
           project_id: string
           scene_id?: string | null
           shot_id?: string | null
+          shot_ids?: string[] | null
+          shot_ranges?: Json | null
+          character_id?: string | null
           status?: 'queued' | 'processing' | 'completed' | 'failed'
           progress?: number
           model?: string
@@ -397,6 +403,9 @@ export interface Database {
           project_id?: string
           scene_id?: string | null
           shot_id?: string | null
+          shot_ids?: string[] | null
+          shot_ranges?: Json | null
+          character_id?: string | null
           status?: 'queued' | 'processing' | 'completed' | 'failed'
           progress?: number
           model?: string
