@@ -7,6 +7,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/auth-middleware';
 
+export const maxDuration = 60;
+export const runtime = 'nodejs';
+
 export async function POST(request: NextRequest) {
     // 验证用户身份
     const authResult = await authenticateRequest(request);

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { StoryboardService } from '@/services/StoryboardService';
 
+export const maxDuration = 120;
+
 // Force dynamic to ensure environment variables are loaded
 export const dynamic = 'force-dynamic';
 

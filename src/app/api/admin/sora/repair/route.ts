@@ -4,6 +4,9 @@ import { createClient } from '@supabase/supabase-js';
 import { KaponaiService } from '@/services/KaponaiService';
 import { uploadBufferToR2 } from '@/lib/cloudflare-r2';
 
+export const maxDuration = 120;
+export const runtime = 'nodejs';
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -28,9 +31,9 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const limit = Number(body?.limit) || 50;
-    const safeLimit = Math.min(Math.max(limit, 1), 100);
-    const concurrency = Math.min(Math.max(Number(body?.concurrency) || 4, 1), 10);
+    const limit = Number(body?.limit) || 20;
+    const safeLimit = Math.min(Math.max(limit, 1), 60);
+    const concurrency = Math.min(Math.max(Number(body?.concurrency) || 3, 1), 6);
     const typeFilter = body?.type || 'all';
     const allowedTypes = new Set(['character_reference', 'shot_generation', 'all']);
     const normalizedType = allowedTypes.has(typeFilter) ? typeFilter : 'all';
@@ -57,6 +60,14 @@ export async function POST(req: Request) {
 
     const kaponaiService = new KaponaiService();
     const taskList = tasks || [];
+    if (taskList.length === 0) {
+      return NextResponse.json({ success: true, processed: 0, details: [] });
+    }
+    try {
+      await kaponaiService.assertReachable();
+    } catch (error: any) {
+      return NextResponse.json({ error: error.message || 'Kaponai unreachable' }, { status: 503 });
+    }
 
     const runWithConcurrency = async <T, R>(
       items: T[],

@@ -7,6 +7,8 @@ import CRC32 from 'crc-32';
 import sizeOf from 'image-size';
 import * as querystring from 'querystring';
 
+export const maxDuration = 60;
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 

@@ -11,6 +11,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // Allow 1 minute timeout
+export const runtime = 'nodejs';
 
 const normalizeStatus = (status?: string) => {
     if (!status) return 'processing';
@@ -31,13 +32,15 @@ export async function GET(req: Request) {
     try {
         console.log('[Cron] Starting Sora status batch poll...');
 
+        const batchLimit = Math.min(Math.max(Number(process.env.SORA_CRON_BATCH_SIZE) || 10, 1), 50);
+
         // 1. Fetch all 'queued' or 'generating' or 'processing' tasks
         const { data: tasks, error: dbError } = await supabase
             .from('sora_tasks')
             .select('*')
             .in('status', ['queued', 'generating', 'processing'])
             .order('created_at', { ascending: true })
-            .limit(50); // Limit batch size
+            .limit(batchLimit); // Limit batch size
 
         if (dbError) throw dbError;
         if (!tasks || tasks.length === 0) {
@@ -46,6 +49,11 @@ export async function GET(req: Request) {
 
         console.log(`[Cron] Found ${tasks.length} pending tasks.`);
         const kaponaiService = new KaponaiService();
+        try {
+            await kaponaiService.assertReachable();
+        } catch (error: any) {
+            return NextResponse.json({ error: error.message || 'Kaponai unreachable' }, { status: 503 });
+        }
         const results = [];
         const touchedScenes = new Set<string>();
 

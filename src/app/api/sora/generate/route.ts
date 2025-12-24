@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { RunningHubService } from '@/services/RunningHubService';
 import { SoraParams } from '@/types/runninghub';
 
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
     try {
         const { prompt, params } = await req.json();

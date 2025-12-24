@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
 import type { Database } from '@/lib/supabase/database.types';
 
+export const maxDuration = 60;
+
 // 延迟创建 Supabase 客户端，避免构建时报错
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

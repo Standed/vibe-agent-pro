@@ -19,6 +19,19 @@ export class KaponaiService {
         this.baseUrl = (baseUrl || process.env.KAPONAI_BASE_URL || 'https://models.kapon.cloud').replace(/\/$/, '');
     }
 
+    async assertReachable(timeoutMs = 3000): Promise<void> {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            await fetch(this.baseUrl, { method: 'HEAD', signal: controller.signal });
+        } catch (error: any) {
+            const reason = error?.name === 'AbortError' ? 'timeout' : (error?.message || 'unknown error');
+            throw new Error(`Kaponai unreachable: ${reason}`);
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
     /**
      * 创建 Sora 角色
      * 可以基于现有视频 URL 或任务 ID

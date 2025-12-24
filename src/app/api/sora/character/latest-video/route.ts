@@ -4,6 +4,9 @@ import { authenticateRequest } from '@/lib/auth-middleware';
 import { KaponaiService } from '@/services/KaponaiService';
 import { uploadBufferToR2 } from '@/lib/cloudflare-r2';
 
+export const maxDuration = 60;
+export const runtime = 'nodejs';
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -76,6 +79,7 @@ export async function GET(req: NextRequest) {
 
         if (videoUrl) {
           const kaponaiService = new KaponaiService();
+          await kaponaiService.assertReachable();
           const regResult = await kaponaiService.createCharacter({ url: videoUrl, timestamps: '1,3' });
           if (regResult.username) {
             existingUsername = regResult.username;

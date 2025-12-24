@@ -3,6 +3,8 @@ import { ProxyAgent, Agent } from 'undici';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
+export const maxDuration = 60;
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 

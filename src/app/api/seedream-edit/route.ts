@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
+export const maxDuration = 60;
+export const runtime = 'nodejs';
+
 export async function POST(request: NextRequest) {
   // 1. 验证用户身份
   const authResult = await authenticateRequest(request);
