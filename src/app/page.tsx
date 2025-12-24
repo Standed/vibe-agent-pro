@@ -252,7 +252,7 @@ export default function Home() {
         {!currentSeriesId && (
           <section className="mb-12 text-center">
             <h2 className="text-4xl md:text-5xl font-bold text-light-text dark:text-white mb-6">
-              What's your story today?
+              What&apos;s your story today?
             </h2>
             <div className="max-w-3xl mx-auto relative">
               <form onSubmit={handleAiDirectorSubmit} className="relative">
@@ -282,7 +282,7 @@ export default function Home() {
                 </button>
               </form>
               <p className="mt-4 text-light-text-muted dark:text-cine-text-muted text-sm">
-                试一试: "一个赛博朋克风格的侦探故事" 或 "关于咖啡制作的纪录片"
+                试一试: &ldquo;一个赛博朋克风格的侦探故事&rdquo; 或 &ldquo;关于咖啡制作的纪录片&rdquo;
               </p>
             </div>
           </section>

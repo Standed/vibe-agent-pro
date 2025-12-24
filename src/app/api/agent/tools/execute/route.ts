@@ -4,6 +4,7 @@ import { SoraOrchestrator } from '@/services/SoraOrchestrator';
 import { Project } from '@/types/project';
 
 export const maxDuration = 60;
+export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
     try {
@@ -29,6 +30,21 @@ export async function POST(req: NextRequest) {
                 result = {
                     taskIds: taskIds,
                     message: `Sora 视频生成任务已提交，共拆分为 ${taskIds.length} 个子任务`
+                };
+                break;
+
+            case 'generateShotsVideo':
+                const shotTaskIds = await orchestrator.generateShotsVideo(
+                    project as Project,
+                    args.sceneId,
+                    args.shotIds,
+                    userId
+                );
+                result = {
+                    taskIds: shotTaskIds,
+                    sceneId: args.sceneId,
+                    shotIds: args.shotIds,
+                    message: `Sora 分镜视频任务已提交，共拆分为 ${shotTaskIds.length} 个子任务`
                 };
                 break;
 

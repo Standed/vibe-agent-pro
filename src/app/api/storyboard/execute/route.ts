@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { StoryboardService } from '@/services/StoryboardService';
+import { StoryboardService } from '@/services/storyboardService';
 
 export const maxDuration = 120;
 
