@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
+export const maxDuration = 60;
+
 const GEMINI_ANALYZE_MODEL = process.env.GEMINI_ANALYZE_MODEL || 'gemini-3-pro-preview'; // 图片分析模型
 const GEMINI_API_KEY =
   process.env.GEMINI_TEXT_API_KEY ||

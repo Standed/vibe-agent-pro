@@ -202,15 +202,36 @@ npm run dist             # Create distributable packages (dmg/nsis/AppImage)
 ```
 src/app/api/
 ├── admin/               # Admin management (users, credits, whitelist)
+├── agent/               # Agent conversation
 ├── error-report/        # User feedback and bug reports
-├── gemini-grid/         # Grid multi-view generation (Gemini)
-├── gemini-image/        # Single image generation
-├── gemini-text/         # Text generation
-├── seedream/            # Image generation (Volcano Engine)
-├── seedream-edit/       # Image editing
+├── gemini-*/            # Gemini endpoints (grid, image, text, analyze, edit)
+├── seedream*/           # Image generation (Volcano Engine)
+├── sora/                # Sora video generation
+│   ├── generate/        # Submit video task
+│   ├── status/          # Query task status
+│   └── character/       # Character registration
+│       ├── register/    # Register character
+│       ├── status/      # Query registration status
+│       └── latest-video/# Get latest reference video
 ├── supabase/            # Unified Supabase gateway
 ├── upload-r2/           # File upload to R2
 └── projects/            # Project CRUD operations
+```
+
+**服务层架构**:
+```
+src/services/
+├── agentService.ts              # AI Agent 推理、Function Calling
+├── agentTools.ts                # Agent 工具执行逻辑
+├── agentToolDefinitions.ts      # 工具 JSON Schema
+├── geminiService.ts             # Gemini 图片生成、Grid 切片
+├── volcanoEngineService.ts      # SeeDream 图片、SeeDance 视频
+├── SoraOrchestrator.ts          # Sora 视频生成全流程编排 ⭐
+├── KaponaiService.ts            # Sora API 底层封装
+├── CharacterConsistencyService.ts # 角色参考视频生成与注册
+├── SoraPromptService.ts         # Sora 专用提示词生成
+├── StoryboardService.ts         # 剧本解析与分镜生成
+└── jimengService.ts             # 即梦 API 集成
 ```
 
 **数据流向**:
@@ -227,9 +248,12 @@ User Action → Component → Store Action → dataService
 - 类型定义: `src/types/project.ts` (所有 TypeScript 类型)
 - 数据服务: `src/lib/dataService.ts` (统一数据层,自动切换 Supabase/IndexedDB)
 - AI 服务: `src/services/geminiService.ts`, `volcanoEngineService.ts`
+- **Sora 服务**: `src/services/SoraOrchestrator.ts`, `KaponaiService.ts`
 - 认证中间件: `src/lib/auth-middleware.ts` (处理积分、白名单、管理员权限)
 - 管理员后台: `src/app/admin/page.tsx`
 - 国际化: `src/locales/zh.ts`, `en.ts`
+- Sora 架构文档: `docs/sora 在本项目中的架构.md`
+
 
 ### Working with State (状态管理)
 

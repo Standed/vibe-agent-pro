@@ -45,13 +45,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // 如果数据库中没有 profile，但我们有用户信息，可以先构造一个临时 profile
       if (!data || error) {
         console.warn('[AuthProvider] 无法获取用户 Profile，使用临时 Profile (Fail Open)');
+        const userRole = userEmail ? (ADMIN_EMAILS.map(e => e.toLowerCase()).includes(userEmail.toLowerCase()) ? 'admin' : 'user') : 'user';
         finalProfile = {
           id: userId,
           email: userEmail || '',
-          role: 'user',
-          credits: INITIAL_CREDITS.user,
+          role: userRole,
+          credits: INITIAL_CREDITS[userRole as keyof typeof INITIAL_CREDITS],
           is_whitelisted: true, // ✅ 临时默认为 true，防止因网络问题导致误登出
-          is_active: true
+          is_active: true,
+          full_name: 'User',
+          avatar_url: null
+        };
+      } else {
+        // 数据库有数据，但确保积分字段不为 null
+        finalProfile = {
+          ...data,
+          credits: (data.credits !== null && data.credits !== undefined)
+            ? data.credits
+            : INITIAL_CREDITS[data.role as keyof typeof INITIAL_CREDITS] || 0
         };
       }
 
@@ -81,10 +92,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error('[AuthProvider] fetchProfile 异常:', err);
       // 发生异常也至少设置一个基础状态，防止页面卡死，并默认给予白名单权限（Fail Open）
+      const userRole = userEmail ? (ADMIN_EMAILS.map(e => e.toLowerCase()).includes(userEmail.toLowerCase()) ? 'admin' : 'user') : 'user';
       setProfile({
         id: userId,
         email: userEmail || '',
-        role: 'user',
+        role: userRole,
+        credits: INITIAL_CREDITS[userRole as keyof typeof INITIAL_CREDITS],
         is_whitelisted: true,
         is_active: true
       } as any);

@@ -12,6 +12,13 @@ export interface R2UploadResult {
   bucket: string;
 }
 
+export type R2ServerUploadOptions = {
+  buffer: Buffer;
+  key: string;
+  contentType: string;
+  cacheControl?: string;
+};
+
 class CloudflareR2Service {
   private endpoint: string;
   private publicUrl: string;
@@ -90,3 +97,41 @@ class CloudflareR2Service {
 }
 
 export const r2Service = new CloudflareR2Service();
+
+export const uploadBufferToR2 = async (options: R2ServerUploadOptions): Promise<string> => {
+  if (typeof window !== 'undefined') {
+    throw new Error('uploadBufferToR2 is server-only');
+  }
+
+  const bucket = process.env.R2_BUCKET_NAME;
+  const publicUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
+  const endpoint = process.env.R2_ENDPOINT;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+
+  if (!bucket || !publicUrl || !endpoint || !accessKeyId || !secretAccessKey) {
+    throw new Error('Missing R2 server configuration');
+  }
+
+  const { PutObjectCommand, S3Client } = await import('@aws-sdk/client-s3');
+  const client = new S3Client({
+    region: 'auto',
+    endpoint,
+    credentials: { accessKeyId, secretAccessKey },
+    forcePathStyle: true,
+  });
+
+  const normalizedKey = options.key.replace(/^\/+/, '');
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: normalizedKey,
+      Body: options.buffer,
+      ContentType: options.contentType,
+      CacheControl: options.cacheControl || 'public, max-age=31536000',
+    })
+  );
+
+  return `${publicUrl}/${normalizedKey}`;
+};

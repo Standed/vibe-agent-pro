@@ -63,7 +63,7 @@ export const VIP_EMAILS: string[] = (() => {
 const DEFAULT_INITIAL_CREDITS = {
   admin: 1000,  // 管理员初始 1000 积分
   vip: 500,     // VIP 用户初始 500 积分
-  user: 60,     // 普通用户初始 60 积分
+  user: 0,      // 普通用户初始 0 积分
 } as const;
 
 export const INITIAL_CREDITS = {

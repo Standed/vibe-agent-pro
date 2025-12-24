@@ -114,12 +114,18 @@ export function enrichPromptWithAssets(
     const characterContext = usedCharacters
       .map((char) => {
         let desc = `${char.name}: ${char.description}`;
-        if (char.appearance) {
-          // 避免重复的句号/标点，直接拼接外貌描述
+
+        // Check if this character has reference images
+        const hasRefImages = char.referenceImages && char.referenceImages.length > 0;
+
+        // Only add appearance if NO reference images are available
+        // If reference images exist, we rely on them and avoid conflicting text descriptions
+        if (!hasRefImages && char.appearance) {
           desc += ` 外貌：${char.appearance}`;
         }
+
         // Add reference image markers
-        if (char.referenceImages && char.referenceImages.length > 0) {
+        if (hasRefImages) {
           const charImageIndices = referenceImageMap
             .filter(ref => ref.type === 'character' && ref.name === char.name)
             .map(ref => ref.index);
@@ -190,6 +196,8 @@ export function enrichPromptWithAssets(
     missingAssets,
   };
 }
+
+
 
 /**
  * Convert number to Chinese characters (一、二、三...)

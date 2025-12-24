@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Settings, X, Sun, Moon, Monitor, Languages, User, Camera, Loader2, LogOut } from 'lucide-react';
+import { Settings, X, Sun, Moon, Monitor, Languages, User, Camera, Loader2, LogOut, Sparkles } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useI18n, supportedLocales } from '@/components/providers/I18nProvider';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -252,6 +252,37 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Jimeng Configuration */}
+          <div className="pt-4 border-t border-black/5 dark:border-white/5">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="w-5 h-5 text-purple-500" />
+              <h3 className="text-sm font-medium text-light-text dark:text-white">
+                即梦 (Jimeng) 配置
+              </h3>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] text-light-text-muted dark:text-cine-text-muted ml-1">
+                  Session ID (从即梦官网 Cookie 中获取)
+                </label>
+                <input
+                  type="password"
+                  value={typeof window !== 'undefined' ? localStorage.getItem('jimeng_session_id') || '' : ''}
+                  onChange={(e) => {
+                    localStorage.setItem('jimeng_session_id', e.target.value);
+                    // 强制触发重绘以显示更新（虽然在 input 中不明显，但为了逻辑严谨）
+                    // 这里可以添加一个本地 state 来同步
+                  }}
+                  placeholder="粘贴你的 sessionid"
+                  className="w-full px-4 py-2.5 rounded-xl bg-light-bg-secondary dark:bg-cine-bg-secondary border border-light-border dark:border-cine-border text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all"
+                />
+              </div>
+              <p className="text-[10px] text-light-text-muted dark:text-cine-text-muted leading-relaxed">
+                配置后可在生成面板选择“即梦”模型。请确保 sessionid 有效。
+              </p>
             </div>
           </div>
 

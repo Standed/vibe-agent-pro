@@ -14,6 +14,73 @@
 4. **积分系统** - 所有 AI 操作需要消耗积分，管理员免费，VIP 8 折
 5. **请求可取消** - 支持 AbortController 中止进行中的请求
 6. **错误重试** - 自动重试机制，处理限流和网络错误
+7. **频率限制** - 基于数据库的每分钟请求计数
+
+---
+
+## 📡 API Routes 完整列表
+
+### Gemini API
+
+| Route | 功能 | 积分消耗 | 说明 |
+|-------|------|---------|------|
+| `/api/gemini-grid` | Grid 多视图生成 | 20 | 支持 2x2, 3x3 布局 |
+| `/api/gemini-image` | 单张图片生成 | 10 | 直接生成单图 |
+| `/api/gemini-text` | 文本生成 | 3 | Agent 推理使用 |
+| `/api/gemini-analyze` | 图片分析 | 3 | 分析图片内容 |
+| `/api/gemini-edit` | 图片编辑 | 10 | 基于原图编辑 |
+| `/api/gemini-generate` | 通用生成 | 10 | 通用图片生成 |
+
+### Volcano Engine API
+
+| Route | 功能 | 积分消耗 | 说明 |
+|-------|------|---------|------|
+| `/api/seedream` | SeeDream 图片生成 | 3 | 火山引擎图片生成 |
+| `/api/seedream-edit` | SeeDream 图片编辑 | 3 | 火山引擎图片编辑 |
+
+### Sora Video API (NEW)
+
+| Route | 方法 | 功能 | 说明 |
+|-------|------|------|------|
+| `/api/sora/generate` | POST | 提交视频生成任务 | 使用 RunningHub 服务 |
+| `/api/sora/status` | GET | 查询任务状态 | 轮询任务进度 |
+| `/api/sora/character/register` | POST | 角色注册 | 直接注册或生成+注册 |
+| `/api/sora/character/status` | GET | 查询角色注册状态 | 检查 @username |
+| `/api/sora/character/latest-video` | GET | 获取角色最新参考视频 | 用于预览 |
+
+### Agent API
+
+| Route | 方法 | 功能 | 说明 |
+|-------|------|------|------|
+| `/api/agent` | POST | Agent 对话 | Function Calling + 工具执行 |
+| `/api/ai` | POST | AI 通用接口 | 文本生成等 |
+
+### 即梦 API
+
+| Route | 方法 | 功能 | 说明 |
+|-------|------|------|------|
+| `/api/jimeng` | POST | 即梦图片生成 | 支持 Blend 模式 |
+
+### 其他 API
+
+| Route | 方法 | 功能 | 说明 |
+|-------|------|------|------|
+| `/api/supabase` | POST | 统一 Supabase Gateway | 数据库 CRUD 操作 |
+| `/api/upload-r2` | POST | 文件上传 | Cloudflare R2 存储 |
+| `/api/fetch-image` | GET | 图片代理下载 | 避免 CORS 问题 |
+| `/api/image-proxy` | GET | 图片代理 | 图片 URL 转发 |
+| `/api/proxy-image` | GET | 代理图片 | 另一个代理端点 |
+| `/api/projects` | GET/POST | 项目操作 | 项目 CRUD |
+| `/api/storyboard` | POST | 分镜板生成 | AI 剧本解析 |
+| `/api/error-report` | POST | 错误报告 | 用户反馈收集 |
+| `/api/cron` | GET | 定时任务 | 后台任务触发 |
+
+### Admin API
+
+| Route | 方法 | 功能 | 说明 |
+|-------|------|------|------|
+| `/api/admin/users` | GET/POST | 用户管理 | 白名单、积分管理 |
+| `/api/admin/sora/repair` | POST | Sora 任务修复 | 批量修复失败任务 |
 
 ---
 
@@ -37,38 +104,13 @@ const response = await authenticatedFetch('/api/gemini-grid', {
 const response = await fetch('/api/gemini-grid', { ... });
 ```
 
-**工作原理**：
-
-```typescript
-export async function authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  // 1. 从 cookie 读取 session（避免 supabase.auth.getSession() 挂起）
-  const sessionTokens = readSessionCookie();
-
-  if (!sessionTokens?.access_token) {
-    throw new Error('未登录，请先登录');
-  }
-
-  // 2. 检查 token 是否过期
-  if (isTokenExpired(sessionTokens.access_token)) {
-    throw new Error('登录已过期，请重新登录');
-  }
-
-  // 3. 添加 Authorization header
-  const headers = new Headers(options.headers || {});
-  headers.set('Authorization', `Bearer ${sessionTokens.access_token}`);
-
-  // 4. 发送请求
-  return fetch(url, { ...options, headers });
-}
-```
-
 ### 2. API Route 认证中间件
 
 **API Route 使用 `authenticateRequest()` 验证用户**：
 
 ```typescript
-// src/app/api/gemini-grid/route.ts
-import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
+// 示例: src/app/api/gemini-grid/route.ts
+import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits } from '@/config/credits';
 
 export async function POST(request: NextRequest) {
@@ -77,85 +119,41 @@ export async function POST(request: NextRequest) {
   if ('error' in authResult) {
     return authResult.error; // 返回 401 或 500 错误
   }
-
   const { user } = authResult;
 
-  // 2. 检查积分是否足够
-  const requiredCredits = calculateCredits('GEMINI_GRID_3X3', user.role);
+  // 2. 检查白名单 (内测期间)
+  const whitelistCheck = checkWhitelist(user);
+  if ('error' in whitelistCheck) {
+    return whitelistCheck.error; // 返回 403 错误
+  }
+
+  // 3. 检查积分是否足够
+  const requiredCredits = calculateCredits('GEMINI_GRID', user.role);
   const creditsCheck = checkCredits(user, requiredCredits);
   if (!creditsCheck.success) {
     return creditsCheck.error; // 返回 403 错误
   }
 
-  // 3. 执行 AI 操作
+  // 4. 执行 AI 操作
   const result = await callGeminiAPI(...);
 
-  // 4. 消耗积分
+  // 5. 消耗积分
   await consumeCredits(user.id, requiredCredits, 'generate-grid', 'Grid 生成');
 
-  // 5. 返回结果
+  // 6. 返回结果
   return NextResponse.json({ fullImage: result });
 }
 ```
 
-**工作原理**：
+### 3. 认证中间件函数
 
-```typescript
-// src/lib/auth-middleware.ts
-export async function authenticateRequest(request: NextRequest) {
-  // 1. 从 Authorization header 或 cookie 获取 token
-  const token = extractToken(request);
-
-  if (!token) {
-    return { error: NextResponse.json({ error: '未登录' }, { status: 401 }) };
-  }
-
-  // 2. 使用 Supabase Admin 验证 token
-  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-
-  if (error || !user) {
-    return { error: NextResponse.json({ error: '认证失败' }, { status: 401 }) };
-  }
-
-  // 3. 获取用户 profile（包括积分、角色、白名单状态）
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('id, email, role, credits, is_whitelisted')
-    .eq('id', user.id)
-    .single();
-
-  // 4. 如果 profile 不存在，自动创建
-  if (!profile) {
-    const userRole = getUserRoleByEmail(user.email);
-    const initialCredits = getInitialCredits(userRole);
-
-    const { data: newProfile } = await supabaseAdmin.from('profiles').insert({
-      id: user.id,
-      email: user.email,
-      role: userRole,
-      credits: initialCredits,
-      is_whitelisted: userRole === 'admin', // 管理员默认开启白名单
-    }).select().single();
-    
-    return { user: newProfile };
-  }
-
-  // 5. 提权逻辑：如果邮箱在硬编码管理员列表中，强制赋予 admin 角色
-  const isAdminEmail = getUserRoleByEmail(user.email) === 'admin';
-  const effectiveRole = isAdminEmail ? 'admin' : profile.role;
-
-  // 6. 返回用户信息
-  return {
-    user: {
-      id: profile.id,
-      email: profile.email,
-      role: effectiveRole as 'user' | 'admin' | 'vip',
-      credits: profile.credits,
-      isWhitelisted: profile.is_whitelisted || effectiveRole === 'admin',
-    },
-  };
-}
-```
+| 函数 | 功能 | 返回 |
+|------|------|------|
+| `authenticateRequest(request)` | 验证 JWT Token，获取用户信息 | `{ user }` 或 `{ error }` |
+| `checkWhitelist(user)` | 检查用户是否在白名单中 | `{ success: true }` 或 `{ error }` |
+| `checkCredits(user, amount)` | 检查用户积分是否足够 | `{ success: true }` 或 `{ error }` |
+| `consumeCredits(userId, amount, type, desc)` | 消耗用户积分 (原子操作) | `{ success, creditsAfter }` |
+| `checkRateLimit(userId, type, limit)` | 检查频率限制 | `{ success: true }` 或 `{ error }` |
 
 ---
 
@@ -189,94 +187,16 @@ export const VIP_DISCOUNT_RATE = 0.8;
 export const ADMIN_FREE = true;
 ```
 
-**支持环境变量覆盖**：
-
-```env
-# .env.local
-CREDITS_GEMINI_GRID_3X3=15  # 覆盖默认的 10 积分
-CREDITS_VOLCANO_VIDEO=40     # 覆盖默认的 50 积分
-VIP_DISCOUNT_RATE=0.7        # VIP 7 折
-ADMIN_FREE=true              # 管理员免费
-```
-
-### 积分检查与消耗
+### 积分计算逻辑
 
 ```typescript
-// 1. 计算实际积分消耗（考虑用户角色）
+// 计算实际积分消耗（考虑用户角色）
 import { calculateCredits } from '@/config/credits';
 
-const requiredCredits = calculateCredits('GEMINI_GRID_3X3', user.role);
+const requiredCredits = calculateCredits('GEMINI_GRID', user.role);
 // user.role = 'admin' → 0 积分（免费）
-// user.role = 'vip' → 8 积分（8 折）
-// user.role = 'user' → 10 积分（原价）
-
-// 2. 检查积分是否足够
-import { checkCredits } from '@/lib/auth-middleware';
-
-const creditsCheck = checkCredits(user, requiredCredits);
-if (!creditsCheck.success) {
-  return creditsCheck.error; // 403: 积分不足
-}
-
-// 3. 消耗积分（原子操作，防止并发问题）
-import { consumeCredits } from '@/lib/auth-middleware';
-
-await consumeCredits(
-  user.id,
-  requiredCredits,
-  'generate-grid',      // 操作类型
-  'Gemini Grid 生成'    // 描述
-);
-```
-
-**积分消耗是原子操作**：
-
-```sql
--- supabase/schema.sql
-CREATE OR REPLACE FUNCTION consume_credits(
-  p_user_id UUID,
-  p_amount INTEGER,
-  p_operation_type TEXT,
-  p_description TEXT DEFAULT NULL
-) RETURNS JSONB AS $$
-DECLARE
-  v_current_credits INTEGER;
-  v_transaction_id UUID;
-BEGIN
-  -- 1. 锁定用户行，防止并发问题
-  SELECT credits INTO v_current_credits
-  FROM profiles
-  WHERE id = p_user_id
-  FOR UPDATE;
-
-  -- 2. 检查积分是否足够
-  IF v_current_credits < p_amount THEN
-    RETURN jsonb_build_object(
-      'success', false,
-      'error', '积分不足',
-      'current_credits', v_current_credits
-    );
-  END IF;
-
-  -- 3. 扣除积分
-  UPDATE profiles
-  SET credits = credits - p_amount
-  WHERE id = p_user_id;
-
-  -- 4. 记录交易
-  INSERT INTO credit_transactions (user_id, amount, operation_type, description)
-  VALUES (p_user_id, -p_amount, p_operation_type, p_description)
-  RETURNING id INTO v_transaction_id;
-
-  -- 5. 返回成功
-  RETURN jsonb_build_object(
-    'success', true,
-    'credits_after', v_current_credits - p_amount,
-    'amount_consumed', p_amount,
-    'transaction_id', v_transaction_id
-  );
-END;
-$$ LANGUAGE plpgsql;
+// user.role = 'vip' → 16 积分（20 * 0.8）
+// user.role = 'user' → 20 积分（原价）
 ```
 
 ---
@@ -285,79 +205,32 @@ $$ LANGUAGE plpgsql;
 
 ### 客户端取消请求
 
-**Agent 对话支持取消**：
-
 ```typescript
 // src/hooks/useAgent.ts
 const abortControllerRef = useRef<AbortController | null>(null);
 
 const sendMessage = useCallback(async (message: string) => {
-  // 创建新的 AbortController
   abortControllerRef.current = new AbortController();
 
   try {
-    // 传递 signal 给 AI 服务
     const action = await processUserCommand(
       message,
       chatHistory,
       context,
-      abortControllerRef.current.signal // ⚠️ 传递 signal
+      abortControllerRef.current.signal // 传递 signal
     );
-
     // ... 处理结果
   } catch (error: any) {
     if (error?.name === 'AbortError') {
       toast.info('已停止当前 AI 处理');
     }
-  } finally {
-    abortControllerRef.current = null;
   }
 }, []);
 
 const stop = useCallback(() => {
-  if (abortControllerRef.current) {
-    abortControllerRef.current.abort(); // 中止请求
-    abortControllerRef.current = null;
-  }
+  abortControllerRef.current?.abort();
   setIsProcessing(false);
 }, []);
-```
-
-### API 服务支持取消
-
-**所有 AI 服务支持 signal**：
-
-```typescript
-// src/services/agentService.ts
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit,
-  timeoutMs: number,
-  signal?: AbortSignal // ⚠️ 接受 signal
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  // 如果外部传入了 signal，监听它的 abort 事件
-  if (signal) {
-    signal.addEventListener('abort', () => controller.abort());
-  }
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal, // 传递给 fetch
-    });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
-      throw new Error('请求已取消');
-    }
-    throw error;
-  }
-}
 ```
 
 ---
@@ -366,15 +239,9 @@ async function fetchWithTimeout(
 
 ### Gemini API 重试
 
-**自动处理限流和网络错误**：
-
 ```typescript
 // src/services/agentService.ts
-async function callGeminiWithBackoff(
-  payload: any,
-  timeoutMs: number,
-  signal?: AbortSignal
-): Promise<any> {
+async function callGeminiWithBackoff(payload: any, timeoutMs: number, signal?: AbortSignal) {
   let attempt = 0;
   const MAX_RETRIES = 3;
 
@@ -385,114 +252,85 @@ async function callGeminiWithBackoff(
         body: JSON.stringify(payload),
       }, timeoutMs, signal);
 
-      if (response.ok) {
-        return await response.json();
-      }
+      if (response.ok) return await response.json();
 
       // 处理限流 (429)
-      if (response.status === 429) {
-        const errorText = await response.text();
-        const { retryMs, message } = parseRateLimitInfo(errorText);
-
-        if (retryMs && attempt < MAX_RETRIES) {
-          console.warn(`限流，等待 ${retryMs / 1000}秒 后重试...`);
-          await sleep(retryMs);
-          attempt++;
-          continue;
-        }
+      if (response.status === 429 && attempt < MAX_RETRIES) {
+        const { retryMs } = parseRateLimitInfo(await response.text());
+        await sleep(retryMs || 5000);
+        attempt++;
+        continue;
       }
 
-      // 其他错误直接抛出
       throw new Error(`API 错误 ${response.status}`);
-
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        throw error; // 不重试取消的请求
-      }
-
-      if (attempt === MAX_RETRIES) {
-        throw error; // 最后一次尝试失败，抛出错误
-      }
-
-      // 网络错误，等待后重试
+      if (error.name === 'AbortError') throw error; // 不重试取消的请求
+      if (attempt === MAX_RETRIES) throw error;
       await sleep(2000 * (attempt + 1));
       attempt++;
     }
   }
-
-  throw new Error('请求失败');
 }
 ```
 
 ### dataService 重试
 
-**Supabase API 调用自动重试 3 次**：
-
 ```typescript
 // src/lib/dataService.ts
 private async callSupabaseAPI(request: any): Promise<any> {
   const maxRetries = 3;
-  let lastError: any;
-
+  
   for (let i = 0; i < maxRetries; i++) {
     try {
       const response = await authenticatedFetch('/api/supabase', {
         method: 'POST',
         body: JSON.stringify(request),
       });
-
-      const result = await response.json();
-
-      if (!response.ok || result.error) {
-        throw new Error(result.error || 'API 调用失败');
-      }
-
-      return result.data;
-    } catch (err: any) {
-      console.warn(`API 调用失败 (尝试 ${i + 1}/${maxRetries}):`, err.message);
-      lastError = err;
-
-      // 等待后重试
+      
+      if (!response.ok) throw new Error('API 调用失败');
+      return (await response.json()).data;
+    } catch (err) {
       if (i < maxRetries - 1) {
-        const delay = 1000 * (i + 1); // 1s, 2s, 3s
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+      } else {
+        throw err;
       }
     }
   }
-
-  throw lastError;
 }
 ```
 
 ---
 
-## 📡 API Routes 列表
+## ⏱️ 频率限制 (Rate Limiting)
 
-### Gemini API
+### 实现机制
 
-| Route | 功能 | 积分消耗 |
-|-------|------|---------|
-| `/api/gemini-grid` | Grid 多视图生成 | 5-10 |
-| `/api/gemini-image` | 单张图片生成 | 8 |
-| `/api/gemini-text` | 文本生成 | 2 |
-| `/api/gemini-analyze` | 图片分析 | 3 |
-| `/api/gemini-edit` | 图片编辑 | 5 |
+使用数据库字段实现简单的每分钟计数：
 
-### Volcano Engine API
+```typescript
+// src/lib/auth-middleware.ts
+export async function checkRateLimit(
+  userId: string,
+  type: 'chat' | 'image',
+  limit: number
+): Promise<{ success: true } | { error: NextResponse }> {
+  // 1. 读取用户的 last_chat_at / chat_count_in_min 字段
+  // 2. 检查是否在同一分钟内
+  // 3. 如果超过限制，返回 429 错误
+  // 4. 否则更新计数器并放行
+}
+```
 
-| Route | 功能 | 积分消耗 |
-|-------|------|---------|
-| `/api/seedream` | SeeDream 图片生成 | 12 |
-| `/api/seedream-edit` | SeeDream 图片编辑 | 10 |
-| `/api/volcano-video` | 视频生成 | 50 |
+### 数据库字段
 
-### 其他 API
-
-| Route | 功能 | 说明 |
-|-------|------|------|
-| `/api/supabase` | 统一 Supabase Gateway | 数据库操作 |
-| `/api/upload-r2` | 文件上传 | Cloudflare R2 |
-| `/api/fetch-image` | 图片代理下载 | 避免 CORS |
+```sql
+-- profiles 表
+ALTER TABLE profiles ADD COLUMN last_chat_at TIMESTAMPTZ;
+ALTER TABLE profiles ADD COLUMN chat_count_in_min INTEGER DEFAULT 0;
+ALTER TABLE profiles ADD COLUMN last_image_at TIMESTAMPTZ;
+ALTER TABLE profiles ADD COLUMN image_count_in_min INTEGER DEFAULT 0;
+```
 
 ---
 
@@ -502,7 +340,9 @@ private async callSupabaseAPI(request: any): Promise<any> {
 
 ```env
 # Gemini API
-NEXT_PUBLIC_GEMINI_API_KEY=your_gemini_api_key
+GEMINI_TEXT_API_KEY=your_gemini_api_key
+GEMINI_IMAGE_API_KEY=your_gemini_api_key
+GEMINI_AGENT_API_KEY=your_gemini_api_key
 
 # Volcano Engine API
 NEXT_PUBLIC_VOLCANO_API_KEY=your_volcano_api_key
@@ -515,21 +355,33 @@ NEXT_PUBLIC_DOUBAO_MODEL_ID=ep-xxxxxx-xxxxx
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key  # 仅服务端使用
+
+# Cloudflare R2
+R2_BUCKET_NAME=your_bucket_name
+R2_ACCESS_KEY_ID=your_access_key
+R2_SECRET_ACCESS_KEY=your_secret_key
+R2_ENDPOINT=https://xxx.r2.cloudflarestorage.com
+NEXT_PUBLIC_R2_PUBLIC_URL=https://your-domain.r2.dev
+
+# Kaponai (Sora API)
+KAPONAI_API_KEY=your_kaponai_api_key
+KAPONAI_BASE_URL=https://models.kapon.cloud
 ```
 
-### 可选变量（覆盖默认配置）
+### 可选变量
 
 ```env
 # 积分系统
-CREDITS_GEMINI_GRID_3X3=15           # 覆盖默认 10 积分
-CREDITS_VOLCANO_VIDEO=40             # 覆盖默认 50 积分
-VIP_DISCOUNT_RATE=0.7                # VIP 折扣率（默认 0.8）
-ADMIN_FREE=true                      # 管理员免费（默认 true）
+VIP_DISCOUNT_RATE=0.8
+ADMIN_FREE=true
+INITIAL_CREDITS_ADMIN=1000
+INITIAL_CREDITS_VIP=500
+INITIAL_CREDITS_USER=60
 
 # 超时配置
-NEXT_PUBLIC_GEMINI_IMG_TIMEOUT_MS=300000   # Gemini 图片生成超时（默认 240s）
-NEXT_PUBLIC_AGENT_TIMEOUT_MS=30000         # Agent 轻量请求超时（默认 30s）
-NEXT_PUBLIC_AGENT_AI_TIMEOUT_MS=90000      # Agent AI 对话超时（默认 90s）
+NEXT_PUBLIC_GEMINI_IMG_TIMEOUT_MS=240000
+NEXT_PUBLIC_AGENT_TIMEOUT_MS=30000
+NEXT_PUBLIC_AGENT_AI_TIMEOUT_MS=90000
 ```
 
 ---
@@ -542,53 +394,43 @@ NEXT_PUBLIC_AGENT_AI_TIMEOUT_MS=90000      # Agent AI 对话超时（默认 90s�
 
 **解决**:
 ```typescript
-// ✅ 使用 authenticatedFetch
 import { authenticatedFetch } from '@/lib/api-client';
 await authenticatedFetch('/api/gemini-grid', { ... });
 ```
 
-### 2. 403 Forbidden 错误（积分不足）
+### 2. 403 Forbidden 错误
 
-**原因**: 用户积分余额不足
+**原因**: 积分不足或未开通白名单
 
 **解决**:
 - 检查用户积分余额
 - 使用管理员账号测试（免费）
-- 调整积分配置（降低消耗）
+- 联系管理员开通白名单
 
-### 3. AbortError 错误
+### 3. 429 Too Many Requests
+
+**原因**: 频率限制触发
+
+**解决**:
+- 等待 1 分钟后重试
+- 检查 `checkRateLimit` 配置
+
+### 4. AbortError
 
 **原因**: 用户取消了请求
 
 **解决**: 正常行为，捕获并显示友好提示
 
-```typescript
-catch (error: any) {
-  if (error?.name === 'AbortError') {
-    toast.info('已停止当前 AI 处理');
-  }
-}
-```
-
-### 4. 请求超时
-
-**原因**: Gemini API 响应慢或网络问题
-
-**解决**:
-- 增加超时时间: `NEXT_PUBLIC_GEMINI_IMG_TIMEOUT_MS=300000`
-- 减小参考图片大小
-- 检查网络连接
-
 ---
 
 ## 📚 相关文档
 
-- **认证系统**: [AUTHENTICATION.md](./AUTHENTICATION.md) - 认证流程详细说明
-- **积分系统**: [CREDITS_SYSTEM.md](./CREDITS_SYSTEM.md) - 积分配置和管理
-- **开发指南**: [AGENTS.md](./AGENTS.md) - 快速参考
-- **数据库 Schema**: [supabase/schema.sql](./supabase/schema.sql) - 完整数据库结构
+- **认证系统**: [AUTHENTICATION.md](./AUTHENTICATION.md)
+- **积分系统**: [docs/CREDITS_SYSTEM.md](./docs/CREDITS_SYSTEM.md)
+- **开发指南**: [AGENTS.md](./AGENTS.md)
+- **Sora 架构**: [docs/sora 在本项目中的架构.md](./docs/sora%20在本项目中的架构.md)
 
 ---
 
-**最后更新**: 2025-12-18
-**维护者**: Claude Code + 西羊石团队
+**最后更新**: 2025-12-24
+**版本**: v0.6.0

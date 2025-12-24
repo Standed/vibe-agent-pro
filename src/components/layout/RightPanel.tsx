@@ -4,11 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { Bot, Sliders, ChevronRight, ChevronLeft } from 'lucide-react';
 import AgentPanel from '../agent/AgentPanel';
-import ChatPanelWithHistory from './ChatPanelWithHistory';
+import ChatPanel from '@/components/chat/ChatPanel';
 
 export default function RightPanel() {
   const { controlMode, setControlMode, rightSidebarCollapsed, toggleRightSidebar } = useProjectStore();
-  const [panelWidth, setPanelWidth] = useState(384);
+  const [panelWidth, setPanelWidth] = useState(600); // Increased default width
   const [resizing, setResizing] = useState(false);
   const resizeState = useRef<{ startX: number; startWidth: number } | null>(null);
 
@@ -16,7 +16,7 @@ export default function RightPanel() {
     const onMove = (e: MouseEvent) => {
       if (!resizing || !resizeState.current) return;
       const delta = - (e.clientX - resizeState.current.startX);
-      const next = Math.min(Math.max(resizeState.current.startWidth + delta, 320), 560);
+      const next = Math.min(Math.max(resizeState.current.startWidth + delta, 400), 1000); // Increased max width
       setPanelWidth(next);
     };
     const onUp = () => setResizing(false);
@@ -96,10 +96,11 @@ export default function RightPanel() {
 
           {/* Panel Content */}
           <div className="flex-1 overflow-hidden">
-            {controlMode === 'agent' ? <AgentPanel /> : <ChatPanelWithHistory />}
+            {controlMode === 'agent' ? <AgentPanel /> : <ChatPanel />}
           </div>
         </>
       )}
     </div>
   );
 }
+

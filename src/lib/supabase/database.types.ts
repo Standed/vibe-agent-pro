@@ -352,6 +352,74 @@ export interface Database {
           created_at?: string
         }
       }
+      sora_tasks: {
+        Row: {
+          id: string
+          user_id: string
+          project_id: string
+          scene_id: string | null
+          shot_id: string | null
+          shot_ids: string[] | null
+          shot_ranges: Json | null
+          character_id: string | null
+          status: 'queued' | 'processing' | 'completed' | 'failed'
+          progress: number
+          model: string
+          prompt: string | null
+          target_duration: number | null
+          target_size: string | null
+          kaponai_url: string | null
+          r2_url: string | null
+          point_cost: number
+          error_message: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          user_id: string
+          project_id: string
+          scene_id?: string | null
+          shot_id?: string | null
+          shot_ids?: string[] | null
+          shot_ranges?: Json | null
+          character_id?: string | null
+          status?: 'queued' | 'processing' | 'completed' | 'failed'
+          progress?: number
+          model?: string
+          prompt?: string | null
+          target_duration?: number | null
+          target_size?: string | null
+          kaponai_url?: string | null
+          r2_url?: string | null
+          point_cost?: number
+          error_message?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          project_id?: string
+          scene_id?: string | null
+          shot_id?: string | null
+          shot_ids?: string[] | null
+          shot_ranges?: Json | null
+          character_id?: string | null
+          status?: 'queued' | 'processing' | 'completed' | 'failed'
+          progress?: number
+          model?: string
+          prompt?: string | null
+          target_duration?: number | null
+          target_size?: string | null
+          kaponai_url?: string | null
+          r2_url?: string | null
+          point_cost?: number
+          error_message?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Functions: {
       consume_credits: {
@@ -377,6 +445,14 @@ export interface Database {
           p_user_id: string
         }
         Returns: number
+      }
+      refund_credits: {
+        Args: {
+          p_user_id: string
+          p_amount: number
+          p_description?: string | null
+        }
+        Returns: Json
       }
     }
   }

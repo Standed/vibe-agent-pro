@@ -54,6 +54,7 @@ export default function AdminDashboard() {
   const [reports, setReports] = useState<ErrorReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [repairing, setRepairing] = useState(false);
 
   // Fetch data
   const fetchData = async () => {
@@ -131,6 +132,26 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleRepairSoraTasks = async () => {
+    setRepairing(true);
+    try {
+      const resp = await fetch('/api/admin/sora/repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 50 }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Repair failed');
+      const successCount = (data.details || []).filter((d: any) => d.username).length;
+      const failCount = (data.details || []).filter((d: any) => d.error).length;
+      toast.success(`修复完成：成功 ${successCount}，失败 ${failCount}`);
+    } catch (err: any) {
+      toast.error(err.message || '修复失败');
+    } finally {
+      setRepairing(false);
+    }
+  };
+
   if (authLoading || !adminProfile) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-cine-black text-white">
@@ -156,13 +177,23 @@ export default function AdminDashboard() {
             <h1 className="text-3xl font-bold mb-2">管理后台</h1>
             <p className="text-cine-text-muted">欢迎回来, {adminProfile.email}</p>
           </div>
-          <button
-            onClick={fetchData}
-            className="flex items-center gap-2 px-4 py-2 bg-cine-panel hover:bg-cine-border border border-cine-border rounded-lg transition-colors"
-          >
-            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-            刷新数据
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchData}
+              className="flex items-center gap-2 px-4 py-2 bg-cine-panel hover:bg-cine-border border border-cine-border rounded-lg transition-colors"
+            >
+              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+              刷新数据
+            </button>
+            <button
+              onClick={handleRepairSoraTasks}
+              className="flex items-center gap-2 px-4 py-2 bg-cine-panel hover:bg-cine-border border border-cine-border rounded-lg transition-colors disabled:opacity-60"
+              disabled={repairing}
+            >
+              <RefreshCw size={18} className={repairing ? 'animate-spin' : ''} />
+              {repairing ? '修复中...' : '修复 Sora 任务'}
+            </button>
+          </div>
         </div>
       </div>
 

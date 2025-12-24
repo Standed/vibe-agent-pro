@@ -3,6 +3,8 @@ import { ProxyAgent, Agent } from 'undici';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist, checkRateLimit } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
+export const maxDuration = 120;
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -106,10 +108,21 @@ export async function POST(request: NextRequest) {
       },
     };
 
+    const finalRequestBody = JSON.stringify(requestBody);
+
+    // 🛡️ 载荷大小检查：Vercel 限制为 4.5MB，我们限制在 4MB 以内以确保安全
+    if (finalRequestBody.length > 4 * 1024 * 1024) {
+      console.error(`[Gemini Grid] ❌ Payload too large: ${(finalRequestBody.length / 1024 / 1024).toFixed(2)}MB`);
+      return NextResponse.json(
+        { error: `请求载荷过大 (${(finalRequestBody.length / 1024 / 1024).toFixed(2)}MB)，请减少参考图数量或缩短提示词。` },
+        { status: 413 }
+      );
+    }
+
     const fetchOptions: any = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
+      body: finalRequestBody,
     };
 
     // 🔍 调试：检查代理配置

@@ -3,11 +3,27 @@
 export type ShotSize =
   | 'Extreme Wide Shot'
   | 'Wide Shot'
+  | 'Full Shot'
+  | 'Medium Wide Shot'
   | 'Medium Shot'
+  | 'Medium Close-Up'
   | 'Close-Up'
-  | 'Extreme Close-Up';
+  | 'Extreme Close-Up'
+  | 'Low Angle Shot'
+  | 'High Angle Shot'
+  | 'Over the Shoulder Shot'
+  | 'Point of View Shot'
+  | 'Bird\'s Eye View'
+  | 'Dutch Angle'
+  | 'Establishing Shot';
 
 export type CameraMovement =
+  | 'Pan'
+  | 'Tilt'
+  | 'Dolly'
+  | 'Zoom'
+  | 'Truck'
+  | 'Pedestal'
   | 'Static'
   | 'Pan Left'
   | 'Pan Right'
@@ -17,7 +33,56 @@ export type CameraMovement =
   | 'Dolly Out'
   | 'Zoom In'
   | 'Zoom Out'
-  | 'Handheld';
+  | 'Truck Left'
+  | 'Truck Right'
+  | 'Pedestal Up'
+  | 'Pedestal Down'
+  | 'Handheld'
+  | 'Arc'
+  | 'Crane';
+
+export const SHOT_SIZE_OPTIONS: ShotSize[] = [
+  'Extreme Wide Shot',
+  'Wide Shot',
+  'Full Shot',
+  'Medium Wide Shot',
+  'Medium Shot',
+  'Medium Close-Up',
+  'Close-Up',
+  'Extreme Close-Up',
+  'Low Angle Shot',
+  'High Angle Shot',
+  'Over the Shoulder Shot',
+  'Point of View Shot',
+  'Bird\'s Eye View',
+  'Dutch Angle',
+  'Establishing Shot'
+];
+
+export const CAMERA_MOVEMENT_OPTIONS: CameraMovement[] = [
+  'Pan',
+  'Tilt',
+  'Dolly',
+  'Zoom',
+  'Truck',
+  'Pedestal',
+  'Static',
+  'Pan Left',
+  'Pan Right',
+  'Tilt Up',
+  'Tilt Down',
+  'Dolly In',
+  'Dolly Out',
+  'Zoom In',
+  'Zoom Out',
+  'Truck Left',
+  'Truck Right',
+  'Pedestal Up',
+  'Pedestal Down',
+  'Handheld',
+  'Arc',
+  'Crane'
+];
 
 export type GenerationMode = 'grid' | 'single';
 export type ShotStatus = 'draft' | 'pending' | 'processing' | 'done' | 'error';
@@ -46,6 +111,9 @@ export enum GridMode {
   GRID_3x3 = '3x3'
 }
 
+export type BatchMode = 'grid' | 'seedream' | 'jimeng';
+export type AIModel = 'seedream' | 'jimeng';
+
 // Grid Generation Result (for modal preview)
 export interface GridGenerationResult {
   fullImage: string;
@@ -72,7 +140,54 @@ export interface Character {
   description: string;
   appearance: string;
   referenceImages: string[];
+  // Sora 专属参考视频（用户可选上传，跳过图生视频步骤）
+  soraReferenceVideoUrl?: string;
+  // Sora 专属身份信息 (可选，保持向后兼容)
+  soraIdentity?: {
+    username: string;          // e.g., "@fmraejvq"
+    referenceVideoUrl: string; // 10s 参考视频 URL
+    status: 'pending' | 'generating' | 'registering' | 'registered' | 'failed';
+    taskId?: string;           // 生成参考视频的任务 ID
+  };
+  // 角色归属
+  userId?: string;   // 拥有者 ID (用于全局角色)
+  projectId?: string | null; // 所属项目 ID (可空，空表示全局角色)
 }
+
+// 剧集 (Series) 定义
+export interface Series {
+  id: string;
+  title: string;
+  description?: string;
+  userId: string;
+  coverImage?: string;
+  created: Date;
+  updated: Date;
+  projectIds?: string[]; // 包含的项目 ID 列表
+}
+
+// 制作策略 (Production Strategy)
+export interface ProductionStrategy {
+  // 核心管线选择
+  workflow: 'flux_sora' | 'jimeng_sora' | 'sora_native';
+
+  // 角色一致性模式
+  consistencyMode: 'reference_image' | 'sora_character_id' | 'off';
+
+  // 批量生成配置
+  batchSize?: number;
+  autoRefinePrompt?: boolean;
+}
+
+// Agent 状态
+export interface AgentState {
+  isAnalyzing: boolean;
+  isGenerating: boolean;
+  progress: number;
+  currentTask?: string;
+  strategy: ProductionStrategy;
+}
+
 
 export interface Location {
   id: string;
@@ -212,6 +327,9 @@ export interface Shot {
   // 生成配置
   generationConfig?: GenerationConfig;
 
+  // Sora 视频生成专用提示词 (由 SoraPromptService 动态生成)
+  videoPrompt?: string;
+
   // 生成历史记录
   generationHistory?: GenerationHistoryItem[];
 
@@ -247,6 +365,15 @@ export interface Scene {
   modified?: Date;
   gridHistory?: GridHistoryItem[]; // Grid generation history
   savedGridSlices?: string[]; // Favorited/unused Grid slices
+
+  // Sora 长视频生成状态 (可选)
+  soraGeneration?: {
+    taskId: string;
+    status: 'pending' | 'processing' | 'success' | 'failed';
+    videoUrl?: string; // 最终合并长视频或切片视频
+    progress?: number;
+    tasks?: string[];  // 如果包含多个切片任务
+  };
 }
 
 export interface TimelineClip {
@@ -275,6 +402,8 @@ export interface ProjectSettings {
 
 export interface Project {
   id: string;
+  seriesId?: string; // 所属剧集 ID
+  episodeOrder?: number; // 集数顺序
   metadata: ProjectMetadata;
 
   // 资源
@@ -308,4 +437,29 @@ export interface Asset {
   blob?: Blob;
   metadata: Record<string, unknown>;
   created: Date;
+}
+
+// Sora 异步任务类型 (用于数据库 sora_tasks 表)
+export interface SoraTask {
+  id: string; // Sora Task ID (例如 video_...)
+  userId: string;
+  projectId: string;
+  sceneId?: string;
+  shotId?: string;
+  shotIds?: string[];
+  shotRanges?: Array<{ shotId: string; start: number; end: number }>;
+  characterId?: string; // 关联的角色 ID
+  type?: 'shot_generation' | 'character_reference'; // 任务类型
+  status: 'queued' | 'processing' | 'generating' | 'completed' | 'failed';
+  progress: number;
+  model: string;
+  prompt: string;
+  targetDuration: number;
+  targetSize: string;
+  kaponaiUrl?: string;
+  r2Url?: string;
+  pointCost: number;
+  errorMessage?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }

@@ -37,6 +37,18 @@ interface ProjectStore {
   rightSidebarCollapsed: boolean;
   gridResult: GridGenerationResult | null; // Grid 生成结果（用于显示 Modal）
   isSaving: boolean; // 是否正在保存到云端 (R2 上传或数据库同步)
+  generationRequest: {
+    prompt: string;
+    model: 'jimeng' | 'gemini-grid' | 'gemini-direct' | 'seedream';
+    jimengModel?: 'jimeng-4.5' | 'jimeng-4.1' | 'jimeng-4.0';
+    jimengResolution?: '2k' | '4k';
+  } | null;
+  generationProgress: {
+    total: number;
+    current: number;
+    status: 'idle' | 'running' | 'success' | 'error';
+    message?: string;
+  };
 
   // Project Actions
   loadProject: (project: Project) => void;
@@ -49,6 +61,8 @@ interface ProjectStore {
     aspectRatio?: string
   ) => void;
   updateScript: (script: string) => void;
+  setGenerationRequest: (request: ProjectStore['generationRequest']) => void;
+  setGenerationProgress: (progress: Partial<ProjectStore['generationProgress']>) => void;
 
   // Scene Actions
   addScene: (scene: Scene) => void;
@@ -58,6 +72,7 @@ interface ProjectStore {
   addGridHistory: (sceneId: string, gridHistory: GridHistoryItem) => void;
   saveFavoriteSlices: (sceneId: string, slices: string[]) => void;
   renumberScenesAndShots: () => void;
+  batchUpdateScenesAndShots: (scenes: Scene[], shots: Shot[]) => void;
 
   // Shot Actions
   addShot: (shot: Shot) => void;
@@ -68,7 +83,7 @@ interface ProjectStore {
   addGenerationHistory: (shotId: string, historyItem: GenerationHistoryItem) => void;
 
   // Character Actions
-  addCharacter: (character: Character) => void;
+  addCharacter: (character: Character, options?: { keepOpen?: boolean }) => void;
   updateCharacter: (id: string, updates: Partial<Character>) => void;
   deleteCharacter: (id: string) => void;
 
@@ -120,6 +135,12 @@ export const useProjectStore = create<ProjectStore>()(
     rightSidebarCollapsed: false,
     gridResult: null,
     isSaving: false,
+    generationRequest: null,
+    generationProgress: {
+      total: 0,
+      current: 0,
+      status: 'idle',
+    },
 
     // Project Actions
     loadProject: (project) =>
@@ -127,6 +148,13 @@ export const useProjectStore = create<ProjectStore>()(
         normalizeSceneOrder(project);
         recalcShotOrders(project);
         return { project };
+      }),
+
+    setGenerationRequest: (request) => set({ generationRequest: request }),
+
+    setGenerationProgress: (progress) =>
+      set((state) => {
+        state.generationProgress = { ...state.generationProgress, ...progress };
       }),
 
     renumberScenesAndShots: () =>
@@ -319,6 +347,17 @@ export const useProjectStore = create<ProjectStore>()(
       get().debouncedSaveProject();
     },
 
+    batchUpdateScenesAndShots: (scenes, shots) => {
+      set((state) => {
+        if (!state.project) return;
+        state.project.scenes = scenes;
+        state.project.shots = shots;
+        normalizeSceneOrder(state.project);
+        recalcShotOrders(state.project);
+      });
+      get().debouncedSaveProject();
+    },
+
     // Shot Actions
     addShot: (shot) => {
       set((state) => {
@@ -415,7 +454,7 @@ export const useProjectStore = create<ProjectStore>()(
     },
 
     // Character Actions
-    addCharacter: (character) => {
+    addCharacter: (character, _options) => {
       set((state) => {
         const project = state.project;
         if (!project) return;
