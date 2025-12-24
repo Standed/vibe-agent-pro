@@ -262,7 +262,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'generateShotsVideo',
-        description: '使用 Sora2 为指定分镜生成视频 (仅处理传入的 shotIds)',
+        description: '使用 Sora2 为指定分镜生成视频 (支持 shotIds / 场景内序号 / 全局序号)',
         parameters: {
             type: 'object',
             properties: {
@@ -274,9 +274,19 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                     type: 'array',
                     items: { type: 'string' },
                     description: '指定分镜ID列表'
+                },
+                shotIndexes: {
+                    type: 'array',
+                    items: { type: 'number' },
+                    description: '场景内分镜序号（从 1 开始，需要 sceneId）'
+                },
+                globalShotIndexes: {
+                    type: 'array',
+                    items: { type: 'number' },
+                    description: '全局分镜序号（从 1 开始，基于 globalOrder）'
                 }
             },
-            required: ['sceneId', 'shotIds']
+            required: []
         }
     },
     {

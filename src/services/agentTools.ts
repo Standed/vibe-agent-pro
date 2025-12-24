@@ -213,19 +213,107 @@ export class AgentToolExecutor {
   /**
    * 使用 Sora 生成指定分镜视频 (Server Action via API)
    */
-  private async generateShotsVideo(sceneId: string, shotIds: string[]): Promise<ToolResult> {
+  private async generateShotsVideo(
+    sceneId?: string,
+    shotIds?: string[],
+    shotIndexes?: number[],
+    globalShotIndexes?: number[]
+  ): Promise<ToolResult> {
     if (!this.project) return { tool: 'generateShotsVideo', result: null, success: false, error: '项目不存在' };
-    if (!Array.isArray(shotIds) || shotIds.length === 0) {
-      return { tool: 'generateShotsVideo', result: null, success: false, error: '缺少分镜ID' };
-    }
 
-    try {
+    const project = this.project;
+    const shotById = new Map(project.shots.map((shot) => [shot.id, shot]));
+
+    const resolveSceneIdForShots = (resolvedShotIds: string[]) => {
+      const sceneIds = new Set<string>();
+      resolvedShotIds.forEach((id) => {
+        const shot = shotById.get(id);
+        if (shot?.sceneId) sceneIds.add(shot.sceneId);
+      });
+      if (sceneIds.size > 1) {
+        return { error: '分镜跨多个场景，请按场景分别生成。' } as const;
+      }
+      const resolvedSceneId = sceneId || Array.from(sceneIds)[0];
+      if (!resolvedSceneId) {
+        return { error: '缺少场景ID' } as const;
+      }
+      if (sceneId && sceneId !== resolvedSceneId) {
+        return { error: '分镜不属于指定场景' } as const;
+      }
+      return { sceneId: resolvedSceneId } as const;
+    };
+
+    const resolveShotIdsFromSceneIndexes = (sceneShotIndexes: number[]) => {
+      if (!sceneId) {
+        return { error: '请提供场景ID以解析分镜序号' } as const;
+      }
+      const sceneShots = project.shots
+        .filter((shot) => shot.sceneId === sceneId)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      if (sceneShots.length === 0) {
+        return { error: '场景下没有分镜' } as const;
+      }
+      const resolved = sceneShotIndexes.map((index) => sceneShots[index - 1]).filter(Boolean);
+      if (resolved.length !== sceneShotIndexes.length) {
+        return { error: '分镜序号超出场景范围' } as const;
+      }
+      return { shotIds: resolved.map((shot) => shot.id) } as const;
+    };
+
+    const normalizeList = (input?: Array<string | number>) => {
+      if (!Array.isArray(input)) return [] as number[];
+      const seen = new Set<number>();
+      const normalized: number[] = [];
+      input.forEach((value) => {
+        const num = typeof value === 'number' ? value : Number(value);
+        if (!Number.isFinite(num)) return;
+        const index = Math.floor(num);
+        if (index < 1 || seen.has(index)) return;
+        seen.add(index);
+        normalized.push(index);
+      });
+      return normalized;
+    };
+
+    const normalizedGlobalIndexes = normalizeList(globalShotIndexes);
+
+    const buildGlobalShotGroups = (globalIndexes: number[]) => {
+      const globalMap = new Map<number, { id: string; sceneId: string | undefined }>();
+      for (const shot of project.shots) {
+        if (typeof shot.globalOrder !== 'number') {
+          return { error: '全局镜头序号不可用，请指定场景' } as const;
+        }
+        if (globalMap.has(shot.globalOrder)) {
+          return { error: '全局镜头序号存在重复，请指定场景' } as const;
+        }
+        globalMap.set(shot.globalOrder, { id: shot.id, sceneId: shot.sceneId });
+      }
+      const resolved = globalIndexes
+        .map((index) => globalMap.get(index))
+        .filter(Boolean) as Array<{ id: string; sceneId?: string }>;
+      if (resolved.length !== globalIndexes.length) {
+        return { error: '全局镜头序号不存在，请检查输入' } as const;
+      }
+
+      const groups = new Map<string, string[]>();
+      for (const shot of resolved) {
+        if (!shot.sceneId) {
+          return { error: '分镜缺少场景信息' } as const;
+        }
+        const list = groups.get(shot.sceneId) || [];
+        list.push(shot.id);
+        groups.set(shot.sceneId, list);
+      }
+      return { groups } as const;
+    };
+
+    const runGenerateShots = async (targetSceneId: string, targetShotIds: string[]) => {
       const response = await fetch('/api/agent/tools/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tool: 'generateShotsVideo',
-          args: { sceneId, shotIds },
+          args: { sceneId: targetSceneId, shotIds: targetShotIds },
           project: this.project,
           userId: this.userId
         })
@@ -236,16 +324,115 @@ export class AgentToolExecutor {
         const errorMsg = data.error || (data.result && data.result.message) || 'Server execution failed';
         throw new Error(errorMsg);
       }
+      return data.result;
+    };
+
+    const resolvedShotIds = (() => {
+      if (Array.isArray(shotIds) && shotIds.length > 0) {
+        const unique = Array.from(new Set(shotIds.filter(Boolean)));
+        const missing = unique.filter((id) => !shotById.has(id));
+        if (missing.length > 0) {
+          return { error: `分镜不存在: ${missing.join(', ')}` } as const;
+        }
+        return { shotIds: unique } as const;
+      }
+
+      if (normalizedGlobalIndexes.length > 0) {
+        const grouped = buildGlobalShotGroups(normalizedGlobalIndexes);
+        if ('error' in grouped) {
+          return { error: grouped.error } as const;
+        }
+        if (grouped.groups.size > 1) {
+          return { groupedShots: grouped.groups } as const;
+        }
+        const [[singleSceneId, ids]] = Array.from(grouped.groups.entries());
+        if (sceneId && sceneId !== singleSceneId) {
+          return { error: '分镜不属于指定场景' } as const;
+        }
+        return { shotIds: ids, sceneId: singleSceneId } as const;
+      }
+
+      const sceneIndexes = normalizeList(shotIndexes);
+      if (sceneIndexes.length > 0) {
+        return resolveShotIdsFromSceneIndexes(sceneIndexes);
+      }
+
+      return { error: '缺少分镜ID或序号' } as const;
+    })();
+
+    if ('error' in resolvedShotIds) {
+      return { tool: 'generateShotsVideo', result: null, success: false, error: resolvedShotIds.error };
+    }
+
+    if ('groupedShots' in resolvedShotIds) {
+      const groupedShots = resolvedShotIds.groupedShots;
+      const details: Array<{ sceneId: string; shotIds: string[]; tasks?: string[]; status: string; error?: string }> = [];
+      const allTaskIds: string[] = [];
+      let failedCount = 0;
+
+      for (const [targetSceneId, targetShotIds] of groupedShots.entries()) {
+        try {
+          const result = await runGenerateShots(targetSceneId, targetShotIds);
+          const taskIds = Array.isArray(result?.taskIds) ? result.taskIds : [];
+          taskIds.forEach((id: string) => allTaskIds.push(id));
+          details.push({
+            sceneId: targetSceneId,
+            shotIds: targetShotIds,
+            tasks: taskIds,
+            status: 'submitted'
+          });
+        } catch (error: any) {
+          failedCount += 1;
+          details.push({
+            sceneId: targetSceneId,
+            shotIds: targetShotIds,
+            status: 'failed',
+            error: error.message || '提交失败'
+          });
+        }
+      }
+
+      const submittedCount = details.filter((d) => d.status === 'submitted').length;
+      const result = {
+        success: submittedCount > 0,
+        status: failedCount > 0 ? 'partial' : 'submitted',
+        message: failedCount > 0
+          ? `已提交 ${submittedCount} 个场景，失败 ${failedCount} 个。`
+          : `已提交 ${submittedCount} 个场景。`,
+        taskIds: allTaskIds,
+        details
+      };
+
+      await this.backfillSoraTasks(result);
+
+      return {
+        tool: 'generateShotsVideo',
+        result,
+        success: submittedCount > 0,
+        error: submittedCount === 0 ? '所有场景提交失败' : undefined
+      };
+    }
+
+    const resolvedScene = resolveSceneIdForShots(resolvedShotIds.shotIds);
+    if ('error' in resolvedScene) {
+      return { tool: 'generateShotsVideo', result: null, success: false, error: resolvedScene.error };
+    }
+    const targetSceneId = ('sceneId' in resolvedShotIds && resolvedShotIds.sceneId)
+      ? resolvedShotIds.sceneId
+      : resolvedScene.sceneId;
+
+    try {
+      const result = await runGenerateShots(targetSceneId, resolvedShotIds.shotIds);
 
       await this.backfillSoraTasks({
-        ...data.result,
-        sceneId,
-        shotIds
+        ...result,
+        sceneId: targetSceneId,
+        shotIds: resolvedShotIds.shotIds
       });
 
       return {
         tool: 'generateShotsVideo',
-        result: data.result,
+        result,
         success: true
       };
     } catch (e: any) {
@@ -361,7 +548,9 @@ export class AgentToolExecutor {
         case 'generateShotsVideo':
           return await this.generateShotsVideo(
             toolCall.arguments.sceneId,
-            toolCall.arguments.shotIds
+            toolCall.arguments.shotIds,
+            toolCall.arguments.shotIndexes,
+            toolCall.arguments.globalShotIndexes
           );
 
         case 'batchGenerateProjectVideosSora':
