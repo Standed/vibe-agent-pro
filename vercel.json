@@ -27,7 +27,7 @@
   "crons": [
     {
       "path": "/api/cron/check-sora-status",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
