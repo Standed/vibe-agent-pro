@@ -367,6 +367,45 @@ CREATE INDEX IF NOT EXISTS error_reports_created_at_idx ON public.error_reports(
 -- 12. 启用行级安全策略 (RLS)
 -- =============================================
 
+-- 避免 profiles RLS 递归：使用 SECURITY DEFINER 函数读取管理员状态/字段
+CREATE OR REPLACE FUNCTION public.is_admin(p_uid UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+DECLARE
+  v_is_admin BOOLEAN;
+BEGIN
+  SELECT role = 'admin' INTO v_is_admin
+  FROM public.profiles
+  WHERE id = p_uid;
+
+  RETURN COALESCE(v_is_admin, FALSE);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_profile_role(p_uid UUID)
+RETURNS TEXT
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+  SELECT role FROM public.profiles WHERE id = p_uid;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_profile_credits(p_uid UUID)
+RETURNS INTEGER
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+  SELECT credits FROM public.profiles WHERE id = p_uid;
+$$;
+
 -- 用户信息表
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
@@ -374,12 +413,7 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view own profile, admins can view all"
   ON public.profiles FOR SELECT
   USING (
-    auth.uid() = id
-    OR
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role = 'admin'
-    )
+    auth.uid() = id OR public.is_admin(auth.uid())
   );
 
 -- 用户只能更新自己的基本信息（不能修改积分和角色）
@@ -388,8 +422,8 @@ CREATE POLICY "Users can update own profile (limited fields)"
   USING (auth.uid() = id)
   WITH CHECK (
     auth.uid() = id
-    AND role = (SELECT role FROM public.profiles WHERE id = auth.uid()) -- 不能修改自己的角色
-    AND credits = (SELECT credits FROM public.profiles WHERE id = auth.uid()) -- 不能修改自己的积分
+    AND role = public.get_profile_role(auth.uid()) -- 不能修改自己的角色
+    AND credits = public.get_profile_credits(auth.uid()) -- 不能修改自己的积分
   );
 
 -- 积分交易记录表
@@ -807,6 +841,8 @@ CREATE TABLE IF NOT EXISTS public.sora_tasks (
   project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
   scene_id UUID REFERENCES public.scenes(id) ON DELETE CASCADE,
   shot_id UUID REFERENCES public.shots(id) ON DELETE CASCADE,
+  shot_ids UUID[] DEFAULT NULL, -- 新增: 合并视频对应的分镜列表
+  shot_ranges JSONB DEFAULT NULL, -- 新增: 合并视频的分镜时间段映射
   character_id UUID REFERENCES public.characters(id) ON DELETE SET NULL, -- 新增: 关联角色 (一致性工作流)
   
   -- 状态: queued, processing, completed, failed
@@ -854,6 +890,13 @@ CREATE POLICY "Users can manage own sora tasks"
   ON public.sora_tasks FOR ALL
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+
+-- Migration: add shot_ids and shot_ranges to sora_tasks (if missing)
+ALTER TABLE public.sora_tasks
+  ADD COLUMN IF NOT EXISTS shot_ids UUID[] DEFAULT NULL;
+
+ALTER TABLE public.sora_tasks
+  ADD COLUMN IF NOT EXISTS shot_ranges JSONB DEFAULT NULL;
 
 -- =============================================
 -- 14. 触发器：新用户注册时自动创建 profile

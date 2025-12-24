@@ -1,4 +1,4 @@
-import { Project, Scene, Shot, Character } from '@/types/project';
+import { Project, Scene, Shot, Character, SoraTask } from '@/types/project';
 import { KaponaiService } from './KaponaiService';
 import { SoraPromptService } from './SoraPromptService';
 import { UnifiedDataService } from '@/lib/dataService';
@@ -89,6 +89,39 @@ export class SoraOrchestrator {
             });
 
             taskIds.push(task.id);
+
+            const soraTask: SoraTask = {
+                id: task.id,
+                userId,
+                projectId: project.id,
+                sceneId: scene.id,
+                shotId: chunkShots.length === 1 ? chunkShots[0].id : undefined,
+                shotIds: chunkShots.map((s) => s.id),
+                shotRanges: chunkShots.reduce((acc, shot) => {
+                    const lastEnd = acc.length > 0 ? acc[acc.length - 1].end : 0;
+                    const duration = shot.duration || 5;
+                    acc.push({
+                        shotId: shot.id,
+                        start: lastEnd,
+                        end: lastEnd + duration,
+                    });
+                    return acc;
+                }, [] as Array<{ shotId: string; start: number; end: number }>),
+                status: task.status as any || 'queued',
+                progress: task.progress ?? 0,
+                model: task.model || 'sora-2',
+                prompt: JSON.stringify(script),
+                targetDuration: requestSeconds,
+                targetSize: targetSize,
+                kaponaiUrl: task.video_url,
+                r2Url: undefined,
+                pointCost: 0,
+                type: 'shot_generation',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            };
+
+            await this.dataService.saveSoraTask(soraTask);
         }
 
         // 4. 持久化存储
@@ -151,10 +184,16 @@ export class SoraOrchestrator {
      * 优化：并行处理所有未注册角色，减少等待时间
      */
     private async ensureCharactersRegistered(projectId: string, characters: Character[], userId: string): Promise<void> {
-        // 过滤出需要注册的角色
-        const charsToRegister = characters.filter(char =>
-            !char.soraIdentity?.username || char.soraIdentity.status !== 'registered'
-        );
+        // Sora 码优先：有 @username 就直接视为已注册
+        for (const char of characters) {
+            if (char.soraIdentity?.username && char.soraIdentity.status !== 'registered') {
+                char.soraIdentity.status = 'registered';
+                await this.dataService.saveCharacter(projectId, char);
+            }
+        }
+
+        // 角色码优先：有 @username 就视为已注册
+        const charsToRegister = characters.filter(char => !char.soraIdentity?.username);
 
         if (charsToRegister.length === 0) return;
 
@@ -165,7 +204,7 @@ export class SoraOrchestrator {
         await Promise.all(charsToRegister.map(async (char) => {
             let tempFilePath: string | null = null;
             try {
-                let refVideoUrl = char.soraIdentity?.referenceVideoUrl;
+                let refVideoUrl = char.soraIdentity?.referenceVideoUrl || char.soraReferenceVideoUrl;
 
                 // Step A: 生成参考视频 (如果缺失)
                 if (!refVideoUrl && char.referenceImages && char.referenceImages.length > 0) {
@@ -216,6 +255,7 @@ export class SoraOrchestrator {
 
                     if (!char.soraIdentity) char.soraIdentity = { username: '', referenceVideoUrl: '', status: 'pending' };
                     char.soraIdentity.referenceVideoUrl = refVideoUrl!;
+                    char.soraReferenceVideoUrl = refVideoUrl!;
                     char.soraIdentity.status = 'generating';
                     await this.dataService.saveCharacter(projectId, char);
                 }
@@ -243,6 +283,9 @@ export class SoraOrchestrator {
 
                     console.log(`[Orchestrator] Uploaded to R2: ${r2Url}`);
                     refVideoUrl = r2Url; // Update to R2 URL for registration
+                    if (!char.soraIdentity) char.soraIdentity = { username: '', referenceVideoUrl: '', status: 'pending' };
+                    char.soraIdentity.referenceVideoUrl = refVideoUrl;
+                    char.soraReferenceVideoUrl = refVideoUrl;
 
                     this.deleteTempFile(tempVideoPath);
                 } catch (uploadErr) {
@@ -257,7 +300,9 @@ export class SoraOrchestrator {
 
                 if (!char.soraIdentity) char.soraIdentity = { username: '', referenceVideoUrl: '', status: 'pending' };
                 char.soraIdentity.username = charRes.username;
+                char.soraIdentity.referenceVideoUrl = refVideoUrl;
                 char.soraIdentity.status = 'registered';
+                char.soraReferenceVideoUrl = refVideoUrl;
                 console.log(`[Orchestrator] Registered ${char.name} as @${charRes.username}`);
 
                 await this.dataService.saveCharacter(projectId, char);
@@ -335,7 +380,7 @@ export class SoraOrchestrator {
         const settings: Record<string, any> = {};
         characters.forEach(char => {
             if (char.soraIdentity?.username) {
-                const key = `@${char.soraIdentity.username}`;
+                const key = this.promptService.formatSoraCode(char.soraIdentity.username);
 
                 // 直接使用 @username 作为唯一的 Key，移除冗余的 name 字段
                 settings[key] = {
@@ -355,11 +400,9 @@ export class SoraOrchestrator {
 
         // 2. 识别主角色 ID
         let actorId = "None";
-        if (shot.mainCharacters && shot.mainCharacters.length > 0) {
-            const mainChar = characters.find(c => c.name === shot.mainCharacters![0]);
-            if (mainChar?.soraIdentity?.username) {
-                actorId = `@${mainChar.soraIdentity.username}`;
-            }
+        const primaryChar = this.resolvePrimaryCharacter(characters, shot);
+        if (primaryChar?.soraIdentity?.username) {
+            actorId = this.promptService.formatSoraCode(primaryChar.soraIdentity.username);
         }
 
         // 3. 显式注入分镜景别
@@ -380,9 +423,79 @@ export class SoraOrchestrator {
         };
     }
 
+    private normalizeName(name?: string): string {
+        return (name || '').trim();
+    }
+
+    private extractShotDescriptionText(description?: string): string {
+        if (!description) return '';
+        let text = description;
+        try {
+            const obj = JSON.parse(description);
+            if (obj && typeof obj === 'object') {
+                const parts: string[] = [];
+                if (typeof obj.visual === 'string') parts.push(obj.visual);
+                if (typeof obj.action === 'string') parts.push(obj.action);
+                if (typeof obj.prompt === 'string') parts.push(obj.prompt);
+                if (typeof obj.description === 'string') parts.push(obj.description);
+                if (parts.length > 0) {
+                    text = parts.join(' ');
+                }
+            }
+        } catch (e) {
+            // Ignore JSON parse errors and use raw description
+        }
+        return text;
+    }
+
+    private extractShotText(shot: Shot): string {
+        const parts: string[] = [];
+        const descText = this.extractShotDescriptionText(shot.description);
+        if (descText) parts.push(descText);
+        if (shot.dialogue) parts.push(shot.dialogue);
+        if (shot.narration) parts.push(shot.narration);
+        return parts.join(' ');
+    }
+
+    private resolvePrimaryCharacter(characters: Character[], shot: Shot): Character | undefined {
+        if (shot.mainCharacters && shot.mainCharacters.length > 0) {
+            const name = this.normalizeName(shot.mainCharacters[0]);
+            const direct = characters.find((c) => this.normalizeName(c.name) === name);
+            if (direct) return direct;
+        }
+
+        const text = this.extractShotText(shot);
+        if (!text) return undefined;
+
+        const sorted = [...characters].sort((a, b) => (b.name || '').length - (a.name || '').length);
+        return sorted.find((char) => {
+            const name = this.normalizeName(char.name);
+            return name.length >= 2 && text.includes(name);
+        });
+    }
+
     private identifyCharactersInScene(project: Project, shots: Shot[]): Character[] {
-        const combinedText = shots.map(s => s.description).join(' ');
-        return project.characters.filter(char => combinedText.includes(char.name));
+        const names = new Set<string>();
+        const candidates = project.characters
+            .map((char) => ({ char, name: this.normalizeName(char.name) }))
+            .filter((item) => item.name.length > 0)
+            .sort((a, b) => b.name.length - a.name.length);
+
+        shots.forEach((shot) => {
+            (shot.mainCharacters || []).forEach((name) => {
+                const normalized = this.normalizeName(name);
+                if (normalized) names.add(normalized);
+            });
+            const text = this.extractShotText(shot);
+            if (!text) return;
+            candidates.forEach((item) => {
+                if (item.name.length >= 2 && text.includes(item.name)) {
+                    names.add(item.name);
+                }
+            });
+        });
+
+        return project.characters.filter((char) => names.has(this.normalizeName(char.name)));
     }
 
     private async getOptimalSize(imagePathOrUrl: string): Promise<string> {
@@ -428,7 +541,12 @@ export class SoraOrchestrator {
         // Init DB Service
         await this.dataService.initialize(userId);
 
-        const charactersWithoutImages = project.characters.filter(c => !c.referenceImages || c.referenceImages.length === 0);
+        const charactersWithoutImages = project.characters.filter(c =>
+            (!c.referenceImages || c.referenceImages.length === 0) &&
+            !c.soraIdentity?.username &&
+            !c.soraReferenceVideoUrl &&
+            !c.soraIdentity?.referenceVideoUrl
+        );
         if (charactersWithoutImages.length > 0) {
             const names = charactersWithoutImages.map(c => c.name).join(', ');
             // Return actionable error instead of throwing, so Agent can handle it gracefully.

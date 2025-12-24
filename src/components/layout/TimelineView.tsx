@@ -16,6 +16,8 @@ import {
     Image as ImageIcon,
     Bot,
     Sliders,
+    RefreshCw,
+    List,
 } from 'lucide-react';
 import AgentPanel from '../agent/AgentPanel';
 import ChatPanel from '@/components/chat/ChatPanel';
@@ -29,7 +31,7 @@ interface TimelineViewProps {
 }
 
 export default function TimelineView({ onClose }: TimelineViewProps) {
-    const { project, selectShot, selectedShotId, controlMode, setControlMode } = useProjectStore();
+    const { project, selectShot, selectedShotId, controlMode, setControlMode, currentSceneId, updateShot } = useProjectStore();
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -38,6 +40,8 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     const [duration, setDuration] = useState(0);
     const [currentShotIndex, setCurrentShotIndex] = useState(0);
     const [showRightPanel, setShowRightPanel] = useState(false); // 默认折叠右侧面板
+    const [showQueuePanel, setShowQueuePanel] = useState(false);
+    const queueOpenRef = useRef(false);
 
     // Get all shots sorted by global order - Memoized to prevent effect re-runs
     const allShots = useMemo(() => {
@@ -143,12 +147,464 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     // Subscribe to Sora task updates
     const { user } = useAuth(); // Get user for chat message
     const [soraTasks, setSoraTasks] = useState<Map<string, SoraTask>>(new Map());
+    const shotsById = useMemo(
+        () => new Map((project?.shots || []).map((shot) => [shot.id, shot])),
+        [project?.shots]
+    );
+    const scenesById = useMemo(
+        () => new Map((project?.scenes || []).map((scene) => [scene.id, scene])),
+        [project?.scenes]
+    );
+    const charactersById = useMemo(
+        () => new Map((project?.characters || []).map((character) => [character.id, character])),
+        [project?.characters]
+    );
+    const soraTaskList = useMemo(() => {
+        const tasks = Array.from(soraTasks.values());
+        return tasks.sort((a, b) => {
+            const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
+            const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
+            return bTime - aTime;
+        });
+    }, [soraTasks]);
+    const soraTaskCounts = useMemo(() => {
+        const counts = { queued: 0, processing: 0, completed: 0, failed: 0 };
+        soraTaskList.forEach((task) => {
+            if (task.status === 'queued') counts.queued += 1;
+            else if (task.status === 'processing' || task.status === 'generating') counts.processing += 1;
+            else if (task.status === 'completed') counts.completed += 1;
+            else if (task.status === 'failed') counts.failed += 1;
+        });
+        return counts;
+    }, [soraTaskList]);
+    const activeQueueCount = soraTaskCounts.queued + soraTaskCounts.processing;
+    const activeSceneId = currentSceneId || currentShot?.sceneId || project?.scenes?.[0]?.id;
+    const sceneOutputTasks = useMemo(() => {
+        if (!activeSceneId) return [];
+        return soraTaskList.filter((task) =>
+            task.sceneId === activeSceneId && (!task.type || task.type === 'shot_generation')
+        );
+    }, [soraTaskList, activeSceneId]);
+
+    const getTaskLabel = useCallback((task: SoraTask) => {
+        if (task.characterId) {
+            const character = charactersById.get(task.characterId);
+            return character ? `角色 · ${character.name}` : `角色任务 · ${task.id.slice(-6)}`;
+        }
+        if (task.shotId) {
+            const shot = shotsById.get(task.shotId);
+            const shotLabel = shot?.globalOrder ?? shot?.order ?? task.shotId.slice(-6);
+            return `镜头 · ${shotLabel}`;
+        }
+        if (task.sceneId) {
+            const scene = scenesById.get(task.sceneId);
+            return scene ? `场景 · ${scene.name}` : `场景任务 · ${task.id.slice(-6)}`;
+        }
+        return `任务 · ${task.id.slice(-6)}`;
+    }, [shotsById, scenesById, charactersById]);
+
+    const syncedTaskIdsRef = useRef(new Set<string>());
+
+    useEffect(() => {
+        if (!project?.id) return;
+        const tasks = Array.from(soraTasks.values());
+        const updates: Promise<any>[] = [];
+        tasks.forEach((task) => {
+            if (task.status !== 'completed') return;
+            const videoUrl = task.r2Url || task.kaponaiUrl;
+            if (!videoUrl) return;
+
+            const targetShotIds = task.shotId ? [task.shotId] : (task.shotIds || []);
+            if (targetShotIds.length === 0) return;
+
+            targetShotIds.forEach((shotId) => {
+                const shot = shotsById.get(shotId);
+                if (!shot?.sceneId) return;
+                if (shot.videoClip === videoUrl) return;
+                if (shot.videoClip) return;
+                if (syncedTaskIdsRef.current.has(`${task.id}:${shotId}`)) return;
+
+                syncedTaskIdsRef.current.add(`${task.id}:${shotId}`);
+                updateShot(shot.id, {
+                    status: 'done',
+                    videoClip: videoUrl,
+                } as any);
+                updates.push(
+                    dataService.saveShot(shot.sceneId, {
+                        id: shot.id,
+                        status: 'done',
+                        videoClip: videoUrl,
+                    } as any)
+                );
+            });
+        });
+        if (updates.length > 0) {
+            Promise.allSettled(updates).catch(() => {});
+        }
+    }, [soraTasks, shotsById, project?.id, updateShot]);
+
+    const applyStatusUpdate = async (task: SoraTask, data: any, notify: boolean) => {
+        const remoteStatus = data.status;
+        const videoUrl = data.videoUrl || data.r2Url || data.kaponaiUrl;
+
+        if (remoteStatus === 'completed') {
+            const isTransition = task.status !== 'completed';
+            const updatedTask: SoraTask = {
+                ...task,
+                status: 'completed',
+                progress: 100,
+                kaponaiUrl: data.kaponaiUrl || task.kaponaiUrl || videoUrl,
+                r2Url: data.r2Url || task.r2Url,
+                updatedAt: new Date(),
+            };
+            setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
+            await dataService.saveSoraTask(updatedTask);
+
+            if (isTransition && videoUrl) {
+                if (task.shotId && task.sceneId) {
+                    await dataService.saveShot(task.sceneId, {
+                        id: task.shotId,
+                        status: 'done',
+                        videoClip: videoUrl,
+                    } as any);
+                    updateShot(task.shotId, {
+                        status: 'done',
+                        videoClip: videoUrl,
+                    } as any);
+                }
+
+                if (user && project?.id) {
+                    await dataService.saveChatMessage({
+                        id: crypto.randomUUID(),
+                        userId: user.id,
+                        projectId: project.id,
+                        sceneId: task.sceneId,
+                        shotId: task.shotId,
+                        scope: 'shot',
+                        role: 'assistant',
+                        content: '视频生成成功！',
+                        timestamp: new Date(),
+                        createdAt: new Date(),
+                        updatedAt: new Date(),
+                        metadata: {
+                            type: 'video_result',
+                            videoUrl: videoUrl,
+                            taskId: task.id,
+                        }
+                    });
+                }
+
+                if (notify) {
+                    toast.success('视频生成成功！');
+                }
+            } else if (notify) {
+                toast.success('状态已更新');
+            }
+            return;
+        }
+
+        if (remoteStatus === 'failed') {
+            const isTransition = task.status !== 'failed';
+            const errorMsg = data.error || 'Unknown error';
+            const updatedTask: SoraTask = {
+                ...task,
+                status: 'failed',
+                errorMessage: errorMsg,
+                updatedAt: new Date(),
+            };
+            setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
+            await dataService.saveSoraTask(updatedTask);
+            if (notify) {
+                toast.error(`视频生成失败: ${errorMsg}`);
+            }
+            return;
+        }
+
+        const nextStatus = remoteStatus === 'generating' ? 'processing' : remoteStatus;
+        const nextProgress = typeof data.progress === 'number' ? data.progress : task.progress;
+        if (nextStatus !== task.status || nextProgress !== task.progress) {
+            const updatedTask: SoraTask = {
+                ...task,
+                status: nextStatus,
+                progress: nextProgress,
+                updatedAt: new Date(),
+            };
+            setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
+            await dataService.saveSoraTask(updatedTask);
+        }
+
+        if (notify) {
+            toast.info(`已刷新状态：${nextStatus}${typeof nextProgress === 'number' ? ` (${nextProgress}%)` : ''}`);
+        }
+    };
+
+    const refreshTask = async (task: SoraTask, notify: boolean, silentError: boolean = false) => {
+        try {
+            const res = await fetch(`/api/sora/status?taskId=${task.id}`);
+            if (!res.ok) {
+                const text = await res.text();
+                if (!silentError) {
+                    toast.error(`刷新失败: ${text || res.status}`);
+                }
+                return;
+            }
+            const data = await res.json();
+            await applyStatusUpdate(task, data, notify);
+        } catch (error) {
+            console.error('Error refreshing sora task:', error);
+            if (!silentError) {
+                toast.error('刷新失败，请稍后重试');
+            }
+        }
+    };
+
+    const refreshSelectedTask = async () => {
+        const targetShotId = selectedShotId || currentShot?.id;
+        if (!targetShotId) {
+            toast.info('请先选择一个镜头');
+            return;
+        }
+
+        let task =
+            soraTasks.get(targetShotId) ||
+            Array.from(soraTasks.values()).find((t) => t.shotId === targetShotId);
+
+        if (!task) {
+            const shot = shotsById.get(targetShotId);
+            const sceneTaskIds = shot?.sceneId
+                ? scenesById.get(shot.sceneId)?.soraGeneration?.tasks || []
+                : [];
+            if (sceneTaskIds.length > 0) {
+                task = Array.from(soraTasks.values()).find((t) => sceneTaskIds.includes(t.id));
+            }
+            if (!task && shot?.sceneId) {
+                task = Array.from(soraTasks.values()).find(
+                    (t) => t.sceneId === shot.sceneId && (!t.type || t.type === 'shot_generation')
+                );
+            }
+        }
+
+        if (!task) {
+            const backfilled = await backfillMissingTasks();
+            if (backfilled > 0 && project?.id) {
+                const tasks = await loadSoraTasks();
+                const taskMap = new Map<string, SoraTask>();
+                tasks.forEach((t) => taskMap.set(t.shotId || t.id, t));
+                setSoraTasks(taskMap);
+
+                task =
+                    taskMap.get(targetShotId) ||
+                    Array.from(taskMap.values()).find((t) => t.shotId === targetShotId);
+            }
+        }
+
+        if (!task) {
+            toast.info('该镜头没有可刷新任务');
+            return;
+        }
+
+        await refreshTask(task, true);
+    };
+
+    const backfillMissingTasks = useCallback(async () => {
+        if (!project?.id || !user?.id) return 0;
+
+        const knownTaskIds = new Set(Array.from(soraTasks.values()).map((task) => task.id));
+        const candidates: Array<{ id: string; sceneId?: string; type?: 'shot_generation' | 'character_reference' }> = [];
+
+        (project.scenes || []).forEach((scene) => {
+            const taskIds = scene.soraGeneration?.tasks || [];
+            taskIds.forEach((taskId) => {
+                if (!taskId || knownTaskIds.has(taskId)) return;
+                candidates.push({
+                    id: taskId,
+                    sceneId: scene.id,
+                    type: 'shot_generation',
+                });
+            });
+        });
+
+        if (candidates.length === 0) return 0;
+
+        try {
+            const res = await fetch('/api/sora/tasks/backfill', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId: project.id,
+                    userId: user.id,
+                    tasks: candidates,
+                }),
+            });
+            if (!res.ok) {
+                const text = await res.text();
+                console.error('Backfill sora tasks failed:', text);
+                return 0;
+            }
+            return candidates.length;
+        } catch (error) {
+            console.error('Backfill sora tasks failed:', error);
+            return 0;
+        }
+    }, [project?.id, project?.scenes, soraTasks, user?.id]);
+
+    const mapTaskRow = useCallback((row: any): SoraTask => ({
+        id: row.id,
+        userId: row.user_id,
+        projectId: row.project_id,
+        sceneId: row.scene_id || undefined,
+        shotId: row.shot_id || undefined,
+        shotIds: row.shot_ids || undefined,
+        shotRanges: row.shot_ranges || undefined,
+        characterId: row.character_id || undefined,
+        type: row.type || undefined,
+        status: row.status,
+        progress: row.progress ?? 0,
+        model: row.model || 'sora-2',
+        prompt: row.prompt || '',
+        targetDuration: row.target_duration || 0,
+        targetSize: row.target_size || '',
+        kaponaiUrl: row.kaponai_url || undefined,
+        r2Url: row.r2_url || undefined,
+        pointCost: row.point_cost || 0,
+        errorMessage: row.error_message || undefined,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at),
+    }), []);
+
+    const loadSoraTasks = useCallback(async (): Promise<SoraTask[]> => {
+        if (!project?.id) return [];
+
+        try {
+            const res = await fetch('/api/sora/tasks/list', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId: project.id,
+                }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                return (data.tasks || []).map((row: any) => mapTaskRow(row));
+            }
+        } catch (error) {
+            console.error('Load sora tasks from api failed:', error);
+        }
+
+        return dataService.getSoraTasks(project.id);
+    }, [project?.id, mapTaskRow]);
+
+    const refreshAllTasks = async () => {
+        if (!project?.id) return;
+
+        await backfillMissingTasks();
+
+        let latestTasks: SoraTask[] = [];
+        try {
+            latestTasks = await loadSoraTasks();
+            const taskMap = new Map<string, SoraTask>();
+            latestTasks.forEach((t) => taskMap.set(t.shotId || t.id, t));
+            setSoraTasks(taskMap);
+        } catch (error) {
+            console.error('Error reloading sora tasks:', error);
+            latestTasks = soraTaskList;
+        }
+
+        const pendingTasks = latestTasks.filter((task) =>
+            task.status === 'queued' ||
+            task.status === 'processing' ||
+            task.status === 'generating' ||
+            (task.status === 'completed' && !task.kaponaiUrl && !task.r2Url)
+        );
+        if (pendingTasks.length === 0) {
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/sora/status/batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    taskIds: pendingTasks.map((task) => task.id),
+                }),
+            });
+            if (!res.ok) {
+                return;
+            }
+            const data = await res.json();
+            const resultMap = new Map<string, any>();
+            (data.results || []).forEach((item: any) => {
+                if (item?.id) resultMap.set(item.id, item);
+            });
+            for (const task of pendingTasks) {
+                const payload = resultMap.get(task.id);
+                if (payload) {
+                    await applyStatusUpdate(task, payload, false);
+                }
+            }
+        } catch (error) {
+            console.error('Batch refresh failed:', error);
+        }
+    };
+
+    const bindTaskToShot = async (task: SoraTask, targetShotId?: string) => {
+        const shotId = targetShotId || selectedShotId || currentShot?.id;
+        if (!shotId) {
+            toast.info('请先选择一个镜头');
+            return;
+        }
+
+        const shot = shotsById.get(shotId);
+        if (!shot?.sceneId) {
+            toast.error('未找到目标镜头');
+            return;
+        }
+
+        const videoUrl = task.r2Url || task.kaponaiUrl;
+        if (!videoUrl) {
+            toast.info('该任务暂时没有可用视频');
+            return;
+        }
+
+        try {
+            await dataService.saveShot(shot.sceneId, {
+                id: shot.id,
+                status: 'done',
+                videoClip: videoUrl,
+            } as any);
+
+            updateShot(shot.id, {
+                status: 'done',
+                videoClip: videoUrl,
+            } as any);
+
+            const updatedTask: SoraTask = {
+                ...task,
+                shotId: shot.id,
+                updatedAt: new Date(),
+            };
+
+            setSoraTasks((prev) => {
+                const next = new Map(prev);
+                const oldKey = task.shotId || task.id;
+                next.delete(oldKey);
+                next.set(shot.id, updatedTask);
+                return next;
+            });
+
+            await dataService.saveSoraTask(updatedTask);
+            toast.success('已绑定到镜头');
+        } catch (error) {
+            console.error('Error binding sora task to shot:', error);
+            toast.error('绑定失败，请稍后重试');
+        }
+    };
 
     useEffect(() => {
         if (!project?.id) return;
 
         // Load existing tasks
-        dataService.getSoraTasks(project.id).then((tasks) => {
+        loadSoraTasks().then((tasks) => {
             const taskMap = new Map<string, SoraTask>();
             tasks.forEach((t) => taskMap.set(t.shotId || t.id, t));
             setSoraTasks(taskMap);
@@ -164,13 +620,30 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         });
 
         return () => unsubscribe();
-    }, [project?.id]);
+    }, [project?.id, loadSoraTasks]);
+
+    useEffect(() => {
+        if (!showQueuePanel) {
+            queueOpenRef.current = false;
+            return;
+        }
+        if (queueOpenRef.current) return;
+        queueOpenRef.current = true;
+        backfillMissingTasks().then(() => {
+            if (!project?.id) return;
+            loadSoraTasks().then((tasks) => {
+                const taskMap = new Map<string, SoraTask>();
+                tasks.forEach((t) => taskMap.set(t.shotId || t.id, t));
+                setSoraTasks(taskMap);
+            });
+        });
+    }, [showQueuePanel, project?.id, backfillMissingTasks, loadSoraTasks]);
 
     // Polling for Sora task status
     useEffect(() => {
         const pollInterval = setInterval(async () => {
             const processingTasks = Array.from(soraTasks.values()).filter(
-                (t) => t.status === 'processing' || t.status === 'queued'
+                (t) => t.status === 'processing' || t.status === 'queued' || t.status === 'generating'
             );
 
             if (processingTasks.length === 0) return;
@@ -181,72 +654,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                     if (!res.ok) continue;
 
                     const data = await res.json();
-                    const remoteStatus = data.status; // 'SUCCESS', 'FAILED', 'RUNNING', 'QUEUED'
-
-                    if (remoteStatus === 'SUCCESS') {
-                        const videoUrl = data.result_url || data.url;
-
-                        // 1. Update Task
-                        const updatedTask: SoraTask = {
-                            ...task,
-                            status: 'completed',
-                            progress: 100,
-                            r2Url: videoUrl,
-                            updatedAt: new Date(),
-                        };
-                        setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
-                        await dataService.saveSoraTask(updatedTask);
-
-                        // 2. Update Shot
-                        if (task.shotId && task.sceneId) {
-                            await dataService.saveShot(task.sceneId, {
-                                id: task.shotId,
-                                status: 'done',
-                                videoClip: videoUrl,
-                            } as any);
-                        }
-
-                        // 3. Add to Chat History (Feature Request)
-                        if (user && project?.id) {
-                            await dataService.saveChatMessage({
-                                id: crypto.randomUUID(),
-                                userId: user.id,
-                                projectId: project.id,
-                                sceneId: task.sceneId,
-                                shotId: task.shotId,
-                                scope: 'shot',
-                                role: 'assistant',
-                                content: '视频生成成功！',
-                                timestamp: new Date(),
-                                createdAt: new Date(),
-                                updatedAt: new Date(),
-                                metadata: {
-                                    type: 'video_result',
-                                    videoUrl: videoUrl,
-                                    taskId: task.id,
-                                }
-                            });
-                            toast.success('视频生成成功！已添加到聊天记录');
-                        }
-
-                    } else if (remoteStatus === 'FAILED') {
-                        const errorMsg = data.error_msg || 'Unknown error';
-                        const updatedTask: SoraTask = {
-                            ...task,
-                            status: 'failed',
-                            errorMessage: errorMsg,
-                            updatedAt: new Date(),
-                        };
-                        setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
-                        await dataService.saveSoraTask(updatedTask);
-                        toast.error(`视频生成失败: ${errorMsg}`);
-                    } else {
-                        // Update progress if available
-                        if (data.progress && data.progress !== task.progress) {
-                            const updatedTask = { ...task, progress: data.progress };
-                            setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
-                        }
-                    }
+                    await applyStatusUpdate(task, data, false);
                 } catch (error) {
                     console.error('Error polling sora task:', error);
                 }
@@ -306,6 +714,38 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     };
 
+    const getStatusLabel = (status: string) => {
+        switch (status) {
+            case 'queued':
+                return '排队中';
+            case 'processing':
+            case 'generating':
+                return '生成中';
+            case 'completed':
+                return '已完成';
+            case 'failed':
+                return '失败';
+            default:
+                return status;
+        }
+    };
+
+    const getStatusClass = (status: string) => {
+        switch (status) {
+            case 'queued':
+                return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-300';
+            case 'processing':
+            case 'generating':
+                return 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300';
+            case 'completed':
+                return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300';
+            case 'failed':
+                return 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-300';
+            default:
+                return 'bg-gray-100 text-gray-700 dark:bg-gray-500/10 dark:text-gray-300';
+        }
+    };
+
     // Progress bar click
     const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (!videoRef.current || !hasVideo) return;
@@ -320,7 +760,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     return (
         <div className="fixed inset-0 z-50 bg-light-bg dark:bg-cine-black flex overflow-hidden">
             {/* Left: Video Player Area */}
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 flex flex-col min-w-0 relative">
                 {/* Top Bar */}
                 <div className="h-12 flex-shrink-0 bg-white dark:bg-cine-panel flex items-center justify-between px-4 border-b border-light-border dark:border-cine-border">
                     <div className="text-light-text dark:text-white font-bold text-sm">
@@ -330,14 +770,186 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                         分镜 {currentShotIndex + 1} / {allShots.length}
                         {!hasVideo && <span className="ml-2 text-yellow-600 dark:text-yellow-500">(无视频)</span>}
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-light-accent/10 dark:bg-cine-accent/10 hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 rounded text-sm text-light-text dark:text-white transition-colors"
-                    >
-                        <Grid3X3 size={14} />
-                        <span>故事板视图</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowQueuePanel((prev) => !prev)}
+                            className="relative flex items-center gap-2 px-3 py-1.5 bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded text-sm text-light-text dark:text-white transition-colors"
+                        >
+                            <List size={14} />
+                            <span>任务队列</span>
+                            {activeQueueCount > 0 && (
+                                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
+                                    {activeQueueCount}
+                                </span>
+                            )}
+                        </button>
+                        <button
+                            onClick={refreshAllTasks}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded text-sm text-light-text dark:text-white transition-colors"
+                        >
+                            <RefreshCw size={14} />
+                            <span>刷新状态</span>
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-light-accent/10 dark:bg-cine-accent/10 hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 rounded text-sm text-light-text dark:text-white transition-colors"
+                        >
+                            <Grid3X3 size={14} />
+                            <span>故事板视图</span>
+                        </button>
+                    </div>
                 </div>
+
+                {showQueuePanel && (
+                    <div className="absolute right-4 top-14 w-[360px] max-h-[70vh] bg-white dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl shadow-lg z-30 overflow-hidden">
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-light-border dark:border-cine-border">
+                            <div className="text-sm font-semibold text-light-text dark:text-white">Sora 任务队列</div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={refreshAllTasks}
+                                    className="text-xs px-2 py-1 rounded border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border transition-colors"
+                                >
+                                    刷新
+                                </button>
+                                <button
+                                    onClick={() => setShowQueuePanel(false)}
+                                    className="text-xs px-2 py-1 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-text dark:text-white hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
+                                >
+                                    收起
+                                </button>
+                            </div>
+                        </div>
+                        <div className="px-3 py-2 text-[11px] text-light-text-muted dark:text-cine-text-muted border-b border-light-border dark:border-cine-border">
+                            排队 {soraTaskCounts.queued} · 进行中 {soraTaskCounts.processing} · 完成 {soraTaskCounts.completed} · 失败 {soraTaskCounts.failed}
+                        </div>
+                        <div className="p-3 space-y-4 overflow-y-auto max-h-[calc(70vh-96px)]">
+                            <div>
+                                <div className="text-xs font-semibold text-light-text dark:text-white mb-2">
+                                    场景 Sora 输出
+                                </div>
+                                {sceneOutputTasks.length === 0 ? (
+                                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                                        当前场景暂无输出
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {sceneOutputTasks.map((task) => {
+                                            const videoUrl = task.r2Url || task.kaponaiUrl;
+                                            return (
+                                                <div
+                                                    key={task.id}
+                                                    className="flex items-center justify-between gap-2 rounded border border-light-border dark:border-cine-border px-2 py-1.5"
+                                                >
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <span className={`text-[10px] px-2 py-0.5 rounded ${getStatusClass(task.status)}`}>
+                                                            {getStatusLabel(task.status)}
+                                                        </span>
+                                                        <span className="text-xs text-light-text dark:text-white truncate">
+                                                            {getTaskLabel(task)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                        {typeof task.progress === 'number' && task.status !== 'completed' && (
+                                                            <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted">
+                                                                {task.progress}%
+                                                            </span>
+                                                        )}
+                                                        {videoUrl && !task.shotId && (
+                                                            <button
+                                                                onClick={() => bindTaskToShot(task)}
+                                                                className="text-[10px] px-2 py-0.5 rounded border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border transition-colors"
+                                                            >
+                                                                绑定当前镜头
+                                                            </button>
+                                                        )}
+                                                        {videoUrl && (
+                                                            <button
+                                                                onClick={() => window.open(videoUrl, '_blank', 'noopener,noreferrer')}
+                                                                className="text-[10px] px-2 py-0.5 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-text dark:text-white hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
+                                                            >
+                                                                打开
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <div className="text-xs font-semibold text-light-text dark:text-white mb-2">
+                                    任务队列
+                                </div>
+                                {soraTaskList.length === 0 ? (
+                                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                                        暂无任务
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {soraTaskList.map((task) => {
+                                            const videoUrl = task.r2Url || task.kaponaiUrl;
+                                            const typeLabel =
+                                                task.type === 'character_reference'
+                                                    ? '角色视频'
+                                                    : task.type === 'shot_generation'
+                                                        ? '镜头视频'
+                                                        : 'Sora 任务';
+                                            return (
+                                                <div
+                                                    key={task.id}
+                                                    className="flex items-center justify-between gap-2 rounded border border-light-border dark:border-cine-border px-2 py-1.5"
+                                                >
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <span className={`text-[10px] px-2 py-0.5 rounded ${getStatusClass(task.status)}`}>
+                                                            {getStatusLabel(task.status)}
+                                                        </span>
+                                                        <span className="text-xs text-light-text dark:text-white truncate">
+                                                            {getTaskLabel(task)}
+                                                        </span>
+                                                        <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted">
+                                                            {typeLabel}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                        {typeof task.progress === 'number' && task.status !== 'completed' && (
+                                                            <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted">
+                                                                {task.progress}%
+                                                            </span>
+                                                        )}
+                                                        <button
+                                                            onClick={() => refreshTask(task, false, true)}
+                                                            className="text-[10px] px-2 py-0.5 rounded border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border transition-colors"
+                                                        >
+                                                            刷新
+                                                        </button>
+                                                        {videoUrl && !task.shotId && (!task.type || task.type === 'shot_generation') && (
+                                                            <button
+                                                                onClick={() => bindTaskToShot(task)}
+                                                                className="text-[10px] px-2 py-0.5 rounded border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border transition-colors"
+                                                            >
+                                                                绑定当前镜头
+                                                            </button>
+                                                        )}
+                                                        {videoUrl && (
+                                                            <button
+                                                                onClick={() => window.open(videoUrl, '_blank', 'noopener,noreferrer')}
+                                                                className="text-[10px] px-2 py-0.5 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-text dark:text-white hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
+                                                            >
+                                                                打开
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Video Preview Area */}
                 <div className="flex-1 min-h-0 flex items-center justify-center bg-gray-100 dark:bg-black relative">
@@ -597,4 +1209,3 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         </div>
     );
 }
-

@@ -38,7 +38,7 @@ export default function AssetsPage() {
         }
     };
 
-    const handleAddCharacter = async (char: Character) => {
+    const handleAddCharacter = async (char: Character, options?: { keepOpen?: boolean }) => {
         if (!user) return;
         try {
             // Ensure project_id is null for global characters
@@ -50,14 +50,14 @@ export default function AssetsPage() {
             await dataService.saveCharacter(null, globalChar);
             toast.success('全局角色已保存');
             loadCharacters();
-            setShowAddDialog(false);
+            if (!options?.keepOpen) setShowAddDialog(false);
         } catch (error) {
             console.error('Failed to save character:', error);
             toast.error('保存失败');
         }
     };
 
-    const handleUpdateCharacter = async (updatedChar: Character) => {
+    const handleUpdateCharacter = async (updatedChar: Character, options?: { keepOpen?: boolean }) => {
         if (!user) return;
         try {
             const globalChar: Character = {
@@ -68,7 +68,7 @@ export default function AssetsPage() {
             await dataService.saveCharacter(null, globalChar);
             toast.success('角色已更新');
             loadCharacters();
-            setEditingCharacter(null);
+            if (!options?.keepOpen) setEditingCharacter(null);
         } catch (error) {
             toast.error('更新失败');
         }

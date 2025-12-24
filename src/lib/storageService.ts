@@ -19,6 +19,15 @@ interface UploadResult {
   path?: string;
 }
 
+const SUPABASE_STORAGE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET;
+
+const getSupabaseBucket = () => {
+  if (!SUPABASE_STORAGE_BUCKET) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET');
+  }
+  return SUPABASE_STORAGE_BUCKET;
+};
+
 class StorageService {
   private cachedUserId: string | null = null;
   private cachedUserPromise: Promise<string | null> | null = null;
@@ -123,12 +132,13 @@ class StorageService {
     folder: string,
     userId: string
   ): Promise<UploadResult> {
+    const bucket = getSupabaseBucket();
     const timestamp = Date.now();
     const fileName = `${timestamp}_${file.name}`;
     const filePath = `${userId}/${folder}/${fileName}`;
 
     const { data, error } = await supabase.storage
-      .from('video-agent-media')
+      .from(bucket)
       .upload(filePath, file, {
         cacheControl: '3600',
         upsert: false,
@@ -142,7 +152,7 @@ class StorageService {
     // 获取公开 URL
     const {
       data: { publicUrl },
-    } = supabase.storage.from('video-agent-media').getPublicUrl(data.path);
+    } = supabase.storage.from(bucket).getPublicUrl(data.path);
 
     return {
       url: publicUrl,
@@ -182,32 +192,21 @@ class StorageService {
 
     // 如果是 R2 URL，从 R2 删除
     if (this.isR2URL(url)) {
-      try {
-        const urlObj = new URL(url);
-        const key = urlObj.pathname.substring(1); // 移除开头的 /
-        await r2Service.deleteFile(key);
-      } catch (error) {
-        console.error('Failed to delete R2 file:', error);
-      }
+      const urlObj = new URL(url);
+      const key = urlObj.pathname.substring(1); // 移除开头的 /
+      await r2Service.deleteFile(key);
       return;
     }
 
     // 如果是 Supabase URL，从 Storage 删除
     if (url.includes('supabase.co/storage')) {
-      try {
-        const urlObj = new URL(url);
-        const pathMatch = urlObj.pathname.match(/\/storage\/v1\/object\/public\/video-agent-media\/(.+)/);
-
-        if (pathMatch && pathMatch[1]) {
-          const filePath = pathMatch[1];
-          const { error } = await supabase.storage.from('video-agent-media').remove([filePath]);
-
-          if (error) {
-            console.error('Delete error:', error);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to delete file:', error);
+      const urlObj = new URL(url);
+      const bucket = getSupabaseBucket();
+      const publicPrefix = `/storage/v1/object/public/${bucket}/`;
+      if (urlObj.pathname.startsWith(publicPrefix)) {
+        const filePath = urlObj.pathname.slice(publicPrefix.length);
+        const { error } = await supabase.storage.from(bucket).remove([filePath]);
+        if (error) throw new Error(error.message || 'Supabase delete failed');
       }
     }
   }
