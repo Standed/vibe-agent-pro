@@ -366,6 +366,9 @@ export class AgentToolExecutor {
 
     if ('groupedShots' in resolvedShotIds) {
       const groupedShots = resolvedShotIds.groupedShots;
+      if (!groupedShots) {
+        return { tool: 'generateShotsVideo', result: null, success: false, error: '无法解析分镜分组' };
+      }
       const details: Array<{ sceneId: string; shotIds: string[]; tasks?: string[]; status: string; error?: string }> = [];
       const allTaskIds: string[] = [];
       let failedCount = 0;
