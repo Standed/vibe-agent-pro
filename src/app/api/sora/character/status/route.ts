@@ -6,6 +6,9 @@ import { uploadBufferToR2 } from '@/lib/cloudflare-r2';
 import { characterConsistencyService } from '@/services/CharacterConsistencyService';
 import { SoraTask, Character } from '@/types/project';
 
+export const maxDuration = 60;
+export const runtime = 'nodejs';
+
 // Initialize Supabase Client (Server-side)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -49,6 +52,11 @@ export async function GET(req: NextRequest) {
         let kaponaiStatus: any = null;
 
         if (!isFinalState) {
+            try {
+                await kaponaiService.assertReachable();
+            } catch (error: any) {
+                return NextResponse.json({ error: error.message || 'Kaponai unreachable' }, { status: 503 });
+            }
             kaponaiStatus = await kaponaiService.getVideoStatus(taskId);
         }
 
@@ -84,6 +92,11 @@ export async function GET(req: NextRequest) {
             } else if (task.type === 'character_reference') {
                 try {
                     if (!finalVideoUrl) {
+                        try {
+                            await kaponaiService.assertReachable();
+                        } catch (error: any) {
+                            return NextResponse.json({ error: error.message || 'Kaponai unreachable' }, { status: 503 });
+                        }
                         const latestStatus = await kaponaiService.getVideoStatus(taskId);
                         if (latestStatus.video_url) {
                             finalVideoUrl = latestStatus.video_url;

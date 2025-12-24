@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const maxDuration = 60;
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // Use the configured text model, fallback to a sensible default if not set
 const GEMINI_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-flash-preview';

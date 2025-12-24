@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KaponaiService } from '@/services/KaponaiService';
 
+export const maxDuration = 60;
+export const runtime = 'nodejs';
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -40,6 +43,11 @@ export async function GET(req: NextRequest) {
     let statusRes: any = null;
 
     if (!isFinal) {
+      try {
+        await kaponai.assertReachable();
+      } catch (error: any) {
+        return NextResponse.json({ error: error.message || 'Kaponai unreachable' }, { status: 503 });
+      }
       statusRes = await kaponai.getVideoStatus(taskId);
     }
 

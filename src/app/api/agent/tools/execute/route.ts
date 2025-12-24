@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SoraOrchestrator } from '@/services/SoraOrchestrator';
 import { Project } from '@/types/project';
 
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
     try {
         const { tool, args, project, userId } = await req.json();

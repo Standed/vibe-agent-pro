@@ -3,6 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 import { KaponaiService } from '@/services/KaponaiService';
 import { uploadBufferToR2 } from '@/lib/cloudflare-r2';
 
+export const maxDuration = 60;
+export const runtime = 'nodejs';
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -20,23 +23,56 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const taskIds = (body?.taskIds || []) as string[];
+    const limit = Number(body?.limit) || 30;
+    const safeLimit = Math.min(Math.max(limit, 1), 60);
+    const concurrency = Math.min(Math.max(Number(body?.concurrency) || 4, 1), 6);
 
     if (!Array.isArray(taskIds) || taskIds.length === 0) {
       return NextResponse.json({ error: 'taskIds is required' }, { status: 400 });
     }
 
+    const limitedTaskIds = taskIds.slice(0, safeLimit);
     const { data: taskRows, error: taskError } = await supabase
       .from('sora_tasks')
       .select('*')
-      .in('id', taskIds);
+      .in('id', limitedTaskIds);
 
     if (taskError || !taskRows) {
       return NextResponse.json({ error: taskError?.message || 'Tasks not found' }, { status: 404 });
     }
 
     const kaponai = new KaponaiService();
+    try {
+      await kaponai.assertReachable();
+    } catch (error: any) {
+      return NextResponse.json({ error: error.message || 'Kaponai unreachable' }, { status: 503 });
+    }
 
-    const results = await Promise.all(taskRows.map(async (task: any) => {
+    const runWithConcurrency = async <T, R>(
+      items: T[],
+      limitCount: number,
+      iterator: (item: T, index: number) => Promise<R>
+    ): Promise<R[]> => {
+      if (items.length === 0) return [];
+      const realLimit = Math.max(1, limitCount);
+      const results: R[] = new Array(items.length);
+      let cursor = 0;
+
+      const worker = async () => {
+        while (true) {
+          const current = cursor;
+          if (current >= items.length) break;
+          cursor++;
+          results[current] = await iterator(items[current], current);
+        }
+      };
+
+      const workers = Array(Math.min(realLimit, items.length)).fill(null).map(() => worker());
+      await Promise.all(workers);
+      return results;
+    };
+
+    const results = await runWithConcurrency(taskRows, concurrency, async (task: any) => {
       const isFinal = task.status === 'completed' || task.status === 'failed';
       let statusRes: any = null;
 
@@ -130,9 +166,13 @@ export async function POST(req: NextRequest) {
         r2Url: resolvedR2Url,
         error: statusRes?.error,
       };
-    }));
+    });
 
-    return NextResponse.json({ success: true, results });
+    return NextResponse.json({
+      success: true,
+      truncated: taskIds.length > limitedTaskIds.length,
+      results
+    });
   } catch (error: any) {
     console.error('[SoraStatusBatch] Error:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });

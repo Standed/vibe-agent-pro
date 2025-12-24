@@ -2,10 +2,10 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-0.4.0-purple?style=for-the-badge)
-![Next.js](https://img.shields.io/badge/Next.js-15.5.6-black?style=for-the-badge&logo=next.js)
+![Version](https://img.shields.io/badge/Version-0.6.0-purple?style=for-the-badge)
+![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-blue?style=for-the-badge&logo=typescript)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
 
 **AI-Powered Video Production Tool | AI 驱动的影视创作工具**
 
@@ -72,6 +72,14 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 - Time ruler with 5-second intervals
 - Playhead indicator
 - Preview and export buttons (UI ready)
+
+### 🆕 Sora Video Generation (NEW)
+- **Sora Orchestrator** - Automated video generation pipeline
+- **Character Registration** - @username-based character consistency
+- **Dynamic Aspect Ratio** - Auto-detect image ratio for optimal output
+- **Smart Scene Splitting** - >15s scenes auto-split into chunks
+- **Quality Control** - Mandated prompts for high-quality output
+- **R2 Persistence** - Automatic upload to Cloudflare R2
 
 ### 🎵 Audio Asset Management
 - Upload audio files (all formats)
@@ -208,8 +216,8 @@ Visit [http://localhost:3000](http://localhost:3000)
 
 ## 🛠️ Tech Stack
 
-- **Framework**: Next.js 15.5.6 with App Router + Turbopack
-- **Frontend**: React 19, TypeScript 5.8.2
+- **Framework**: Next.js 15.1 with App Router + Turbopack
+- **Frontend**: React 19, TypeScript 5.8
 - **Styling**: Tailwind CSS 3.4 (Cinema Dark theme)
 - **State Management**: Zustand + Immer middleware
 - **Database**: Supabase (PostgreSQL) + Dexie.js (IndexedDB fallback)
@@ -220,6 +228,7 @@ Visit [http://localhost:3000](http://localhost:3000)
   - Volcano Engine SeeDream 4.0 (Image generation)
   - Volcano Engine SeeDance 1.0 Pro (Video generation)
   - Volcano Engine Doubao Pro (AI conversation)
+  - **Sora 2** via Kaponai API (Video generation with character consistency)
 
 ---
 
@@ -337,6 +346,16 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 ---
 
 ## 📝 Changelog
+
+### v0.6.0 (2025-12-24)
+- ✅ **Sora Video Generation** - Full Sora 2 integration via Kaponai API
+- ✅ **SoraOrchestrator** - Automated pipeline for character registration and video generation
+- ✅ **Character Consistency** - @username-based character tracking across scenes
+- ✅ **Dynamic Aspect Ratio** - Auto-detect image ratio for optimal video output
+- ✅ **Smart Scene Splitting** - >15s scenes auto-split into chunks (Greedy Packing)
+- ✅ **Quality Control** - Mandated Chinese prompts for high-quality output
+- ✅ **R2 Persistence** - Automatic upload to Cloudflare R2 for video storage
+- ✅ **CharacterConsistencyService** - Async character reference video generation
 
 ### v0.4.0 (2025-12-17)
 - ✅ **User Authentication System** - Supabase Auth integration

@@ -10,6 +10,9 @@ import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } fro
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 import { createClient } from '@supabase/supabase-js';
 
+export const maxDuration = 60;
+export const runtime = 'nodejs';
+
 // 初始化 R2 客户端（兼容 S3 API）
 const r2Client = new S3Client({
   region: 'auto',
