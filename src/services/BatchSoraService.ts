@@ -1,7 +1,7 @@
 
 import * as XLSX from 'xlsx';
 import { RunningHubService } from './RunningHubService';
-import { StoryboardService } from './StoryboardService';
+import { StoryboardService } from './storyboardService';
 import { SoraParams, SoraScript } from '@/types/runninghub';
 
 export interface BatchTaskRow {

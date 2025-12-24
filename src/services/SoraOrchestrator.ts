@@ -44,6 +44,44 @@ export class SoraOrchestrator {
         const shots = project.shots.filter(s => s.sceneId === sceneId).sort((a, b) => a.order - b.order);
         if (shots.length === 0) throw new Error(`No shots in scene ${sceneId}`);
 
+        return await this.generateVideoForShots(project, scene, shots, userId, { appendToScene: false });
+    }
+
+    /**
+     * 核心功能：为指定分镜生成视频 (仅处理传入的 shotIds)
+     */
+    async generateShotsVideo(project: Project, sceneId: string, shotIds: string[], userId: string): Promise<string[]> {
+        await this.dataService.initialize(userId);
+
+        const scene = project.scenes.find(s => s.id === sceneId);
+        if (!scene) throw new Error(`Scene ${sceneId} not found`);
+
+        const uniqueIds = Array.from(new Set((shotIds || []).filter(Boolean)));
+        if (uniqueIds.length === 0) {
+            throw new Error('shotIds is required');
+        }
+
+        const sceneShots = project.shots.filter(s => s.sceneId === sceneId);
+        const shotMap = new Map(sceneShots.map(shot => [shot.id, shot]));
+        const missing = uniqueIds.filter(id => !shotMap.has(id));
+        if (missing.length > 0) {
+            throw new Error(`Shots not found in scene ${sceneId}: ${missing.join(', ')}`);
+        }
+
+        const shots = uniqueIds
+            .map(id => shotMap.get(id)!)
+            .sort((a, b) => a.order - b.order);
+
+        return await this.generateVideoForShots(project, scene, shots, userId, { appendToScene: true });
+    }
+
+    private async generateVideoForShots(
+        project: Project,
+        scene: Scene,
+        shots: Shot[],
+        userId: string,
+        options: { appendToScene: boolean }
+    ): Promise<string[]> {
         // 1. 识别并注册角色
         const involvedCharacters = this.identifyCharactersInScene(project, shots);
         await this.ensureCharactersRegistered(project.id, involvedCharacters, userId);
@@ -130,13 +168,20 @@ export class SoraOrchestrator {
         }
 
         // Use the first task ID for backward compatibility, store all in tasks
-        scene.soraGeneration.taskId = taskIds[0] || '';
-        scene.soraGeneration.tasks = taskIds;
+        if (options.appendToScene) {
+            const existingTasks = Array.isArray(scene.soraGeneration.tasks) ? scene.soraGeneration.tasks : [];
+            const mergedTasks = Array.from(new Set([...existingTasks, ...taskIds]));
+            scene.soraGeneration.taskId = scene.soraGeneration.taskId || taskIds[0] || '';
+            scene.soraGeneration.tasks = mergedTasks;
+        } else {
+            scene.soraGeneration.taskId = taskIds[0] || '';
+            scene.soraGeneration.tasks = taskIds;
+        }
         scene.soraGeneration.status = 'processing';
         scene.soraGeneration.progress = 0;
 
         await this.dataService.saveScene(project.id, scene);
-        console.log(`[SoraOrchestrator] Scene ${sceneId} tasks saved to DB: ${taskIds.join(', ')}`);
+        console.log(`[SoraOrchestrator] Scene ${scene.id} tasks saved to DB: ${taskIds.join(', ')}`);
 
         return taskIds;
     }

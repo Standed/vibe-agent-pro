@@ -261,6 +261,25 @@ export const AGENT_TOOLS: ToolDefinition[] = [
         }
     },
     {
+        name: 'generateShotsVideo',
+        description: '使用 Sora2 为指定分镜生成视频 (仅处理传入的 shotIds)',
+        parameters: {
+            type: 'object',
+            properties: {
+                sceneId: {
+                    type: 'string',
+                    description: '场景的ID'
+                },
+                shotIds: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '指定分镜ID列表'
+                }
+            },
+            required: ['sceneId', 'shotIds']
+        }
+    },
+    {
         name: 'batchGenerateProjectVideosSora',
         description: '批量为项目中所有场景生成 Sora2 视频。自动检查角色参考图，处理角色注册，并生成视频。',
         parameters: {

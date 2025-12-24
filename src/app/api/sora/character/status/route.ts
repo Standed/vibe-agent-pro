@@ -69,10 +69,10 @@ export async function GET(req: NextRequest) {
             const updates: Partial<SoraTask> = {
                 status: normalizedStatus as any,
                 progress: kaponaiStatus.progress,
-                updated_at: new Date().toISOString() as any
+                updatedAt: new Date().toISOString() as any
             };
 
-            if (kaponaiStatus.video_url) updates.kaponai_url = kaponaiStatus.video_url as any;
+            if (kaponaiStatus.video_url) updates.kaponaiUrl = kaponaiStatus.video_url as any;
 
             await supabase.from('sora_tasks').update(updates).eq('id', taskId);
             if (!finalVideoUrl && kaponaiStatus.video_url) {
