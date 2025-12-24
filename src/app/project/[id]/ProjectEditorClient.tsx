@@ -7,8 +7,10 @@ import { dataService } from '@/lib/dataService';
 import LeftSidebarNew from '@/components/layout/LeftSidebarNew';
 import InfiniteCanvas from '@/components/canvas/InfiniteCanvas';
 import RightPanel from '@/components/layout/RightPanel';
+import TimelineView from '@/components/layout/TimelineView';
 import { useI18n } from '@/components/providers/I18nProvider';
 import { useAuth, useRequireWhitelist } from '@/components/auth/AuthProvider';
+import { Film } from 'lucide-react';
 
 export function ProjectEditorClient() {
     const params = useParams();
@@ -18,6 +20,8 @@ export function ProjectEditorClient() {
     const { user, profile, signOut, loading: authLoading } = useRequireWhitelist();
     const [isLoadingProject, setIsLoadingProject] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [showTimelineView, setShowTimelineView] = useState(false);
+
 
     useEffect(() => {
         // 等待认证完成后再加载项目
@@ -141,6 +145,11 @@ export function ProjectEditorClient() {
 
     return (
         <div className="h-screen bg-light-bg dark:bg-cine-black flex flex-col overflow-hidden">
+            {/* Fullscreen Timeline View */}
+            {showTimelineView && (
+                <TimelineView onClose={() => setShowTimelineView(false)} />
+            )}
+
             {/* Main Layout */}
             <div className="flex-1 flex overflow-hidden">
                 {/* Left Sidebar */}
@@ -158,8 +167,16 @@ export function ProjectEditorClient() {
                 <RightPanel />
             </div>
 
-            {/* Timeline - 暂时隐藏，此版本未启用 */}
-            {/* <Timeline /> */}
+            {/* View Switch Button - Right Bottom (Like Seko) */}
+
+            <button
+                onClick={() => setShowTimelineView(true)}
+                className="fixed right-6 bottom-6 z-40 flex items-center gap-2 px-4 py-2.5 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg shadow-lg hover:scale-105 transition-all border border-zinc-700 dark:border-zinc-300"
+            >
+                <Film size={16} />
+                <span className="text-sm font-medium">时间轴视图</span>
+            </button>
         </div>
     );
 }
+

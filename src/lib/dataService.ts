@@ -8,14 +8,18 @@ import type {
   Shot,
   Character,
   AudioAsset,
-  ProjectSettings,
   ChatMessage,
   ChatScope,
+  SoraTask,
+  Series,
+  ProjectSettings,
 } from '@/types/project';
 import { AspectRatio } from '@/types/project';
 import { getCurrentUser } from './supabase/auth';
 import { authenticatedFetch } from './api-client';
 import { supabase } from './supabase/client';
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from './supabase/database.types';
 
 interface DataBackend {
   saveProject(project: Project): Promise<void>;
@@ -26,7 +30,7 @@ interface DataBackend {
   deleteScene(sceneId: string): Promise<void>;
   saveShot(sceneId: string, shot: Shot): Promise<void>;
   deleteShot(shotId: string): Promise<void>;
-  saveCharacter(projectId: string, character: Character): Promise<void>;
+  saveCharacter(projectId: string | null, character: Character): Promise<void>;
   deleteCharacter(characterId: string): Promise<void>;
   saveAudioAsset(projectId: string, audio: AudioAsset): Promise<void>;
   deleteAudioAsset(audioId: string): Promise<void>;
@@ -51,6 +55,20 @@ interface DataBackend {
     projectId: string,
     callback: (message: ChatMessage) => void
   ): () => void;
+  saveSoraTask(task: SoraTask): Promise<void>;
+  getSoraTasks(projectId: string): Promise<SoraTask[]>;
+  subscribeToSoraTasks(
+    projectId: string,
+    callback: (task: SoraTask) => void
+  ): () => void;
+  // Series (剧集) CRUD
+  saveSeries(series: Series): Promise<void>;
+  getAllSeries(): Promise<Series[]>;
+  getSeries(id: string): Promise<Series | undefined>;
+  deleteSeries(id: string): Promise<void>;
+  // Global Characters (asset library)
+  getGlobalCharacters(): Promise<Character[]>;
+  getCharacterById(id: string): Promise<Character | undefined>;
 }
 
 const DEFAULT_SETTINGS: ProjectSettings = {
@@ -70,6 +88,18 @@ class SupabaseBackend implements DataBackend {
 
   constructor(userId: string) {
     this.userId = userId;
+  }
+
+  private getServerSupabase() {
+    if (typeof window !== 'undefined') return null;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) {
+      throw new Error('Missing Supabase environment variables for server client');
+    }
+    return createClient<Database>(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
   }
 
   /**
@@ -142,10 +172,16 @@ class SupabaseBackend implements DataBackend {
           }),
         });
 
+        if (!response.ok) {
+          const text = await response.text();
+          console.error(`[SupabaseBackend] API 请求失败 (${response.status}):`, text.substring(0, 200));
+          throw new Error(`API 响应错误 (${response.status}): ${text.substring(0, 100)}...`);
+        }
+
         const result = await response.json();
 
-        if (!response.ok || result.error) {
-          throw new Error(result.error || 'API 调用失败');
+        if (result.error) {
+          throw new Error(result.error);
         }
 
         return result.data;
@@ -188,6 +224,8 @@ class SupabaseBackend implements DataBackend {
           },
           scene_count: project.scenes?.length || 0,
           shot_count: project.shots?.length || 0,
+          series_id: project.seriesId || null, // 支持剧集 ID
+          episode_order: project.episodeOrder || 1, // 支持集数
         },
       });
 
@@ -257,6 +295,11 @@ class SupabaseBackend implements DataBackend {
             description: character.description,
             appearance: character.appearance,
             reference_images: character.referenceImages,
+            metadata: {
+              soraIdentity: character.soraIdentity,
+              soraReferenceVideoUrl: character.soraReferenceVideoUrl || null
+            },
+            user_id: this.userId, // 强制绑定用户
           })),
         });
       }
@@ -295,7 +338,7 @@ class SupabaseBackend implements DataBackend {
         filters: {
           eq: { id, user_id: this.userId },
         },
-        select: 'id, user_id, title, description, art_style, created_at, updated_at, settings, metadata',
+        select: 'id, user_id, title, description, art_style, created_at, updated_at, settings, metadata, series_id, episode_order',
         single: true,
       });
 
@@ -336,7 +379,7 @@ class SupabaseBackend implements DataBackend {
         table: 'characters',
         operation: 'select',
         filters: { eq: { project_id: id } },
-        select: 'id, project_id, name, description, appearance, reference_images',
+        select: 'id, project_id, name, description, appearance, reference_images, metadata',
       });
 
       const audioAssetsPromise = this.callSupabaseAPI({
@@ -355,6 +398,8 @@ class SupabaseBackend implements DataBackend {
 
       return {
         id: project.id,
+        seriesId: project.series_id || undefined,
+        episodeOrder: project.episode_order || undefined,
         metadata: {
           title: project.title,
           description: project.description || '',
@@ -374,6 +419,7 @@ class SupabaseBackend implements DataBackend {
           location: s.metadata?.location || '',
           position: s.metadata?.position || { x: 0, y: 0 },
           status: s.metadata?.status || 'draft',
+          soraGeneration: s.metadata?.soraGeneration || undefined,
           gridHistory: s.grid_history || [],
           savedGridSlices: s.saved_grid_slices || [],
         })),
@@ -403,6 +449,8 @@ class SupabaseBackend implements DataBackend {
           description: c.description || '',
           appearance: c.appearance || '',
           referenceImages: c.reference_images || [],
+          soraReferenceVideoUrl: c.metadata?.soraReferenceVideoUrl || undefined,
+          soraIdentity: c.metadata?.soraIdentity || undefined,
         })),
         audioAssets: (audioAssets || []).map((a: any) => ({
           id: a.id,
@@ -425,12 +473,14 @@ class SupabaseBackend implements DataBackend {
         table: 'projects',
         operation: 'select',
         filters: { eq: { user_id: this.userId } },
-        select: 'id, title, description, art_style, created_at, updated_at, scene_count, shot_count',
+        select: 'id, title, description, art_style, created_at, updated_at, scene_count, shot_count, series_id, episode_order',
         order: { column: 'updated_at', ascending: false },
       });
 
       return (projects || []).map((p: any) => ({
         id: p.id,
+        seriesId: p.series_id || undefined,
+        episodeOrder: p.episode_order || undefined,
         metadata: {
           title: p.title,
           description: p.description || '',
@@ -478,6 +528,7 @@ class SupabaseBackend implements DataBackend {
           location: scene.location,
           position: scene.position,
           status: scene.status,
+          soraGeneration: scene.soraGeneration,
         },
       },
     });
@@ -528,18 +579,30 @@ class SupabaseBackend implements DataBackend {
     });
   }
 
-  async saveCharacter(projectId: string, character: Character): Promise<void> {
+  async saveCharacter(projectId: string | null, character: Character): Promise<void> {
+    const data: any = {
+      id: character.id,
+      name: character.name,
+      description: character.description,
+      appearance: character.appearance,
+      reference_images: character.referenceImages,
+      metadata: {
+        soraIdentity: character.soraIdentity,
+        soraReferenceVideoUrl: character.soraReferenceVideoUrl || null
+      },
+      user_id: this.userId, // 强制绑定用户
+    };
+
+    if (projectId) {
+      data.project_id = projectId;
+    } else {
+      data.project_id = null;
+    }
+
     await this.callSupabaseAPI({
       table: 'characters',
       operation: 'upsert',
-      data: {
-        id: character.id,
-        project_id: projectId,
-        name: character.name,
-        description: character.description,
-        appearance: character.appearance,
-        reference_images: character.referenceImages,
-      },
+      data: data
     });
   }
 
@@ -696,13 +759,266 @@ class SupabaseBackend implements DataBackend {
       supabase.removeChannel(channel);
     };
   }
+
+  async saveSoraTask(task: SoraTask): Promise<void> {
+    const serverClient = this.getServerSupabase();
+    const client = serverClient || (supabase as any);
+    const normalizedStatus = task.status === 'generating' ? 'processing' : task.status;
+    const { error } = await client
+      .from('sora_tasks')
+      .upsert({
+        id: task.id,
+        user_id: this.userId,
+        project_id: task.projectId,
+        scene_id: task.sceneId,
+        shot_id: task.shotId,
+        shot_ids: task.shotIds || null,
+        shot_ranges: task.shotRanges || null,
+        character_id: task.characterId,
+        type: task.type,
+        status: normalizedStatus,
+        progress: task.progress,
+        model: task.model,
+        prompt: task.prompt,
+        target_duration: task.targetDuration,
+        target_size: task.targetSize,
+        kaponai_url: task.kaponaiUrl,
+        r2_url: task.r2Url,
+        point_cost: task.pointCost,
+        error_message: task.errorMessage,
+        updated_at: new Date().toISOString(),
+      });
+
+    if (error) {
+      console.error('Error saving sora task:', error);
+      throw error;
+    }
+  }
+
+  async getSoraTasks(projectId: string): Promise<SoraTask[]> {
+    const serverClient = this.getServerSupabase();
+    const client = serverClient || (supabase as any);
+    const { data, error } = await client
+      .from('sora_tasks')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error loading sora tasks:', error);
+      return [];
+    }
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      userId: row.user_id,
+      projectId: row.project_id,
+      sceneId: row.scene_id,
+      shotId: row.shot_id,
+      shotIds: row.shot_ids || undefined,
+      shotRanges: row.shot_ranges || undefined,
+      characterId: row.character_id,
+      type: row.type,
+      status: row.status,
+      progress: row.progress,
+      model: row.model,
+      prompt: row.prompt,
+      targetDuration: row.target_duration,
+      targetSize: row.target_size,
+      kaponaiUrl: row.kaponai_url,
+      r2Url: row.r2_url,
+      pointCost: row.point_cost,
+      errorMessage: row.error_message,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    }));
+  }
+
+
+  subscribeToSoraTasks(
+    projectId: string,
+    callback: (task: SoraTask) => void
+  ): () => void {
+    const channel = supabase
+      .channel(`sora_tasks_project_${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sora_tasks',
+          filter: `project_id=eq.${projectId}`,
+        },
+        (payload: any) => {
+          const row = payload.new as any;
+          if (row) {
+            callback({
+              id: row.id,
+              userId: row.user_id,
+              projectId: row.project_id,
+              sceneId: row.scene_id,
+              shotId: row.shot_id,
+              shotIds: row.shot_ids || undefined,
+              shotRanges: row.shot_ranges || undefined,
+              characterId: row.character_id,
+              type: row.type,
+              status: row.status,
+              progress: row.progress,
+              model: row.model,
+              prompt: row.prompt,
+              targetDuration: row.target_duration,
+              targetSize: row.target_size,
+              kaponaiUrl: row.kaponai_url,
+              r2Url: row.r2_url,
+              pointCost: row.point_cost,
+              errorMessage: row.error_message,
+              createdAt: new Date(row.created_at),
+              updatedAt: new Date(row.updated_at),
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }
+
+  // ========================
+  // Series & Global Character Implementation
+  // ========================
+
+  async saveSeries(series: Series): Promise<void> {
+    const data: any = {
+      id: series.id,
+      user_id: this.userId,
+      title: series.title,
+      description: series.description,
+      cover_image: series.coverImage,
+      updated_at: new Date().toISOString(),
+    };
+    if (series.created) data.created_at = series.created.toISOString();
+
+    await this.callSupabaseAPI({
+      table: 'series',
+      operation: 'upsert',
+      data,
+    });
+  }
+
+  async getAllSeries(): Promise<Series[]> {
+    try {
+      const rows = await this.callSupabaseAPI({
+        table: 'series',
+        operation: 'select',
+        filters: { eq: { user_id: this.userId } },
+        order: { column: 'updated_at', ascending: false },
+      });
+      return (rows || []).map((r: any) => ({
+        id: r.id,
+        title: r.title,
+        description: r.description,
+        userId: r.user_id,
+        coverImage: r.cover_image,
+        created: new Date(r.created_at),
+        updated: new Date(r.updated_at),
+      }));
+    } catch (err) {
+      console.error('Error fetching series:', err);
+      return [];
+    }
+  }
+
+  async getSeries(id: string): Promise<Series | undefined> {
+    const rows = await this.callSupabaseAPI({
+      table: 'series',
+      operation: 'select',
+      filters: { eq: { id, user_id: this.userId } },
+      single: true,
+    });
+    if (!rows) return undefined;
+    const r = Array.isArray(rows) ? rows[0] : rows;
+
+    // Fetch project IDs
+    const projects = await this.callSupabaseAPI({
+      table: 'projects',
+      operation: 'select',
+      filters: { eq: { series_id: id } },
+      select: 'id'
+    });
+
+    return {
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      userId: r.user_id,
+      coverImage: r.cover_image,
+      created: new Date(r.created_at),
+      updated: new Date(r.updated_at),
+      projectIds: (projects || []).map((p: any) => p.id),
+    };
+  }
+
+  async deleteSeries(id: string): Promise<void> {
+    await this.callSupabaseAPI({
+      table: 'series',
+      operation: 'delete',
+      filters: { eq: { id, user_id: this.userId } },
+    });
+  }
+
+  async getGlobalCharacters(): Promise<Character[]> {
+    const rows = await this.callSupabaseAPI({
+      table: 'characters',
+      operation: 'select',
+      filters: {
+        eq: { user_id: this.userId, project_id: null }
+      },
+      order: { column: 'created_at', ascending: false }
+    });
+
+    return (rows || []).map((c: any) => ({
+      id: c.id,
+      userId: c.user_id,
+      projectId: null,
+      name: c.name,
+      description: c.description || '',
+      appearance: c.appearance || '',
+      referenceImages: c.reference_images || [],
+      soraReferenceVideoUrl: c.metadata?.soraReferenceVideoUrl || undefined,
+      soraIdentity: c.metadata?.soraIdentity || undefined,
+    }));
+  }
+
+  async getCharacterById(id: string): Promise<Character | undefined> {
+    const row = await this.callSupabaseAPI({
+      table: 'characters',
+      operation: 'select',
+      filters: { eq: { id, user_id: this.userId } },
+      single: true,
+    });
+    if (!row) return undefined;
+    const c = Array.isArray(row) ? row[0] : row;
+    return {
+      id: c.id,
+      userId: c.user_id,
+      projectId: c.project_id || null,
+      name: c.name,
+      description: c.description || '',
+      appearance: c.appearance || '',
+      referenceImages: c.reference_images || [],
+      soraReferenceVideoUrl: c.metadata?.soraReferenceVideoUrl || undefined,
+      soraIdentity: c.metadata?.soraIdentity || undefined,
+    };
+  }
 }
 
 // ========================
 // 统一数据服务
 // ========================
 
-class UnifiedDataService {
+export class UnifiedDataService {
   private backend: DataBackend | null = null;
   private currentUserId: string | null = null;
 
@@ -771,7 +1087,7 @@ class UnifiedDataService {
     return this.backend!.deleteShot(shotId);
   }
 
-  async saveCharacter(projectId: string, character: Character): Promise<void> {
+  async saveCharacter(projectId: string | null, character: Character): Promise<void> {
     await this.ensureInitialized();
     return this.backend!.saveCharacter(projectId, character);
   }
@@ -829,6 +1145,56 @@ class UnifiedDataService {
     // 订阅不需要 ensureInitialized，因为它是通过客户端 supabase 实例直接进行的
     return new SupabaseBackend('browser-only').subscribeToChatMessages(projectId, callback);
   }
+
+  async saveSoraTask(task: SoraTask): Promise<void> {
+    await this.ensureInitialized();
+    return this.backend!.saveSoraTask(task);
+  }
+
+  async getSoraTasks(projectId: string, userId?: string): Promise<SoraTask[]> {
+    await this.ensureInitialized(userId);
+    return this.backend!.getSoraTasks(projectId);
+  }
+
+  subscribeToSoraTasks(
+    projectId: string,
+    callback: (task: SoraTask) => void
+  ): () => void {
+    return new SupabaseBackend('browser-only').subscribeToSoraTasks(projectId, callback);
+  }
+
+  async saveSeries(series: Series): Promise<void> {
+    await this.ensureInitialized();
+    return this.backend!.saveSeries(series);
+  }
+
+  async getAllSeries(): Promise<Series[]> {
+    await this.ensureInitialized();
+    return this.backend!.getAllSeries();
+  }
+
+  async getSeries(id: string): Promise<Series | undefined> {
+    await this.ensureInitialized();
+    return this.backend!.getSeries(id);
+  }
+
+  async deleteSeries(id: string): Promise<void> {
+    await this.ensureInitialized();
+    return this.backend!.deleteSeries(id);
+  }
+
+  async getGlobalCharacters(): Promise<Character[]> {
+    await this.ensureInitialized();
+    return this.backend!.getGlobalCharacters();
+  }
+
+  async getCharacterById(id: string): Promise<Character | undefined> {
+    await this.ensureInitialized();
+    return this.backend!.getCharacterById(id);
+  }
+
+
+
 }
 
 export const dataService = new UnifiedDataService();

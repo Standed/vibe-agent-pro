@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
 import type { Database } from '@/lib/supabase/database.types';
 
+export const maxDuration = 60;
+
 // 延迟创建 Supabase 客户端，避免构建时报错
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -39,6 +41,7 @@ const ALLOWED_TABLES = [
   'audio_assets',
   'profiles',
   'chat_messages', // ✅ 聊天历史消息表
+  'series', // ✅ 剧集表
 ] as const;
 
 const ALLOWED_OPERATIONS = [
@@ -81,6 +84,7 @@ const UUID_FIELDS: Record<AllowedTable, string[]> = {
   audio_assets: ['id', 'project_id'],
   profiles: ['id'],
   chat_messages: ['id', 'user_id', 'project_id', 'scene_id', 'shot_id'], // ✅ 聊天消息 UUID 字段
+  series: ['id', 'user_id'], // ✅ 剧集 UUID 字段
 };
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -156,6 +160,8 @@ const collectInvalidUuidFields = (
 const USER_ID_FIELD: Partial<Record<AllowedTable, string>> = {
   projects: 'user_id',
   chat_messages: 'user_id',
+  series: 'user_id',
+  profiles: 'id', // ✅ 确保用户只能查询/更新自己的 Profile
 };
 
 const injectUserIdToData = (table: AllowedTable, data: any, userId: string) => {

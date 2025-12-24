@@ -65,6 +65,31 @@ body {
   .glass-tag {
     @apply px-2 py-1 rounded-full text-xs font-medium bg-black/5 dark:bg-white/10 text-gray-600 dark:text-gray-300 backdrop-blur-sm;
   }
+
+  /* Seko Design System - Premium Liquid Glass */
+  .seko-glass {
+    @apply bg-white/70 dark:bg-[#121212]/70 backdrop-blur-2xl border border-white/40 dark:border-white/5 shadow-lg shadow-black/5;
+  }
+
+  .seko-panel {
+    @apply bg-white/90 dark:bg-[#181818]/90 backdrop-blur-3xl border border-white/50 dark:border-white/5 rounded-[2rem] shadow-2xl shadow-black/20;
+  }
+
+  .seko-popover {
+    @apply bg-white/80 dark:bg-[#1e1e1e]/80 backdrop-blur-3xl border border-white/20 dark:border-white/5 rounded-2xl shadow-xl shadow-black/20;
+  }
+
+  .seko-button {
+    @apply relative overflow-hidden bg-white/60 dark:bg-white/5 hover:bg-white/80 dark:hover:bg-white/10 border border-white/30 dark:border-white/5 rounded-2xl backdrop-blur-lg transition-all duration-300 active:scale-95 text-sm font-medium text-zinc-800 dark:text-zinc-200;
+  }
+
+  .seko-button-primary {
+    @apply bg-zinc-900 dark:bg-white text-white dark:text-black border-transparent shadow-lg shadow-black/20 dark:shadow-white/20 hover:bg-zinc-800 dark:hover:bg-zinc-200;
+  }
+
+  .seko-input {
+    @apply bg-black/5 dark:bg-white/5 border border-transparent focus:border-zinc-500/30 focus:bg-white dark:focus:bg-zinc-900 rounded-xl backdrop-blur-md transition-all duration-300 outline-none text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400;
+  }
 }
 
 @layer utilities {
@@ -97,6 +122,10 @@ body {
   border-radius: 10px;
 }
 
+:hover::-webkit-scrollbar {
+  width: 4px;
+}
+
 :hover::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.2);
 }
@@ -105,15 +134,14 @@ body {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Hide scrollbar for Chrome, Safari and Opera */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+/* Global Select Styles for Dark Mode */
+.dark select {
+  background-color: #181818 !important;
+  color: white !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-/* Hide scrollbar for IE, Edge and Firefox */
-.no-scrollbar {
-  -ms-overflow-style: none;
-  /* IE and Edge */
-  scrollbar-width: none;
-  /* Firefox */
+.dark select option {
+  background-color: #181818 !important;
+  color: white !important;
 }

@@ -118,7 +118,7 @@ export async function authenticateRequest(
     // 获取用户的 profile 信息（包括积分和角色）
     const { data: profile, error: profileError } = await admin
       .from('profiles')
-      .select('id, email, role, credits, is_whitelisted')
+      .select('*')
       .eq('id', user.id)
       .single();
 
@@ -144,7 +144,7 @@ export async function authenticateRequest(
           full_name: user.user_metadata?.full_name || null,
           avatar_url: user.user_metadata?.avatar_url || null,
         })
-        .select('id, email, role, credits, is_whitelisted')
+        .select('*')
         .single();
 
       if (createError || !newProfile) {
@@ -164,7 +164,7 @@ export async function authenticateRequest(
           id: newProfile.id,
           email: newProfile.email,
           role: newProfile.role as 'user' | 'admin' | 'vip',
-          credits: newProfile.credits,
+          credits: newProfile.credits ?? initialCredits, // ✅ 确保不为 null
           isWhitelisted: !!newProfile.is_whitelisted || newProfile.role === 'admin',
         },
       };
@@ -173,14 +173,21 @@ export async function authenticateRequest(
     // 🔧 提权逻辑：如果邮箱在硬编码的管理员列表中，但数据库记录不是 admin，直接提权
     const userEmail = user.email || '';
     const isAdminEmail = getUserRoleByEmail(userEmail) === 'admin';
-    const effectiveRole = isAdminEmail ? 'admin' : profile.role;
+    const effectiveRole = isAdminEmail ? 'admin' : (profile.role || 'user');
+
+    // 🔧 积分逻辑：优先使用数据库中的积分，如果为 null/undefined 则根据角色使用初始积分
+    // 如果数据库中明确为 0，则保留 0（除非是新创建的 profile）
+    const initialCredits = getInitialCredits(effectiveRole as any);
+    const effectiveCredits = (profile.credits !== null && profile.credits !== undefined)
+      ? profile.credits
+      : initialCredits;
 
     return {
       user: {
         id: profile.id,
-        email: profile.email,
+        email: profile.email || userEmail,
         role: effectiveRole as 'user' | 'admin' | 'vip',
-        credits: profile.credits,
+        credits: effectiveCredits,
         isWhitelisted: !!profile.is_whitelisted || effectiveRole === 'admin',
       },
     };
@@ -266,7 +273,7 @@ export async function consumeCredits(
     // 读取最新余额，便于前端更新
     const { data: profile, error: profileError } = await getSupabaseAdmin()
       .from('profiles')
-      .select('credits')
+      .select('*')
       .eq('id', userId)
       .single();
 

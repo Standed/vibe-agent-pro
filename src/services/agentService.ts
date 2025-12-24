@@ -3,9 +3,10 @@
  * Uses Gemini for better tool calling capabilities
  */
 
-import { AGENT_TOOLS, ToolCall, formatToolsForPrompt } from './agentTools';
+import { AGENT_TOOLS, ToolCall, formatToolsForPrompt } from './agentToolDefinitions';
+import { calculateCredits } from '@/config/credits';
 
-const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3-pro-preview'; // Agent推理模型
+const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3-flash-preview'; // Agent推理模型
 
 // Allow configurable timeouts:短步骤用短超时，AI 生成/推理用长超时
 const parseTimeout = (val: string | undefined, fallback: number) => {
@@ -326,6 +327,42 @@ export interface AgentAction {
   message: string; // Message to display to user
   toolCalls?: ToolCall[]; // Tool calls to execute
   requiresToolExecution?: boolean; // Whether tools need to be executed
+  estimatedCredits?: number; // Estimated credits to consume
+}
+
+/**
+ * 预估工具调用所需的积分
+ */
+export function estimateCredits(toolCalls: ToolCall[], userRole: 'user' | 'admin' | 'vip' = 'user'): number {
+  let total = 0;
+  for (const tc of toolCalls) {
+    switch (tc.name) {
+      case 'generateShotImage': {
+        const mode = tc.arguments.mode;
+        if (mode === 'grid') {
+          const gridSize = tc.arguments.gridSize || '2x2';
+          const [rows, cols] = gridSize.split('x').map(Number);
+          total += calculateCredits(`GEMINI_GRID_${rows}X${cols}` as any, userRole);
+        } else if (mode === 'gemini') {
+          total += calculateCredits('GEMINI_IMAGE', userRole);
+        } else if (mode === 'seedream') {
+          total += calculateCredits('SEEDREAM_GENERATE', userRole);
+        }
+        break;
+      }
+      case 'batchGenerateSceneImages':
+      case 'batchGenerateProjectImages': {
+        // 批量操作通常消耗较多，这里做一个保守预估
+        // 实际上 batch 内部会根据镜头数动态消耗，这里先给一个基础预估
+        total += calculateCredits('BATCH_OPERATION', userRole);
+        break;
+      }
+      case 'generateCharacterThreeView':
+        total += calculateCredits('GEMINI_IMAGE', userRole);
+        break;
+    }
+  }
+  return total;
 }
 
 /**
@@ -381,16 +418,25 @@ function generateSystemInstruction(): string {
 
 6. **图片生成模式选择**
    - seedream: 火山引擎单图生成，适合单个分镜的高质量生成
-      }
-    }
-  ],
-  "message": "给用户的简洁说明"
-}
+   - gemini: Gemini 直出，速度快，适合快速预览
+   - grid: Gemini Grid 多视图，适合批量生成
+
+7. **Sora 视频生成规则（Agent 模式）**
+   - 使用 batchGenerateProjectVideosSora 为整个项目批量生成视频
+   - 使用 generateSceneVideo 为单个场景生成视频
+   - **智能分镜合并**：Sora 会自动将连续的分镜合并为较长的视频片段（5-15s）
+     - 连续分镜的剧情/动作/情绪连贯时，自动合并生成
+     - 场景切换、时间跳跃时，分开生成独立视频
+   - **时长规则**：优先使用 15s 视频，避免生成过多短视频增加成本，单个分镜时长尽量不要超过 5s
+   - **角色一致性**：系统自动处理角色注册和一致性，无需用户干预
+   - 除非用户明确指定，否则默认批量生成整个项目
+
 \`\`\`
 
 ## 示例对话
 
 ### 示例 1：简单查询
+
 用户: "帮我看看项目里有多少个场景"
 助手:
 \`\`\`json
@@ -663,19 +709,21 @@ export async function processUserCommand(
 
     if (functionCall) {
       // Gemini wants to call a tool
+      const toolCalls = [{
+        name: functionCall.name,
+        arguments: functionCall.args || {}
+      }];
       return {
         type: 'tool_use',
-        toolCalls: [{
-          name: functionCall.name,
-          arguments: functionCall.args || {}
-        }],
+        toolCalls,
         message: `正在调用工具: ${functionCall.name}`,
-        requiresToolExecution: true
+        requiresToolExecution: true,
+        estimatedCredits: estimateCredits(toolCalls)
       };
     }
 
     // Gemini returned text response
-    const text = candidate.content?.parts?.[0]?.text || '';
+    const text = candidate.content?.parts?.map((p: any) => p.text).join('\n') || '';
 
     // Try to parse as JSON action
     try {
@@ -685,6 +733,7 @@ export async function processUserCommand(
         // If type is tool_use, ensure requiresToolExecution is set
         if (action.type === 'tool_use' && action.toolCalls && action.toolCalls.length > 0) {
           action.requiresToolExecution = true;
+          action.estimatedCredits = estimateCredits(action.toolCalls);
         }
         return action;
       }
@@ -803,14 +852,16 @@ export async function continueWithToolResults(
 
     if (functionCall) {
       // Gemini wants to call another tool
+      const toolCalls = [{
+        name: functionCall.name,
+        arguments: functionCall.args || {}
+      }];
       return {
         type: 'tool_use',
-        toolCalls: [{
-          name: functionCall.name,
-          arguments: functionCall.args || {}
-        }],
+        toolCalls,
         message: `正在调用工具: ${functionCall.name}`,
-        requiresToolExecution: true
+        requiresToolExecution: true,
+        estimatedCredits: estimateCredits(toolCalls)
       };
     }
 
@@ -825,6 +876,7 @@ export async function continueWithToolResults(
         // If type is tool_use, ensure requiresToolExecution is set
         if (action.type === 'tool_use' && action.toolCalls && action.toolCalls.length > 0) {
           action.requiresToolExecution = true;
+          action.estimatedCredits = estimateCredits(action.toolCalls);
         }
         return action;
       }
