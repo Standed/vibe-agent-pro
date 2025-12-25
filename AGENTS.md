@@ -63,18 +63,19 @@ Agent 通过 Function Calling 调用以下工具操作项目：
 
 | 工具名 | 描述 | 关键参数 |
 |--------|------|----------|
-| `get_project_context` | 获取项目概览 | - |
-| `get_scene_details` | 获取场景详情 | `scene_id` |
-| `get_shot_details` | 获取分镜详情 | `shot_id` |
-| `search_scenes` | 搜索场景 | `query` |
-| `create_scene` | 创建新场景 | `name`, `description` |
-| `add_shots` | 添加分镜 | `scene_id`, `count`, `description`, `shots[]` |
-| `generate_shot_image` | 生成分镜图片 | `shot_id`, `mode`, `grid_size`, `prompt`, `force` |
-| `batch_generate_scene_images` | 批量生成场景图片 | `scene_id`, `mode`, `grid_size`, `prompt`, `force` |
-| `batch_generate_project_images` | 批量生成项目图片 | `mode`, `grid_size`, `prompt`, `force` |
-| `generate_scene_video` | 生成场景 Sora 视频 | `scene_id` |
-| `batch_generate_project_videos_sora` | 批量生成 Sora 视频 | `force` |
-| `generate_character_three_view` | 生成角色三视图 | `character_id`, `prompt`, `art_style` |
+| `getProjectContext` | 获取项目概览 | - |
+| `getSceneDetails` | 获取场景详情 | `sceneId` |
+| `getShotDetails` | 获取分镜详情 | `shotId` |
+| `searchScenes` | 搜索场景 | `query` |
+| `createScene` | 创建新场景 | `name`, `description` |
+| `addShots` | 添加分镜 | `sceneId`, `count`, `description`, `shots[]` |
+| `generateShotImage` | 生成分镜图片 | `shotId`, `mode`, `gridSize`, `prompt`, `force` |
+| `batchGenerateSceneImages` | 批量生成场景图片 | `sceneId`, `mode`, `gridSize`, `prompt`, `force` |
+| `batchGenerateProjectImages` | 批量生成项目图片 | `mode`, `gridSize`, `prompt`, `force` |
+| `generateSceneVideo` | 生成场景 Sora 视频 | `sceneId` |
+| `generateShotsVideo` | 生成指定分镜 Sora 视频 | `sceneId`, `shotIds`, `shotIndexes`, `globalShotIndexes` |
+| `batchGenerateProjectVideosSora` | 批量生成 Sora 视频 | `force` |
+| `generateCharacterThreeView` | 生成角色三视图 | `characterId`, `prompt`, `artStyle` |
 
 ---
 
@@ -91,8 +92,9 @@ Agent 通过 Function Calling 调用以下工具操作项目：
 | **动态比例双轨制** | 角色注册跟随源图比例，正片生成跟随项目设置 |
 | **精简 JSON 协议** | `@username` 作为角色唯一 Key，废弃冗余中文名 |
 | **智能拆分** | >15s 场景自动拆分为多段任务 (Greedy Packing) |
-| **质量控制** | Prompt 末尾强制注入"中文配音、无字幕、高清、无闪烁" |
+| **统一质量控制** | 通过 `global_prompt` 在脚本层级追加一次后缀 |
 | **Fire-and-Forget** | 后台异步注册角色 (注意：Serverless 环境下失效) |
+| **多镜头任务映射** | `sora_tasks.shot_ids / shot_ranges` 记录覆盖分镜，用于时间轴合并显示 |
 
 ### 详细文档
 - `docs/sora 在本项目中的架构.md` - Sora 集成完整技术文档
@@ -213,5 +215,5 @@ const { stop, sendMessage } = useAgent();
 
 ---
 
-**最后更新**: 2025-12-24
-**版本**: v0.6.0 (Sora Orchestrator Complete)
+**最后更新**: 2025-12-26
+**版本**: v0.6.1 (Sora Multi-Shot + Global Prompt)

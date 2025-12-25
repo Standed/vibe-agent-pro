@@ -613,19 +613,22 @@ export default function Timeline() {
                     {/* Video preview (if available) */}
                     {hasVideo && shot.videoClip && (
                       <div className="absolute inset-0 rounded overflow-hidden">
-                        <video
-                          src={shot.videoClip}
-                          muted
-                          loop
-                          playsInline
-                          className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
-                          onMouseEnter={(e) => (e.target as HTMLVideoElement).play()}
-                          onMouseLeave={(e) => {
-                            const video = e.target as HTMLVideoElement;
-                            video.pause();
-                            video.currentTime = 0;
-                          }}
-                        />
+                        {shot.referenceImage ? (
+                          <img
+                            src={shot.referenceImage}
+                            alt="Shot"
+                            loading="lazy"
+                            className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
+                          />
+                        ) : (
+                          <video
+                            src={shot.videoClip}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
+                          />
+                        )}
                         {/* Video badge */}
                         <div className="absolute top-1 left-1 flex items-center gap-1 bg-emerald-500/80 text-white text-[8px] px-1.5 py-0.5 rounded font-bold">
                           <Film size={8} />
@@ -637,7 +640,7 @@ export default function Timeline() {
                     {/* Clip thumbnail (if no video but has image) */}
                     {!hasVideo && shot.referenceImage && (
                       <div className="absolute inset-0 rounded overflow-hidden opacity-40 group-hover:opacity-60 transition-opacity">
-                        <img src={shot.referenceImage} alt="Shot" className="w-full h-full object-cover" />
+                        <img src={shot.referenceImage} alt="Shot" loading="lazy" className="w-full h-full object-cover" />
                       </div>
                     )}
 

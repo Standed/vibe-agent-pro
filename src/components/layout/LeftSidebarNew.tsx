@@ -332,9 +332,25 @@ export default function LeftSidebarNew() {
 
     setIsDownloading(true);
     const downloadToast = toast.loading('正在打包下载...');
+    let lastUpdate = 0;
+    let lastMessage = '';
 
     try {
-      const result = await batchDownloadAssets(project);
+      const result = await batchDownloadAssets(project, {
+        onProgress: (progress) => {
+          const now = Date.now();
+          const message = progress.message || '正在打包下载...';
+          if (message === lastMessage && now - lastUpdate < 300) {
+            return;
+          }
+          lastMessage = message;
+          if (now - lastUpdate < 250 && progress.phase === 'download') {
+            return;
+          }
+          lastUpdate = now;
+          toast.loading(message, { id: downloadToast });
+        }
+      });
       toast.success('下载完成！', {
         id: downloadToast,
         description: `图片: ${result.imageCount} 个 | 视频: ${result.videoCount} 个 | 音频: ${result.audioCount} 个`

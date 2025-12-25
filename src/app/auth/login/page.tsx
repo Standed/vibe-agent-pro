@@ -4,18 +4,22 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { signIn } from '@/lib/supabase/auth';
+import { signIn, getUserProfile, signOut } from '@/lib/supabase/auth';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { toast } from 'sonner';
+import { Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user } = useAuth(); // 使用 AuthProvider 的状态
+  const { user, profile } = useAuth(); // 使用 AuthProvider 的状态
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberEmail, setRememberEmail] = useState(false);
   const [loading, setLoading] = useState(false);
   const hasRedirected = useRef(false); // 防止重复跳转
+  const REMEMBER_EMAIL_KEY = 'vap_login_email';
 
   // 获取重定向参数
   const redirectTo = searchParams.get('redirect') || '/';
@@ -24,11 +28,22 @@ export default function LoginPage() {
   useEffect(() => {
     // 只在页面加载时检查一次（不是登录过程中）
     if (user && !loading && !hasRedirected.current) {
+      // 如果已登录但未激活，不跳转
+      if (profile && !(profile as any).is_whitelisted && profile.role !== 'admin') {
+        console.log('⛔ [LoginPage] 用户已登录但未激活，阻止跳转');
+        return;
+      }
+
+      // 如果 profile 还没加载出来，先不跳转，等 profile 加载
+      if (!profile) {
+        return;
+      }
+
       hasRedirected.current = true;
       console.log('✅ [LoginPage] 检测到已登录用户，自动跳转到:', redirectTo);
       router.replace(redirectTo);
     }
-  }, [user, loading, redirectTo, router]);
+  }, [user, profile, loading, redirectTo, router]);
 
   // 处理 URL 中的错误信息（如白名单拦截）
   useEffect(() => {
@@ -45,32 +60,54 @@ export default function LoginPage() {
     }
   }, [searchParams]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const savedEmail = localStorage.getItem(REMEMBER_EMAIL_KEY);
+    if (savedEmail) {
+      setEmail(savedEmail);
+      setRememberEmail(true);
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     console.log('🔐 [Login] 开始登录...');
 
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     try {
-      // 使用 Promise.race 添加超时（海外网络再放宽）
-      const signInPromise = signIn({ email, password });
-      const timeoutMs = 60000; // 60s
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('登录请求超时')), timeoutMs)
-      );
+      if (rememberEmail) {
+        localStorage.setItem(REMEMBER_EMAIL_KEY, email.trim());
+      } else {
+        localStorage.removeItem(REMEMBER_EMAIL_KEY);
+      }
 
-      const result = await Promise.race([signInPromise, timeoutPromise]) as any;
+      // 超时提示不打断流程
+      const timeoutMs = 60000; // 60s
+      const slowToastId = 'login-slow';
+      timeoutId = setTimeout(() => {
+        toast.info('登录耗时较长，仍在尝试中...', { id: slowToastId });
+      }, timeoutMs);
+
+      const result = await signIn({ email, password }) as any;
+      if (timeoutId) clearTimeout(timeoutId);
+      toast.dismiss(slowToastId);
       console.log('🔐 [Login] signIn 返回结果:', result);
 
       // 处理错误情况
       if (result.error) {
         console.error('🔐 [Login] 登录失败:', result.error);
-        if (result.error.message?.includes('email_not_confirmed')) {
+        const errorMessage = result.error.message?.toLowerCase() || '';
+
+        if (errorMessage.includes('email_not_confirmed')) {
           toast.error('邮箱未验证，请先完成邮箱验证');
-        } else if (result.error.message?.includes('Failed to fetch')) {
+        } else if (errorMessage.includes('failed to fetch')) {
           toast.error('网络较慢或被拦截，正在重试，请稍等或检查网络/VPN');
+        } else if (errorMessage.includes('invalid login credentials')) {
+          toast.error('账号或密码错误');
         } else {
-          toast.error(result.error.message || '登录失败');
+          toast.error('登录失败，请检查账号或密码');
         }
         setLoading(false);
         return;
@@ -79,6 +116,21 @@ export default function LoginPage() {
       // ✅ 处理成功情况
       if (result.user && result.session) {
         console.log('🔐 [Login] ✅ 登录成功，用户:', result.user.email);
+
+        // 立即检查白名单状态
+        try {
+          const { data: profile, error: profileError } = await getUserProfile(result.user.id);
+          if (profile && !(profile as any).is_whitelisted && profile.role !== 'admin') {
+            console.warn('⛔ [Login] 用户未激活，阻止跳转');
+            toast.error('您的账号尚未开通白名单权限，请联系管理员激活', { duration: 5000 });
+            await signOut(); // 登出，防止下次刷新自动登录
+            setLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.error('检查白名单失败:', err);
+        }
+
         toast.success('登录成功！');
 
         // 等待 AuthProvider 的 onAuthStateChange 事件完成（最多等1秒）
@@ -100,6 +152,16 @@ export default function LoginPage() {
       console.error('🔐 [Login] 捕获异常:', error);
       toast.error(error.message || '登录失败，请检查网络/VPN 后重试');
       setLoading(false);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      toast.dismiss('login-slow');
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSubmit(e as unknown as React.FormEvent);
     }
   };
 
@@ -140,6 +202,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={handleKeyDown}
                 className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-white/20 focus:border-transparent"
                 placeholder="your@email.com"
               />
@@ -149,21 +212,40 @@ export default function LoginPage() {
               <label htmlFor="password" className="block text-sm font-medium text-zinc-300 mb-1">
                 密码
               </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-white/20 focus:border-transparent"
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-white/20 focus:border-transparent pr-10"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
             </div>
           </div>
 
           <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-sm text-zinc-400">
+              <input
+                type="checkbox"
+                checked={rememberEmail}
+                onChange={(e) => setRememberEmail(e.target.checked)}
+                className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 text-white focus:ring-white/20"
+              />
+              记住邮箱
+            </label>
             <div className="text-sm">
               <Link
                 href="/auth/forgot-password"

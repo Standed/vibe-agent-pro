@@ -28,7 +28,7 @@ export default function AssetsPage() {
         if (!user) return;
         setIsLoading(true);
         try {
-            const chars = await dataService.getGlobalCharacters();
+            const chars = await dataService.getGlobalCharacters(user.id);
             setCharacters(chars);
         } catch (error) {
             console.error('Failed to load assets:', error);

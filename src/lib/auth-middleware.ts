@@ -140,7 +140,7 @@ export async function authenticateRequest(
           email: userEmail,
           role: userRole,
           credits: initialCredits,
-          is_whitelisted: userRole === 'admin', // 管理员默认开启白名单
+          is_whitelisted: userRole === 'admin', // 默认关闭白名单，需管理员激活
           full_name: user.user_metadata?.full_name || null,
           avatar_url: user.user_metadata?.avatar_url || null,
         })

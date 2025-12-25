@@ -1,6 +1,6 @@
-# Sora 视频生成 - 架构与流程文档 (v2.1)
+# Sora 视频生成 - 架构与流程文档 (v2.2)
 
-本项目已成功集成 Sora2 视频生成能力。当前版本通过"动态比例识别"与"精简 JSON 剧本协议"，极大提升了角色一致性与镜头质感。
+本项目已成功集成 Sora2 视频生成能力。当前版本通过"动态比例识别"、"精简 JSON 剧本协议"与**全局 Prompt 后缀**，提升角色一致性与镜头质感，并支持**单任务覆盖多分镜**。
 
 ---
 
@@ -36,11 +36,11 @@ graph TD
     Chunk --> ShotConv
     Pad --> ShotConv
     
-    ShotConv[convertShotToSoraShot] -->|3. Compile| JSON[Lean JSON Script]
-    note[New Protocol:\nShotType + @ID Action + Quality Suffix] -.-> ShotConv
+    ShotConv[convertShotToSoraShot] -->|3. Compile| JSON[Lean JSON Script + global_prompt]
+    note[New Protocol:\nShotType + @ID Action + global_prompt] -.-> ShotConv
     
     JSON -->|4. Submit| API[Kaponai API]
-    API -->|Task IDs| SaveTask[DB: Save Tasks\nsora_tasks + scene.soraGeneration]
+    API -->|Task IDs| SaveTask[DB: Save Tasks\nsora_tasks(shotIds/shotRanges) + scene.soraGeneration]
     SaveTask --> Return[Return Task IDs]
     SaveTask --> Queue[Timeline Queue\nBatch Refresh + Auto Writeback]
     Queue -->|Completed| R2[R2 Upload + Persist URL]
@@ -86,10 +86,11 @@ graph TD
 4. 构建 Lean JSON 剧本
    - character_setting: { "@username": { appearance: "..." } }
    - shots: [{ action, camera, dialogue, duration, ... }]
+   - global_prompt: "统一质量控制后缀"
    ↓
 5. 提交视频任务 (Kaponai createVideo)
    ↓
-6. 保存任务 ID 到数据库
+6. 保存任务 ID 到数据库 (shotIds/shotRanges)
 ```
 
 ---
@@ -120,16 +121,22 @@ graph TD
       "style_tags": "cinematic",
       "time": "Day"
     }
-  ]
+  ],
+  "global_prompt": "中文配音，不要增减旁白，无字幕，高清，无配乐，画面无闪烁。请根据这个参考图片里的场景帮我生成动画。"
 }
 ```
 
 ### 4.3 质量控制指令
 
-Prompt 末尾自动注入：
+统一在脚本层级注入（`global_prompt`），确保仅追加一次：
 > "中文配音，不要增减旁白，无字幕，高清，无配乐，画面无闪烁。请根据这个参考图片里的场景帮我生成动画。"
 
-### 4.4 时长策略
+### 4.4 多镜头任务映射
+
+- 单个 Sora 任务可覆盖多个分镜：`sora_tasks.shot_ids` 记录覆盖镜头，`shot_ranges` 记录每个镜头在视频中的时间区间。
+- 前端时间轴会将同一任务渲染为一个连续的视频块；仅**单镜头任务**会自动写回 `shots.video_clip`。
+
+### 4.5 时长策略
 
 | 场景时长 | 处理方式 |
 |----------|----------|
@@ -143,12 +150,17 @@ Prompt 末尾自动注入：
 
 | 端点 | 方法 | 功能 |
 |------|------|------|
-| `/api/sora/generate` | POST | 提交视频生成任务 |
+| `/api/agent/tools/execute` | POST | Agent 触发 Sora 编排入口 |
 | `/api/sora/status` | GET | 查询任务状态 |
+| `/api/sora/status/batch` | POST | 批量查询/刷新任务状态 |
+| `/api/sora/tasks/list` | GET | 查询项目 Sora 任务列表 |
+| `/api/sora/tasks/backfill` | POST | 回填任务到 `sora_tasks` |
 | `/api/sora/character/register` | POST | 角色注册 (直接/生成+注册) |
 | `/api/sora/character/status` | GET | 查询角色注册状态 |
 | `/api/sora/character/latest-video` | GET | 获取角色最新参考视频 |
+| `/api/sora/character/manual` | POST | 手动写回 Sora 身份 |
 | `/api/admin/sora/repair` | POST | 批量修复任务 (补 R2/回写分镜) |
+| `/api/cron/check-sora-status` | GET | 定时轮询任务并回写状态 |
 
 ---
 
@@ -183,10 +195,11 @@ npx tsx scripts/test-sora-full-flow.ts
 ### 数据库验证
 检查以下表/字段：
 - `sora_tasks` 表 - 任务状态
+- `sora_tasks.shot_ids / shot_ranges` - 任务与分镜映射
 - `scenes.sora_generation` - 场景生成状态
 - `characters.metadata.soraIdentity` - 角色注册状态
 
 ---
 
-**最后更新**: 2025-12-24
-**版本**: v2.1
+**最后更新**: 2025-12-26
+**版本**: v2.2

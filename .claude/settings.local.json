@@ -60,7 +60,8 @@
       "Bash(timeout:*)",
       "Bash(vercel --version:*)",
       "Bash(vercel:*)",
-      "Bash(tee:*)"
+      "Bash(tee:*)",
+      "Bash(git pull:*)"
     ]
   }
 }

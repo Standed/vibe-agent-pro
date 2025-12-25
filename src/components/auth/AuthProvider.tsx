@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: userEmail || '',
           role: userRole,
           credits: INITIAL_CREDITS[userRole as keyof typeof INITIAL_CREDITS],
-          is_whitelisted: true, // ✅ 临时默认为 true，防止因网络问题导致误登出
+          is_whitelisted: false, // ✅ 默认为 false，需管理员激活
           is_active: true,
           full_name: 'User',
           avatar_url: null
@@ -98,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: userEmail || '',
         role: userRole,
         credits: INITIAL_CREDITS[userRole as keyof typeof INITIAL_CREDITS],
-        is_whitelisted: true,
+        is_whitelisted: false,
         is_active: true
       } as any);
     }
@@ -308,7 +308,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 检查是否已认证（非游客）
   const isAuthenticated = () => {
-    return user !== null && session !== null;
+    if (user) return true;
+    const cookieTokens = readSessionCookie();
+    if (!cookieTokens?.access_token) return false;
+    return !isTokenExpired(cookieTokens.access_token);
   };
 
   const value = {

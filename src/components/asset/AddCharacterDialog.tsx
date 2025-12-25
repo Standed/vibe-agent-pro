@@ -65,6 +65,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
   const MAX_POLL_ATTEMPTS = 12;
   const POLL_INTERVAL_MS = 30000;
   const [isWritingSoraCode, setIsWritingSoraCode] = useState(false);
+  const lastWrittenSoraUsernameRef = useRef(initialCharacter?.soraIdentity?.username || '');
   const [videoDuration, setVideoDuration] = useState<number | null>(null);
   const [segmentStart, setSegmentStart] = useState('1');
   const [segmentEnd, setSegmentEnd] = useState('3');
@@ -171,6 +172,8 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     if (!Number.isFinite(num)) return null;
     return num;
   };
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const resolveVideoDuration = async (url: string) => {
     const current = videoPreviewRef.current?.duration;
@@ -324,33 +327,68 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     }
 
     setIsWritingSoraCode(true);
-    try {
-      const res = await fetch('/api/sora/character/manual', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          characterId: effectiveCharacterId,
-          username: normalized,
-          referenceVideoUrl: soraReferenceVideoUrl || undefined
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '写回失败');
+    await writebackSoraCode({
+      characterId: effectiveCharacterId,
+      username: normalized,
+      referenceVideoUrl: soraReferenceVideoUrl || undefined,
+      silent: false,
+      retries: 0
+    });
+    setIsWritingSoraCode(false);
+  };
 
-      const nextUsername = data?.character?.soraIdentity?.username || normalized;
-      const nextVideoUrl = data?.character?.soraReferenceVideoUrl || soraReferenceVideoUrl || '';
-      setSoraUsername(nextUsername);
-      setSoraReferenceVideoUrl(nextVideoUrl);
-      setSoraStatus('registered');
-      setIsSoraProcessing(false);
-      setSavedCharacterId(effectiveCharacterId);
-      toast.success('Sora ID 已写回');
-    } catch (error: any) {
-      console.error('Manual sora writeback failed:', error);
-      toast.error(error.message || '写回失败');
-    } finally {
-      setIsWritingSoraCode(false);
+  const writebackSoraCode = async (options: {
+    characterId: string;
+    username: string;
+    referenceVideoUrl?: string;
+    silent?: boolean;
+    retries?: number;
+  }): Promise<boolean> => {
+    const { characterId, username, referenceVideoUrl, silent = false, retries = 0 } = options;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        const res = await fetch('/api/sora/character/manual', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            characterId,
+            username,
+            referenceVideoUrl: referenceVideoUrl || undefined
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          if (res.status === 404 && attempt < retries) {
+            await sleep(800);
+            continue;
+          }
+          throw new Error(data.error || '写回失败');
+        }
+
+        const nextUsername = data?.character?.soraIdentity?.username || username;
+        const nextVideoUrl = data?.character?.soraReferenceVideoUrl || referenceVideoUrl || '';
+        setSoraUsername(nextUsername);
+        setSoraReferenceVideoUrl(nextVideoUrl);
+        setSoraStatus('registered');
+        setIsSoraProcessing(false);
+        setSavedCharacterId(characterId);
+        lastWrittenSoraUsernameRef.current = nextUsername;
+        if (!silent) {
+          toast.success('Sora ID 已写回');
+        }
+        return true;
+      } catch (error: any) {
+        if (attempt < retries) {
+          await sleep(800);
+          continue;
+        }
+        if (!silent) {
+          toast.error(error.message || '写回失败');
+        }
+        return false;
+      }
     }
+    return false;
   };
 
 
@@ -488,6 +526,10 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
   useEffect(() => {
     setSavedCharacterId(initialCharacter?.id || null);
   }, [initialCharacter?.id]);
+
+  useEffect(() => {
+    lastWrittenSoraUsernameRef.current = initialCharacter?.soraIdentity?.username || '';
+  }, [initialCharacter?.id, initialCharacter?.soraIdentity?.username]);
 
   useEffect(() => {
     if (!soraReferenceVideoUrl) {
@@ -797,6 +839,19 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     try {
       await onAdd(character, { keepOpen: !options.closeAfter });
       setSavedCharacterId(character.id);
+
+      const shouldWriteback =
+        normalizedSoraUsername &&
+        normalizedSoraUsername !== lastWrittenSoraUsernameRef.current;
+      if (shouldWriteback && !isWritingSoraCode) {
+        void writebackSoraCode({
+          characterId: character.id,
+          username: normalizedSoraUsername,
+          referenceVideoUrl: soraReferenceVideoUrl || undefined,
+          silent: true,
+          retries: 2
+        });
+      }
     } catch (error) {
       console.error('Failed to save character:', error);
       toast.error('保存失败');

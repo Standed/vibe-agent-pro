@@ -62,7 +62,7 @@ export function useAgent(): UseAgentResult {
     setGenerationProgress,
   } = useProjectStore();
 
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, loading } = useAuth();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
@@ -114,6 +114,11 @@ export function useAgent(): UseAgentResult {
     abortControllerRef.current = new AbortController();
 
     // 游客模式限制：只允许已登录用户调用 AI
+    if (loading) {
+      toast.info('登录状态恢复中，请稍后再试');
+      return;
+    }
+
     if (!isAuthenticated()) {
       toast.error('请先登录以使用 AI 功能', {
         duration: 3000,
