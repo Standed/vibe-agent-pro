@@ -6,6 +6,13 @@ import { Shot, Character, Scene } from '../types/project';
  * 遵循 "Adapter Pattern" —— 适配现有数据结构到 Sora API
  */
 export class SoraPromptService {
+    private static readonly GLOBAL_SUFFIX =
+        '中文配音，不要增减旁白，无字幕，高清，无配乐，画面无闪烁。请根据这个参考图片里的场景帮我生成动画。';
+
+    getGlobalPromptSuffix(): string {
+        return SoraPromptService.GLOBAL_SUFFIX;
+    }
+
     formatSoraCode(username: string, withTrailingSpace: boolean = false): string {
         const normalized = username.startsWith('@') ? username.slice(1) : username;
         return withTrailingSpace ? `@${normalized} ` : `@${normalized}`;
@@ -46,10 +53,8 @@ export class SoraPromptService {
             }
         });
 
-        // 3. 返回包含中文指令的叙事文本
-        // 重要 (User Request): 追加质量与配音指令
-        const qualitySuffix = "。中文配音，不要增减旁白，无字幕，高清，无配乐，画面无闪烁。请根据这个参考图片里的场景帮我生成动画。";
-        return `${visual.trim()}${qualitySuffix}`;
+        // 3. 返回叙事文本（全局质量指令在脚本层级注入）
+        return visual.trim();
     }
 
     /**

@@ -23,7 +23,7 @@ import AgentPanel from '../agent/AgentPanel';
 import ChatPanel from '@/components/chat/ChatPanel';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { dataService } from '@/lib/dataService';
-import type { SoraTask } from '@/types/project';
+import type { SoraTask, Shot } from '@/types/project';
 import { toast } from 'sonner';
 
 interface TimelineViewProps {
@@ -34,6 +34,8 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     const { project, selectShot, selectedShotId, controlMode, setControlMode, currentSceneId, updateShot } = useProjectStore();
 
     const videoRef = useRef<HTMLVideoElement>(null);
+    const pendingSeekRef = useRef<number | null>(null);
+    const previousVideoUrlRef = useRef<string | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isMuted, setIsMuted] = useState(false); // 默认不静音
     const [currentTime, setCurrentTime] = useState(0);
@@ -42,6 +44,8 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     const [showRightPanel, setShowRightPanel] = useState(false); // 默认折叠右侧面板
     const [showQueuePanel, setShowQueuePanel] = useState(false);
     const queueOpenRef = useRef(false);
+    const TIMELINE_SLOT_WIDTH = 80;
+    const TIMELINE_SLOT_GAP = 8;
 
     // Get all shots sorted by global order - Memoized to prevent effect re-runs
     const allShots = useMemo(() => {
@@ -49,10 +53,201 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
             .slice()
             .sort((a, b) => (a.globalOrder || 0) - (b.globalOrder || 0)) || [];
     }, [project?.shots]);
+    const totalDuration = useMemo(() => {
+        return allShots.reduce((sum, shot) => sum + (shot.duration || 3), 0);
+    }, [allShots]);
+
+    // Subscribe to Sora task updates
+    const { user } = useAuth(); // Get user for chat message
+    const [soraTasks, setSoraTasks] = useState<Map<string, SoraTask>>(new Map());
+    const shotsById = useMemo(
+        () => new Map((project?.shots || []).map((shot) => [shot.id, shot])),
+        [project?.shots]
+    );
+    const scenesById = useMemo(
+        () => new Map((project?.scenes || []).map((scene) => [scene.id, scene])),
+        [project?.scenes]
+    );
+    const charactersById = useMemo(
+        () => new Map((project?.characters || []).map((character) => [character.id, character])),
+        [project?.characters]
+    );
+    const soraTaskList = useMemo(() => {
+        const tasks = Array.from(soraTasks.values());
+        const statusRank = (task: SoraTask) => {
+            if (task.status === 'processing' || task.status === 'generating') return 0;
+            if (task.status === 'queued') return 1;
+            if (task.status === 'completed') return 2;
+            if (task.status === 'failed') return 3;
+            return 4;
+        };
+        return tasks.sort((a, b) => {
+            const rankDiff = statusRank(a) - statusRank(b);
+            if (rankDiff !== 0) return rankDiff;
+            const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
+            const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
+            return bTime - aTime;
+        });
+    }, [soraTasks]);
+    const soraTaskCounts = useMemo(() => {
+        const counts = { queued: 0, processing: 0, completed: 0, failed: 0 };
+        soraTaskList.forEach((task) => {
+            if (task.status === 'queued') counts.queued += 1;
+            else if (task.status === 'processing' || task.status === 'generating') counts.processing += 1;
+            else if (task.status === 'completed') counts.completed += 1;
+            else if (task.status === 'failed') counts.failed += 1;
+        });
+        return counts;
+    }, [soraTaskList]);
+    const activeQueueCount = soraTaskCounts.queued + soraTaskCounts.processing;
+
+    const buildFallbackRanges = useCallback((shots: Shot[]) => {
+        let cursor = 0;
+        return shots.map((shot) => {
+            const duration = shot.duration || 3;
+            const range = { shotId: shot.id, start: cursor, end: cursor + duration };
+            cursor += duration;
+            return range;
+        });
+    }, []);
+
+    const shotIndexById = useMemo(() => {
+        const map = new Map<string, number>();
+        allShots.forEach((shot, index) => map.set(shot.id, index));
+        return map;
+    }, [allShots]);
+
+    const soraVideoGroups = useMemo(() => {
+        const groups: Array<{
+            taskId: string;
+            videoUrl: string;
+            shotIds: string[];
+            shots: Shot[];
+            shotRanges: Array<{ shotId: string; start: number; end: number }>;
+            rangesByShotId: Map<string, { shotId: string; start: number; end: number }>;
+            startIndex: number;
+            endIndex: number;
+        }> = [];
+
+        soraTaskList.forEach((task) => {
+            const videoUrl = task.r2Url || task.kaponaiUrl;
+            if (!videoUrl) return;
+            if (!task.shotIds || task.shotIds.length <= 1) return;
+
+            const indices = task.shotIds
+                .map((id) => shotIndexById.get(id))
+                .filter((index): index is number => typeof index === 'number');
+            if (indices.length === 0) return;
+
+            const startIndex = Math.min(...indices);
+            const endIndex = Math.max(...indices);
+            const shots = task.shotIds.map((id) => shotsById.get(id)).filter(Boolean) as Shot[];
+            const ranges = task.shotRanges?.length ? task.shotRanges : buildFallbackRanges(shots);
+            const rangesByShotId = new Map(ranges.map((range) => [range.shotId, range]));
+
+            groups.push({
+                taskId: task.id,
+                videoUrl,
+                shotIds: task.shotIds,
+                shots,
+                shotRanges: ranges,
+                rangesByShotId,
+                startIndex,
+                endIndex,
+            });
+        });
+
+        return groups;
+    }, [buildFallbackRanges, shotIndexById, shotsById, soraTaskList]);
+
+    const groupByShotId = useMemo(() => {
+        const map = new Map<string, (typeof soraVideoGroups)[number]>();
+        soraVideoGroups.forEach((group) => {
+            group.shotIds.forEach((shotId) => map.set(shotId, group));
+        });
+        return map;
+    }, [soraVideoGroups]);
 
     // Find current shot
     const currentShot = allShots[currentShotIndex];
-    const hasVideo = !!currentShot?.videoClip;
+    const currentGroup = currentShot ? groupByShotId.get(currentShot.id) : undefined;
+    const currentVideoUrl = currentGroup?.videoUrl || currentShot?.videoClip || '';
+    const currentShotRange = currentGroup?.rangesByShotId.get(currentShot.id);
+    const hasVideo = !!currentVideoUrl;
+    const activeSceneId = currentSceneId || currentShot?.sceneId || project?.scenes?.[0]?.id;
+    const sceneOutputTasks = useMemo(() => {
+        if (!activeSceneId) return [];
+        return soraTaskList.filter((task) =>
+            task.sceneId === activeSceneId && (!task.type || task.type === 'shot_generation')
+        );
+    }, [soraTaskList, activeSceneId]);
+
+    // 按镜头分组的任务列表
+    type TaskGroup = {
+        label: string;      // 分组标签，如 "镜头 14-16" 或 "未分配"
+        sortKey: number;    // 排序键（用于按镜头顺序排序）
+        tasks: SoraTask[];  // 该分组下的任务
+    };
+
+    const groupedSoraTaskList = useMemo(() => {
+        const groups: Map<string, TaskGroup> = new Map();
+
+        // 获取任务的镜头覆盖范围键
+        const getTaskGroupKey = (task: SoraTask): { key: string; label: string; sortKey: number } => {
+            const shotIds = task.shotIds?.length ? task.shotIds : (task.shotId ? [task.shotId] : []);
+
+            if (shotIds.length === 0) {
+                if (task.type === 'character_reference') {
+                    const character = charactersById.get(task.characterId || '');
+                    const charName = character?.name || '未知';
+                    return { key: `char_${task.characterId}`, label: `角色: ${charName}`, sortKey: 99999 };
+                }
+                return { key: 'unassigned', label: '未分配', sortKey: 100000 };
+            }
+
+            // 获取镜头序号
+            const numbers = shotIds
+                .map((id) => {
+                    const shot = shotsById.get(id);
+                    if (shot?.globalOrder) return shot.globalOrder;
+                    const idx = shotIndexById.get(id);
+                    return typeof idx === 'number' ? idx + 1 : undefined;
+                })
+                .filter((value): value is number => typeof value === 'number')
+                .sort((a, b) => a - b);
+
+            if (numbers.length === 0) {
+                return { key: 'unassigned', label: '未分配', sortKey: 100000 };
+            }
+
+            const minShot = Math.min(...numbers);
+            const maxShot = Math.max(...numbers);
+            const isContiguous = maxShot - minShot + 1 === numbers.length;
+
+            if (numbers.length === 1) {
+                const label = `镜头 ${String(numbers[0]).padStart(2, '0')}`;
+                return { key: label, label, sortKey: numbers[0] };
+            }
+
+            const rangeLabel = isContiguous
+                ? `${String(minShot).padStart(2, '0')}-${String(maxShot).padStart(2, '0')}`
+                : numbers.map(n => String(n).padStart(2, '0')).join(',');
+            const label = `镜头 ${rangeLabel}`;
+            return { key: label, label, sortKey: minShot };
+        };
+
+        // 分组任务
+        soraTaskList.forEach((task) => {
+            const { key, label, sortKey } = getTaskGroupKey(task);
+            if (!groups.has(key)) {
+                groups.set(key, { label, sortKey, tasks: [] });
+            }
+            groups.get(key)!.tasks.push(task);
+        });
+
+        // 按镜头序号排序分组
+        return Array.from(groups.values()).sort((a, b) => a.sortKey - b.sortKey);
+    }, [soraTaskList, shotsById, shotIndexById, charactersById]);
 
     // Sync with selected shot
     useEffect(() => {
@@ -62,14 +257,33 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         }
     }, [selectedShotId, allShots]);
 
-    // Reset video state when shot changes
+    // Reset video state when source changes
     useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+        if (previousVideoUrlRef.current === currentVideoUrl) return;
+        previousVideoUrlRef.current = currentVideoUrl;
         setCurrentTime(0);
         setDuration(0);
-        if (videoRef.current) {
-            videoRef.current.currentTime = 0;
+        if (currentVideoUrl) {
+            video.currentTime = 0;
         }
-    }, [currentShotIndex]);
+    }, [currentVideoUrl]);
+
+    // Seek to shot range when using grouped Sora video
+    useEffect(() => {
+        if (!currentShotRange) {
+            pendingSeekRef.current = null;
+            return;
+        }
+        pendingSeekRef.current = currentShotRange.start;
+        const video = videoRef.current;
+        if (video && video.readyState >= 1) {
+            const target = Math.min(currentShotRange.start, video.duration || currentShotRange.start);
+            video.currentTime = target;
+            setCurrentTime(target);
+        }
+    }, [currentShotRange?.start, currentVideoUrl]);
 
     // Handle video time update
     const handleTimeUpdate = useCallback(() => {
@@ -80,34 +294,39 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
 
     // Handle video loaded
     const handleLoadedMetadata = useCallback(() => {
-        if (videoRef.current) {
-            setDuration(videoRef.current.duration);
+        const video = videoRef.current;
+        if (!video) return;
+        setDuration(video.duration);
+        if (pendingSeekRef.current !== null) {
+            const target = Math.min(pendingSeekRef.current, video.duration || pendingSeekRef.current);
+            video.currentTime = target;
+            setCurrentTime(target);
         }
     }, []);
 
     // Handle video ended - auto play next (skip shots without video)
     const handleEnded = useCallback(() => {
-        // Find next shot with video
-        let nextIndex = currentShotIndex + 1;
-        while (nextIndex < allShots.length && !allShots[nextIndex].videoClip) {
+        const group = currentShot ? groupByShotId.get(currentShot.id) : undefined;
+        let nextIndex = (group ? group.endIndex + 1 : currentShotIndex + 1);
+
+        while (nextIndex < allShots.length) {
+            const shot = allShots[nextIndex];
+            const shotGroup = groupByShotId.get(shot.id);
+            const videoUrl = shotGroup?.videoUrl || shot.videoClip;
+            if (videoUrl) {
+                const targetIndex = shotGroup ? shotGroup.startIndex : nextIndex;
+                console.log('Video ended, jumping to next index:', targetIndex);
+                setIsPlaying(true);
+                setCurrentShotIndex(targetIndex);
+                selectShot(allShots[targetIndex].id);
+                return;
+            }
             nextIndex++;
         }
 
-        if (nextIndex < allShots.length) {
-            console.log('Video ended, jumping to next index:', nextIndex);
-
-            // Critical: Ensure isPlaying remains true so the next video auto-starts
-            setIsPlaying(true);
-
-            // Update index and sync with store
-            setCurrentShotIndex(nextIndex);
-            selectShot(allShots[nextIndex].id);
-        } else {
-            // Last shot reached
-            console.log('Reached the last video, stopping.');
-            setIsPlaying(false);
-        }
-    }, [currentShotIndex, allShots, selectShot]);
+        console.log('Reached the last video, stopping.');
+        setIsPlaying(false);
+    }, [allShots, currentShot, currentShotIndex, groupByShotId, selectShot]);
 
     // Ensure video plays when ready if we are in playing state
     const handleCanPlay = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -128,63 +347,18 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         if (isPlaying) {
             console.log('[TimelineView] Attempting to play new shot:', currentShotIndex);
 
-            // Critical: If the src changed, we might need a small delay or load() call
             const playVideo = async () => {
                 try {
                     await video.play();
                     console.log('[TimelineView] Play success');
                 } catch (err) {
                     console.warn('[TimelineView] Play failed after source change:', err);
-                    // If blocked by browser, we might need a user gesture, 
-                    // but since they clicked once, it should generally be allowed.
                 }
             };
 
             playVideo();
         }
-    }, [currentShotIndex, isPlaying, hasVideo, currentShot?.videoClip]);
-
-    // Subscribe to Sora task updates
-    const { user } = useAuth(); // Get user for chat message
-    const [soraTasks, setSoraTasks] = useState<Map<string, SoraTask>>(new Map());
-    const shotsById = useMemo(
-        () => new Map((project?.shots || []).map((shot) => [shot.id, shot])),
-        [project?.shots]
-    );
-    const scenesById = useMemo(
-        () => new Map((project?.scenes || []).map((scene) => [scene.id, scene])),
-        [project?.scenes]
-    );
-    const charactersById = useMemo(
-        () => new Map((project?.characters || []).map((character) => [character.id, character])),
-        [project?.characters]
-    );
-    const soraTaskList = useMemo(() => {
-        const tasks = Array.from(soraTasks.values());
-        return tasks.sort((a, b) => {
-            const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
-            const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
-            return bTime - aTime;
-        });
-    }, [soraTasks]);
-    const soraTaskCounts = useMemo(() => {
-        const counts = { queued: 0, processing: 0, completed: 0, failed: 0 };
-        soraTaskList.forEach((task) => {
-            if (task.status === 'queued') counts.queued += 1;
-            else if (task.status === 'processing' || task.status === 'generating') counts.processing += 1;
-            else if (task.status === 'completed') counts.completed += 1;
-            else if (task.status === 'failed') counts.failed += 1;
-        });
-        return counts;
-    }, [soraTaskList]);
-    const activeQueueCount = soraTaskCounts.queued + soraTaskCounts.processing;
-    const activeSceneId = currentSceneId || currentShot?.sceneId || project?.scenes?.[0]?.id;
-    const sceneOutputTasks = useMemo(() => {
-        if (!activeSceneId) return [];
-        return soraTaskList.filter((task) =>
-            task.sceneId === activeSceneId && (!task.type || task.type === 'shot_generation')
-        );
-    }, [soraTaskList, activeSceneId]);
+    }, [currentShotIndex, isPlaying, hasVideo, currentVideoUrl]);
 
     const getTaskLabel = useCallback((task: SoraTask) => {
         if (task.characterId) {
@@ -202,6 +376,32 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         }
         return `任务 · ${task.id.slice(-6)}`;
     }, [shotsById, scenesById, charactersById]);
+    const getTaskShotCoverage = useCallback((task: SoraTask) => {
+        const shotIds = task.shotIds?.length ? task.shotIds : (task.shotId ? [task.shotId] : []);
+        if (shotIds.length === 0) return '';
+        const numbers = shotIds
+            .map((id) => {
+                const shot = shotsById.get(id);
+                if (shot?.globalOrder) return shot.globalOrder;
+                const idx = shotIndexById.get(id);
+                return typeof idx === 'number' ? idx + 1 : undefined;
+            })
+            .filter((value): value is number => typeof value === 'number')
+            .sort((a, b) => a - b);
+        if (numbers.length === 0) return '';
+
+        if (numbers.length === 1) {
+            return `镜头 ${numbers[0]}`;
+        }
+        const isContiguous = numbers[numbers.length - 1] - numbers[0] + 1 === numbers.length;
+        const label = isContiguous ? `${numbers[0]}-${numbers[numbers.length - 1]}` : numbers.join(',');
+        return `镜头 ${label}`;
+    }, [shotsById, shotIndexById]);
+    const canBindToCurrentShot = useCallback((task: SoraTask) => {
+        if (task.shotId) return false;
+        if (task.shotIds && task.shotIds.length > 1) return false;
+        return !task.type || task.type === 'shot_generation';
+    }, []);
 
     const syncedTaskIdsRef = useRef(new Set<string>());
 
@@ -213,6 +413,8 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
             if (task.status !== 'completed') return;
             const videoUrl = task.r2Url || task.kaponaiUrl;
             if (!videoUrl) return;
+
+            if (task.shotIds && task.shotIds.length > 1) return;
 
             const targetShotIds = task.shotId ? [task.shotId] : (task.shotIds || []);
             if (targetShotIds.length === 0) return;
@@ -239,7 +441,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
             });
         });
         if (updates.length > 0) {
-            Promise.allSettled(updates).catch(() => {});
+            Promise.allSettled(updates).catch(() => { });
         }
     }, [soraTasks, shotsById, project?.id, updateShot]);
 
@@ -757,6 +959,26 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         setCurrentTime(newTime);
     };
 
+    const timelineItems = useMemo(() => {
+        const items: Array<
+            | { type: 'shot'; shot: Shot; index: number }
+            | { type: 'group'; group: (typeof soraVideoGroups)[number] }
+        > = [];
+        let index = 0;
+        while (index < allShots.length) {
+            const shot = allShots[index];
+            const group = groupByShotId.get(shot.id);
+            if (group && group.startIndex === index) {
+                items.push({ type: 'group', group });
+                index = group.endIndex + 1;
+                continue;
+            }
+            items.push({ type: 'shot', shot, index });
+            index += 1;
+        }
+        return items;
+    }, [allShots, groupByShotId, soraVideoGroups]);
+
     return (
         <div className="fixed inset-0 z-50 bg-light-bg dark:bg-cine-black flex overflow-hidden">
             {/* Left: Video Player Area */}
@@ -825,47 +1047,68 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                         <div className="p-3 space-y-4 overflow-y-auto max-h-[calc(70vh-96px)]">
                             <div>
                                 <div className="text-xs font-semibold text-light-text dark:text-white mb-2">
-                                    场景 Sora 输出
+                                    当前场景
                                 </div>
                                 {sceneOutputTasks.length === 0 ? (
                                     <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
                                         当前场景暂无输出
                                     </div>
                                 ) : (
-                                    <div className="space-y-2">
+                                    <div className="space-y-1">
                                         {sceneOutputTasks.map((task) => {
                                             const videoUrl = task.r2Url || task.kaponaiUrl;
+                                            const coverage = getTaskShotCoverage(task);
+                                            const durationHint = task.targetDuration ? `${task.targetDuration}s` : '';
+
                                             return (
                                                 <div
                                                     key={task.id}
-                                                    className="flex items-center justify-between gap-2 rounded border border-light-border dark:border-cine-border px-2 py-1.5"
+                                                    className="flex items-center gap-2 rounded-lg border border-light-border/60 dark:border-cine-border/60 px-2.5 py-1.5 hover:bg-light-surface/50 dark:hover:bg-cine-surface/50 transition-colors"
                                                 >
-                                                    <div className="flex items-center gap-2 min-w-0">
-                                                        <span className={`text-[10px] px-2 py-0.5 rounded ${getStatusClass(task.status)}`}>
-                                                            {getStatusLabel(task.status)}
-                                                        </span>
-                                                        <span className="text-xs text-light-text dark:text-white truncate">
-                                                            {getTaskLabel(task)}
-                                                        </span>
+                                                    {/* 左侧：镜头范围标识 */}
+                                                    <div className="w-14 flex-shrink-0 text-[10px] font-mono text-light-text-muted dark:text-cine-text-muted truncate">
+                                                        {coverage || '—'}
                                                     </div>
-                                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                                        {typeof task.progress === 'number' && task.status !== 'completed' && (
+
+                                                    {/* 状态标签 */}
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${getStatusClass(task.status)}`}>
+                                                        {getStatusLabel(task.status)}
+                                                    </span>
+
+                                                    {/* 中间：任务信息 */}
+                                                    <div className="flex-1 min-w-0 flex items-center gap-2">
+                                                        {durationHint && (
                                                             <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted">
+                                                                {durationHint}
+                                                            </span>
+                                                        )}
+                                                        {typeof task.progress === 'number' && task.status !== 'completed' && (
+                                                            <span className="text-[10px] text-blue-500 dark:text-blue-400 font-medium">
                                                                 {task.progress}%
                                                             </span>
                                                         )}
-                                                        {videoUrl && !task.shotId && (
+                                                    </div>
+
+                                                    {/* 右侧：操作按钮 */}
+                                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                                        <button
+                                                            onClick={() => refreshTask(task, false, true)}
+                                                            className="text-[10px] px-1.5 py-0.5 rounded text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-border/50 dark:hover:bg-cine-border/50 transition-colors"
+                                                        >
+                                                            刷新
+                                                        </button>
+                                                        {videoUrl && canBindToCurrentShot(task) && (
                                                             <button
                                                                 onClick={() => bindTaskToShot(task)}
-                                                                className="text-[10px] px-2 py-0.5 rounded border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border transition-colors"
+                                                                className="text-[10px] px-1.5 py-0.5 rounded text-light-accent dark:text-cine-accent hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
                                                             >
-                                                                绑定当前镜头
+                                                                绑定
                                                             </button>
                                                         )}
                                                         {videoUrl && (
                                                             <button
                                                                 onClick={() => window.open(videoUrl, '_blank', 'noopener,noreferrer')}
-                                                                className="text-[10px] px-2 py-0.5 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-text dark:text-white hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
+                                                                className="text-[10px] px-1.5 py-0.5 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-accent dark:text-cine-accent hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
                                                             >
                                                                 打开
                                                             </button>
@@ -880,62 +1123,75 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
 
                             <div>
                                 <div className="text-xs font-semibold text-light-text dark:text-white mb-2">
-                                    任务队列
+                                    全部任务 ({soraTaskList.length})
                                 </div>
                                 {soraTaskList.length === 0 ? (
                                     <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
                                         暂无任务
                                     </div>
                                 ) : (
-                                    <div className="space-y-2">
+                                    <div className="space-y-1">
                                         {soraTaskList.map((task) => {
                                             const videoUrl = task.r2Url || task.kaponaiUrl;
-                                            const typeLabel =
-                                                task.type === 'character_reference'
-                                                    ? '角色视频'
-                                                    : task.type === 'shot_generation'
-                                                        ? '镜头视频'
-                                                        : 'Sora 任务';
+                                            const coverage = getTaskShotCoverage(task);
+                                            const durationHint = task.targetDuration ? `${task.targetDuration}s` : '';
+                                            const isCharacterTask = task.type === 'character_reference';
+                                            const character = isCharacterTask ? charactersById.get(task.characterId || '') : null;
+
                                             return (
                                                 <div
                                                     key={task.id}
-                                                    className="flex items-center justify-between gap-2 rounded border border-light-border dark:border-cine-border px-2 py-1.5"
+                                                    className="flex items-center gap-2 rounded-lg border border-light-border/60 dark:border-cine-border/60 px-2.5 py-1.5 hover:bg-light-surface/50 dark:hover:bg-cine-surface/50 transition-colors"
                                                 >
-                                                    <div className="flex items-center gap-2 min-w-0">
-                                                        <span className={`text-[10px] px-2 py-0.5 rounded ${getStatusClass(task.status)}`}>
-                                                            {getStatusLabel(task.status)}
-                                                        </span>
-                                                        <span className="text-xs text-light-text dark:text-white truncate">
-                                                            {getTaskLabel(task)}
-                                                        </span>
-                                                        <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted">
-                                                            {typeLabel}
-                                                        </span>
+                                                    {/* 左侧：镜头范围标识 */}
+                                                    <div className="w-14 flex-shrink-0 text-[10px] font-mono text-light-text-muted dark:text-cine-text-muted truncate">
+                                                        {coverage || (isCharacterTask ? '角色' : '—')}
                                                     </div>
-                                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                                        {typeof task.progress === 'number' && task.status !== 'completed' && (
+
+                                                    {/* 状态标签 */}
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${getStatusClass(task.status)}`}>
+                                                        {getStatusLabel(task.status)}
+                                                    </span>
+
+                                                    {/* 中间：任务信息 */}
+                                                    <div className="flex-1 min-w-0 flex items-center gap-2">
+                                                        {isCharacterTask && character && (
+                                                            <span className="text-[11px] text-light-text dark:text-white truncate">
+                                                                {character.name}
+                                                            </span>
+                                                        )}
+                                                        {durationHint && (
                                                             <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted">
+                                                                {durationHint}
+                                                            </span>
+                                                        )}
+                                                        {typeof task.progress === 'number' && task.status !== 'completed' && (
+                                                            <span className="text-[10px] text-blue-500 dark:text-blue-400 font-medium">
                                                                 {task.progress}%
                                                             </span>
                                                         )}
+                                                    </div>
+
+                                                    {/* 右侧：操作按钮 */}
+                                                    <div className="flex items-center gap-1 flex-shrink-0">
                                                         <button
                                                             onClick={() => refreshTask(task, false, true)}
-                                                            className="text-[10px] px-2 py-0.5 rounded border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border transition-colors"
+                                                            className="text-[10px] px-1.5 py-0.5 rounded text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-border/50 dark:hover:bg-cine-border/50 transition-colors"
                                                         >
                                                             刷新
                                                         </button>
-                                                        {videoUrl && !task.shotId && (!task.type || task.type === 'shot_generation') && (
+                                                        {videoUrl && canBindToCurrentShot(task) && (
                                                             <button
                                                                 onClick={() => bindTaskToShot(task)}
-                                                                className="text-[10px] px-2 py-0.5 rounded border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border transition-colors"
+                                                                className="text-[10px] px-1.5 py-0.5 rounded text-light-accent dark:text-cine-accent hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
                                                             >
-                                                                绑定当前镜头
+                                                                绑定
                                                             </button>
                                                         )}
                                                         {videoUrl && (
                                                             <button
                                                                 onClick={() => window.open(videoUrl, '_blank', 'noopener,noreferrer')}
-                                                                className="text-[10px] px-2 py-0.5 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-text dark:text-white hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
+                                                                className="text-[10px] px-1.5 py-0.5 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-accent dark:text-cine-accent hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
                                                             >
                                                                 打开
                                                             </button>
@@ -953,10 +1209,10 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
 
                 {/* Video Preview Area */}
                 <div className="flex-1 min-h-0 flex items-center justify-center bg-gray-100 dark:bg-black relative">
-                    {hasVideo && currentShot?.videoClip ? (
+                    {hasVideo && currentVideoUrl ? (
                         <video
                             ref={videoRef}
-                            src={currentShot.videoClip}
+                            src={currentVideoUrl}
                             className="max-w-full max-h-full object-contain"
                             muted={isMuted}
                             onTimeUpdate={handleTimeUpdate}
@@ -1068,65 +1324,150 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                     </button>
 
                     <div className="text-light-text-muted dark:text-cine-text-muted text-sm font-mono">
-                        {formatTime(currentTime)} / {formatTime(duration || (currentShot?.duration || 3))}
+                        {formatTime(currentTime)} / {formatTime(duration || (currentShot?.duration || 3))} · 总 {formatTime(totalDuration || 0)}
                     </div>
                 </div>
 
                 {/* Timeline Strip */}
                 <div className="h-20 flex-shrink-0 bg-gray-50 dark:bg-cine-black border-t border-light-border dark:border-cine-border overflow-x-auto">
                     <div className="flex gap-2 p-2 h-full">
-                        {allShots.map((shot, index) => {
-                            const shotHasVideo = !!shot.videoClip;
-                            const isSelected = index === currentShotIndex;
+                        {timelineItems.map((item) => {
+                            if (item.type === 'shot') {
+                                const { shot, index } = item;
+                                const shotHasVideo = !!shot.videoClip;
+                                const isSelected = index === currentShotIndex;
+
+                                return (
+                                    <div
+                                        key={shot.id}
+                                        onClick={() => {
+                                            setCurrentShotIndex(index);
+                                            selectShot(shot.id);
+                                            setIsPlaying(false);
+                                        }}
+                                        className={`relative flex-shrink-0 w-20 h-full rounded-lg overflow-hidden cursor-pointer transition-all ${isSelected
+                                            ? 'ring-2 ring-light-accent dark:ring-white scale-105 z-10'
+                                            : shotHasVideo
+                                                ? 'ring-1 ring-emerald-500/50 hover:ring-emerald-500'
+                                                : 'ring-1 ring-light-border dark:ring-zinc-700 hover:ring-light-accent dark:hover:ring-zinc-500'
+                                            }`}
+                                    >
+                                        {shot.videoClip ? (
+                                            shot.referenceImage ? (
+                                                <img
+                                                    src={shot.referenceImage}
+                                                    alt=""
+                                                    loading="lazy"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <video
+                                                    src={shot.videoClip}
+                                                    className="w-full h-full object-cover"
+                                                    muted
+                                                    preload="metadata"
+                                                    playsInline
+                                                />
+                                            )
+                                        ) : shot.referenceImage ? (
+                                            <img
+                                                src={shot.referenceImage}
+                                                alt=""
+                                                loading="lazy"
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full bg-gray-200 dark:bg-zinc-800 flex items-center justify-center">
+                                                <Film size={16} className="text-gray-400 dark:text-zinc-600" />
+                                            </div>
+                                        )}
+
+                                        {shotHasVideo && (
+                                            <div className="absolute top-1 left-1 flex items-center gap-0.5 bg-emerald-500/90 text-white text-[8px] px-1 py-0.5 rounded font-bold">
+                                                <Film size={8} />
+                                            </div>
+                                        )}
+
+                                        <div className="absolute bottom-1 right-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-mono">
+                                            {(shot.duration || 3).toFixed(1)}s
+                                        </div>
+
+                                        <div className="absolute bottom-1 left-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-bold">
+                                            {index + 1}
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            const { group } = item;
+                            const groupWidth = (group.shots.length * TIMELINE_SLOT_WIDTH) +
+                                (Math.max(group.shots.length - 1, 0) * TIMELINE_SLOT_GAP);
+                            const isGroupSelected = currentGroup?.taskId === group.taskId;
+                            const groupPoster = group.shots.find((shot) => shot.referenceImage)?.referenceImage;
 
                             return (
                                 <div
-                                    key={shot.id}
-                                    onClick={() => {
-                                        setCurrentShotIndex(index);
-                                        selectShot(shot.id);
-                                        setIsPlaying(false);
-                                    }}
-                                    className={`relative flex-shrink-0 w-20 h-full rounded-lg overflow-hidden cursor-pointer transition-all ${isSelected
-                                        ? 'ring-2 ring-light-accent dark:ring-white scale-105 z-10'
-                                        : shotHasVideo
-                                            ? 'ring-1 ring-emerald-500/50 hover:ring-emerald-500'
-                                            : 'ring-1 ring-light-border dark:ring-zinc-700 hover:ring-light-accent dark:hover:ring-zinc-500'
+                                    key={group.taskId}
+                                    className={`relative flex-shrink-0 h-full rounded-lg overflow-hidden transition-all ${isGroupSelected
+                                        ? 'ring-2 ring-light-accent dark:ring-white'
+                                        : 'ring-1 ring-emerald-500/50'
                                         }`}
+                                    style={{ width: groupWidth }}
                                 >
-                                    {shot.videoClip ? (
-                                        <video
-                                            src={shot.videoClip}
-                                            className="w-full h-full object-cover"
-                                            muted
-                                        />
-                                    ) : shot.referenceImage ? (
+                                    {groupPoster ? (
                                         <img
-                                            src={shot.referenceImage}
+                                            src={groupPoster}
                                             alt=""
-                                            className="w-full h-full object-cover"
+                                            loading="lazy"
+                                            className="absolute inset-0 w-full h-full object-cover"
+                                        />
+                                    ) : group.videoUrl ? (
+                                        <video
+                                            src={group.videoUrl}
+                                            className="absolute inset-0 w-full h-full object-cover"
+                                            muted
+                                            preload="metadata"
+                                            playsInline
                                         />
                                     ) : (
-                                        <div className="w-full h-full bg-gray-200 dark:bg-zinc-800 flex items-center justify-center">
+                                        <div className="absolute inset-0 bg-gray-200 dark:bg-zinc-800 flex items-center justify-center">
                                             <Film size={16} className="text-gray-400 dark:text-zinc-600" />
                                         </div>
                                     )}
 
-                                    {/* Video badge */}
-                                    {shotHasVideo && (
-                                        <div className="absolute top-1 left-1 flex items-center gap-0.5 bg-emerald-500/90 text-white text-[8px] px-1 py-0.5 rounded font-bold">
-                                            <Film size={8} />
-                                        </div>
-                                    )}
-
-                                    {/* Duration */}
-                                    <div className="absolute bottom-1 right-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-mono">
-                                        {(shot.duration || 3).toFixed(1)}s
+                                    <div className="absolute top-1 left-1 flex items-center gap-0.5 bg-emerald-500/90 text-white text-[8px] px-1 py-0.5 rounded font-bold z-10">
+                                        <Film size={8} />
+                                        Sora
                                     </div>
 
-                                    {/* Index */}
-                                    <div className="absolute bottom-1 left-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-bold">
-                                        {index + 1}
+                                    <div className="relative z-10 flex h-full" style={{ gap: `${TIMELINE_SLOT_GAP}px` }}>
+                                        {group.shots.map((shot) => {
+                                            const shotIndex = shotIndexById.get(shot.id) ?? 0;
+                                            const isShotSelected = shot.id === currentShot?.id;
+
+                                            return (
+                                                <button
+                                                    key={shot.id}
+                                                    onClick={() => {
+                                                        setCurrentShotIndex(shotIndex);
+                                                        selectShot(shot.id);
+                                                        setIsPlaying(false);
+                                                    }}
+                                                    className={`relative h-full rounded-lg overflow-hidden transition-all ${isShotSelected
+                                                        ? 'ring-2 ring-light-accent dark:ring-white bg-black/40'
+                                                        : 'ring-1 ring-black/30 dark:ring-white/10 bg-black/20 hover:bg-black/30'
+                                                        }`}
+                                                    style={{ width: TIMELINE_SLOT_WIDTH }}
+                                                >
+                                                    <div className="absolute bottom-1 right-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-mono">
+                                                        {(shot.duration || 3).toFixed(1)}s
+                                                    </div>
+                                                    <div className="absolute bottom-1 left-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-bold">
+                                                        {shotIndex + 1}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             );

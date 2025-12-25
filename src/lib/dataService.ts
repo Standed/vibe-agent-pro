@@ -1183,8 +1183,8 @@ export class UnifiedDataService {
     return this.backend!.deleteSeries(id);
   }
 
-  async getGlobalCharacters(): Promise<Character[]> {
-    await this.ensureInitialized();
+  async getGlobalCharacters(userId?: string): Promise<Character[]> {
+    await this.ensureInitialized(userId);
     return this.backend!.getGlobalCharacters();
   }
 

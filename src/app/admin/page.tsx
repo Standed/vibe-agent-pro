@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 interface UserProfile {
   id: string;
   email: string;
+  full_name?: string;
   role: 'user' | 'admin' | 'vip';
   credits: number;
   is_whitelisted: boolean;
@@ -263,8 +264,9 @@ export default function AdminDashboard() {
                   {filteredUsers.map((user: UserProfile) => (
                     <tr key={user.id} className="hover:bg-white/5 transition-colors">
                       <td className="px-6 py-4">
-                        <div className="font-medium">{user.email}</div>
-                        <div className="text-[10px] text-cine-text-muted font-mono">{user.id}</div>
+                        <div className="font-medium text-white">{user.full_name || '未设置'}</div>
+                        <div className="text-xs text-cine-text-muted">{user.email}</div>
+                        <div className="text-[10px] text-cine-text-muted font-mono mt-0.5">{user.id}</div>
                       </td>
                       <td className="px-6 py-4">
                         <select

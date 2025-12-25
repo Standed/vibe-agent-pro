@@ -31,12 +31,15 @@ export async function GET(request: NextRequest) {
     }
 
     const contentType = resp.headers.get('content-type') || 'image/png';
-    const buffer = await resp.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString('base64');
+    // 直接返回流，而不是 buffer/base64
+    // 注意：NextResponse 构造函数接受 BodyInit，包括 ReadableStream
+    return new NextResponse(resp.body, {
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=3600',
+      },
+    });
 
-    console.log(`[${requestId}] ✅ Image fetched successfully (${user.role})`);
-
-    return NextResponse.json({ mimeType: contentType, data: base64, requestId });
   } catch (error: any) {
     console.error(`[${requestId}] ❌ Fetch image failed:`, error);
     return NextResponse.json({ error: error?.message || 'fetch failed' }, { status: 500 });

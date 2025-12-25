@@ -99,7 +99,8 @@ export class SoraOrchestrator {
             // 构建剧本
             const script = {
                 "character_setting": this.buildCharacterSettings(involvedCharacters),
-                "shots": chunkShots.map(shot => this.convertShotToSoraShot(shot, involvedCharacters, scene, project.metadata.artStyle))
+                "shots": chunkShots.map(shot => this.convertShotToSoraShot(shot, involvedCharacters, scene, project.metadata.artStyle)),
+                "global_prompt": this.promptService.getGlobalPromptSuffix()
             };
 
             // 时长计算
