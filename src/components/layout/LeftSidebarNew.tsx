@@ -10,6 +10,7 @@ import {
   Film,
   FileText,
   FolderOpen,
+  Settings,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
@@ -381,292 +382,305 @@ export default function LeftSidebarNew() {
   }
 
   return (
-    <div
-      className="glass-panel flex flex-col relative shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.2)] z-20"
-      style={{ width: sidebarWidth }}
-    >
-      {/* Header */}
-      <div className="p-6 flex items-center justify-between">
+    <div className="flex h-full z-20">
+      {/* 左侧图标栏 - 48px 宽，液态玻璃风格 */}
+      <div className="w-12 flex flex-col items-center py-4 bg-white/60 dark:bg-black/40 backdrop-blur-xl border-r border-white/20 dark:border-white/10 shadow-lg">
+        {/* 首页按钮 */}
         <button
           onClick={() => router.push('/')}
-          className="flex items-center gap-2 text-sm text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-colors"
+          className="p-2.5 rounded-xl mb-2 transition-all duration-200 hover:bg-black/5 dark:hover:bg-white/10 group"
+          title="返回首页"
         >
-          <Home size={16} />
-          <span>返回首页</span>
+          <Home size={20} className="text-gray-500 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />
         </button>
+
+        <div className="w-6 h-px bg-gray-200 dark:bg-gray-700 my-2" />
+
+        {/* 策划 */}
         <button
-          onClick={toggleLeftSidebar}
-          className="p-1 glass-button rounded-lg"
-          title="收起侧边栏"
+          onClick={() => setActiveTab('planning')}
+          className={`p-2.5 rounded-xl mb-1 transition-all duration-200 ${activeTab === 'planning'
+            ? 'bg-light-accent/10 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent shadow-sm'
+            : 'hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400'
+            }`}
+          title="策划"
         >
-          <ChevronLeft size={16} className="text-gray-500 dark:text-gray-400" />
+          <FileText size={20} />
+        </button>
+
+        {/* 分镜 */}
+        <button
+          onClick={() => setActiveTab('storyboard')}
+          className={`p-2.5 rounded-xl mb-1 transition-all duration-200 ${activeTab === 'storyboard'
+            ? 'bg-light-accent/10 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent shadow-sm'
+            : 'hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400'
+            }`}
+          title="分镜"
+        >
+          <Film size={20} />
+        </button>
+
+        {/* 资源 */}
+        <button
+          onClick={() => setActiveTab('assets')}
+          className={`p-2.5 rounded-xl mb-1 transition-all duration-200 ${activeTab === 'assets'
+            ? 'bg-light-accent/10 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent shadow-sm'
+            : 'hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400'
+            }`}
+          title="资源"
+        >
+          <FolderOpen size={20} />
+        </button>
+
+        {/* 底部设置按钮 */}
+        <div className="flex-1" />
+        <div className="w-6 h-px bg-gray-200 dark:bg-gray-700 my-2" />
+        <button
+          className="p-2.5 rounded-xl transition-all duration-200 hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400"
+          title="设置"
+        >
+          <Settings size={20} />
         </button>
       </div>
-      <div
-        className={`absolute right-0 top-0 h-full w-1 cursor-col-resize ${resizing ? 'bg-light-accent/30 dark:bg-cine-accent/30' : 'bg-transparent hover:bg-light-border dark:hover:bg-cine-border'}`}
-        onMouseDown={startResize}
-      />
 
-      {/* Project Info */}
-      <div className="px-6 pb-6">
-        <div className="flex items-center gap-2">
-          <h2 className="font-bold text-lg text-light-text dark:text-white truncate">
+      {/* 右侧内容面板 */}
+      <div
+        className="glass-panel flex flex-col relative shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.2)]"
+        style={{ width: sidebarWidth - 48 }}
+      >
+        {/* Header - 简化版，只保留项目名和收起按钮 */}
+        <div className="p-4 flex items-center justify-between border-b border-black/5 dark:border-white/5">
+          <h2 className="font-bold text-sm text-light-text dark:text-white truncate flex-1">
             {project?.metadata.title || '未命名项目'}
           </h2>
-          {isSaving && (
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-light-accent/10 dark:bg-cine-accent/10 border border-light-accent/20 dark:border-cine-accent/20 animate-pulse">
-              <Loader2 size={10} className="animate-spin text-light-accent dark:text-cine-accent" />
-              <span className="text-[10px] font-medium text-light-accent dark:text-cine-accent">同步中</span>
-            </div>
-          )}
-        </div>
-        {project?.metadata.description && (
-          <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 line-clamp-2">
-            {project.metadata.description}
-          </p>
-        )}
-        {/* Batch Download Button */}
-        <button
-          onClick={handleBatchDownload}
-          disabled={isDownloading}
-          className="w-full mt-3 glass-button rounded-xl px-3 py-2 text-xs flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isDownloading ? (
-            <>
-              <Loader2 size={14} className="animate-spin" />
-              <span>打包下载中...</span>
-            </>
-          ) : (
-            <>
-              <Download size={14} />
-              <span>批量下载素材</span>
-            </>
-          )}
-        </button>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="px-6 pb-2">
-        <div className="flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
-          <button
-            onClick={() => setActiveTab('planning')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${activeTab === 'planning'
-              ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
-              }`}
-          >
-            <FileText size={14} />
-            <span>策划</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('storyboard')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${activeTab === 'storyboard'
-              ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
-              }`}
-          >
-            <Film size={14} />
-            <span>分镜</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('assets')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${activeTab === 'assets'
-              ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
-              }`}
-          >
-            <FolderOpen size={14} />
-            <span>资源</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto">
-        {activeTab === 'planning' && (
-          <DirectorMode
-            isOpen={true}
-            onClose={() => setActiveTab('storyboard')}
-          />
-        )}
-
-        {activeTab === 'storyboard' && (
-          <StoryboardTab
-            shots={shots}
-            scenes={scenes}
-            collapsedScenes={collapsedScenes}
-            toggleSceneCollapse={toggleSceneCollapse}
-            handleAddScene={handleAddScene}
-            editingSceneId={editingSceneId}
-            editingSceneName={editingSceneName}
-            setEditingSceneName={setEditingSceneName}
-            handleSaveSceneName={handleSaveSceneName}
-            handleCancelEditScene={handleCancelEditScene}
-            handleStartEditScene={handleStartEditScene}
-            handleEditSceneDetails={(sceneId) => {
-              const scene = scenes.find(s => s.id === sceneId);
-              if (!scene) return;
-
-              setSceneIdHandlingLocation(sceneId);
-
-              const linkedLocation = project?.locations.find(l =>
-                l.name.toLowerCase() === (scene.location || scene.name).toLowerCase()
-              );
-
-              const initialLocationData = linkedLocation || {
-                id: '',
-                name: scene.location || scene.name,
-                description: scene.description,
-                type: 'interior',
-                referenceImages: []
-              };
-
-              setEditingLocation(initialLocationData as any);
-            }}
-            handleDeleteScene={handleDeleteScene}
-            handleAddShotClick={handleAddShotClick}
-            setShowScriptEditor={setShowTableEditor}
-            selectedShotId={selectedShotId}
-            handleShotClick={handleShotClick}
-            openShotEditor={openShotEditor}
-            handleDeleteShot={handleDeleteShot}
-            handleShotImageClick={(shot) => {
-              // 1. 设置生成请求 (先设置，以免被后续的副作用清除)
-              const scene = scenes.find(s => s.id === shot.sceneId);
-              const sceneContext = scene?.description ? `\n场景环境: ${scene.description}` : '';
-              const fullPrompt = `镜头画面: ${shot.description || ''}${sceneContext}`;
-
-              useProjectStore.getState().setGenerationRequest({
-                prompt: fullPrompt,
-                model: 'jimeng',
-                jimengModel: 'jimeng-4.5',
-                jimengResolution: '2k'
-              });
-
-              // 2. 选中镜头
-              selectShot(shot.id);
-
-              // 3. 切换到 Pro 模式并确保侧边栏展开
-              setControlMode('pro');
-              if (useProjectStore.getState().rightSidebarCollapsed) {
-                useProjectStore.getState().toggleRightSidebar();
-              }
-            }}
-          />
-        )}
-
-        {activeTab === 'assets' && (
-          <AssetsTab
-            project={project}
-            charactersCollapsed={charactersCollapsed}
-            setCharactersCollapsed={setCharactersCollapsed}
-            setShowAddCharacterDialog={setShowAddCharacterDialog}
-            setEditingCharacter={setEditingCharacter}
-            deleteCharacter={deleteCharacter}
-            locationsCollapsed={locationsCollapsed}
-            setLocationsCollapsed={setLocationsCollapsed}
-            setShowAddLocationDialog={setShowAddLocationDialog}
-            setEditingLocation={setEditingLocation}
-            deleteLocation={deleteLocation}
-          />
-        )}
-      </div>
-
-      {showTableEditor && (
-        <ShotTableEditor
-          isOpen={showTableEditor}
-          onClose={() => setShowTableEditor(false)}
-        />
-      )}
-
-      {shotImagePreview && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" onClick={() => setShotImagePreview(null)}>
-          <div className="max-w-5xl w-full max-h-[90vh]">
-            <img src={shotImagePreview} alt="预览" className="w-full h-full object-contain rounded-lg" />
+          <div className="flex items-center gap-2">
+            {isSaving && (
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-light-accent/10 dark:bg-cine-accent/10">
+                <Loader2 size={10} className="animate-spin text-light-accent dark:text-cine-accent" />
+              </div>
+            )}
+            <button
+              onClick={toggleLeftSidebar}
+              className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              title="收起侧边栏"
+            >
+              <ChevronLeft size={16} className="text-gray-500 dark:text-gray-400" />
+            </button>
           </div>
         </div>
-      )}
-
-      <ShotEditor
-        editingShot={editingShot}
-        setEditingShot={setEditingShot}
-        shotForm={shotForm}
-        setShotForm={setShotForm}
-        saveShotEdit={saveShotEdit}
-        shotHistoryImages={shotHistoryImages}
-        selectedHistoryImage={selectedHistoryImage}
-        setSelectedHistoryImage={setSelectedHistoryImage}
-        liveEditingShot={liveEditingShot}
-        updateShot={updateShot}
-        setShotImagePreview={setShotImagePreview}
-      />
-
-      {showAddShotDialog && selectedSceneForNewShot && (
-        <AddShotDialog
-          sceneId={selectedSceneForNewShot}
-          sceneName={scenes.find(s => s.id === selectedSceneForNewShot)?.name || ''}
-          existingShotsCount={shots.filter(s => s.sceneId === selectedSceneForNewShot).length}
-          insertIndex={shotInsertIndex ?? undefined}
-          onAdd={handleAddShot}
-          onClose={() => {
-            setShowAddShotDialog(false);
-            setShotInsertIndex(null);
-          }}
+        <div
+          className={`absolute right-0 top-0 h-full w-1 cursor-col-resize ${resizing ? 'bg-light-accent/30 dark:bg-cine-accent/30' : 'bg-transparent hover:bg-light-border dark:hover:bg-cine-border'}`}
+          onMouseDown={startResize}
         />
-      )}
 
-      {showAddCharacterDialog && (
-        <AddCharacterDialog
-          onAdd={addCharacter}
-          onClose={() => setShowAddCharacterDialog(false)}
-        />
-      )}
-      {editingCharacter && (
-        <AddCharacterDialog
-          mode="edit"
-          initialCharacter={editingCharacter}
-          onAdd={(updated) => {
-            updateCharacter(editingCharacter.id, updated);
-          }}
-          onClose={() => setEditingCharacter(null)}
-        />
-      )}
+        {/* 批量下载按钮 */}
+        <div className="px-4 py-2">
+          <button
+            onClick={handleBatchDownload}
+            disabled={isDownloading}
+            className="w-full glass-button rounded-lg px-3 py-2 text-xs flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isDownloading ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                <span>下载中...</span>
+              </>
+            ) : (
+              <>
+                <Download size={14} />
+                <span>批量下载</span>
+              </>
+            )}
+          </button>
+        </div>
 
-      {showAddLocationDialog && (
-        <AddLocationDialog
-          onAdd={addLocation}
-          onClose={() => setShowAddLocationDialog(false)}
-        />
-      )}
-      {editingLocation && (
-        <AddLocationDialog
-          mode={editingLocation.id ? "edit" : "add"}
-          initialLocation={editingLocation}
-          onAdd={(updated) => {
-            // 1. Update/Add Location Asset
-            if (editingLocation.id) {
-              updateLocation(editingLocation.id, updated);
-            } else {
-              addLocation(updated);
-            }
+        {/* Tab Content */}
+        <div className="flex-1 overflow-y-auto">
+          {activeTab === 'planning' && (
+            <DirectorMode
+              isOpen={true}
+              onClose={() => setActiveTab('storyboard')}
+            />
+          )}
 
-            // 2. Sync back to Scene (Critical for prompt generation)
-            if (sceneIdHandlingLocation) {
-              updateScene(sceneIdHandlingLocation, {
-                location: updated.name,
-                description: updated.description
-              });
-            }
+          {activeTab === 'storyboard' && (
+            <StoryboardTab
+              shots={shots}
+              scenes={scenes}
+              collapsedScenes={collapsedScenes}
+              toggleSceneCollapse={toggleSceneCollapse}
+              handleAddScene={handleAddScene}
+              editingSceneId={editingSceneId}
+              editingSceneName={editingSceneName}
+              setEditingSceneName={setEditingSceneName}
+              handleSaveSceneName={handleSaveSceneName}
+              handleCancelEditScene={handleCancelEditScene}
+              handleStartEditScene={handleStartEditScene}
+              handleEditSceneDetails={(sceneId) => {
+                const scene = scenes.find(s => s.id === sceneId);
+                if (!scene) return;
 
-            setEditingLocation(null);
-            setSceneIdHandlingLocation(null);
-          }}
-          onClose={() => {
-            setEditingLocation(null);
-            setSceneIdHandlingLocation(null);
-          }}
+                setSceneIdHandlingLocation(sceneId);
+
+                const linkedLocation = project?.locations.find(l =>
+                  l.name.toLowerCase() === (scene.location || scene.name).toLowerCase()
+                );
+
+                const initialLocationData = linkedLocation || {
+                  id: '',
+                  name: scene.location || scene.name,
+                  description: scene.description,
+                  type: 'interior',
+                  referenceImages: []
+                };
+
+                setEditingLocation(initialLocationData as any);
+              }}
+              handleDeleteScene={handleDeleteScene}
+              handleAddShotClick={handleAddShotClick}
+              setShowScriptEditor={setShowTableEditor}
+              selectedShotId={selectedShotId}
+              handleShotClick={handleShotClick}
+              openShotEditor={openShotEditor}
+              handleDeleteShot={handleDeleteShot}
+              handleShotImageClick={(shot) => {
+                // 1. 设置生成请求 (先设置，以免被后续的副作用清除)
+                const scene = scenes.find(s => s.id === shot.sceneId);
+                const sceneContext = scene?.description ? `\n场景环境: ${scene.description}` : '';
+                const fullPrompt = `镜头画面: ${shot.description || ''}${sceneContext}`;
+
+                useProjectStore.getState().setGenerationRequest({
+                  prompt: fullPrompt,
+                  model: 'jimeng',
+                  jimengModel: 'jimeng-4.5',
+                  jimengResolution: '2k'
+                });
+
+                // 2. 选中镜头
+                selectShot(shot.id);
+
+                // 3. 切换到 Pro 模式并确保侧边栏展开
+                setControlMode('pro');
+                if (useProjectStore.getState().rightSidebarCollapsed) {
+                  useProjectStore.getState().toggleRightSidebar();
+                }
+              }}
+            />
+          )}
+
+          {activeTab === 'assets' && (
+            <AssetsTab
+              project={project}
+              charactersCollapsed={charactersCollapsed}
+              setCharactersCollapsed={setCharactersCollapsed}
+              setShowAddCharacterDialog={setShowAddCharacterDialog}
+              setEditingCharacter={setEditingCharacter}
+              deleteCharacter={deleteCharacter}
+              locationsCollapsed={locationsCollapsed}
+              setLocationsCollapsed={setLocationsCollapsed}
+              setShowAddLocationDialog={setShowAddLocationDialog}
+              setEditingLocation={setEditingLocation}
+              deleteLocation={deleteLocation}
+            />
+          )}
+        </div>
+
+        {showTableEditor && (
+          <ShotTableEditor
+            isOpen={showTableEditor}
+            onClose={() => setShowTableEditor(false)}
+          />
+        )}
+
+        {shotImagePreview && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" onClick={() => setShotImagePreview(null)}>
+            <div className="max-w-5xl w-full max-h-[90vh]">
+              <img src={shotImagePreview} alt="预览" className="w-full h-full object-contain rounded-lg" />
+            </div>
+          </div>
+        )}
+
+        <ShotEditor
+          editingShot={editingShot}
+          setEditingShot={setEditingShot}
+          shotForm={shotForm}
+          setShotForm={setShotForm}
+          saveShotEdit={saveShotEdit}
+          shotHistoryImages={shotHistoryImages}
+          selectedHistoryImage={selectedHistoryImage}
+          setSelectedHistoryImage={setSelectedHistoryImage}
+          liveEditingShot={liveEditingShot}
+          updateShot={updateShot}
+          setShotImagePreview={setShotImagePreview}
         />
-      )}
+
+        {showAddShotDialog && selectedSceneForNewShot && (
+          <AddShotDialog
+            sceneId={selectedSceneForNewShot}
+            sceneName={scenes.find(s => s.id === selectedSceneForNewShot)?.name || ''}
+            existingShotsCount={shots.filter(s => s.sceneId === selectedSceneForNewShot).length}
+            insertIndex={shotInsertIndex ?? undefined}
+            onAdd={handleAddShot}
+            onClose={() => {
+              setShowAddShotDialog(false);
+              setShotInsertIndex(null);
+            }}
+          />
+        )}
+
+        {showAddCharacterDialog && (
+          <AddCharacterDialog
+            onAdd={addCharacter}
+            onClose={() => setShowAddCharacterDialog(false)}
+          />
+        )}
+        {editingCharacter && (
+          <AddCharacterDialog
+            mode="edit"
+            initialCharacter={editingCharacter}
+            onAdd={(updated) => {
+              updateCharacter(editingCharacter.id, updated);
+            }}
+            onClose={() => setEditingCharacter(null)}
+          />
+        )}
+
+        {showAddLocationDialog && (
+          <AddLocationDialog
+            onAdd={addLocation}
+            onClose={() => setShowAddLocationDialog(false)}
+          />
+        )}
+        {editingLocation && (
+          <AddLocationDialog
+            mode={editingLocation.id ? "edit" : "add"}
+            initialLocation={editingLocation}
+            onAdd={(updated) => {
+              // 1. Update/Add Location Asset
+              if (editingLocation.id) {
+                updateLocation(editingLocation.id, updated);
+              } else {
+                addLocation(updated);
+              }
+
+              // 2. Sync back to Scene (Critical for prompt generation)
+              if (sceneIdHandlingLocation) {
+                updateScene(sceneIdHandlingLocation, {
+                  location: updated.name,
+                  description: updated.description
+                });
+              }
+
+              setEditingLocation(null);
+              setSceneIdHandlingLocation(null);
+            }}
+            onClose={() => {
+              setEditingLocation(null);
+              setSceneIdHandlingLocation(null);
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 }
