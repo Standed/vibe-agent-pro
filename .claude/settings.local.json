@@ -61,7 +61,8 @@
       "Bash(vercel --version:*)",
       "Bash(vercel:*)",
       "Bash(tee:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }

@@ -17,6 +17,8 @@ import {
   X,
   Loader2,
   Sparkles,
+  Upload,
+  Layers,
 } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import type { Shot, ShotSize, CameraMovement, GenerationHistoryItem } from '@/types/project';
@@ -45,9 +47,11 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [shotImagePreview, setShotImagePreview] = useState<string | null>(null);
   const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // 添加历史记录区域的 ref，用于自动滚动
   const historyRef = useRef<HTMLDivElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const shot = project?.shots.find((s) => s.id === shotId);
   const scene = project?.scenes.find((sc) => sc.shotIds.includes(shotId));
@@ -277,6 +281,73 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
     }
   };
 
+  // 处理上传图片
+  const handleUploadImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // 验证文件类型
+    if (!file.type.startsWith('image/')) {
+      toast.error('请上传图片文件');
+      return;
+    }
+
+    // 验证文件大小 (最大 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('图片大小不能超过 10MB');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      // 上传图片到存储服务
+      const result = await storageService.uploadFile(file, `shots/${shotId}`);
+      const imageUrl = result.url;
+
+      // 更新分镜的参考图片
+      updateShot(shotId, {
+        referenceImage: imageUrl,
+        status: 'done'
+      });
+
+      // 添加到生成历史
+      const historyItem: GenerationHistoryItem = {
+        id: `upload_${Date.now()}`,
+        type: 'image',
+        timestamp: new Date(),
+        result: imageUrl,
+        prompt: '用户上传图片',
+        parameters: {
+          model: 'upload',
+          source: 'user_upload',
+        },
+        status: 'success',
+      };
+      addGenerationHistory(shotId, historyItem);
+
+      toast.success('图片上传成功');
+      setSelectedHistoryImage(imageUrl);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('图片上传失败', {
+        description: error instanceof Error ? error.message : '未知错误'
+      });
+    } finally {
+      setIsUploading(false);
+      // 清空 input 以便可以重复上传同一文件
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = '';
+      }
+    }
+  };
+
+  // 从草稿应用（占位功能，待草稿模式实现后完善）
+  const handleApplyFromDraft = () => {
+    toast.info('草稿模式正在开发中', {
+      description: '此功能将在草稿模式完成后可用'
+    });
+  };
+
   const handleDownload = () => {
     if (hasVideo && shot.videoClip) {
       // Download video
@@ -397,41 +468,73 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-5 gap-2">
             <button
               onClick={() => setIsEditing(!isEditing)}
-              className="flex items-center justify-center gap-2 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm transition-colors"
+              className="flex items-center justify-center gap-1 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-2 py-2 text-sm transition-colors"
+              title="编辑"
             >
               <Edit3 size={16} />
-              <span>编辑</span>
+              <span className="hidden sm:inline">编辑</span>
+            </button>
+
+            {/* 上传图片按钮 */}
+            <button
+              onClick={() => uploadInputRef.current?.click()}
+              disabled={isUploading}
+              className="flex items-center justify-center gap-1 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-2 py-2 text-sm transition-colors disabled:opacity-50"
+              title="上传图片"
+            >
+              {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+              <span className="hidden sm:inline">上传</span>
+            </button>
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleUploadImage}
+              className="hidden"
+            />
+
+            {/* 从草稿应用按钮 */}
+            <button
+              onClick={handleApplyFromDraft}
+              className="flex items-center justify-center gap-1 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-2 py-2 text-sm transition-colors"
+              title="从草稿应用"
+            >
+              <Layers size={16} />
+              <span className="hidden sm:inline">草稿</span>
             </button>
 
             {/* 如果没有图片，显示"生成"按钮；否则显示"重生成"按钮 */}
             {!hasImage ? (
               <button
                 onClick={handleRegenerate}
-                className="flex items-center justify-center gap-2 bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black rounded-lg px-3 py-2 text-sm transition-colors font-medium"
+                className="flex items-center justify-center gap-1 bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black rounded-lg px-2 py-2 text-sm transition-colors font-medium"
+                title="生成"
               >
                 <Sparkles size={16} />
-                <span>生成</span>
+                <span className="hidden sm:inline">生成</span>
               </button>
             ) : (
               <button
                 onClick={handleRegenerate}
-                className="flex items-center justify-center gap-2 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm transition-colors"
+                className="flex items-center justify-center gap-1 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-2 py-2 text-sm transition-colors"
+                title="重生成"
               >
                 <RotateCcw size={16} />
-                <span>重生成</span>
+                <span className="hidden sm:inline">重生成</span>
               </button>
             )}
 
             <button
               onClick={handleDownload}
               disabled={!hasImage && !hasVideo}
-              className="flex items-center justify-center gap-2 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center gap-1 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-2 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="下载"
             >
               <Download size={16} />
-              <span>下载</span>
+              <span className="hidden sm:inline">下载</span>
             </button>
           </div>
 
