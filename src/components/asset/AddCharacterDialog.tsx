@@ -70,6 +70,11 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
   const [segmentStart, setSegmentStart] = useState('1');
   const [segmentEnd, setSegmentEnd] = useState('3');
 
+  // 一致性模式切换
+  type ConsistencyMode = 'three-view' | 'sora-reference';
+  const [consistencyMode, setConsistencyMode] = useState<ConsistencyMode>(
+    initialCharacter?.soraIdentity?.username ? 'sora-reference' : 'three-view'
+  );
   const pollTaskStatus = async (taskId: string, showError = false) => {
     try {
       const res = await fetch(`/api/sora/character/status?taskId=${taskId}`);
@@ -904,6 +909,76 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+            {/* Consistency Mode Switcher */}
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-light-accent dark:text-cine-accent" />
+                角色一致性方案
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setConsistencyMode('three-view')}
+                  className={cn(
+                    "p-4 rounded-xl border-2 transition-all duration-200 text-left",
+                    consistencyMode === 'three-view'
+                      ? "border-light-accent dark:border-cine-accent bg-light-accent/5 dark:bg-cine-accent/10"
+                      : "border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600"
+                  )}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={cn(
+                      "w-6 h-6 rounded-lg flex items-center justify-center",
+                      consistencyMode === 'three-view'
+                        ? "bg-light-accent dark:bg-cine-accent text-white"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+                    )}>
+                      <Wand2 className="w-3.5 h-3.5" />
+                    </div>
+                    <span className={cn(
+                      "font-bold text-sm",
+                      consistencyMode === 'three-view'
+                        ? "text-light-accent dark:text-cine-accent"
+                        : "text-zinc-700 dark:text-zinc-300"
+                    )}>三视图模式</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                    使用即梦生成角色三视图，适合风格化、动漫、插画类项目
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConsistencyMode('sora-reference')}
+                  className={cn(
+                    "p-4 rounded-xl border-2 transition-all duration-200 text-left",
+                    consistencyMode === 'sora-reference'
+                      ? "border-emerald-500 dark:border-emerald-400 bg-emerald-500/5 dark:bg-emerald-400/10"
+                      : "border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600"
+                  )}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={cn(
+                      "w-6 h-6 rounded-lg flex items-center justify-center",
+                      consistencyMode === 'sora-reference'
+                        ? "bg-emerald-500 text-white"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+                    )}>
+                      <Video className="w-3.5 h-3.5" />
+                    </div>
+                    <span className={cn(
+                      "font-bold text-sm",
+                      consistencyMode === 'sora-reference'
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-zinc-700 dark:text-zinc-300"
+                    )}>Sora 参考模式</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                    上传参考视频注册 Sora ID，适合真人、写实类项目
+                  </p>
+                </button>
+              </div>
+            </div>
+
             {/* Character Name */}
             <div className="space-y-2">
               <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
@@ -1225,7 +1300,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                       ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20"
                       : (soraStatus === 'pending')
                         ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/20"
-                      : "bg-zinc-50 dark:bg-white/5 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-white/10"
+                        : "bg-zinc-50 dark:bg-white/5 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-white/10"
                 )}>
                   {soraStatus === 'registered' ? 'Active' :
                     (soraStatus === 'generating' || soraStatus === 'registering') ? 'Processing' :
@@ -1257,38 +1332,38 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                 </div>
               </div>
 
-                {soraReferenceVideoUrl && soraStatus !== 'registered' && (
-                  <div className="mb-3 rounded-lg border border-dashed border-zinc-200 dark:border-white/10 p-3 text-[10px] text-zinc-500 dark:text-zinc-400">
-                    <div className="flex items-center justify-between gap-3">
-                      <span>选择注册片段（秒）</span>
-                      <span>{videoDuration ? `视频时长 ${videoDuration.toFixed(2)}s` : '时长读取中...'}</span>
-                    </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={segmentStart}
-                        onChange={(e) => setSegmentStart(e.target.value)}
-                        className="w-20 rounded-md border border-zinc-200 dark:border-white/10 bg-white/80 dark:bg-black/30 px-2 py-1 text-xs text-zinc-700 dark:text-zinc-200"
-                        placeholder="开始"
-                      />
-                      <span className="text-zinc-400">到</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        max={videoDuration ? videoDuration.toFixed(2) : undefined}
-                        value={segmentEnd}
-                        onChange={(e) => setSegmentEnd(e.target.value)}
-                        className="w-20 rounded-md border border-zinc-200 dark:border-white/10 bg-white/80 dark:bg-black/30 px-2 py-1 text-xs text-zinc-700 dark:text-zinc-200"
-                        placeholder="结束"
-                      />
-                    </div>
+              {soraReferenceVideoUrl && soraStatus !== 'registered' && (
+                <div className="mb-3 rounded-lg border border-dashed border-zinc-200 dark:border-white/10 p-3 text-[10px] text-zinc-500 dark:text-zinc-400">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>选择注册片段（秒）</span>
+                    <span>{videoDuration ? `视频时长 ${videoDuration.toFixed(2)}s` : '时长读取中...'}</span>
                   </div>
-                )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={segmentStart}
+                      onChange={(e) => setSegmentStart(e.target.value)}
+                      className="w-20 rounded-md border border-zinc-200 dark:border-white/10 bg-white/80 dark:bg-black/30 px-2 py-1 text-xs text-zinc-700 dark:text-zinc-200"
+                      placeholder="开始"
+                    />
+                    <span className="text-zinc-400">到</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      max={videoDuration ? videoDuration.toFixed(2) : undefined}
+                      value={segmentEnd}
+                      onChange={(e) => setSegmentEnd(e.target.value)}
+                      className="w-20 rounded-md border border-zinc-200 dark:border-white/10 bg-white/80 dark:bg-black/30 px-2 py-1 text-xs text-zinc-700 dark:text-zinc-200"
+                      placeholder="结束"
+                    />
+                  </div>
+                </div>
+              )}
 
-                <div className="relative group overflow-hidden rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50/50 dark:bg-white/5 transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-white/5">
+              <div className="relative group overflow-hidden rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50/50 dark:bg-white/5 transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-white/5">
                 {/* Status Background Effect */}
                 <div className={cn(
                   "absolute inset-0 opacity-0 transition-opacity duration-500",
