@@ -839,9 +839,43 @@ export class AgentToolExecutor {
 
     this.incrementPendingTasks();
     try {
+      const scene = this.project.scenes.find(s => s.id === shot.sceneId);
+      const promptParts: string[] = [];
+
+      if (scene?.description) {
+        promptParts.push(`场景：${scene.description}`);
+      }
+
+      const shotDetails: string[] = [];
+      if (shot.shotSize) shotDetails.push(`景别：${shot.shotSize}`);
+      if (shot.cameraMovement) shotDetails.push(`运镜：${shot.cameraMovement}`);
+      if (shot.description) shotDetails.push(`内容：${shot.description}`);
+      if (shotDetails.length > 0) {
+        promptParts.push(shotDetails.join('，'));
+      }
+
+      if (this.project.metadata?.artStyle) {
+        promptParts.push(`画风：${this.project.metadata.artStyle}`);
+      }
+
+      if (prompt) {
+        promptParts.push(`额外要求：${prompt}`);
+      }
+
+      const basePrompt = promptParts.filter(Boolean).join('\n') || prompt || shot.description || 'Cinematic shot';
+      const compactPrompt = basePrompt
+        .split('\n')
+        .map(part => part.trim())
+        .filter(Boolean)
+        .join('，');
+
+      const promptForModel = mode === 'grid'
+        ? Array.from({ length: gridSize === '3x3' ? 9 : 4 }, (_, idx) => `${idx + 1}. ${compactPrompt}`).join('\n')
+        : basePrompt;
+
       // Enrich prompt
       const { enrichedPrompt, referenceImageUrls } = enrichPromptWithAssets(
-        prompt || shot.description,
+        promptForModel,
         this.project,
         shot.description
       );

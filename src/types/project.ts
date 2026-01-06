@@ -15,7 +15,13 @@ export type ShotSize =
   | 'Point of View Shot'
   | 'Bird\'s Eye View'
   | 'Dutch Angle'
-  | 'Establishing Shot';
+  | 'Establishing Shot'
+  | 'Cowboy Shot'
+  | 'Eye Level Shot'
+  | 'Worm\'s Eye View'
+  | 'Ground Level Shot'
+  | 'Aerial Shot'
+  | 'Macro Shot';
 
 export type CameraMovement =
   | 'Pan'
@@ -39,7 +45,14 @@ export type CameraMovement =
   | 'Pedestal Down'
   | 'Handheld'
   | 'Arc'
-  | 'Crane';
+  | 'Crane'
+  | 'Tracking Shot'
+  | 'Steadicam'
+  | 'Rack Focus'
+  | 'Whip Pan'
+  | 'Push In'
+  | 'Pull Out'
+  | 'Vertigo Effect';
 
 export const SHOT_SIZE_OPTIONS: ShotSize[] = [
   'Extreme Wide Shot',
@@ -56,7 +69,13 @@ export const SHOT_SIZE_OPTIONS: ShotSize[] = [
   'Point of View Shot',
   'Bird\'s Eye View',
   'Dutch Angle',
-  'Establishing Shot'
+  'Establishing Shot',
+  'Cowboy Shot',
+  'Eye Level Shot',
+  'Worm\'s Eye View',
+  'Ground Level Shot',
+  'Aerial Shot',
+  'Macro Shot'
 ];
 
 export const CAMERA_MOVEMENT_OPTIONS: CameraMovement[] = [
@@ -81,7 +100,14 @@ export const CAMERA_MOVEMENT_OPTIONS: CameraMovement[] = [
   'Pedestal Down',
   'Handheld',
   'Arc',
-  'Crane'
+  'Crane',
+  'Tracking Shot',
+  'Steadicam',
+  'Rack Focus',
+  'Whip Pan',
+  'Push In',
+  'Pull Out',
+  'Vertigo Effect'
 ];
 
 export type GenerationMode = 'grid' | 'single';
@@ -132,6 +158,7 @@ export interface ProjectMetadata {
   artStyle: string;
   created: Date;
   modified: Date;
+  planningHistory?: any[]; // 策划阶段的聊天历史
 }
 
 export interface Character {

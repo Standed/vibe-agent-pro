@@ -1,7 +1,27 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
+import { Project, Shot, ChatMessage } from '@/types/project';
 import { useProjectStore } from '@/store/useProjectStore';
+import { dataService } from '@/lib/dataService';
 import { addCandidateName, applyCharacterDesigns } from '@/utils/characterDesignUtils';
+
+// 进度步骤类型
+export interface StoryboardStep {
+    step: number;
+    totalSteps: number;
+    title: string;
+    description: string;
+    status: 'pending' | 'running' | 'completed' | 'error';
+}
+
+// 用户友好的步骤描述
+const STEP_DESCRIPTIONS = {
+    1: { title: '分析剧本', description: '正在理解您的故事创意...' },
+    2: { title: '生成分镜', description: '正在设计镜头语言...' },
+    3: { title: '组织场景', description: '正在划分场次结构...' },
+    4: { title: '构建分镜脚本', description: '正在生成完整分镜...' },
+    5: { title: '设计角色形象', description: '正在创建角色设定...' },
+};
 
 // Helper for grouping shots (migrated from StoryboardService to avoid client-side instantiation)
 function groupShotsIntoScenes(shots: any[]): any[] {
@@ -26,6 +46,19 @@ function groupShotsIntoScenes(shots: any[]): any[] {
 export const useAIStoryboard = () => {
     const { project, addScene, addShot, updateCharacter, addCharacter } = useProjectStore();
     const [isGenerating, setIsGenerating] = useState(false);
+    const [currentStep, setCurrentStep] = useState<StoryboardStep | null>(null);
+
+    // 更新进度步骤
+    const updateStep = useCallback((step: number, status: 'running' | 'completed' | 'error' = 'running', extraInfo?: string) => {
+        const desc = STEP_DESCRIPTIONS[step as keyof typeof STEP_DESCRIPTIONS] || { title: '处理中', description: '' };
+        setCurrentStep({
+            step,
+            totalSteps: 5,
+            title: desc.title,
+            description: extraInfo || desc.description,
+            status,
+        });
+    }, []);
 
     const apiCall = async (action: string, args: any) => {
         const res = await fetch('/api/storyboard/execute', {
@@ -38,47 +71,35 @@ export const useAIStoryboard = () => {
         return data;
     };
 
-    const handleAIStoryboard = async () => {
+    const handleAIStoryboard = useCallback(async () => {
         if (!project?.script || !project.script.trim()) {
             toast.error('请先输入剧本内容');
             return;
         }
 
         setIsGenerating(true);
-        const toastId = toast.loading('AI 分镜生成中...', {
-            description: '第 1/5 步：正在分析剧本...',
-        });
 
         try {
             // 1. Analyze script
-            toast.loading('AI 分镜生成中...', {
-                id: toastId,
-                description: '第 1/5 步：正在分析剧本（提取角色、场景、画风）...',
-            });
+            updateStep(1, 'running');
             const analysis = await apiCall('analyzeScript', { script: project.script });
+            updateStep(1, 'completed');
 
             // 2. Generate shots
-            toast.loading('AI 分镜生成中...', {
-                id: toastId,
-                description: '第 2/5 步：正在生成分镜脚本（根据8大原则拆分镜头）...',
-            });
+            updateStep(2, 'running');
             const generatedShots = await apiCall('generateShots', {
                 script: project.script,
                 artStyle: project.metadata.artStyle
             });
+            updateStep(2, 'completed', `已生成 ${generatedShots.length} 个镜头`);
 
             // 3. Group shots
-            toast.loading('AI 分镜生成中...', {
-                id: toastId,
-                description: `第 3/5 步：正在组织场景（已生成 ${generatedShots.length} 个镜头）...`,
-            });
+            updateStep(3, 'running');
             const sceneGroups = groupShotsIntoScenes(generatedShots);
+            updateStep(3, 'completed', `已划分 ${sceneGroups.length} 个场景`);
 
             // 4. Add scenes/shots
-            toast.loading('AI 分镜生成中...', {
-                id: toastId,
-                description: `第 4/5 步：正在添加场景和镜头（共 ${sceneGroups.length} 个场景）...`,
-            });
+            updateStep(4, 'running');
             sceneGroups.forEach((sceneGroup: any, idx: number) => {
                 const scene = {
                     id: crypto.randomUUID(),
@@ -106,6 +127,7 @@ export const useAIStoryboard = () => {
                     }
                 });
             });
+            updateStep(4, 'completed');
 
             // 5. Generate Characters
             const candidateMap = new Map<string, string>();
@@ -118,10 +140,7 @@ export const useAIStoryboard = () => {
 
             if (characterCandidates.length > 0) {
                 try {
-                    toast.loading('AI 分镜生成中...', {
-                        id: toastId,
-                        description: `第 5/5 步：正在生成角色形象设计（共 ${characterCandidates.length} 个角色）...`,
-                    });
+                    updateStep(5, 'running', `正在 design ${characterCandidates.length} 个角色形象...`);
 
                     const characterDesigns = await apiCall('generateCharacterDesigns', {
                         script: project.script,
@@ -145,10 +164,7 @@ export const useAIStoryboard = () => {
 
                     // Second pass for missing
                     if (firstPass.missing.length > 0) {
-                        toast.loading('AI 分镜生成中...', {
-                            id: toastId,
-                            description: `第 5/5 步：正在补充完善角色设计（剩余 ${firstPass.missing.length} 个角色）...`,
-                        });
+                        updateStep(5, 'running', `正在补充 ${firstPass.missing.length} 个角色设计...`);
                         try {
                             const retryDesigns = await apiCall('generateCharacterDesigns', {
                                 script: project.script,
@@ -175,22 +191,39 @@ export const useAIStoryboard = () => {
                     toast.error('角色形象生成失败，但分镜已生成');
                 }
             }
+            updateStep(5, 'completed');
 
-            toast.success('AI 分镜生成完成', {
-                id: toastId,
-                description: `已生成 ${sceneGroups.length} 个场景，${generatedShots.length} 个镜头`
-            });
+            toast.success('✨ AI 分镜生成完成！');
+            setCurrentStep(null); // 清除进度状态
+
+            // ⭐ 保存一条总结消息到聊天历史，记录策划过程
+            if (project) {
+                const summaryMessage: ChatMessage = {
+                    id: crypto.randomUUID(),
+                    userId: (project as any).userId || '',
+                    projectId: project.id,
+                    scope: 'project',
+                    role: 'assistant',
+                    content: `✨ **AI 导演已完成策划！**\n\n我已根据剧本为您生成了：\n- **${sceneGroups.length}** 个场景\n- **${generatedShots.length}** 个镜头\n- **${characterCandidates.length}** 个角色形象设计\n\n您现在可以在左侧面板查看并编辑这些内容。`,
+                    timestamp: new Date(),
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                };
+                void dataService.saveChatMessage(summaryMessage);
+            }
 
         } catch (error: any) {
             console.error('Failed to generate storyboard:', error);
-            toast.error('AI 分镜生成失败', {
-                id: toastId,
-                description: error.message || '未知错误'
-            });
+            toast.error('AI 分镜生成失败: ' + (error.message || '未知错误'));
+            updateStep(currentStep?.step || 1, 'error', error.message);
         } finally {
             setIsGenerating(false);
         }
-    };
+    }, [project, addScene, addShot, updateCharacter, addCharacter, updateStep, currentStep]);
 
-    return { isGenerating, handleAIStoryboard };
+    return {
+        isGenerating,
+        currentStep,
+        handleAIStoryboard
+    };
 };

@@ -20,6 +20,7 @@ import {
   Upload,
   Layers,
 } from 'lucide-react';
+import { translateShotSize, translateCameraMovement } from '@/utils/translations';
 import { useProjectStore } from '@/store/useProjectStore';
 import type { Shot, ShotSize, CameraMovement, GenerationHistoryItem } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
@@ -653,14 +654,14 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                   onChange={(e) => handleFieldUpdate('shotSize', e.target.value as ShotSize)}
                   className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                 >
-                  <option value="Extreme Wide Shot">Extreme Wide Shot</option>
-                  <option value="Wide Shot">Wide Shot</option>
-                  <option value="Medium Shot">Medium Shot</option>
-                  <option value="Close-Up">Close-Up</option>
-                  <option value="Extreme Close-Up">Extreme Close-Up</option>
+                  <option value="Extreme Wide Shot">大远景 (EWS)</option>
+                  <option value="Wide Shot">远景 (WS)</option>
+                  <option value="Medium Shot">中景 (MS)</option>
+                  <option value="Close-Up">特写 (CU)</option>
+                  <option value="Extreme Close-Up">大特写 (ECU)</option>
                 </select>
               ) : (
-                <div className="text-sm text-light-text dark:text-white">{shot.shotSize}</div>
+                <div className="text-sm text-light-text dark:text-white">{translateShotSize(shot.shotSize)}</div>
               )}
             </div>
 
@@ -675,19 +676,19 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                   onChange={(e) => handleFieldUpdate('cameraMovement', e.target.value as CameraMovement)}
                   className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                 >
-                  <option value="Static">Static</option>
-                  <option value="Pan Left">Pan Left</option>
-                  <option value="Pan Right">Pan Right</option>
-                  <option value="Tilt Up">Tilt Up</option>
-                  <option value="Tilt Down">Tilt Down</option>
-                  <option value="Dolly In">Dolly In</option>
-                  <option value="Dolly Out">Dolly Out</option>
-                  <option value="Zoom In">Zoom In</option>
-                  <option value="Zoom Out">Zoom Out</option>
-                  <option value="Handheld">Handheld</option>
+                  <option value="Static">固定镜头</option>
+                  <option value="Pan Left">左摇</option>
+                  <option value="Pan Right">右摇</option>
+                  <option value="Tilt Up">上摇</option>
+                  <option value="Tilt Down">下摇</option>
+                  <option value="Dolly In">推镜头</option>
+                  <option value="Dolly Out">拉镜头</option>
+                  <option value="Zoom In">变焦推</option>
+                  <option value="Zoom Out">变焦拉</option>
+                  <option value="Handheld">手持</option>
                 </select>
               ) : (
-                <div className="text-sm text-light-text dark:text-white">{shot.cameraMovement}</div>
+                <div className="text-sm text-light-text dark:text-white">{translateCameraMovement(shot.cameraMovement)}</div>
               )}
             </div>
 

@@ -62,7 +62,10 @@
       "Bash(vercel:*)",
       "Bash(tee:*)",
       "Bash(git pull:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(rm:*)",
+      "Bash(kill:*)",
+      "Bash(cmd.exe //c \"taskkill /F /PID 8332\")"
     ]
   }
 }

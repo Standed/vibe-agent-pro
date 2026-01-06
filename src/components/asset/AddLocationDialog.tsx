@@ -9,6 +9,7 @@ import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { storageService } from '@/lib/storageService';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { JimengModel } from '@/components/jimeng/JimengOptions';
+import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -32,6 +33,9 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
   const [genMode, setGenMode] = useState<'seedream' | 'gemini' | 'jimeng'>('jimeng');
   const [jimengModel, setJimengModel] = useState<JimengModel>('jimeng-4.5');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [jimengCandidates, setJimengCandidates] = useState<string[]>([]);
+  const [isJimengModalOpen, setIsJimengModalOpen] = useState(false);
+  const [isJimengSaving, setIsJimengSaving] = useState(false);
   const [mounted, setMounted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -151,18 +155,21 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
         if (!historyId) throw new Error('即梦任务提交失败');
 
         const pollResult = await jimengService.pollTask(historyId, sessionid);
-        const imageUrl = pollResult.url || (pollResult.urls && pollResult.urls[0]);
-        if (!imageUrl) throw new Error('即梦未返回图片');
+        const imageUrls = [
+          ...(pollResult.urls || []),
+          ...(pollResult.url ? [pollResult.url] : [])
+        ].filter(Boolean);
 
-        const proxyResp = await fetch('/api/image-proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: imageUrl }),
-        });
+        if (imageUrls.length === 0) throw new Error('即梦未返回图片');
 
-        if (!proxyResp.ok) throw new Error('图片下载失败');
-        const { data: base64Data, mimeType } = await proxyResp.json();
-        base64Url = `data:${mimeType};base64,${base64Data}`;
+        const limitedUrls = imageUrls.slice(0, 4);
+        if (limitedUrls.length === 1) {
+          await handleJimengSelection(limitedUrls[0]);
+        } else {
+          setJimengCandidates(limitedUrls);
+          setIsJimengModalOpen(true);
+          toast.success('即梦图片生成完成，请选择一张保存');
+        }
       } else {
         const { generateCharacterThreeView } = await import('@/services/geminiService');
         const { urlsToReferenceImages } = await import('@/services/geminiService');
@@ -170,22 +177,59 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
         base64Url = await generateCharacterThreeView(prompt, 'Cinematic', refImages, aspectRatio);
       }
 
-      setReferenceImages(prev => [...prev, base64Url]);
-      const folder = `projects/locations/${user?.id || 'anonymous'}`;
-      storageService.uploadBase64ToR2(base64Url, folder, `loc_${Date.now()}.png`, user?.id || 'anonymous')
-        .then(r2Url => {
-          setReferenceImages(prev => prev.map(img => img === base64Url ? r2Url : img));
-        })
-        .catch(error => {
-          console.error('R2 upload failed, keeping base64:', error);
-        });
+      if (genMode !== 'jimeng') {
+        setReferenceImages(prev => [...prev, base64Url]);
+        const folder = `projects/locations/${user?.id || 'anonymous'}`;
+        storageService.uploadBase64ToR2(base64Url, folder, `loc_${Date.now()}.png`, user?.id || 'anonymous')
+          .then(r2Url => {
+            setReferenceImages(prev => prev.map(img => img === base64Url ? r2Url : img));
+          })
+          .catch(error => {
+            console.error('R2 upload failed, keeping base64:', error);
+          });
 
-      toast.success('场景概念图生成成功！');
+        toast.success('场景概念图生成成功！');
+      }
     } catch (error: any) {
       console.error('Failed to generate concept:', error);
       toast.error('生成失败', { description: error.message || '请检查 API 配置或网络连接' });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleJimengSelection = async (selectedUrl: string) => {
+    if (!user) {
+      toast.error('请先登录');
+      return;
+    }
+
+    setIsJimengSaving(true);
+    try {
+      const proxyResp = await fetch('/api/image-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: selectedUrl }),
+      });
+
+      if (!proxyResp.ok) throw new Error('图片下载失败');
+      const { data: base64Data, mimeType } = await proxyResp.json();
+      const base64Url = `data:${mimeType};base64,${base64Data}`;
+
+      const folder = `projects/locations/${user?.id || 'anonymous'}`;
+      const r2Url = await storageService.uploadBase64ToR2(base64Url, folder, `loc_${Date.now()}.png`, user?.id || 'anonymous');
+
+      setReferenceImages(prev => [r2Url, ...prev]);
+      setPreviewImage(r2Url);
+      setSelectedRefIndex(0);
+      toast.success('场景概念图生成成功！');
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || '保存失败');
+    } finally {
+      setIsJimengSaving(false);
+      setIsJimengModalOpen(false);
+      setJimengCandidates([]);
     }
   };
 
@@ -217,9 +261,10 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
   if (!mounted) return null;
 
   return createPortal(
-    <AnimatePresence>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+    <AnimatePresence mode="wait">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" key="location-dialog-root">
         <motion.div
+          key="location-dialog-overlay"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -228,6 +273,7 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
         />
 
         <motion.div
+          key="location-dialog-content"
           initial={{ opacity: 0, scale: 0.9, y: 20, filter: 'blur(10px)' }}
           animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
           exit={{ opacity: 0, scale: 0.9, y: 20, filter: 'blur(10px)' }}
@@ -512,6 +558,18 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
           </div>
         </motion.div>
       </div>
+
+      <ImageSelectionModal
+        isOpen={isJimengModalOpen}
+        onClose={() => {
+          if (isJimengSaving) return;
+          setIsJimengModalOpen(false);
+          setJimengCandidates([]);
+        }}
+        onConfirm={handleJimengSelection}
+        imageUrls={jimengCandidates}
+        isLoading={isJimengSaving}
+      />
 
       {previewImage && (
         <div

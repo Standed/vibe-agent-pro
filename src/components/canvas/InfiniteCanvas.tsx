@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Edit2, Plus, MoreHorizontal, Check } from 'lucide-react';
+import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Edit2, Plus, MoreHorizontal, Check, Upload, Loader2 } from 'lucide-react';
 import type { ShotSize, CameraMovement, Shot } from '@/types/project';
 import { translateShotSize, translateCameraMovement } from '@/utils/translations';
 import { formatShotLabel } from '@/utils/shotOrder';
@@ -53,6 +53,8 @@ export default function InfiniteCanvas() {
   const [showAddLocationDialog, setShowAddLocationDialog] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<any | null>(null);
   const [editingLocation, setEditingLocation] = useState<any | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const shotSizeOptions: ShotSize[] = ['Extreme Wide Shot', 'Wide Shot', 'Medium Shot', 'Close-Up', 'Extreme Close-Up'];
   const cameraMovementOptions: CameraMovement[] = ['Static', 'Pan Left', 'Pan Right', 'Tilt Up', 'Tilt Down', 'Dolly In', 'Dolly Out', 'Zoom In', 'Zoom Out', 'Handheld'];
@@ -260,6 +262,63 @@ export default function InfiniteCanvas() {
     }
   };
 
+  const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>, shotId: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 验证文件类型
+    if (!file.type.startsWith('image/')) {
+      toast.error('请选择图片文件');
+      return;
+    }
+
+    // 验证文件大小 (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('图片大小不能超过 10MB');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const { storageService } = await import('@/lib/storageService');
+      const result = await storageService.uploadFile(file, `shots/${shotId}`);
+      const imageUrl = result.url;
+
+      updateShot(shotId, {
+        referenceImage: imageUrl,
+        status: 'done'
+      });
+
+      // 添加到历史记录
+      const shot = project?.shots.find(s => s.id === shotId);
+      if (shot) {
+        const historyItem = {
+          id: `upload_${Date.now()}`,
+          type: 'image' as const,
+          timestamp: new Date(),
+          result: imageUrl,
+          prompt: '用户上传图片',
+          parameters: {
+            model: 'upload',
+            source: 'user_upload',
+          },
+          status: 'success' as const,
+        };
+        const newHistory = [...(shot.generationHistory || []), historyItem];
+        updateShot(shotId, { generationHistory: newHistory });
+      }
+
+      toast.success('图片上传成功');
+      setSelectedHistoryImage(imageUrl);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('图片上传失败');
+    } finally {
+      setIsUploading(false);
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
+    }
+  };
+
   const sceneGroups = project?.scenes.map((scene) => {
     const sceneShots = project.shots
       .filter((shot) => shot.sceneId === scene.id)
@@ -400,6 +459,7 @@ export default function InfiniteCanvas() {
                                     <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
                                       <button onClick={(e) => handleDownload(shot.referenceImage!, shot.order, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="下载"><Download size={12} /></button>
                                       <button onClick={(e) => handleEditShot(shot, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="编辑"><Edit2 size={12} /></button>
+                                      <button onClick={(e) => { e.stopPropagation(); selectShot(shot.id); uploadInputRef.current?.click(); }} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="上传图片"><Upload size={12} /></button>
                                       <button onClick={(e) => handleGenerate(shot.id, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="重新生成"><RefreshCw size={12} /></button>
                                     </div>
                                   </>
@@ -412,6 +472,7 @@ export default function InfiniteCanvas() {
                                       onClick={(e) => { e.stopPropagation(); handlePreview(shot.gridImages![0]); }}
                                     />
                                     <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
+                                      <button onClick={(e) => { e.stopPropagation(); selectShot(shot.id); uploadInputRef.current?.click(); }} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="上传图片"><Upload size={12} /></button>
                                       <button onClick={(e) => handleGenerate(shot.id, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="重新生成"><RefreshCw size={12} /></button>
                                     </div>
                                   </>
@@ -419,6 +480,7 @@ export default function InfiniteCanvas() {
                                   <>
                                     <ImageIcon size={24} className="text-light-text-muted dark:text-cine-text-muted" />
                                     <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
+                                      <button onClick={(e) => { e.stopPropagation(); selectShot(shot.id); uploadInputRef.current?.click(); }} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="上传图片"><Upload size={12} /></button>
                                       <button onClick={(e) => handleGenerate(shot.id, e)} className="px-3 py-1.5 rounded-full bg-light-accent hover:bg-light-accent-hover text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm flex items-center gap-1 text-xs"><Sparkles size={12} /> 生成图片</button>
                                     </div>
                                   </>
@@ -500,19 +562,13 @@ export default function InfiniteCanvas() {
                   <div className="flex items-center gap-2 text-[10px] text-light-text-muted dark:text-cine-text-muted mt-0.5">
                     <span>镜头 #{editingShot.order}</span>
                     <span className="opacity-30">•</span>
-                    <span>{editingShot.shotSize}</span>
+                    <span>{translateShotSize(editingShot.shotSize)}</span>
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5">
-                  <button className="px-3 py-1.5 text-xs font-medium rounded-lg hover:bg-white dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-all">
-                    Web search
-                  </button>
-                  <button className="px-3 py-1.5 text-xs font-medium rounded-lg hover:bg-white dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-all">
-                    Copy
-                  </button>
                   <button className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted transition-all">
                     <MoreHorizontal size={16} />
                   </button>
@@ -577,7 +633,7 @@ export default function InfiniteCanvas() {
                         >
                           <option value="">选择景别</option>
                           {shotSizeOptions.map((size) => (
-                            <option key={size} value={size}>{size}</option>
+                            <option key={size} value={size}>{translateShotSize(size)}</option>
                           ))}
                         </select>
                       </div>
@@ -590,7 +646,7 @@ export default function InfiniteCanvas() {
                         >
                           <option value="">选择运动</option>
                           {cameraMovementOptions.map((move) => (
-                            <option key={move} value={move}>{move}</option>
+                            <option key={move} value={move}>{translateCameraMovement(move)}</option>
                           ))}
                         </select>
                       </div>
@@ -631,9 +687,25 @@ export default function InfiniteCanvas() {
                       <div className="bg-light-bg-secondary dark:bg-cine-bg-secondary border border-dashed border-light-border dark:border-cine-border rounded-2xl py-8 text-center">
                         <ImageIcon size={24} className="mx-auto mb-2 text-light-text-muted dark:text-cine-text-muted opacity-30" />
                         <p className="text-xs text-light-text-muted dark:text-cine-text-muted">暂无历史图片</p>
+                        <button
+                          onClick={() => uploadInputRef.current?.click()}
+                          className="mt-2 text-xs text-light-accent dark:text-cine-accent font-bold hover:underline"
+                        >
+                          点击上传
+                        </button>
                       </div>
                     ) : (
                       <div className="grid grid-cols-3 gap-2">
+                        {/* Upload Button Card */}
+                        <button
+                          onClick={() => uploadInputRef.current?.click()}
+                          disabled={isUploading}
+                          className="aspect-video bg-light-bg dark:bg-black/40 rounded-xl border-2 border-dashed border-light-border dark:border-white/10 flex flex-col items-center justify-center text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent transition-all"
+                        >
+                          {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                          <span className="text-[10px] mt-1 font-bold">上传图片</span>
+                        </button>
+
                         {shotHistoryImages.map((url, idx) => (
                           <div
                             key={idx}
@@ -696,6 +768,17 @@ export default function InfiniteCanvas() {
           onClose={() => { setShowAddShotDialog(false); setShotInsertIndex(null); }}
         />
       )}
+
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="image/*"
+        onChange={(e) => {
+          const shotId = selectedShotId || editingShot?.id;
+          if (shotId) handleUploadImage(e, shotId);
+        }}
+        className="hidden"
+      />
     </div>
   );
 }

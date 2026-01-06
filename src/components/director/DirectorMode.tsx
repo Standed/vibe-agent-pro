@@ -244,6 +244,21 @@ export default function DirectorMode({ isOpen, onClose }: DirectorModeProps) {
                             <h3 className="font-semibold text-lg tracking-tight">剧本编辑器 (Script Editor)</h3>
                         </div>
                     </div>
+                    <div className="flex items-center gap-3 mr-12">
+                        <button
+                            onClick={() => {
+                                useProjectStore.getState().setControlMode('agent');
+                                if (useProjectStore.getState().rightSidebarCollapsed) {
+                                    useProjectStore.getState().toggleRightSidebar();
+                                }
+                                onClose();
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-sm font-bold transition-all"
+                        >
+                            <Wand2 size={16} />
+                            <span>AI 助手</span>
+                        </button>
+                    </div>
                 </div>
 
                 {/* EDITOR AREA */}
