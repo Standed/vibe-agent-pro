@@ -11,6 +11,8 @@ interface ShotGenerationHistoryProps {
   onDownload: (item: GenerationHistoryItem) => void;
   onFavorite: (item: GenerationHistoryItem) => void;
   onDubbing: (item: GenerationHistoryItem) => void;
+  onOpenGridSelection?: (fullGridUrl: string, slices: string[]) => void;
+  onPreview?: (imageUrl: string) => void;
 }
 
 export default function ShotGenerationHistory({
@@ -20,6 +22,8 @@ export default function ShotGenerationHistory({
   onDownload,
   onFavorite,
   onDubbing,
+  onOpenGridSelection,
+  onPreview,
 }: ShotGenerationHistoryProps) {
   if (!history || history.length === 0) {
     return (
@@ -43,14 +47,44 @@ export default function ShotGenerationHistory({
           {/* Preview */}
           <div className="relative group">
             {item.type === 'image' ? (
-              <Image
-                src={item.result}
-                alt="Generation Result"
-                width={800}
-                height={600}
-                className="w-full h-auto rounded border border-cine-border object-cover"
-                unoptimized
-              />
+              <div
+                className="cursor-pointer relative"
+                onClick={() => {
+                  if (item.parameters.gridSize && onOpenGridSelection) {
+                    // Extract slices from parameters if available
+                    const slices = (item.parameters.slices as string[]) || [];
+                    onOpenGridSelection(item.result, slices);
+                  } else if (onPreview) {
+                    onPreview(item.result);
+                  }
+                }}
+              >
+                <Image
+                  src={item.result}
+                  alt="Generation Result"
+                  width={800}
+                  height={600}
+                  className="w-full h-auto rounded border border-cine-border object-cover"
+                  unoptimized
+                />
+
+                {/* Overlay Apply Button */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); onApply(item); }}
+                  className="absolute bottom-1 right-1 p-1.5 bg-cine-accent text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-cine-accent-hover z-10"
+                  title="使用此图片"
+                >
+                  <CheckCircle2 size={14} />
+                </button>
+
+                {item.parameters.gridSize && onOpenGridSelection && (
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors rounded flex items-center justify-center pointer-events-none">
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-white bg-black/50 px-2 py-1 rounded">
+                      点击重新分配
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
               <video
                 src={item.result}

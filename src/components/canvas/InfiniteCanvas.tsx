@@ -437,9 +437,6 @@ export default function InfiniteCanvas() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 selectShot(shot.id);
-                                if (shot.referenceImage) {
-                                  handlePreview(shot.referenceImage);
-                                }
                               }}
                               className={`group bg-white/40 dark:bg-black/40 rounded-2xl overflow-hidden hover:border-light-accent/50 dark:hover:border-cine-accent/50 transition-all duration-300 ${isShotSelected
                                 ? 'border-2 border-light-accent dark:border-cine-accent shadow-lg shadow-light-accent/20 dark:shadow-cine-accent/20 scale-[1.02]'

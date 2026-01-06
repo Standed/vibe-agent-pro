@@ -24,6 +24,7 @@ interface PlanningViewProps {
     activeView?: 'planning' | 'canvas' | 'timeline' | 'drafts';
     onSwitchToCanvas?: () => void;
     onSwitchToTimeline?: () => void;
+    onOpenGridSelection?: (fullGridUrl: string, slices: string[]) => void;
 }
 
 // Helper to get caret coordinates
@@ -65,7 +66,8 @@ export default function PlanningView({
     showHomeButton = true,
     activeView = 'planning',
     onSwitchToCanvas,
-    onSwitchToTimeline
+    onSwitchToTimeline,
+    onOpenGridSelection
 }: PlanningViewProps) {
     const params = useParams();
     const {
@@ -302,6 +304,7 @@ export default function PlanningView({
                 handleScriptChange={handleScriptChange}
                 textareaRef={textareaRef}
                 activeView={activeView}
+                onOpenGridSelection={onOpenGridSelection}
             />
 
             <div className="flex-1 flex flex-col relative bg-white dark:bg-[#0a0a0a]">

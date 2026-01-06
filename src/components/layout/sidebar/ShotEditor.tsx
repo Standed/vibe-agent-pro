@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Edit2, MoreHorizontal, X, ImageIcon, Check } from 'lucide-react';
 import { Shot, ShotSize, CameraMovement, SHOT_SIZE_OPTIONS, CAMERA_MOVEMENT_OPTIONS } from '@/types/project';
 import { translateShotSize, translateCameraMovement } from '@/utils/translations';
+import ShotGenerationHistory from '@/components/shot/ShotGenerationHistory';
 
 interface ShotEditorProps {
     editingShot: Shot | null;
@@ -30,6 +31,7 @@ interface ShotEditorProps {
     liveEditingShot: Shot | null;
     updateShot: (id: string, updates: Partial<Shot>) => void;
     setShotImagePreview: (url: string | null) => void;
+    onOpenGridSelection?: (fullGridUrl: string, slices: string[]) => void;
 }
 
 export const ShotEditor: React.FC<ShotEditorProps> = ({
@@ -44,6 +46,7 @@ export const ShotEditor: React.FC<ShotEditorProps> = ({
     liveEditingShot,
     updateShot,
     setShotImagePreview,
+    onOpenGridSelection
 }) => {
     const [mounted, setMounted] = useState(false);
 
@@ -182,35 +185,50 @@ export const ShotEditor: React.FC<ShotEditorProps> = ({
                                 <div className="flex items-center justify-between ml-1">
                                     <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider">历史分镜图片</label>
                                     <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full">
-                                        {shotHistoryImages.length} 张记录
+                                        {editingShot.generationHistory?.length || 0} 条记录
                                     </span>
                                 </div>
 
-                                {shotHistoryImages.length === 0 ? (
+                                {(!editingShot.generationHistory || editingShot.generationHistory.length === 0) ? (
                                     <div className="bg-light-bg-secondary dark:bg-cine-bg-secondary border border-dashed border-light-border dark:border-cine-border rounded-2xl py-8 text-center">
                                         <ImageIcon size={24} className="mx-auto mb-2 text-light-text-muted dark:text-cine-text-muted opacity-30" />
                                         <p className="text-xs text-light-text-muted dark:text-cine-text-muted">暂无历史图片</p>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {shotHistoryImages.map((url, idx) => (
+                                    <div className="grid grid-cols-3 gap-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                                        {editingShot.generationHistory.map((item, idx) => (
                                             <div
-                                                key={idx}
-                                                className={`group relative aspect-video bg-light-bg dark:bg-cine-black rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent ring-4 ring-light-accent/10 dark:ring-cine-accent/10' : 'border-transparent hover:border-light-accent/30 dark:hover:border-cine-accent/30'}`}
-                                                onClick={() => {
-                                                    setSelectedHistoryImage(url);
-                                                    if (liveEditingShot) {
-                                                        updateShot(liveEditingShot.id, { referenceImage: url, status: 'done' });
-                                                    }
-                                                }}
-                                                onDoubleClick={() => setShotImagePreview(url)}
+                                                key={item.id}
+                                                className={`group relative aspect-video bg-light-bg dark:bg-cine-black rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${editingShot.referenceImage === item.result ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/10 dark:ring-cine-accent/10' : 'border-transparent hover:border-light-accent/30 dark:hover:border-cine-accent/30'}`}
+                                                onClick={() => setShotImagePreview(item.result)}
                                             >
-                                                <img src={url} alt={`history-${idx + 1}`} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-                                                {selectedHistoryImage === url && (
-                                                    <div className="absolute inset-0 bg-light-accent/10 dark:bg-cine-accent/10 flex items-center justify-center">
-                                                        <div className="bg-light-accent dark:bg-cine-accent text-white dark:text-black p-1 rounded-full shadow-lg">
-                                                            <Check size={12} />
-                                                        </div>
+                                                <img src={item.result} alt={`history-${idx + 1}`} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+
+                                                {/* Apply Button - Visible on Hover or if Selected */}
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        updateShot(editingShot.id, {
+                                                            referenceImage: item.result,
+                                                            status: 'done',
+                                                            fullGridUrl: item.parameters?.fullGridUrl as string,
+                                                            gridImages: item.parameters?.slices as string[]
+                                                        });
+                                                        setSelectedHistoryImage(item.result);
+                                                    }}
+                                                    className={`absolute bottom-1 right-1 p-1.5 rounded-full shadow-lg transition-all z-10 ${editingShot.referenceImage === item.result
+                                                            ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black opacity-100'
+                                                            : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-light-accent dark:hover:bg-cine-accent hover:text-white dark:hover:text-black'
+                                                        }`}
+                                                    title="应用此图片"
+                                                >
+                                                    <Check size={12} />
+                                                </button>
+
+                                                {/* Grid Badge */}
+                                                {item.parameters?.gridSize && (
+                                                    <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/50 rounded text-[10px] text-white backdrop-blur-sm">
+                                                        Grid
                                                     </div>
                                                 )}
                                             </div>

@@ -130,11 +130,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                 },
                 prompt: {
                     type: 'string',
-                    description: '额外的生成要求（可选）'
+                    description: '额外的生成要求（可选）。请务必包含用户的原始请求细节，以便判断是否需要覆盖生成。'
                 },
                 force: {
                     type: 'boolean',
-                    description: '是否覆盖已生成的镜头（默认 false，仅生成空缺镜头）'
+                    description: '是否强制覆盖已生成的镜头。如果用户请求包含"所有"、"全部"、"重新生成"、"覆盖"等意图，必须设为 true。'
                 }
             },
             required: ['sceneId', 'mode']
@@ -158,11 +158,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                 },
                 prompt: {
                     type: 'string',
-                    description: '额外的生成要求（可选）'
+                    description: '额外的生成要求（可选）。请务必包含用户的原始请求细节，以便判断是否需要覆盖生成。'
                 },
                 force: {
                     type: 'boolean',
-                    description: '是否覆盖已生成的镜头（默认 false，仅生成空缺镜头）'
+                    description: '是否强制覆盖已生成的镜头。如果用户请求包含"所有"、"全部"、"重新生成"、"覆盖"等意图，必须设为 true。'
                 }
             },
             required: ['mode']
@@ -301,6 +301,115 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                 }
             },
             required: []
+        }
+    },
+    {
+        name: 'addCharacter',
+        description: '添加新角色',
+        parameters: {
+            type: 'object',
+            properties: {
+                name: { type: 'string', description: '角色名称' },
+                description: { type: 'string', description: '角色描述' },
+                appearance: { type: 'string', description: '外貌描写' }
+            },
+            required: ['name', 'description']
+        }
+    },
+    {
+        name: 'updateCharacter',
+        description: '更新角色信息',
+        parameters: {
+            type: 'object',
+            properties: {
+                characterId: { type: 'string', description: '角色ID' },
+                updates: {
+                    type: 'object',
+                    description: '要更新的字段',
+                    properties: {
+                        name: { type: 'string' },
+                        description: { type: 'string' },
+                        appearance: { type: 'string' }
+                    }
+                }
+            },
+            required: ['characterId', 'updates']
+        }
+    },
+    {
+        name: 'deleteCharacter',
+        description: '删除角色',
+        parameters: {
+            type: 'object',
+            properties: {
+                characterId: { type: 'string', description: '角色ID' }
+            },
+            required: ['characterId']
+        }
+    },
+    {
+        name: 'updateScene',
+        description: '更新场景信息',
+        parameters: {
+            type: 'object',
+            properties: {
+                sceneId: { type: 'string', description: '场景ID' },
+                updates: {
+                    type: 'object',
+                    description: '要更新的字段',
+                    properties: {
+                        name: { type: 'string' },
+                        description: { type: 'string' },
+                        location: { type: 'string' }
+                    }
+                }
+            },
+            required: ['sceneId', 'updates']
+        }
+    },
+    {
+        name: 'deleteScene',
+        description: '删除场景',
+        parameters: {
+            type: 'object',
+            properties: {
+                sceneId: { type: 'string', description: '场景ID' }
+            },
+            required: ['sceneId']
+        }
+    },
+    {
+        name: 'updateShot',
+        description: '更新镜头信息',
+        parameters: {
+            type: 'object',
+            properties: {
+                shotId: { type: 'string', description: '镜头ID' },
+                updates: {
+                    type: 'object',
+                    description: '要更新的字段',
+                    properties: {
+                        description: { type: 'string' },
+                        shotSize: { type: 'string' },
+                        cameraMovement: { type: 'string' },
+                        duration: { type: 'number' },
+                        dialogue: { type: 'string' },
+                        narration: { type: 'string' }
+                    }
+                }
+            },
+            required: ['shotId', 'updates']
+        }
+    },
+    {
+        name: 'deleteShot',
+        description: '删除镜头',
+        parameters: {
+            type: 'object',
+            properties: {
+                shotId: { type: 'string', description: '镜头ID' }
+            },
+            required: ['shotId']
         }
     }
 ];

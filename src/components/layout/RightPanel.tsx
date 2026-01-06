@@ -2,21 +2,40 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { Bot, Sliders, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Bot, Sliders, ChevronRight, ChevronLeft, X } from 'lucide-react';
 import AgentPanel from '../agent/AgentPanel';
 import ChatPanel from '@/components/chat/ChatPanel';
 
+import { ShotDetailsPanel } from '../pro/ShotDetailsPanel';
+import { toast } from 'sonner';
+import { createPortal } from 'react-dom';
+import { AspectRatio } from '@/types/project';
+
 export default function RightPanel() {
-  const { controlMode, setControlMode, rightSidebarCollapsed, toggleRightSidebar } = useProjectStore();
-  const [panelWidth, setPanelWidth] = useState(600); // Increased default width
+  const {
+    controlMode,
+    setControlMode,
+    rightSidebarCollapsed,
+    toggleRightSidebar,
+    project,
+    selectedShotId,
+    updateShot,
+    setGridResult,
+    setGenerationRequest
+  } = useProjectStore();
+
+  const [panelWidth, setPanelWidth] = useState(600);
   const [resizing, setResizing] = useState(false);
   const resizeState = useRef<{ startX: number; startWidth: number } | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  const selectedShot = project?.shots.find(s => s.id === selectedShotId);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!resizing || !resizeState.current) return;
       const delta = - (e.clientX - resizeState.current.startX);
-      const next = Math.min(Math.max(resizeState.current.startWidth + delta, 400), 1000); // Increased max width
+      const next = Math.min(Math.max(resizeState.current.startWidth + delta, 400), 1000);
       setPanelWidth(next);
     };
     const onUp = () => setResizing(false);
@@ -31,6 +50,26 @@ export default function RightPanel() {
   const startResize = (e: React.MouseEvent) => {
     setResizing(true);
     resizeState.current = { startX: e.clientX, startWidth: panelWidth };
+  };
+
+  const handleRegenerate = (item: any) => {
+    if (!selectedShot) return;
+    setGenerationRequest({
+      prompt: item.prompt || selectedShot.description || '',
+      model: 'gemini-grid',
+    });
+    toast.info('已发送生成请求到对话框');
+  };
+
+  const handleApplyHistory = (item: any) => {
+    if (!selectedShot) return;
+    updateShot(selectedShot.id, {
+      referenceImage: item.result,
+      status: 'done',
+      fullGridUrl: item.parameters?.fullGridUrl,
+      gridImages: item.parameters?.slices
+    });
+    toast.success('已应用历史记录');
   };
 
   return (
@@ -53,8 +92,7 @@ export default function RightPanel() {
         /* Agent/Pro Mode */
         <>
           {/* Mode Toggle */}
-          {/* Mode Toggle */}
-          <div className="p-6 pb-2 relative">
+          <div className="p-6 pb-2 relative flex-shrink-0">
             <div className="flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
               <button
                 onClick={() => setControlMode('agent')}
@@ -80,7 +118,7 @@ export default function RightPanel() {
             {/* Collapse Button */}
             <button
               onClick={toggleRightSidebar}
-              className="absolute left-2 top-8 p-1 glass-button rounded-lg hidden" // Hidden in expanded mode for cleaner look, or move it
+              className="absolute left-2 top-8 p-1 glass-button rounded-lg hidden"
               title="收起侧边栏"
             >
               <ChevronRight size={16} className="text-gray-500 dark:text-gray-400" />
@@ -95,10 +133,31 @@ export default function RightPanel() {
           </div>
 
           {/* Panel Content */}
-          <div className="flex-1 overflow-hidden">
-            {controlMode === 'agent' ? <AgentPanel /> : <ChatPanel />}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {controlMode === 'agent' ? (
+              <AgentPanel />
+            ) : (
+              <div className="flex flex-col h-full overflow-hidden">
+                <div className="flex-1 overflow-hidden">
+                  <ChatPanel />
+                </div>
+              </div>
+            )}
           </div>
         </>
+      )}
+
+      {/* Preview Modal */}
+      {previewImage && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setPreviewImage(null)}>
+          <div className="relative w-full h-full flex items-center justify-center">
+            <img src={previewImage} alt="Preview" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
+            <button className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-2 backdrop-blur-md transition-colors" onClick={() => setPreviewImage(null)}>
+              <X size={24} />
+            </button>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
