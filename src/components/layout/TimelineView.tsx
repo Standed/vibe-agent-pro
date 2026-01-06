@@ -25,6 +25,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { dataService } from '@/lib/dataService';
 import type { SoraTask, Shot } from '@/types/project';
 import { toast } from 'sonner';
+import LeftSidebarNew from './LeftSidebarNew';
 
 interface TimelineViewProps {
     onClose: () => void;
@@ -41,7 +42,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [currentShotIndex, setCurrentShotIndex] = useState(0);
-    const [showRightPanel, setShowRightPanel] = useState(false); // 默认折叠右侧面板
+    const [showRightPanel, setShowRightPanel] = useState(true); // 默认展开右侧面板
     const [showQueuePanel, setShowQueuePanel] = useState(false);
     const queueOpenRef = useRef(false);
     const TIMELINE_SLOT_WIDTH = 80;
@@ -981,6 +982,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
 
     return (
         <div className="fixed inset-0 z-50 bg-light-bg dark:bg-cine-black flex overflow-hidden">
+            <LeftSidebarNew activeView="timeline" />
             {/* Left: Video Player Area */}
             <div className="flex-1 flex flex-col min-w-0 relative">
                 {/* Top Bar */}
@@ -1482,15 +1484,15 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                     {/* Collapse Button */}
                     <button
                         onClick={() => setShowRightPanel(false)}
-                        className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 p-1.5 bg-white dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-full text-light-text dark:text-white transition-colors shadow-lg border border-light-border dark:border-cine-border"
+                        className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-8 h-8 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 rounded-full text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all shadow-xl border border-black/5 dark:border-white/10 flex items-center justify-center group"
                         title="收起面板"
                     >
-                        <ChevronRight size={16} />
+                        <ChevronRight size={18} className="transition-transform group-hover:translate-x-0.5" />
                     </button>
 
-                    {/* Mode Toggle */}
-                    <div className="p-4 pb-2 flex-shrink-0">
-                        <div className="flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
+                    {/* Mode Toggle & Header */}
+                    <div className="p-4 pb-2 flex-shrink-0 flex items-center gap-3">
+                        <div className="flex-1 flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
                             <button
                                 onClick={() => setControlMode('agent')}
                                 className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${controlMode === 'agent'

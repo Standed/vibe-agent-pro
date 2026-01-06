@@ -103,10 +103,14 @@ const collectInvalidUuidFields = (
   const checkObject = (obj: Record<string, any>) => {
     uuidFields.forEach((field) => {
       const val = obj?.[field];
-      if (val === undefined || val === null) return;
+      if (val === undefined || val === null || val === 'null') return;
 
       const values = Array.isArray(val) ? val : [val];
-      if (!values.every(isValidUuid)) {
+      // Skip validation for null values (already handled above, but being explicit for array elements)
+      const nonNullValues = values.filter(v => v !== null && v !== 'null');
+      if (nonNullValues.length === 0) return;
+
+      if (!nonNullValues.every(isValidUuid)) {
         invalidFields.push(field);
       }
     });
@@ -123,8 +127,9 @@ const collectInvalidUuidFields = (
   if (filters?.eq) {
     Object.entries(filters.eq).forEach(([key, value]) => {
       if (uuidFields.includes(key)) {
+        if (value === null || value === 'null') return;
         const values = Array.isArray(value) ? value : [value];
-        if (!values.every(isValidUuid)) {
+        if (!values.every(v => v === null || v === 'null' || isValidUuid(v))) {
           invalidFields.push(key);
         }
       }
@@ -134,8 +139,9 @@ const collectInvalidUuidFields = (
   if (filters?.neq) {
     Object.entries(filters.neq).forEach(([key, value]) => {
       if (uuidFields.includes(key)) {
+        if (value === null || value === 'null') return;
         const values = Array.isArray(value) ? value : [value];
-        if (!values.every(isValidUuid)) {
+        if (!values.every(v => v === null || v === 'null' || isValidUuid(v))) {
           invalidFields.push(key);
         }
       }
@@ -146,7 +152,7 @@ const collectInvalidUuidFields = (
     Object.entries(filters.in).forEach(([key, value]) => {
       if (uuidFields.includes(key)) {
         const values = Array.isArray(value) ? value : [];
-        if (!values.every(isValidUuid)) {
+        if (!values.every(v => v === null || v === 'null' || isValidUuid(v))) {
           invalidFields.push(key);
         }
       }
@@ -292,7 +298,11 @@ export async function POST(request: NextRequest) {
         // 应用过滤条件
         if (filtersWithUserId?.eq) {
           Object.entries(filtersWithUserId.eq).forEach(([key, value]) => {
-            query = (query as any).eq(key, value);
+            if (value === null || value === 'null') {
+              query = (query as any).is(key, null);
+            } else {
+              query = (query as any).eq(key, value);
+            }
           });
         }
         if (filtersWithUserId?.in) {
@@ -302,7 +312,11 @@ export async function POST(request: NextRequest) {
         }
         if (filtersWithUserId?.neq) {
           Object.entries(filtersWithUserId.neq).forEach(([key, value]) => {
-            query = (query as any).neq(key, value);
+            if (value === null || value === 'null') {
+              query = (query as any).not(key, 'is', null);
+            } else {
+              query = (query as any).neq(key, value);
+            }
           });
         }
 
@@ -340,7 +354,11 @@ export async function POST(request: NextRequest) {
         // 应用过滤条件（必须有过滤条件）
         if (filtersWithUserId?.eq) {
           Object.entries(filtersWithUserId.eq).forEach(([key, value]) => {
-            query = (query as any).eq(key, value);
+            if (value === null || value === 'null') {
+              query = (query as any).is(key, null);
+            } else {
+              query = (query as any).eq(key, value);
+            }
           });
         } else {
           return NextResponse.json(
@@ -366,7 +384,11 @@ export async function POST(request: NextRequest) {
         // 应用过滤条件（必须有过滤条件，防止误删全表）
         if (filtersWithUserId?.eq) {
           Object.entries(filtersWithUserId.eq).forEach(([key, value]) => {
-            query = (query as any).eq(key, value);
+            if (value === null || value === 'null') {
+              query = (query as any).is(key, null);
+            } else {
+              query = (query as any).eq(key, value);
+            }
           });
         } else {
           return NextResponse.json(

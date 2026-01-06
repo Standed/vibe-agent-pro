@@ -11,6 +11,9 @@ import TimelineView from '@/components/layout/TimelineView';
 import { useI18n } from '@/components/providers/I18nProvider';
 import { useAuth, useRequireWhitelist } from '@/components/auth/AuthProvider';
 import { Film } from 'lucide-react';
+import ViewSwitcher, { ViewType } from '@/components/layout/ViewSwitcher';
+import { createPortal } from 'react-dom';
+import PlanningView from '@/components/director/PlanningView';
 
 export function ProjectEditorClient() {
     const params = useParams();
@@ -21,6 +24,22 @@ export function ProjectEditorClient() {
     const [isLoadingProject, setIsLoadingProject] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [showTimelineView, setShowTimelineView] = useState(false);
+    const [showDirectorMode, setShowDirectorMode] = useState(false);
+
+    const activeView: ViewType = showTimelineView ? 'timeline' : showDirectorMode ? 'planning' : 'canvas';
+
+    const handleViewChange = (view: ViewType) => {
+        if (view === 'timeline') {
+            setShowTimelineView(true);
+            setShowDirectorMode(false);
+        } else if (view === 'planning') {
+            setShowDirectorMode(true);
+            setShowTimelineView(false);
+        } else {
+            setShowTimelineView(false);
+            setShowDirectorMode(false);
+        }
+    };
 
 
     useEffect(() => {
@@ -145,33 +164,55 @@ export function ProjectEditorClient() {
 
     return (
         <div className="h-screen bg-light-bg dark:bg-cine-black flex flex-col overflow-hidden">
+            {/* View Switcher */}
+            <ViewSwitcher activeView={activeView} onViewChange={handleViewChange} />
+
             {/* Fullscreen Timeline View */}
             {showTimelineView && (
                 <TimelineView onClose={() => setShowTimelineView(false)} />
             )}
 
+            {/* Planning View (Director Mode) */}
+            {showDirectorMode && createPortal(
+                <div className="fixed inset-0 z-[100]">
+                    <PlanningView
+                        onClose={() => setShowDirectorMode(false)}
+                        showExitButton={true}
+                        showHomeButton={true}
+                        activeView="planning"
+                        onSwitchToCanvas={() => setShowDirectorMode(false)}
+                        onSwitchToTimeline={() => {
+                            setShowDirectorMode(false);
+                            setShowTimelineView(true);
+                        }}
+                    />
+                </div>,
+                document.body
+            )}
+
             {/* Main Layout */}
-            <div className="flex-1 flex overflow-hidden">
-                {/* Left Sidebar */}
-                <LeftSidebarNew />
+            <div className="flex-1 flex overflow-hidden relative">
+                {/* Left Sidebar (Now Floating) */}
+                <LeftSidebarNew
+                    activeView={activeView}
+                    onSwitchToTimeline={() => setShowTimelineView(true)}
+                />
 
                 {/* Canvas Area */}
                 <div className="flex-1 flex flex-col overflow-hidden">
-                    {/* Canvas */}
-                    <div className="flex-1 relative overflow-hidden">
-                        <InfiniteCanvas />
-                    </div>
+                    <InfiniteCanvas />
                 </div>
 
                 {/* Right Panel */}
                 <RightPanel />
             </div>
 
-            {/* View Switch Button - Right Bottom (Like Seko) */}
-
+            {/* View Switch Button - Hidden but kept for potential legacy triggers */}
             <button
+                id="timeline-view-trigger"
                 onClick={() => setShowTimelineView(true)}
-                className="fixed right-6 bottom-6 z-40 flex items-center gap-2 px-4 py-2.5 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg shadow-lg hover:scale-105 transition-all border border-zinc-700 dark:border-zinc-300"
+                className="hidden"
+                title="时间轴视图"
             >
                 <Film size={16} />
                 <span className="text-sm font-medium">时间轴视图</span>
@@ -179,4 +220,3 @@ export function ProjectEditorClient() {
         </div>
     );
 }
-

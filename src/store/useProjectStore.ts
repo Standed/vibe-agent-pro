@@ -60,6 +60,7 @@ interface ProjectStore {
     artStyle?: string,
     aspectRatio?: string
   ) => void;
+  updateProjectMetadata: (metadata: Partial<Project['metadata']>) => void;
   updateScript: (script: string) => void;
   setGenerationRequest: (request: ProjectStore['generationRequest']) => void;
   setGenerationProgress: (progress: Partial<ProjectStore['generationProgress']>) => void;
@@ -224,7 +225,7 @@ export const useProjectStore = create<ProjectStore>()(
           characters: [],
           locations: [],
           audioAssets: [],
-          script: '',
+          script: description || '',
           scenes: [],
           shots: [],
           timeline: [
@@ -240,6 +241,15 @@ export const useProjectStore = create<ProjectStore>()(
           },
         },
       });
+    },
+
+    updateProjectMetadata: (metadata) => {
+      set((state) => {
+        if (state.project) {
+          state.project.metadata = { ...state.project.metadata, ...metadata };
+        }
+      });
+      get().debouncedSaveProject();
     },
 
     updateScript: (script) => {

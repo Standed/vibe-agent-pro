@@ -912,7 +912,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
             {/* Consistency Mode Switcher */}
             <div className="space-y-2">
               <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-light-accent dark:text-cine-accent" />
+                <Sparkles className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
                 角色一致性方案
               </label>
               <div className="grid grid-cols-2 gap-3">
@@ -922,7 +922,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                   className={cn(
                     "p-4 rounded-xl border-2 transition-all duration-200 text-left",
                     consistencyMode === 'three-view'
-                      ? "border-light-accent dark:border-cine-accent bg-light-accent/5 dark:bg-cine-accent/10"
+                      ? "border-zinc-900 dark:border-white bg-zinc-900/5 dark:bg-white/5"
                       : "border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600"
                   )}
                 >
@@ -930,7 +930,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                     <div className={cn(
                       "w-6 h-6 rounded-lg flex items-center justify-center",
                       consistencyMode === 'three-view'
-                        ? "bg-light-accent dark:bg-cine-accent text-white"
+                        ? "bg-zinc-900 dark:bg-white text-white dark:text-black"
                         : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
                     )}>
                       <Wand2 className="w-3.5 h-3.5" />
@@ -938,7 +938,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                     <span className={cn(
                       "font-bold text-sm",
                       consistencyMode === 'three-view'
-                        ? "text-light-accent dark:text-cine-accent"
+                        ? "text-zinc-900 dark:text-white"
                         : "text-zinc-700 dark:text-zinc-300"
                     )}>三视图模式</span>
                   </div>
@@ -952,7 +952,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                   className={cn(
                     "p-4 rounded-xl border-2 transition-all duration-200 text-left",
                     consistencyMode === 'sora-reference'
-                      ? "border-emerald-500 dark:border-emerald-400 bg-emerald-500/5 dark:bg-emerald-400/10"
+                      ? "border-zinc-900 dark:border-white bg-zinc-900/5 dark:bg-white/5"
                       : "border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600"
                   )}
                 >
@@ -960,7 +960,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                     <div className={cn(
                       "w-6 h-6 rounded-lg flex items-center justify-center",
                       consistencyMode === 'sora-reference'
-                        ? "bg-emerald-500 text-white"
+                        ? "bg-zinc-900 dark:bg-white text-white dark:text-black"
                         : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
                     )}>
                       <Video className="w-3.5 h-3.5" />
@@ -968,7 +968,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                     <span className={cn(
                       "font-bold text-sm",
                       consistencyMode === 'sora-reference'
-                        ? "text-emerald-600 dark:text-emerald-400"
+                        ? "text-zinc-900 dark:text-white"
                         : "text-zinc-700 dark:text-zinc-300"
                     )}>Sora 参考模式</span>
                   </div>
@@ -1028,8 +1028,11 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                 <span className="text-xs font-normal text-zinc-400">至少 1 张</span>
               </label>
 
-              {/* AI Generate Three-View Button */}
-              <div className="relative overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-white/5 p-5 transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-white/5">
+              {/* AI Generate Three-View Button - 仅在三视图模式显示 */}
+              <div className={cn(
+                "relative overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-white/5 p-5 transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-white/5",
+                consistencyMode !== 'three-view' && "hidden"
+              )}>
                 <div className="absolute top-0 right-0 p-3 opacity-10">
                   <Sparkles className="w-24 h-24 text-zinc-900 dark:text-white" />
                 </div>
@@ -1187,7 +1190,11 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                 </div>
               )}
 
-              <div className="mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800">
+              {/* 生成提示词 - 仅在三视图模式显示 */}
+              <div className={cn(
+                "mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800",
+                consistencyMode !== 'three-view' && "hidden"
+              )}>
                 <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
                   生成提示词（高级）
                 </label>
@@ -1198,8 +1205,11 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                 />
               </div>
 
-              {/* Sora Reference Video Upload */}
-              <div className="mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800">
+              {/* Sora Reference Video Upload - 仅在 Sora 模式显示 */}
+              <div className={cn(
+                "mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800",
+                consistencyMode !== 'sora-reference' && "hidden"
+              )}>
                 <label className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2 flex items-center gap-2">
                   <span>Sora 参考视频</span>
                   <span className="text-xs font-normal text-zinc-400">(可选)</span>
@@ -1280,8 +1290,11 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
             </div>
 
 
-            {/* Sora Identity Section */}
-            <div className="mt-6 pt-6 border-t border-dashed border-zinc-200 dark:border-white/10">
+            {/* Sora Identity Section - 仅在 Sora 模式显示 */}
+            <div className={cn(
+              "mt-6 pt-6 border-t border-dashed border-zinc-200 dark:border-white/10",
+              consistencyMode !== 'sora-reference' && "hidden"
+            )}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
