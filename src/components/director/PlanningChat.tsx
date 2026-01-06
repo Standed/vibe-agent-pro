@@ -142,9 +142,9 @@ export default function PlanningChat({
                                                                 <motion.div
                                                                     initial={{ opacity: 0, height: 0 }}
                                                                     animate={{ opacity: 1, height: 'auto' }}
-                                                                    className="text-[10px] text-zinc-500 flex items-center gap-2"
+                                                                    className="text-xs text-zinc-500 flex items-center gap-2"
                                                                 >
-                                                                    <Loader2 size={10} className="animate-spin" />
+                                                                    <Loader2 size={12} className="animate-spin" />
                                                                     <span>{currentStep.description}</span>
                                                                 </motion.div>
                                                             )}

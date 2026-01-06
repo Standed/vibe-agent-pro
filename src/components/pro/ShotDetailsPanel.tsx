@@ -11,6 +11,8 @@ interface ShotDetailsPanelProps {
     handleDownload: (item: GenerationHistoryItem) => void;
     handleFavorite: (item: GenerationHistoryItem) => void;
     handleDubbing: (item: GenerationHistoryItem) => void;
+    onOpenGridSelection?: (fullGridUrl: string, slices: string[]) => void;
+    onPreview?: (imageUrl: string) => void;
 }
 
 export const ShotDetailsPanel: React.FC<ShotDetailsPanelProps> = ({
@@ -19,7 +21,9 @@ export const ShotDetailsPanel: React.FC<ShotDetailsPanelProps> = ({
     handleApplyHistory,
     handleDownload,
     handleFavorite,
-    handleDubbing
+    handleDubbing,
+    onOpenGridSelection,
+    onPreview
 }) => {
     return (
         <div className="pt-4 border-t border-light-border dark:border-cine-border">
@@ -95,27 +99,22 @@ export const ShotDetailsPanel: React.FC<ShotDetailsPanelProps> = ({
                                 <span className="text-xs text-light-accent dark:text-cine-accent">来自 Grid 多视图切片</span>
                             </div>
                             {selectedShot.fullGridUrl && (
-                                <div className="relative group">
+                                <div className="relative group cursor-pointer" onClick={() => {
+                                    if (onOpenGridSelection && selectedShot.fullGridUrl) {
+                                        // Use gridImages if available, otherwise we might need to fetch them or pass empty
+                                        onOpenGridSelection(selectedShot.fullGridUrl, selectedShot.gridImages || []);
+                                    }
+                                }}>
                                     <img
                                         src={selectedShot.fullGridUrl}
                                         alt="Grid Source"
                                         className="w-full rounded border border-light-border dark:border-cine-border"
                                     />
                                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors rounded flex items-center justify-center">
-                                        <div className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-light-text dark:text-white">
-                                            完整 Grid 图
+                                        <div className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-white bg-black/50 px-2 py-1 rounded">
+                                            点击查看完整 Grid
                                         </div>
                                     </div>
-                                </div>
-                            )}
-                            {selectedShot.referenceImage && (
-                                <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                                    <div className="mb-1">当前镜头使用的切片:</div>
-                                    <img
-                                        src={selectedShot.referenceImage}
-                                        alt="Current Slice"
-                                        className="w-full rounded border border-light-accent dark:border-cine-accent"
-                                    />
                                 </div>
                             )}
                         </div>
@@ -132,6 +131,8 @@ export const ShotDetailsPanel: React.FC<ShotDetailsPanelProps> = ({
                             onDownload={handleDownload}
                             onFavorite={handleFavorite}
                             onDubbing={handleDubbing}
+                            onOpenGridSelection={onOpenGridSelection}
+                            onPreview={onPreview}
                         />
                     </div>
                 )}

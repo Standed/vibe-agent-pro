@@ -82,6 +82,33 @@ export function analyzeToolDependencies(toolCalls: ToolCall[]): ExecutionPlan {
   return { independent, dependent };
 }
 
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  'getProjectContext': '获取项目上下文',
+  'searchScenes': '搜索场景',
+  'getSceneShots': '获取场景镜头',
+  'getShotDetails': '获取镜头详情',
+  'createScene': '创建场景',
+  'addShot': '添加镜头',
+  'addShots': '批量添加镜头',
+  'updateShot': '更新镜头',
+  'batchGenerateSceneImages': '批量生成场景图片',
+  'generateShotVideo': '生成镜头视频',
+  'generateShotImage': '生成镜头图片',
+  'batchGenerateProjectImages': '批量生成项目图片',
+  'generateSceneVideo': '生成场景视频',
+  'generateShotsVideo': '生成分镜视频',
+  'batchGenerateProjectVideosSora': '批量生成项目视频',
+  'generateCharacterThreeView': '生成角色三视图',
+  'addCharacter': '添加角色',
+  'updateCharacter': '更新角色',
+  'deleteCharacter': '删除角色',
+  'updateScene': '更新场景',
+  'deleteScene': '删除场景',
+  'deleteShot': '删除镜头',
+  'batchGenerateSceneImages': '批量生成场景图片 (Grid)',
+  'batchGenerateProjectImages': '批量生成项目图片 (Grid)',
+};
+
 /**
  * Execute tools in parallel with progress tracking
  */
@@ -98,6 +125,8 @@ export async function executeToolsInParallel(
 
   const total = toolCalls.length;
   let completed = 0;
+
+  const getToolName = (name: string) => TOOL_DISPLAY_NAMES[name] || name;
 
   const updateProgress = (currentStep: string) => {
     onProgress?.({
@@ -118,12 +147,12 @@ export async function executeToolsInParallel(
       try {
         const result = await executor.execute(tool);
         completed++;
-        updateProgress(`已完成: ${tool.name}`);
+        updateProgress(`已完成: ${getToolName(tool.name)}`);
         return result;
       } catch (error: any) {
         completed++;
         errors.push({ tool: tool.name, error: error.message });
-        updateProgress(`失败: ${tool.name}`);
+        updateProgress(`失败: ${getToolName(tool.name)}`);
         return {
           tool: tool.name,
           result: null,
@@ -147,7 +176,7 @@ export async function executeToolsInParallel(
         const result = await executor.execute(tool);
         completed++;
         allResults.push(result);
-        updateProgress(`已完成: ${tool.name}`);
+        updateProgress(`已完成: ${getToolName(tool.name)}`);
       } catch (error: any) {
         completed++;
         errors.push({ tool: tool.name, error: error.message });
@@ -157,7 +186,7 @@ export async function executeToolsInParallel(
           success: false,
           error: error.message,
         });
-        updateProgress(`失败: ${tool.name}`);
+        updateProgress(`失败: ${getToolName(tool.name)}`);
       }
     }
   }

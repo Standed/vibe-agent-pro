@@ -49,6 +49,7 @@ interface PlanningSidebarProps {
     handleScriptChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     activeView?: 'planning' | 'canvas' | 'timeline' | 'drafts';
+    onOpenGridSelection?: (fullGridUrl: string, slices: string[]) => void;
 }
 
 export default function PlanningSidebar({
@@ -72,6 +73,7 @@ export default function PlanningSidebar({
     handleScriptChange,
     textareaRef,
     activeView = 'planning',
+    onOpenGridSelection,
 }: PlanningSidebarProps) {
     const {
         addScene,
@@ -318,13 +320,14 @@ export default function PlanningSidebar({
                                                     modified: new Date(),
                                                 });
                                             }}
-                                            setShowScriptEditor={() => { }}
+                                            setShowScriptEditor={() => setActiveTab('script')}
                                             editingSceneId={editingSceneId}
                                             editingSceneName={editingSceneName}
                                             setEditingSceneName={setEditingSceneName}
                                             handleSaveSceneName={(id) => {
                                                 updateScene(id, { name: editingSceneName });
                                                 setEditingSceneId(null);
+                                                toast.success('场景名称已更新');
                                             }}
                                             handleCancelEditScene={() => setEditingSceneId(null)}
                                             handleStartEditScene={(id, name) => {
@@ -338,21 +341,31 @@ export default function PlanningSidebar({
                                                     setEditingSceneName(scene.name);
                                                 }
                                             }}
-                                            handleDeleteScene={(id) => deleteScene(id)}
+                                            handleDeleteScene={(id) => {
+                                                deleteScene(id);
+                                                toast.success('场景已删除');
+                                            }}
                                             handleAddShotClick={(sceneId, index) => {
-                                                const newShot = {
+                                                const newShot: Shot = {
                                                     id: crypto.randomUUID(),
                                                     sceneId,
                                                     description: '',
                                                     order: (index ?? 0) + 1,
-                                                    status: 'draft' as const,
+                                                    status: 'draft',
+                                                    shotSize: 'Medium Shot',
+                                                    cameraMovement: 'Static',
+                                                    duration: 3,
                                                 };
                                                 addShot(newShot);
+                                                toast.success('镜头已添加');
                                             }}
                                             selectedShotId={null}
                                             handleShotClick={(id) => selectShot(id)}
                                             openShotEditor={openShotEditor}
-                                            handleDeleteShot={(id) => deleteShot(id)}
+                                            handleDeleteShot={(id) => {
+                                                deleteShot(id);
+                                                toast.success('镜头已删除');
+                                            }}
                                             handleShotImageClick={(shot) => {
                                                 selectShot(shot.id);
                                                 setControlMode('pro');
@@ -525,6 +538,7 @@ export default function PlanningSidebar({
                 liveEditingShot={editingShot}
                 updateShot={updateShot}
                 setShotImagePreview={() => { }}
+                onOpenGridSelection={onOpenGridSelection}
             />
         </div>
     );

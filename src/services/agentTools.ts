@@ -3,7 +3,7 @@
  * These tools allow the Agent to query and manipulate project context
  */
 
-import { Project, Scene, Shot, AspectRatio, ImageSize, GenerationHistoryItem, GridHistoryItem } from '@/types/project';
+import { Project, Scene, Shot, AspectRatio, ImageSize, GenerationHistoryItem, GridHistoryItem, Character } from '@/types/project';
 import { VolcanoEngineService } from './volcanoEngineService';
 import { generateMultiViewGrid, generateSingleImage, generateCharacterThreeView, urlsToReferenceImages, editImageWithGemini } from './geminiService';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
@@ -102,12 +102,17 @@ function sanitizeForToolOutput(value: any): any {
  * Store update callbacks interface
  */
 export interface StoreCallbacks {
-  updateShot: (shotId: string, updates: Partial<Shot>) => void;
   addGenerationHistory: (shotId: string, item: GenerationHistoryItem) => void;
   addGridHistory: (sceneId: string, item: GridHistoryItem) => void;
   addScene?: (scene: Scene) => void;
+  updateScene?: (id: string, updates: Partial<Scene>) => void;
+  deleteScene?: (id: string) => void;
   addShot?: (shot: Shot) => void;
-  updateCharacter?: (characterId: string, updates: Partial<any>) => void; // Added for character updates
+  updateShot: (shotId: string, updates: Partial<Shot>) => void;
+  deleteShot?: (id: string) => void;
+  addCharacter?: (character: Character) => void;
+  updateCharacter?: (characterId: string, updates: Partial<any>) => void;
+  deleteCharacter?: (id: string) => void;
   renumberScenesAndShots?: () => void;
   setSavingStatus?: (isSaving: boolean) => void;
   setGenerationProgress?: (progress: Partial<{ total: number; current: number; status: 'idle' | 'running' | 'success' | 'error'; message?: string }>) => void;
@@ -899,84 +904,139 @@ export class AgentToolExecutor {
           '1024x1024' as ImageSize, // Default
           refs
         );
-        resultUrl = gridData.fullImage;
-        finalResult = { fullGridUrl: gridData.fullImage, allSlices: gridData.slices, gridSize, aspectRatio };
 
-        // Add Grid
+        // Upload to R2 (Full Grid & Slices)
+        let fullGridUrl = gridData.fullImage;
+        let sliceUrls = gridData.slices;
+        try {
+          const folder = `projects/${this.project.id}/grids`;
+          if (fullGridUrl.startsWith('data:')) {
+            const base64Data = fullGridUrl.split(',')[1];
+            fullGridUrl = await storageService.uploadBase64ToR2(base64Data, folder, `grid_full_${Date.now()}.png`, this.userId);
+          }
+          sliceUrls = await Promise.all(gridData.slices.map(async (slice, idx) => {
+            if (slice.startsWith('data:')) {
+              const base64Data = slice.split(',')[1];
+              return await storageService.uploadBase64ToR2(base64Data, folder, `grid_slice_${Date.now()}_${idx}.png`, this.userId);
+            }
+            return slice;
+          }));
+        } catch (e) {
+          console.warn('Failed to upload grid/slices to R2, using base64 fallback', e);
+        }
+
+        resultUrl = fullGridUrl;
+        finalResult = { fullGridUrl, allSlices: sliceUrls, gridSize, aspectRatio };
+
+        // Update Shot (Auto-assign first slice)
+        if (this.storeCallbacks?.updateShot) {
+          this.storeCallbacks.updateShot(shotId, {
+            referenceImage: sliceUrls[0],
+            fullGridUrl: fullGridUrl,
+            gridImages: sliceUrls
+          });
+        }
+
+        // Add to Shot Generation History
+        if (this.storeCallbacks?.addGenerationHistory) {
+          this.storeCallbacks.addGenerationHistory(shotId, {
+            id: this.generateId(),
+            type: 'image',
+            timestamp: new Date(),
+            result: fullGridUrl,
+            prompt: enrichedPrompt,
+            parameters: {
+              model: 'gemini-grid',
+              aspectRatio,
+              gridSize: (gridSize === '3x3' ? '3x3' : '2x2'),
+              slices: sliceUrls,
+              fullGridUrl: fullGridUrl
+            },
+            status: 'success'
+          });
+        }
+
+        // Add to Scene Grid History
         if (this.storeCallbacks?.addGridHistory) {
           this.storeCallbacks.addGridHistory(shot.sceneId, {
             id: this.generateId(),
             timestamp: new Date(),
             prompt: enrichedPrompt,
             gridSize: (gridSize === '3x3' ? '3x3' : '2x2'),
-            fullGridUrl: gridData.fullImage,
-            slices: gridData.slices,
+            fullGridUrl: fullGridUrl,
+            slices: sliceUrls,
             aspectRatio: aspectRatio
           });
         }
-      } else if (mode === 'seedream' || mode === 'jimeng') {
-        // Volcano Engine (SeeDream / Jimeng)
-        resultUrl = await VolcanoEngineService.getInstance().generateSingleImage(
-          enrichedPrompt,
-          aspectRatio,
-          referenceImageUrls // expects string[]
-        );
-        finalResult = { imageUrl: resultUrl };
+
+        // Sync Chat
+        await this.saveProChatMessage(shotId, prompt || shot.description, { ...finalResult, imageUrl: fullGridUrl }, mode, enrichedPrompt);
+
+        return { tool: 'generateShotImage', result: { imageUrl: fullGridUrl, ...finalResult }, success: true };
+
       } else {
-        // Gemini Direct
-        resultUrl = await generateSingleImage(
-          enrichedPrompt,
-          aspectRatio,
-          refs
-        );
-        finalResult = { imageUrl: resultUrl };
-      }
-
-
-
-      // Upload resultUrl to R2 if it is Base64
-      try {
-        if (resultUrl && resultUrl.startsWith('data:')) {
-          const base64Data = resultUrl.split(',')[1];
-          const r2Url = await storageService.uploadBase64ToR2(
-            base64Data,
-            `projects/shots/${this.userId || 'anonymous'}`,
-            `shot_gen_${shotId}_${Date.now()}.png`,
-            this.userId
+        // --- Non-Grid Modes ---
+        if (mode === 'seedream' || mode === 'jimeng') {
+          // Volcano Engine (SeeDream / Jimeng)
+          resultUrl = await VolcanoEngineService.getInstance().generateSingleImage(
+            enrichedPrompt,
+            aspectRatio,
+            referenceImageUrls // expects string[]
           );
-          resultUrl = r2Url;
-
-          // Also update finalResult for chat persistence
-          if (finalResult.imageUrl) finalResult.imageUrl = r2Url;
-          if (finalResult.fullGridUrl) finalResult.fullGridUrl = r2Url;
+          finalResult = { imageUrl: resultUrl };
+        } else {
+          // Gemini Direct
+          resultUrl = await generateSingleImage(
+            enrichedPrompt,
+            aspectRatio,
+            refs
+          );
+          finalResult = { imageUrl: resultUrl };
         }
-      } catch (uploadError) {
-        console.error('Failed to upload shot image to R2:', uploadError);
-      }
 
-      // Update shot
-      if (this.storeCallbacks?.updateShot) {
-        this.storeCallbacks.updateShot(shotId, { referenceImage: resultUrl });
-      }
-      if (this.storeCallbacks?.addGenerationHistory) {
-        this.storeCallbacks.addGenerationHistory(shotId, {
-          id: this.generateId(),
-          type: 'image',
-          timestamp: new Date(),
-          prompt: enrichedPrompt,
-          result: resultUrl,
-          status: 'success',
-          parameters: {
-            model: mode,
-            gridSize: gridSize as any
+        // Upload resultUrl to R2 if it is Base64
+        try {
+          if (resultUrl && resultUrl.startsWith('data:')) {
+            const base64Data = resultUrl.split(',')[1];
+            const r2Url = await storageService.uploadBase64ToR2(
+              base64Data,
+              `projects/shots/${this.userId || 'anonymous'}`,
+              `shot_gen_${shotId}_${Date.now()}.png`,
+              this.userId
+            );
+            resultUrl = r2Url;
+
+            // Also update finalResult for chat persistence
+            if (finalResult.imageUrl) finalResult.imageUrl = r2Url;
           }
-        });
+        } catch (uploadError) {
+          console.error('Failed to upload shot image to R2:', uploadError);
+        }
+
+        // Update shot
+        if (this.storeCallbacks?.updateShot) {
+          this.storeCallbacks.updateShot(shotId, { referenceImage: resultUrl });
+        }
+        if (this.storeCallbacks?.addGenerationHistory) {
+          this.storeCallbacks.addGenerationHistory(shotId, {
+            id: this.generateId(),
+            type: 'image',
+            timestamp: new Date(),
+            prompt: enrichedPrompt,
+            result: resultUrl,
+            status: 'success',
+            parameters: {
+              model: mode,
+              gridSize: gridSize as any
+            }
+          });
+        }
+
+        // Sync Chat
+        await this.saveProChatMessage(shotId, prompt || shot.description, { ...finalResult, imageUrl: resultUrl }, mode, enrichedPrompt);
+
+        return { tool: 'generateShotImage', result: { imageUrl: resultUrl, ...finalResult }, success: true };
       }
-
-      // Sync Chat
-      await this.saveProChatMessage(shotId, prompt || shot.description, { ...finalResult, imageUrl: resultUrl }, mode, enrichedPrompt);
-
-      return { tool: 'generateShotImage', result: { imageUrl: resultUrl, ...finalResult }, success: true };
 
     } catch (e: any) {
       return { tool: 'generateShotImage', result: null, success: false, error: e.message };
@@ -988,32 +1048,198 @@ export class AgentToolExecutor {
   private async batchGenerateSceneImages(sceneId: string, mode: string, gridSize: string, prompt: string, force: boolean): Promise<ToolResult> {
     if (!this.project) return { tool: 'batchGenerateSceneImages', result: null, error: 'Project not found' };
 
-    const shots = this.project.shots.filter(s => s.sceneId === sceneId && (force || !s.referenceImage));
+    // Heuristic: If prompt contains keywords implying regeneration or "all", force generation for all shots
+    const shouldForce = force || /all|regenerate|update|全部|所有|重新|覆盖/i.test(prompt || '');
+
+    const shots = this.project.shots.filter(s => s.sceneId === sceneId && (shouldForce || !s.referenceImage));
     if (shots.length === 0) {
-      return { tool: 'batchGenerateSceneImages', result: { message: 'No shots to generate', count: 0 }, success: true };
+      const msg = shouldForce
+        ? 'No shots found to generate (even with force=true).'
+        : 'No shots found to generate. All shots already have images. If you intended to regenerate them, please set force=true or use keywords like "regenerate all".';
+      return { tool: 'batchGenerateSceneImages', result: { message: msg, count: 0 }, success: true };
     }
 
     if (this.storeCallbacks?.setGenerationProgress) {
-      this.storeCallbacks.setGenerationProgress({ total: shots.length, current: 0, status: 'running', message: 'Starting batch generation...' });
+      this.storeCallbacks.setGenerationProgress({ total: shots.length, current: 0, status: 'running', message: '开始批量生成...' });
     }
 
     let successCount = 0;
     let failedCount = 0;
 
-    await runWithConcurrency(shots, IMAGE_CONCURRENCY, async (shot, idx) => {
-      if (this.storeCallbacks?.setGenerationProgress) {
-        this.storeCallbacks.setGenerationProgress({ current: successCount + failedCount + 1, message: `Generating shot ${idx + 1}/${shots.length}` });
+    // --- Batch Grid Generation Logic ---
+    if (mode === 'grid') {
+      const [rows, cols] = gridSize === '3x3' ? [3, 3] : [2, 2];
+      const batchSize = rows * cols;
+
+      // Sort shots by order to ensure sequential grid generation
+      const sortedShots = [...shots].sort((a, b) => (a.order || 0) - (b.order || 0));
+
+      // Chunk shots
+      const chunks = [];
+      for (let i = 0; i < sortedShots.length; i += batchSize) {
+        chunks.push(sortedShots.slice(i, i + batchSize));
       }
-      try {
-        const res = await this.generateShotImage(shot.id, mode, gridSize, prompt, force);
-        if (res.success) successCount++; else failedCount++;
-      } catch (e) {
-        failedCount++;
-      }
-    });
+
+      // Process chunks in parallel
+      await Promise.all(chunks.map(async (chunk, i) => {
+        const chunkIndex = i + 1;
+
+        if (this.storeCallbacks?.setGenerationProgress) {
+          this.storeCallbacks.setGenerationProgress({
+            current: successCount + failedCount + 1,
+            message: `正在生成 Grid 批次 ${chunkIndex}/${chunks.length} (${chunk.length} 个镜头)`
+          });
+        }
+
+        try {
+          // 1. Construct Combined Prompt
+          const artStyle = this.project?.metadata?.artStyle ? `Art Style: ${this.project.metadata.artStyle}\n` : '';
+          const sceneDesc = this.project?.scenes?.find(s => s.id === sceneId)?.description || '';
+          let combinedPrompt = `${artStyle}Scene Context: ${sceneDesc}\n`;
+
+          // Collect character names from shots to help enrichment
+          const involvedCharacters = new Set<string>();
+          chunk.forEach(shot => {
+            shot.mainCharacters?.forEach(c => involvedCharacters.add(c));
+          });
+          if (involvedCharacters.size > 0) {
+            combinedPrompt += `Characters: ${Array.from(involvedCharacters).join(', ')}\n`;
+          }
+
+          if (prompt) combinedPrompt += `Additional Instructions: ${prompt}\n`;
+          combinedPrompt += `\nShot Requirements (${chunk.length} shots):\n`;
+
+          chunk.forEach((shot, idx) => {
+            combinedPrompt += `${idx + 1}. ${shot.shotSize} - ${shot.cameraMovement}`;
+            if (shot.description) combinedPrompt += ` - ${shot.description}`;
+            combinedPrompt += '\n';
+          });
+
+          // 2. Enrich Prompt (Character Consistency)
+          // We pass the project and the combined prompt. 
+          // enrichPromptWithAssets will look for character names in the prompt.
+          console.log(`[AgentTools] Enriching prompt for chunk ${chunkIndex}. CombinedPrompt length: ${combinedPrompt.length}`);
+          const { enrichedPrompt, referenceImageUrls } = enrichPromptWithAssets(
+            combinedPrompt,
+            this.project
+          );
+          console.log(`[AgentTools] Enriched prompt. Found ${referenceImageUrls.length} reference images.`);
+          if (referenceImageUrls.length > 0) {
+            console.log(`[AgentTools] Reference URLs: ${JSON.stringify(referenceImageUrls)}`);
+          }
+
+          // 3. Prepare Reference Images
+          const refs = await urlsToReferenceImages(referenceImageUrls);
+          console.log(`[AgentTools] Converted to ReferenceImageData. Count: ${refs.length}`);
+
+          // 4. Generate Grid
+          const aspectRatio = this.project.settings.aspectRatio as AspectRatio;
+          const gridData = await generateMultiViewGrid(
+            enrichedPrompt,
+            rows,
+            cols,
+            aspectRatio,
+            '1024x1024' as ImageSize,
+            refs
+          );
+
+          // 5. Upload to R2 (Full Grid & Slices)
+          let fullGridUrl = gridData.fullImage;
+          let sliceUrls = gridData.slices;
+
+          try {
+            const folder = `projects/${this.project.id}/grids`;
+            if (fullGridUrl.startsWith('data:')) {
+              const base64Data = fullGridUrl.split(',')[1];
+              fullGridUrl = await storageService.uploadBase64ToR2(base64Data, folder, `grid_full_${Date.now()}.png`, this.userId);
+            }
+
+            // Upload slices in parallel
+            sliceUrls = await Promise.all(gridData.slices.map(async (slice, idx) => {
+              if (slice.startsWith('data:')) {
+                const base64Data = slice.split(',')[1];
+                return await storageService.uploadBase64ToR2(base64Data, folder, `grid_slice_${Date.now()}_${idx}.png`, this.userId);
+              }
+              return slice;
+            }));
+          } catch (e) {
+            console.warn('Failed to upload grid/slices to R2, using base64 fallback', e);
+          }
+
+          // 6. Assign Slices to Shots & Save History
+          chunk.forEach((shot, idx) => {
+            if (idx < sliceUrls.length) {
+              const sliceUrl = sliceUrls[idx];
+
+              // Update Shot
+              if (this.storeCallbacks?.updateShot) {
+                this.storeCallbacks.updateShot(shot.id, {
+                  referenceImage: sliceUrl,
+                  fullGridUrl: fullGridUrl,
+                  gridImages: sliceUrls // Store all slices for re-selection
+                });
+              }
+
+              // Add Generation History
+              if (this.storeCallbacks?.addGenerationHistory) {
+                this.storeCallbacks.addGenerationHistory(shot.id, {
+                  id: this.generateId(),
+                  type: 'image',
+                  timestamp: new Date(),
+                  prompt: enrichedPrompt,
+                  result: sliceUrl,
+                  status: 'success',
+                  parameters: {
+                    model: 'gemini-grid',
+                    gridSize: gridSize as any,
+                    fullGridUrl: fullGridUrl,
+                    slices: sliceUrls,
+                    sliceIndex: idx
+                  }
+                });
+              }
+              successCount++;
+            } else {
+              failedCount++;
+            }
+          });
+
+          // 7. Add Scene Grid History
+          if (this.storeCallbacks?.addGridHistory) {
+            this.storeCallbacks.addGridHistory(sceneId, {
+              id: this.generateId(),
+              timestamp: new Date(),
+              prompt: enrichedPrompt,
+              gridSize: (gridSize === '3x3' ? '3x3' : '2x2'),
+              fullGridUrl: fullGridUrl,
+              slices: sliceUrls,
+              aspectRatio: aspectRatio
+            });
+          }
+
+        } catch (e) {
+          console.error(`Failed to generate grid batch ${chunkIndex}`, e);
+          failedCount += chunk.length;
+        }
+      }));
+
+    } else {
+      // --- Original Concurrent Logic for Non-Grid Modes ---
+      await runWithConcurrency(shots, IMAGE_CONCURRENCY, async (shot, idx) => {
+        if (this.storeCallbacks?.setGenerationProgress) {
+          this.storeCallbacks.setGenerationProgress({ current: successCount + failedCount + 1, message: `正在生成镜头 ${idx + 1}/${shots.length}` });
+        }
+        try {
+          const res = await this.generateShotImage(shot.id, mode, gridSize, prompt, force);
+          if (res.success) successCount++; else failedCount++;
+        } catch (e) {
+          failedCount++;
+        }
+      });
+    }
 
     if (this.storeCallbacks?.setGenerationProgress) {
-      this.storeCallbacks.setGenerationProgress({ status: 'idle', message: 'Batch completed' });
+      this.storeCallbacks.setGenerationProgress({ status: 'idle', message: '批量生成完成' });
     }
 
     return {
@@ -1031,42 +1257,119 @@ export class AgentToolExecutor {
   private async batchGenerateProjectImages(mode: string, gridSize: string, prompt: string, force: boolean): Promise<ToolResult> {
     if (!this.project) return { tool: 'batchGenerateProjectImages', result: null, error: 'Project not found' };
 
-    const shots = this.project.shots.filter(s => (force || !s.referenceImage));
-    if (shots.length === 0) {
-      return { tool: 'batchGenerateProjectImages', result: { message: 'No shots to generate', count: 0 }, success: true };
+    const scenes = this.project.scenes;
+    if (scenes.length === 0) {
+      return { tool: 'batchGenerateProjectImages', result: { message: 'No scenes to generate', count: 0 }, success: true };
     }
 
     if (this.storeCallbacks?.setGenerationProgress) {
-      this.storeCallbacks.setGenerationProgress({ total: shots.length, current: 0, status: 'running', message: 'Starting project batch generation...' });
+      this.storeCallbacks.setGenerationProgress({ total: scenes.length, current: 0, status: 'running', message: '开始项目批量生成...' });
     }
 
-    let successCount = 0;
-    let failedCount = 0;
+    let totalSuccess = 0;
+    let totalFailed = 0;
+    let totalShots = 0;
 
-    await runWithConcurrency(shots, IMAGE_CONCURRENCY, async (shot, idx) => {
+    // Process scenes sequentially to manage concurrency and progress better
+    for (let i = 0; i < scenes.length; i++) {
+      const scene = scenes[i];
       if (this.storeCallbacks?.setGenerationProgress) {
-        this.storeCallbacks.setGenerationProgress({ current: successCount + failedCount + 1, message: `Generating shot ${idx + 1}/${shots.length}` });
+        this.storeCallbacks.setGenerationProgress({
+          current: i + 1,
+          message: `正在处理场景 ${i + 1}/${scenes.length}: ${scene.name}`
+        });
       }
-      try {
-        const res = await this.generateShotImage(shot.id, mode, gridSize, prompt, force);
-        if (res.success) successCount++; else failedCount++;
-      } catch (e) {
-        failedCount++;
+
+      const result = await this.batchGenerateSceneImages(scene.id, mode, gridSize, prompt, force);
+
+      if (result.success && result.result) {
+        totalSuccess += result.result.successCount || 0;
+        totalFailed += result.result.failedCount || 0;
+        totalShots += result.result.totalShots || 0;
       }
-    });
+    }
 
     if (this.storeCallbacks?.setGenerationProgress) {
-      this.storeCallbacks.setGenerationProgress({ status: 'idle', message: 'Batch completed' });
+      this.storeCallbacks.setGenerationProgress({ status: 'idle', message: '项目批量生成完成' });
     }
 
     return {
       tool: 'batchGenerateProjectImages',
       result: {
-        totalShots: shots.length,
-        successCount,
-        failedCount
+        totalShots,
+        successCount: totalSuccess,
+        failedCount: totalFailed,
+        message: totalShots === 0 && !force
+          ? 'No shots generated. All shots might already have images. Set force=true to regenerate.'
+          : undefined
       },
       success: true
     };
+  }
+
+
+  // --- CRUD Implementations ---
+
+  private addCharacter(name: string, description: string, appearance: string): ToolResult {
+    if (!this.storeCallbacks?.addCharacter) return { tool: 'addCharacter', result: null, error: 'Store callback missing' };
+    const newCharacter: Character = {
+      id: this.generateId(),
+      name,
+      description,
+      appearance,
+      referenceImages: []
+    };
+    this.storeCallbacks.addCharacter(newCharacter);
+    return { tool: 'addCharacter', result: { characterId: newCharacter.id, name }, success: true };
+  }
+
+  private updateCharacter(characterId: string, updates: Partial<Character>): ToolResult {
+    if (!this.project) return { tool: 'updateCharacter', result: null, error: 'Project not found' };
+    const character = this.project.characters.find(c => c.id === characterId);
+    if (!character) return { tool: 'updateCharacter', result: null, error: 'Character not found' };
+    if (!this.storeCallbacks?.updateCharacter) return { tool: 'updateCharacter', result: null, error: 'Store callback missing' };
+
+    this.storeCallbacks.updateCharacter(characterId, updates);
+    return { tool: 'updateCharacter', result: { characterId, updates }, success: true };
+  }
+
+  private deleteCharacter(characterId: string): ToolResult {
+    if (!this.project) return { tool: 'deleteCharacter', result: null, error: 'Project not found' };
+    if (!this.storeCallbacks?.deleteCharacter) return { tool: 'deleteCharacter', result: null, error: 'Store callback missing' };
+
+    this.storeCallbacks.deleteCharacter(characterId);
+    return { tool: 'deleteCharacter', result: { characterId }, success: true };
+  }
+
+  private updateScene(sceneId: string, updates: Partial<Scene>): ToolResult {
+    if (!this.project) return { tool: 'updateScene', result: null, error: 'Project not found' };
+    if (!this.storeCallbacks?.updateScene) return { tool: 'updateScene', result: null, error: 'Store callback missing' };
+
+    this.storeCallbacks.updateScene(sceneId, updates);
+    return { tool: 'updateScene', result: { sceneId, updates }, success: true };
+  }
+
+  private deleteScene(sceneId: string): ToolResult {
+    if (!this.project) return { tool: 'deleteScene', result: null, error: 'Project not found' };
+    if (!this.storeCallbacks?.deleteScene) return { tool: 'deleteScene', result: null, error: 'Store callback missing' };
+
+    this.storeCallbacks.deleteScene(sceneId);
+    return { tool: 'deleteScene', result: { sceneId }, success: true };
+  }
+
+  private updateShot(shotId: string, updates: Partial<Shot>): ToolResult {
+    if (!this.project) return { tool: 'updateShot', result: null, error: 'Project not found' };
+    if (!this.storeCallbacks?.updateShot) return { tool: 'updateShot', result: null, error: 'Store callback missing' };
+
+    this.storeCallbacks.updateShot(shotId, updates);
+    return { tool: 'updateShot', result: { shotId, updates }, success: true };
+  }
+
+  private deleteShot(shotId: string): ToolResult {
+    if (!this.project) return { tool: 'deleteShot', result: null, error: 'Project not found' };
+    if (!this.storeCallbacks?.deleteShot) return { tool: 'deleteShot', result: null, error: 'Store callback missing' };
+
+    this.storeCallbacks.deleteShot(shotId);
+    return { tool: 'deleteShot', result: { shotId }, success: true };
   }
 }
