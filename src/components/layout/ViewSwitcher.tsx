@@ -26,9 +26,9 @@ export default function ViewSwitcher({ activeView, onViewChange, className }: Vi
     const containerRef = useRef<HTMLDivElement>(null);
 
     const views = [
-        { id: 'planning', label: '策划模式', icon: FileText, color: 'text-purple-500' },
-        { id: 'canvas', label: '故事板', icon: Layout, color: 'text-blue-500' },
-        { id: 'timeline', label: '时间轴', icon: Scissors, color: 'text-emerald-500' },
+        { id: 'planning', label: '故事构思', icon: FileText, color: 'text-purple-500', disabled: false },
+        { id: 'canvas', label: '图片生成', icon: Layout, color: 'text-blue-500', disabled: false },
+        { id: 'timeline', label: '视频输出', icon: Scissors, color: 'text-emerald-500', disabled: false },
         { id: 'drafts', label: '草稿库', icon: Plus, color: 'text-zinc-400', disabled: true },
     ] as const;
 

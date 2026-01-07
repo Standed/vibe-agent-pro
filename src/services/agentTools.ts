@@ -1134,7 +1134,7 @@ export class AgentToolExecutor {
           console.log(`[AgentTools] Converted to ReferenceImageData. Count: ${refs.length}`);
 
           // 4. Generate Grid
-          const aspectRatio = this.project.settings.aspectRatio as AspectRatio;
+          const aspectRatio = this.project!.settings.aspectRatio as AspectRatio;
           const gridData = await generateMultiViewGrid(
             enrichedPrompt,
             rows,
@@ -1149,7 +1149,7 @@ export class AgentToolExecutor {
           let sliceUrls = gridData.slices;
 
           try {
-            const folder = `projects/${this.project.id}/grids`;
+            const folder = `projects/${this.project!.id}/grids`;
             if (fullGridUrl.startsWith('data:')) {
               const base64Data = fullGridUrl.split(',')[1];
               fullGridUrl = await storageService.uploadBase64ToR2(base64Data, folder, `grid_full_${Date.now()}.png`, this.userId);

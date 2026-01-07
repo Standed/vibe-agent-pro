@@ -85,7 +85,7 @@ export default function PlanningChat({
 
                     {/* Thinking Process */}
                     {isProcessing && thinkingSteps.length > 0 && (
-                        <ThinkingProcess steps={thinkingSteps} />
+                        <ThinkingProcess steps={thinkingSteps} isProcessing={isProcessing} />
                     )}
 
                     {/* AI Storyboard Progress */}
