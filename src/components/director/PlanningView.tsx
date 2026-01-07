@@ -19,60 +19,20 @@ import PlanningChat from './PlanningChat';
 
 interface PlanningViewProps {
     onClose?: () => void;
-    showExitButton?: boolean;
     showHomeButton?: boolean;
-    activeView?: 'planning' | 'canvas' | 'timeline' | 'drafts';
     onSwitchToCanvas?: () => void;
     onSwitchToTimeline?: () => void;
-    onOpenGridSelection?: (fullGridUrl: string, slices: string[]) => void;
 }
-
-// Helper to get caret coordinates
-const getCaretCoordinates = (element: HTMLTextAreaElement, position: number) => {
-    const div = document.createElement('div');
-    const style = getComputedStyle(element);
-
-    Array.from(style).forEach((prop) => {
-        div.style.setProperty(prop, style.getPropertyValue(prop));
-    });
-
-    div.style.position = 'absolute';
-    div.style.visibility = 'hidden';
-    div.style.whiteSpace = 'pre-wrap';
-    div.style.wordWrap = 'break-word';
-    div.style.overflow = 'hidden';
-
-    div.textContent = element.value.substring(0, position);
-
-    const span = document.createElement('span');
-    span.textContent = element.value.substring(position) || '.';
-    div.appendChild(span);
-
-    document.body.appendChild(div);
-
-    const coordinates = {
-        top: span.offsetTop + parseInt(style.borderTopWidth),
-        left: span.offsetLeft + parseInt(style.borderLeftWidth),
-        height: parseInt(style.lineHeight)
-    };
-
-    document.body.removeChild(div);
-    return coordinates;
-};
 
 export default function PlanningView({
     onClose,
-    showExitButton = true,
     showHomeButton = true,
-    activeView = 'planning',
     onSwitchToCanvas,
     onSwitchToTimeline,
-    onOpenGridSelection
 }: PlanningViewProps) {
     const params = useParams();
     const {
         project,
-        updateScript,
         addCharacter,
         updateCharacter,
         deleteCharacter,
@@ -85,7 +45,7 @@ export default function PlanningView({
     } = useProjectStore();
 
     // UI State
-    const [activeTab, setActiveTab] = useState<'script' | 'storyboard' | 'characters' | 'locations'>('script');
+    const [activeTab, setActiveTab] = useState<'storyboard' | 'characters' | 'locations'>('storyboard');
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
     // Agent state
@@ -95,7 +55,7 @@ export default function PlanningView({
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
     const messagesTopRef = useRef<HTMLDivElement | null>(null);
 
-    const { isProcessing, thinkingSteps, sendMessage } = useAgent();
+    const { isProcessing, thinkingSteps, sendMessage } = useAgent({ chatChannel: 'planning' });
 
     // Dialog states
     const [showAddCharacter, setShowAddCharacter] = useState(false);
@@ -106,14 +66,10 @@ export default function PlanningView({
     // AI Storyboard hook
     const { isGenerating, currentStep, handleAIStoryboard } = useAIStoryboard();
 
-    // Mention State
-    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-    const [mentionState, setMentionState] = useState<{
-        isOpen: boolean;
-        query: string;
-        position: { top: number; left: number };
-        index: number; // caret index of @
-    }>({ isOpen: false, query: '', position: { top: 0, left: 0 }, index: -1 });
+    const filterPlanningMessages = useCallback(
+        (history: ChatMessage[]) => history.filter((msg) => msg.metadata?.channel === 'planning'),
+        []
+    );
 
     // 从云端加载聊天历史
     useEffect(() => {
@@ -128,7 +84,7 @@ export default function PlanningView({
                     projectId: project.id,
                     scope: 'project',
                 });
-                setMessages(history);
+                setMessages(filterPlanningMessages(history));
             } catch (error) {
                 console.error('加载聊天历史失败:', error);
                 setMessages([]);
@@ -136,7 +92,7 @@ export default function PlanningView({
         };
 
         loadHistory();
-    }, [project?.id, user]);
+    }, [project?.id, user, filterPlanningMessages]);
 
     // Scroll to bottom when new message
     useEffect(() => {
@@ -171,7 +127,7 @@ export default function PlanningView({
     const prevIsGenerating = useRef(isGenerating);
     useEffect(() => {
         if (!project) return;
-        if (prevIsGenerating.current && !isGenerating && project.shots && project.shots.length > 0 && activeTab === 'script') {
+        if (prevIsGenerating.current && !isGenerating && project.shots && project.shots.length > 0 && activeTab !== 'storyboard') {
             setActiveTab('storyboard');
             setIsSidebarCollapsed(false);
         }
@@ -193,6 +149,7 @@ export default function PlanningView({
             scope: 'project',
             role: 'user',
             content: userContent,
+            metadata: { channel: 'planning' },
             timestamp: new Date(),
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -208,59 +165,8 @@ export default function PlanningView({
                 projectId: project.id,
                 scope: 'project',
             });
-            setMessages(history);
+            setMessages(filterPlanningMessages(history));
         }
-    };
-
-    const handleScriptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const newVal = e.target.value;
-        updateScript(newVal);
-
-        const selectionStart = e.target.selectionStart;
-        const lastChar = newVal[selectionStart - 1];
-
-        if (lastChar === '@') {
-            const coords = getCaretCoordinates(e.target, selectionStart);
-            const rect = e.target.getBoundingClientRect();
-            setMentionState({
-                isOpen: true,
-                query: '',
-                position: {
-                    top: rect.top + coords.top + 24,
-                    left: rect.left + coords.left
-                },
-                index: selectionStart
-            });
-        } else if (mentionState.isOpen) {
-            const dist = selectionStart - mentionState.index;
-            if (dist < 0 || dist > 20 || /\s/.test(newVal.slice(mentionState.index, selectionStart))) {
-                setMentionState(prev => ({ ...prev, isOpen: false }));
-            } else {
-                setMentionState(prev => ({
-                    ...prev,
-                    query: newVal.slice(mentionState.index, selectionStart)
-                }));
-            }
-        }
-    };
-
-    const insertMention = (name: string) => {
-        if (!textareaRef.current || !project) return;
-
-        const before = project.script.substring(0, mentionState.index - 1);
-        const after = project.script.substring(textareaRef.current.selectionStart);
-        const newScript = before + name + ' ' + after;
-
-        updateScript(newScript);
-        setMentionState(prev => ({ ...prev, isOpen: false }));
-
-        setTimeout(() => {
-            if (textareaRef.current) {
-                textareaRef.current.focus();
-                const newPos = before.length + name.length + 1;
-                textareaRef.current.setSelectionRange(newPos, newPos);
-            }
-        }, 0);
     };
 
     const handleDeleteCharacter = (id: string, name: string) => {
@@ -291,20 +197,12 @@ export default function PlanningView({
                 setIsSidebarCollapsed={setIsSidebarCollapsed}
                 showHomeButton={showHomeButton}
                 onClose={onClose}
-                updateScript={updateScript}
                 onAddCharacter={() => setShowAddCharacter(true)}
                 onEditCharacter={setEditingCharacter}
                 onDeleteCharacter={handleDeleteCharacter}
                 onAddLocation={() => setShowAddLocation(true)}
                 onEditLocation={setEditingLocation}
                 onDeleteLocation={handleDeleteLocation}
-                isProcessing={isProcessing || isGenerating}
-                mentionState={mentionState}
-                insertMention={insertMention}
-                handleScriptChange={handleScriptChange}
-                textareaRef={textareaRef}
-                activeView={activeView}
-                onOpenGridSelection={onOpenGridSelection}
             />
 
             <div className="flex-1 flex flex-col relative bg-white dark:bg-[#0a0a0a]">

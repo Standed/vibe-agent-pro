@@ -214,7 +214,6 @@ export default function PlanningPage() {
     return (
         <div className="h-screen w-full overflow-hidden">
             <PlanningView
-                showExitButton={false}
                 showHomeButton={true}
             />
         </div>

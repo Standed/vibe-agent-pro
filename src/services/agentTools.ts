@@ -1093,7 +1093,8 @@ export class AgentToolExecutor {
 
         try {
           // 1. Construct Combined Prompt
-          const artStyle = this.project?.metadata?.artStyle ? `Art Style: ${this.project.metadata.artStyle}\n` : '';
+          const artStyleVal = this.project?.metadata?.artStyle;
+          const artStyle = artStyleVal ? `Art Style: ${artStyleVal}\n` : '';
           const sceneDesc = this.project?.scenes?.find(s => s.id === sceneId)?.description || '';
           let combinedPrompt = `${artStyle}Scene Context: ${sceneDesc}\n`;
 

@@ -1,55 +1,43 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    FileText,
     Film,
     Users,
     MapPin,
     Plus,
     Edit3,
     Trash2,
-    ChevronLeft,
-    Home,
     Settings,
     ArrowRight,
-    Sparkles,
     X,
-    Loader2,
-    Layout,
-    Clock
+    Loader2
 } from 'lucide-react';
-import { Project, Character, Location, Shot, Scene, ShotSize, CameraMovement } from '@/types/project';
+import { Project, Character, Location, Shot, ShotSize, CameraMovement } from '@/types/project';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { StoryboardTab } from '@/components/layout/sidebar/StoryboardTab';
 import { useProjectStore } from '@/store/useProjectStore';
 import { ShotEditor } from '@/components/layout/sidebar/ShotEditor';
+import { storageService } from '@/lib/storageService';
 
 interface PlanningSidebarProps {
     project: Project;
-    activeTab: 'script' | 'storyboard' | 'characters' | 'locations';
-    setActiveTab: (tab: 'script' | 'storyboard' | 'characters' | 'locations') => void;
+    activeTab: 'storyboard' | 'characters' | 'locations';
+    setActiveTab: (tab: 'storyboard' | 'characters' | 'locations') => void;
     isSidebarCollapsed: boolean;
     setIsSidebarCollapsed: (collapsed: boolean) => void;
     showHomeButton?: boolean;
     onClose?: () => void;
-    updateScript: (script: string) => void;
     onAddCharacter: () => void;
     onEditCharacter: (char: Character) => void;
     onDeleteCharacter: (id: string, name: string) => void;
     onAddLocation: () => void;
     onEditLocation: (loc: Location) => void;
     onDeleteLocation: (id: string, name: string) => void;
-    isProcessing?: boolean;
-    mentionState: any;
-    insertMention: (name: string) => void;
-    handleScriptChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-    textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-    activeView?: 'planning' | 'canvas' | 'timeline' | 'drafts';
-    onOpenGridSelection?: (fullGridUrl: string, slices: string[]) => void;
 }
 
 export default function PlanningSidebar({
@@ -60,20 +48,12 @@ export default function PlanningSidebar({
     setIsSidebarCollapsed,
     showHomeButton = true,
     onClose,
-    updateScript,
     onAddCharacter,
     onEditCharacter,
     onDeleteCharacter,
     onAddLocation,
     onEditLocation,
     onDeleteLocation,
-    isProcessing,
-    mentionState,
-    insertMention,
-    handleScriptChange,
-    textareaRef,
-    activeView = 'planning',
-    onOpenGridSelection,
 }: PlanningSidebarProps) {
     const {
         addScene,
@@ -81,7 +61,6 @@ export default function PlanningSidebar({
         deleteShot,
         deleteScene,
         updateScene,
-        reorderShots,
         selectShot,
         updateShot,
         setControlMode,
@@ -93,6 +72,9 @@ export default function PlanningSidebar({
     const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
     const [editingSceneName, setEditingSceneName] = useState<string>('');
     const [editingShot, setEditingShot] = useState<Shot | null>(null);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
     const [shotForm, setShotForm] = useState<{
         description: string;
         narration: string;
@@ -108,9 +90,9 @@ export default function PlanningSidebar({
         cameraMovement: '',
         duration: 3,
     });
+    const uploadInputRef = useRef<HTMLInputElement>(null);
 
     const tabs = [
-        { id: 'script', label: '剧本', icon: FileText },
         { id: 'storyboard', label: '分镜', icon: Film },
         { id: 'characters', label: '角色', icon: Users },
         { id: 'locations', label: '场景', icon: MapPin },
@@ -137,15 +119,120 @@ export default function PlanningSidebar({
         });
     };
 
+    const liveEditingShot = editingShot ? project?.shots.find((s) => s.id === editingShot.id) || editingShot : null;
+
+    useEffect(() => {
+        if (liveEditingShot?.referenceImage) {
+            setSelectedHistoryImage(liveEditingShot.referenceImage);
+        } else {
+            setSelectedHistoryImage(null);
+        }
+    }, [liveEditingShot?.referenceImage, editingShot?.id]);
+
+    const shotHistoryImages = useMemo(() => {
+        if (!liveEditingShot) return [];
+        const urls = new Set<string>();
+        if (liveEditingShot.referenceImage) urls.add(liveEditingShot.referenceImage);
+        if (liveEditingShot.gridImages?.length) {
+            liveEditingShot.gridImages.forEach((u) => u && urls.add(u));
+        }
+        if (liveEditingShot.generationHistory?.length) {
+            liveEditingShot.generationHistory.forEach((h) => {
+                if (h.type === 'image' && typeof h.result === 'string') {
+                    urls.add(h.result);
+                }
+                if (h.parameters && (h.parameters as any)?.fullGridUrl) {
+                    urls.add((h.parameters as any).fullGridUrl);
+                }
+            });
+        }
+        return Array.from(urls);
+    }, [liveEditingShot]);
+
+    const resolveSelectionMeta = (shot: Shot | null, url: string) => {
+        if (!shot) return {};
+        const historyMatch = shot.generationHistory?.find((item) => item.type === 'image' && item.result === url);
+        const params = (historyMatch?.parameters || {}) as any;
+        if (params?.fullGridUrl || params?.slices) {
+            return {
+                fullGridUrl: params.fullGridUrl as string | undefined,
+                gridImages: params.slices as string[] | undefined,
+            };
+        }
+        if (shot.gridImages?.includes(url)) {
+            return {
+                fullGridUrl: shot.fullGridUrl,
+                gridImages: shot.gridImages,
+            };
+        }
+        return {};
+    };
+
     const saveShotEdit = () => {
         if (!editingShot) return;
-        updateShot(editingShot.id, {
+        const updates: Partial<Shot> = {
             ...shotForm,
             shotSize: shotForm.shotSize as ShotSize,
             cameraMovement: shotForm.cameraMovement as CameraMovement,
-        });
+        };
+        if (selectedHistoryImage) {
+            const meta = resolveSelectionMeta(liveEditingShot || null, selectedHistoryImage);
+            updates.referenceImage = selectedHistoryImage;
+            updates.status = 'done';
+            if (meta.fullGridUrl) updates.fullGridUrl = meta.fullGridUrl;
+            if (meta.gridImages) updates.gridImages = meta.gridImages;
+        }
+        updateShot(editingShot.id, updates);
         setEditingShot(null);
         toast.success('分镜已更新');
+    };
+
+    const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !editingShot) return;
+
+        if (!file.type.startsWith('image/')) {
+            toast.error('请选择图片文件');
+            return;
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+            toast.error('图片大小不能超过 10MB');
+            return;
+        }
+
+        setIsUploading(true);
+        try {
+            const result = await storageService.uploadFile(file, `shots/${editingShot.id}`);
+            const imageUrl = result.url;
+
+            const shot = project?.shots.find(s => s.id === editingShot.id);
+            if (shot) {
+                const historyItem = {
+                    id: `upload_${Date.now()}`,
+                    type: 'image' as const,
+                    timestamp: new Date(),
+                    result: imageUrl,
+                    prompt: '用户上传图片',
+                    parameters: {
+                        model: 'upload',
+                        source: 'user_upload',
+                    },
+                    status: 'success' as const,
+                };
+                const newHistory = [...(shot.generationHistory || []), historyItem];
+                updateShot(editingShot.id, { generationHistory: newHistory });
+            }
+
+            toast.success('图片上传成功');
+            setSelectedHistoryImage(imageUrl);
+        } catch (error) {
+            console.error('Upload error:', error);
+            toast.error('图片上传失败');
+        } finally {
+            setIsUploading(false);
+            if (uploadInputRef.current) uploadInputRef.current.value = '';
+        }
     };
 
     return (
@@ -224,7 +311,6 @@ export default function PlanningSidebar({
                                         </div>
                                     )}
                                     <p className="text-[10px] text-zinc-500 font-medium">
-                                        {activeTab === 'script' && `${project.script?.length || 0} 字剧本`}
                                         {activeTab === 'storyboard' && `${project.shots?.length || 0} 个镜头`}
                                         {activeTab === 'characters' && `${project.characters.length} 个角色`}
                                         {activeTab === 'locations' && `${project.locations.length} 个场景`}
@@ -242,57 +328,6 @@ export default function PlanningSidebar({
                         {/* Panel Content */}
                         <div className="flex-1 overflow-y-auto custom-scrollbar">
                             <AnimatePresence mode="wait">
-                                {activeTab === 'script' && (
-                                    <motion.div
-                                        key="script"
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: -10 }}
-                                        className="p-6 space-y-4"
-                                    >
-                                        <div className="relative group">
-                                            <textarea
-                                                ref={textareaRef}
-                                                value={project.script || ''}
-                                                onChange={handleScriptChange}
-                                                disabled={isProcessing}
-                                                placeholder="描述你的创意，或者让 AI 帮你完善... (@ 引用资源)"
-                                                className="w-full h-[55vh] p-4 text-sm leading-relaxed bg-zinc-50 dark:bg-black/40 text-zinc-900 dark:text-zinc-100 border border-black/5 dark:border-white/5 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-light-accent/20 dark:focus:ring-cine-accent/20 transition-all custom-scrollbar disabled:opacity-50"
-                                            />
-
-                                            {/* Mention Menu */}
-                                            {mentionState.isOpen && (
-                                                <div
-                                                    className="fixed z-[100] w-48 bg-white dark:bg-zinc-800 rounded-xl shadow-2xl border border-black/5 dark:border-white/10 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-                                                    style={{
-                                                        top: mentionState.position.top,
-                                                        left: mentionState.position.left
-                                                    }}
-                                                >
-                                                    <div className="p-2 border-b border-black/5 dark:border-white/5 bg-zinc-50 dark:bg-white/5">
-                                                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">引用资源</span>
-                                                    </div>
-                                                    <div className="max-h-48 overflow-y-auto custom-scrollbar">
-                                                        {[...project.characters, ...project.locations]
-                                                            .filter(item => item.name.toLowerCase().includes(mentionState.query.toLowerCase()))
-                                                            .map((item, idx) => (
-                                                                <button
-                                                                    key={idx}
-                                                                    onClick={() => insertMention(item.name)}
-                                                                    className="w-full px-4 py-2 text-left text-xs hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 hover:text-light-accent dark:hover:text-cine-accent transition-colors flex items-center gap-2"
-                                                                >
-                                                                    {'role' in item ? <Users size={12} /> : <MapPin size={12} />}
-                                                                    <span className="font-bold">{item.name}</span>
-                                                                </button>
-                                                            ))
-                                                        }
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </motion.div>
-                                )}
-
                                 {activeTab === 'storyboard' && (
                                     <motion.div
                                         key="storyboard"
@@ -320,7 +355,6 @@ export default function PlanningSidebar({
                                                     modified: new Date(),
                                                 });
                                             }}
-                                            setShowScriptEditor={() => setActiveTab('script')}
                                             editingSceneId={editingSceneId}
                                             editingSceneName={editingSceneName}
                                             setEditingSceneName={setEditingSceneName}
@@ -508,7 +542,7 @@ export default function PlanningSidebar({
                                     onClick={onClose}
                                     className="w-full flex items-center justify-center gap-2 text-xs font-bold text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors py-2"
                                 >
-                                    <span>返回画布</span>
+                                    <span>返回故事板</span>
                                     <ArrowRight size={12} />
                                 </button>
                             ) : (
@@ -516,7 +550,7 @@ export default function PlanningSidebar({
                                     href={`/project/${project.id}`}
                                     className="flex items-center justify-center gap-2 text-xs font-bold text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors py-2"
                                 >
-                                    <span>跳过策划，直接进入画布</span>
+                                    <span>跳过策划，直接进入故事板</span>
                                     <ArrowRight size={12} />
                                 </Link>
                             )}
@@ -532,13 +566,43 @@ export default function PlanningSidebar({
                 shotForm={shotForm}
                 setShotForm={setShotForm}
                 saveShotEdit={saveShotEdit}
-                shotHistoryImages={[]}
-                selectedHistoryImage={null}
-                setSelectedHistoryImage={() => { }}
-                liveEditingShot={editingShot}
-                updateShot={updateShot}
-                setShotImagePreview={() => { }}
-                onOpenGridSelection={onOpenGridSelection}
+                shotHistoryImages={shotHistoryImages}
+                selectedHistoryImage={selectedHistoryImage}
+                setSelectedHistoryImage={setSelectedHistoryImage}
+                setShotImagePreview={setPreviewImage}
+                onUploadClick={() => uploadInputRef.current?.click()}
+                isUploading={isUploading}
+            />
+
+            {/* Image Preview Overlay */}
+            {previewImage && createPortal(
+                <div
+                    className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-in fade-in duration-300"
+                    onClick={() => setPreviewImage(null)}
+                >
+                    <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+                        <img
+                            src={previewImage}
+                            alt="Preview"
+                            className="max-w-full max-h-[90vh] rounded-lg shadow-2xl"
+                        />
+                        <button
+                            onClick={() => setPreviewImage(null)}
+                            className="absolute -top-12 right-0 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                        >
+                            <X size={24} />
+                        </button>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            <input
+                ref={uploadInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleUploadImage}
+                className="hidden"
             />
         </div>
     );

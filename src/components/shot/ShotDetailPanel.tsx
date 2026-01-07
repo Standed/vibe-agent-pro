@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  Check,
   Loader2,
   Sparkles,
   Upload,
@@ -549,14 +550,24 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                 {shotHistoryImages.map((url, idx) => (
                   <div
                     key={idx}
-                    className={`relative aspect-video rounded-lg overflow-hidden border cursor-pointer transition-colors ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/40 dark:ring-cine-accent/40' : 'border-light-border/70 dark:border-cine-border/70 hover:border-light-accent dark:hover:border-cine-accent'}`}
-                    onClick={() => {
-                      setSelectedHistoryImage(url);
-                      updateShot(shotId, { referenceImage: url, status: 'done' });
-                    }}
-                    onDoubleClick={() => setShotImagePreview(url)}
+                    className={`group relative aspect-video rounded-lg overflow-hidden border cursor-pointer transition-colors ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/40 dark:ring-cine-accent/40' : 'border-light-border/70 dark:border-cine-border/70 hover:border-light-accent dark:hover:border-cine-accent'}`}
+                    onClick={() => setShotImagePreview(url)}
                   >
                     <img src={url} alt={`history-${idx + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedHistoryImage(url);
+                        updateShot(shotId, { referenceImage: url, status: 'done' });
+                      }}
+                      className={`absolute bottom-1 right-1 p-1.5 rounded-full shadow-lg transition-all z-10 ${selectedHistoryImage === url
+                        ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black opacity-100'
+                        : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-light-accent dark:hover:bg-cine-accent hover:text-white dark:hover:text-black'
+                        }`}
+                      title="应用此图片"
+                    >
+                      <Check size={12} />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -721,7 +732,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                   生成历史 ({shot.generationHistory.length})
                 </h3>
                 <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                  点击图片使用该版本
+                  点击图片预览，右下角选择
                 </span>
               </div>
 
@@ -753,7 +764,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                               src={item.result}
                               alt={`生成 ${idx + 1}`}
                               className="w-full h-48 object-cover cursor-pointer"
-                              onClick={() => handleFieldUpdate('referenceImage', item.result)}
+                              onClick={() => setShotImagePreview(item.result)}
                             />
                           ) : (
                             <video
@@ -766,9 +777,26 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                           {/* Overlay */}
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex items-center justify-center">
                             <span className="text-white text-sm opacity-0 group-hover:opacity-100 transition-opacity">
-                              点击使用此版本
+                              {item.type === 'image' ? '点击预览' : '点击使用此版本'}
                             </span>
                           </div>
+
+                          {item.type === 'image' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateShot(shotId, { referenceImage: item.result, status: 'done' });
+                                setSelectedHistoryImage(item.result);
+                              }}
+                              className={`absolute bottom-2 right-2 p-1.5 rounded-full shadow-lg transition-all z-10 ${selectedHistoryImage === item.result
+                                ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black opacity-100'
+                                : 'bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-light-accent dark:hover:bg-cine-accent hover:text-white dark:hover:text-black'
+                                }`}
+                              title="应用此图片"
+                            >
+                              <Check size={12} />
+                            </button>
+                          )}
 
                           {/* Type Badge */}
                           <div className="absolute top-2 right-2 bg-black/60 text-white px-2 py-1 rounded text-xs flex items-center gap-1">

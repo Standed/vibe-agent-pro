@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Upload, Trash2, Sparkles, Loader2, ChevronDown, Wand2, CheckCircle2, AlertCircle, Video, Pencil } from 'lucide-react';
+import { X, Plus, Upload, Trash2, Sparkles, Loader2, ChevronDown, Wand2, CheckCircle2, AlertCircle, Video, Pencil, Check } from 'lucide-react';
 import type { Character } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { toast } from 'sonner';
@@ -873,553 +873,668 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
 
   if (!mounted) return null;
 
-  return createPortal(
-    <AnimatePresence mode="wait">
-      <div key="character-dialog-main" className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="absolute inset-0 bg-black/40 backdrop-blur-md"
-        />
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9, y: 20, filter: 'blur(10px)' }}
-          animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
-          exit={{ opacity: 0, scale: 0.9, y: 20, filter: 'blur(10px)' }}
-          transition={{ type: "spring", duration: 0.5, bounce: 0.3 }}
-          className="relative w-full max-w-2xl seko-panel overflow-hidden flex flex-col max-h-[90vh]"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-5 border-b border-black/5 dark:border-white/5">
-            <div>
-              <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">{mode === 'add' ? '添加角色' : '编辑角色'}</h2>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 font-medium mt-0.5">
-                上传参考图片，提升生成质量
-              </p>
-            </div>
-            <button
+  return (
+    <>
+      {createPortal(
+        <AnimatePresence mode="wait">
+          <div key="character-dialog-main" className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               onClick={onClose}
-              className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all duration-300 hover:rotate-90"
+              className="absolute inset-0 bg-black/40 backdrop-blur-md"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20, filter: 'blur(10px)' }}
+              animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, scale: 0.9, y: 20, filter: 'blur(10px)' }}
+              transition={{ type: "spring", duration: 0.5, bounce: 0.3 }}
+              className="relative w-full max-w-2xl seko-panel overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
-            {/* Consistency Mode Switcher */}
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
-                角色一致性方案
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setConsistencyMode('three-view')}
-                  className={cn(
-                    "p-4 rounded-xl border-2 transition-all duration-200 text-left",
-                    consistencyMode === 'three-view'
-                      ? "border-zinc-900 dark:border-white bg-zinc-900/5 dark:bg-white/5"
-                      : "border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600"
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className={cn(
-                      "w-6 h-6 rounded-lg flex items-center justify-center",
-                      consistencyMode === 'three-view'
-                        ? "bg-zinc-900 dark:bg-white text-white dark:text-black"
-                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
-                    )}>
-                      <Wand2 className="w-3.5 h-3.5" />
-                    </div>
-                    <span className={cn(
-                      "font-bold text-sm",
-                      consistencyMode === 'three-view'
-                        ? "text-zinc-900 dark:text-white"
-                        : "text-zinc-700 dark:text-zinc-300"
-                    )}>三视图模式</span>
-                  </div>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                    使用即梦生成角色三视图，适合风格化、动漫、插画类项目
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-5 border-b border-black/5 dark:border-white/5">
+                <div>
+                  <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">{mode === 'add' ? '添加角色' : '编辑角色'}</h2>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400 font-medium mt-0.5">
+                    上传参考图片，提升生成质量
                   </p>
-                </button>
+                </div>
                 <button
-                  type="button"
-                  onClick={() => setConsistencyMode('sora-reference')}
-                  className={cn(
-                    "p-4 rounded-xl border-2 transition-all duration-200 text-left",
-                    consistencyMode === 'sora-reference'
-                      ? "border-zinc-900 dark:border-white bg-zinc-900/5 dark:bg-white/5"
-                      : "border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600"
-                  )}
+                  onClick={onClose}
+                  className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all duration-300 hover:rotate-90"
                 >
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className={cn(
-                      "w-6 h-6 rounded-lg flex items-center justify-center",
-                      consistencyMode === 'sora-reference'
-                        ? "bg-zinc-900 dark:bg-white text-white dark:text-black"
-                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
-                    )}>
-                      <Video className="w-3.5 h-3.5" />
-                    </div>
-                    <span className={cn(
-                      "font-bold text-sm",
-                      consistencyMode === 'sora-reference'
-                        ? "text-zinc-900 dark:text-white"
-                        : "text-zinc-700 dark:text-zinc-300"
-                    )}>Sora 参考模式</span>
-                  </div>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                    上传参考视频注册 Sora ID，适合真人、写实类项目
-                  </p>
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-            </div>
 
-            {/* Character Name */}
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-                角色名称 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="例如：苏白、李明、张医生..."
-                className="w-full px-4 py-3 seko-input"
-                required
-              />
-            </div>
-
-            {/* Character Description */}
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-                角色描述/性格 <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="角色的背景、性格、职业等...&#10;&#10;示例：30 岁左右的男性程序员，性格内向，经常熬夜工作。"
-                className="w-full h-24 px-4 py-3 seko-input resize-none"
-                required
-              />
-            </div>
-
-            {/* Character Appearance */}
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-                外貌特征（选填）
-              </label>
-              <textarea
-                value={appearance}
-                onChange={(e) => setAppearance(e.target.value)}
-                placeholder="详细描述外貌特征...&#10;&#10;示例：短发，戴黑框眼镜，中等身材，常穿格子衬衫。"
-                className="w-full h-20 px-4 py-3 seko-input resize-none"
-              />
-            </div>
-
-            {/* Reference Images */}
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 flex items-center justify-between">
-                <span>参考图片 <span className="text-red-500">*</span></span>
-                <span className="text-xs font-normal text-zinc-400">至少 1 张</span>
-              </label>
-
-              {/* AI Generate Three-View Button - 仅在三视图模式显示 */}
-              <div className={cn(
-                "relative overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-white/5 p-5 transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-white/5",
-                consistencyMode !== 'three-view' && "hidden"
-              )}>
-                <div className="absolute top-0 right-0 p-3 opacity-10">
-                  <Sparkles className="w-24 h-24 text-zinc-900 dark:text-white" />
-                </div>
-
-                <div className="relative z-10">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-zinc-900 dark:bg-white flex items-center justify-center shadow-lg shadow-black/10 dark:shadow-white/10">
-                        <Wand2 className="w-4 h-4 text-white dark:text-black" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-bold text-zinc-900 dark:text-white">AI 生成三视图</h3>
-                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">基于描述自动生成角色参考图</p>
-                      </div>
-                    </div>
-
-                    {/* Model & Mode Selector */}
-                    <div className="flex items-center gap-2">
-                      <div className="relative group">
-                        <select
-                          value={genMode}
-                          onChange={(e) => setGenMode(e.target.value as any)}
-                          className="appearance-none pl-3 pr-8 py-1.5 text-xs font-medium bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 rounded-lg focus:outline-none cursor-pointer hover:bg-white/80 dark:hover:bg-zinc-800 transition-colors text-zinc-900 dark:text-white"
-                        >
-                          <option value="jimeng" className="dark:bg-zinc-900">即梦 AI</option>
-                          <option value="gemini" className="dark:bg-zinc-900">Gemini</option>
-                          <option value="seedream" className="dark:bg-zinc-900">SeeDream</option>
-                        </select>
-                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-400 pointer-events-none" />
-                      </div>
-
-                      {genMode === 'jimeng' && (
-                        <div className="relative group">
-                          <select
-                            value={jimengModel}
-                            onChange={(e) => setJimengModel(e.target.value as JimengModel)}
-                            className="appearance-none pl-3 pr-8 py-1.5 text-xs font-medium bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 rounded-lg focus:outline-none cursor-pointer hover:bg-white/80 dark:hover:bg-zinc-800 transition-colors text-zinc-900 dark:text-white"
-                          >
-                            <option value="jimeng-4.5" className="dark:bg-zinc-900">图片 4.5</option>
-                            <option value="jimeng-4.1" className="dark:bg-zinc-900">图片 4.1</option>
-                            <option value="jimeng-4.0" className="dark:bg-zinc-900">图片 4.0</option>
-                          </select>
-                          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-400 pointer-events-none" />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleGenerateThreeView}
-                    disabled={isGenerating || !name.trim()}
-                    className={cn(
-                      "w-full seko-button seko-button-primary py-2.5 flex items-center justify-center gap-2.5 transition-all duration-300",
-                      isGenerating && "cursor-wait opacity-80"
-                    )}
-                  >
-                    {isGenerating ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>正在生成创意方案...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4" />
-                        <span>开始生成</span>
-                      </>
-                    )}
-                  </button>
-
-                  <div className="flex items-center justify-between mt-3 px-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">比例:</span>
-                      <select
-                        value={aspectRatio}
-                        onChange={(e) => setAspectRatio(e.target.value as '21:9' | '16:9')}
-                        className="text-[10px] font-medium bg-transparent text-zinc-700 dark:text-zinc-300 border-none p-0 focus:ring-0 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
-                      >
-                        <option value="21:9" className="dark:bg-zinc-900">21:9 超宽</option>
-                        <option value="16:9" className="dark:bg-zinc-900">16:9 宽屏</option>
-                      </select>
-                    </div>
-                    <span className="text-[10px] text-zinc-400">消耗 1 次生成额度</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Upload Button */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full group relative overflow-hidden rounded-2xl border-2 border-dashed border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500 bg-zinc-50/50 dark:bg-white/5 hover:bg-zinc-100 dark:hover:bg-white/10 transition-all duration-300 p-8 flex flex-col items-center justify-center gap-3"
-              >
-                <div className="w-12 h-12 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-300">
-                  <Upload className="w-5 h-5 text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors" />
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">点击上传参考图</p>
-                  <p className="text-xs text-zinc-400 mt-1">支持 JPG, PNG (Max 10MB)</p>
-                </div>
-              </button>
-
-              {/* Image Preview Grid */}
-              {referenceImages.length > 0 && (
-                <div className="grid grid-cols-3 gap-3 mt-4">
-                  {referenceImages.map((imageUrl, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
+              {/* Form */}
+              <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Consistency Mode Switcher */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
+                    角色一致性方案
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setConsistencyMode('three-view')}
                       className={cn(
-                        "group relative aspect-square rounded-xl overflow-hidden cursor-pointer transition-all duration-300",
-                        selectedRefIndex === index
-                          ? "ring-2 ring-zinc-900 dark:ring-white ring-offset-2 ring-offset-white dark:ring-offset-[#181818]"
-                          : "hover:ring-2 hover:ring-zinc-200 dark:hover:ring-zinc-700"
+                        "p-4 rounded-xl border-2 transition-all duration-200 text-left",
+                        consistencyMode === 'three-view'
+                          ? "border-zinc-900 dark:border-white bg-zinc-900/5 dark:bg-white/5"
+                          : "border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600"
                       )}
-                      onClick={() => {
-                        setPreviewImage(imageUrl);
-                        setSelectedRefIndex(index);
-                      }}
                     >
-                      <img
-                        src={imageUrl}
-                        alt={`参考图 ${index + 1}`}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                      />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={cn(
+                          "w-6 h-6 rounded-lg flex items-center justify-center",
+                          consistencyMode === 'three-view'
+                            ? "bg-zinc-900 dark:bg-white text-white dark:text-black"
+                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+                        )}>
+                          <Wand2 className="w-3.5 h-3.5" />
+                        </div>
+                        <span className={cn(
+                          "font-bold text-sm",
+                          consistencyMode === 'three-view'
+                            ? "text-zinc-900 dark:text-white"
+                            : "text-zinc-700 dark:text-zinc-300"
+                        )}>三视图模式</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                        使用即梦生成角色三视图，适合风格化、动漫、插画类项目
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConsistencyMode('sora-reference')}
+                      className={cn(
+                        "p-4 rounded-xl border-2 transition-all duration-200 text-left",
+                        consistencyMode === 'sora-reference'
+                          ? "border-zinc-900 dark:border-white bg-zinc-900/5 dark:bg-white/5"
+                          : "border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={cn(
+                          "w-6 h-6 rounded-lg flex items-center justify-center",
+                          consistencyMode === 'sora-reference'
+                            ? "bg-zinc-900 dark:bg-white text-white dark:text-black"
+                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+                        )}>
+                          <Video className="w-3.5 h-3.5" />
+                        </div>
+                        <span className={cn(
+                          "font-bold text-sm",
+                          consistencyMode === 'sora-reference'
+                            ? "text-zinc-900 dark:text-white"
+                            : "text-zinc-700 dark:text-zinc-300"
+                        )}>Sora 参考模式</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                        上传参考视频注册 Sora ID，适合真人、写实类项目
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Character Name */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                    角色名称 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="例如：苏白、李明、张医生..."
+                    className="w-full px-4 py-3 seko-input"
+                    required
+                  />
+                </div>
+
+                {/* Character Description */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                    角色描述/性格 <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="角色的背景、性格、职业等...&#10;&#10;示例：30 岁左右的男性程序员，性格内向，经常熬夜工作。"
+                    className="w-full h-24 px-4 py-3 seko-input resize-none"
+                    required
+                  />
+                </div>
+
+                {/* Character Appearance */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                    外貌特征（选填）
+                  </label>
+                  <textarea
+                    value={appearance}
+                    onChange={(e) => setAppearance(e.target.value)}
+                    placeholder="详细描述外貌特征...&#10;&#10;示例：短发，戴黑框眼镜，中等身材，常穿格子衬衫。"
+                    className="w-full h-20 px-4 py-3 seko-input resize-none"
+                  />
+                </div>
+
+                {/* Reference Images */}
+                <div className="space-y-3">
+                  <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 flex items-center justify-between">
+                    <span>参考图片 <span className="text-red-500">*</span></span>
+                    <span className="text-xs font-normal text-zinc-400">至少 1 张</span>
+                  </label>
+
+                  {/* AI Generate Three-View Button - 仅在三视图模式显示 */}
+                  <div className={cn(
+                    "relative overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-white/5 p-5 transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-white/5",
+                    consistencyMode !== 'three-view' && "hidden"
+                  )}>
+                    <div className="absolute top-0 right-0 p-3 opacity-10">
+                      <Sparkles className="w-24 h-24 text-zinc-900 dark:text-white" />
+                    </div>
+
+                    <div className="relative z-10">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-zinc-900 dark:bg-white flex items-center justify-center shadow-lg shadow-black/10 dark:shadow-white/10">
+                            <Wand2 className="w-4 h-4 text-white dark:text-black" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-bold text-zinc-900 dark:text-white">AI 生成三视图</h3>
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">基于描述自动生成角色参考图</p>
+                          </div>
+                        </div>
+
+                        {/* Model & Mode Selector */}
+                        <div className="flex items-center gap-2">
+                          <div className="relative group">
+                            <select
+                              value={genMode}
+                              onChange={(e) => setGenMode(e.target.value as any)}
+                              className="appearance-none pl-3 pr-8 py-1.5 text-xs font-medium bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 rounded-lg focus:outline-none cursor-pointer hover:bg-white/80 dark:hover:bg-zinc-800 transition-colors text-zinc-900 dark:text-white"
+                            >
+                              <option value="jimeng" className="dark:bg-zinc-900">即梦 AI</option>
+                              <option value="gemini" className="dark:bg-zinc-900">Gemini</option>
+                              <option value="seedream" className="dark:bg-zinc-900">SeeDream</option>
+                            </select>
+                            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-400 pointer-events-none" />
+                          </div>
+
+                          {genMode === 'jimeng' && (
+                            <div className="relative group">
+                              <select
+                                value={jimengModel}
+                                onChange={(e) => setJimengModel(e.target.value as JimengModel)}
+                                className="appearance-none pl-3 pr-8 py-1.5 text-xs font-medium bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 rounded-lg focus:outline-none cursor-pointer hover:bg-white/80 dark:hover:bg-zinc-800 transition-colors text-zinc-900 dark:text-white"
+                              >
+                                <option value="jimeng-4.5" className="dark:bg-zinc-900">图片 4.5</option>
+                                <option value="jimeng-4.1" className="dark:bg-zinc-900">图片 4.1</option>
+                                <option value="jimeng-4.0" className="dark:bg-zinc-900">图片 4.0</option>
+                              </select>
+                              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-400 pointer-events-none" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
 
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeImage(index);
-                        }}
-                        className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all duration-200 scale-90 group-hover:scale-100"
+                        onClick={handleGenerateThreeView}
+                        disabled={isGenerating || !name.trim()}
+                        className={cn(
+                          "w-full seko-button seko-button-primary py-2.5 flex items-center justify-center gap-2.5 transition-all duration-300",
+                          isGenerating && "cursor-wait opacity-80"
+                        )}
                       >
-                        <Trash2 className="w-3 h-3" />
+                        {isGenerating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>正在生成创意方案...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            <span>开始生成</span>
+                          </>
+                        )}
                       </button>
 
-                      {selectedRefIndex === index && (
-                        <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-zinc-900/90 dark:bg-white/90 backdrop-blur-sm text-[10px] font-bold text-white dark:text-black shadow-sm">
-                          主图
+                      <div className="flex items-center justify-between mt-3 px-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">比例:</span>
+                          <select
+                            value={aspectRatio}
+                            onChange={(e) => setAspectRatio(e.target.value as '21:9' | '16:9')}
+                            className="text-[10px] font-medium bg-transparent text-zinc-700 dark:text-zinc-300 border-none p-0 focus:ring-0 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <option value="21:9" className="dark:bg-zinc-900">21:9 超宽</option>
+                            <option value="16:9" className="dark:bg-zinc-900">16:9 宽屏</option>
+                          </select>
                         </div>
-                      )}
-                    </motion.div>
-                  ))}
-                </div>
-              )}
+                        <span className="text-[10px] text-zinc-400">消耗 1 次生成额度</span>
+                      </div>
+                    </div>
+                  </div>
 
-              {/* 生成提示词 - 仅在三视图模式显示 */}
-              <div className={cn(
-                "mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800",
-                consistencyMode !== 'three-view' && "hidden"
-              )}>
-                <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
-                  生成提示词（高级）
-                </label>
-                <textarea
-                  value={generationPrompt}
-                  onChange={(e) => setGenerationPrompt(e.target.value)}
-                  className="w-full h-20 px-3 py-2 text-xs seko-input resize-none font-mono opacity-80 focus:opacity-100 transition-opacity"
-                />
-              </div>
+                  {/* Upload Button */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageUpload}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full group relative overflow-hidden rounded-2xl border-2 border-dashed border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500 bg-zinc-50/50 dark:bg-white/5 hover:bg-zinc-100 dark:hover:bg-white/10 transition-all duration-300 p-8 flex flex-col items-center justify-center gap-3"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-300">
+                      <Upload className="w-5 h-5 text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">点击上传参考图</p>
+                      <p className="text-xs text-zinc-400 mt-1">支持 JPG, PNG (Max 10MB)</p>
+                    </div>
+                  </button>
 
-              {/* Sora Reference Video Upload - 仅在 Sora 模式显示 */}
-              <div className={cn(
-                "mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800",
-                consistencyMode !== 'sora-reference' && "hidden"
-              )}>
-                <label className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2 flex items-center gap-2">
-                  <span>Sora 参考视频</span>
-                  <span className="text-xs font-normal text-zinc-400">(可选)</span>
-                </label>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
-                  上传 3-10s 的角色动态视频，可跳过&quot;图生视频&quot;步骤，直接注册 Sora 角色 ID。
-                </p>
+                  {/* Image Preview Grid */}
+                  {referenceImages.length > 0 && (
+                    <div className="grid grid-cols-3 gap-3 mt-4">
+                      {referenceImages.map((imageUrl, index) => (
+                        <motion.div
+                          key={index}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className={cn(
+                            "group relative aspect-square rounded-xl overflow-hidden cursor-pointer transition-all duration-300",
+                            selectedRefIndex === index
+                              ? "ring-2 ring-zinc-900 dark:ring-white ring-offset-2 ring-offset-white dark:ring-offset-[#181818]"
+                              : "hover:ring-2 hover:ring-zinc-200 dark:hover:ring-zinc-700"
+                          )}
+                          onClick={() => {
+                            setPreviewImage(imageUrl);
+                          }}
+                        >
+                          <img
+                            src={imageUrl}
+                            alt={`参考图 ${index + 1}`}
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                          />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
 
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept="video/*"
-                  onChange={(e) => {
-                    handleVideoUpload(e);
-                    // Ensure status is reset so we can register this new video
-                    if (soraStatus === 'registered') {
-                      setSoraStatus('none');
-                      setSoraUsername('');
-                    }
-                  }}
-                  className="hidden"
-                />
+                          {selectedRefIndex !== index && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedRefIndex(index);
+                              }}
+                              className="absolute bottom-1.5 right-1.5 p-1.5 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-green-500 transition-all duration-200 scale-90 group-hover:scale-100 z-10"
+                              title="设为主图"
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
+                          )}
 
-                {soraReferenceVideoUrl ? (
-                  <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
-                    <video
-                      ref={videoPreviewRef}
-                      src={soraReferenceVideoUrl}
-                      controls
-                      className="w-full h-full object-contain"
-                      onLoadedMetadata={(e) => {
-                        const duration = e.currentTarget.duration;
-                        if (Number.isFinite(duration)) setVideoDuration(duration);
-                      }}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeImage(index);
+                            }}
+                            className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all duration-200 scale-90 group-hover:scale-100"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+
+                          {selectedRefIndex === index && (
+                            <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-zinc-900/90 dark:bg-white/90 backdrop-blur-sm text-[10px] font-bold text-white dark:text-black shadow-sm">
+                              主图
+                            </div>
+                          )}
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 生成提示词 - 仅在三视图模式显示 */}
+                  <div className={cn(
+                    "mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800",
+                    consistencyMode !== 'three-view' && "hidden"
+                  )}>
+                    <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
+                      生成提示词（高级）
+                    </label>
+                    <textarea
+                      value={generationPrompt}
+                      onChange={(e) => setGenerationPrompt(e.target.value)}
+                      className="w-full h-20 px-3 py-2 text-xs seko-input resize-none font-mono opacity-80 focus:opacity-100 transition-opacity"
                     />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const urlToDelete = soraReferenceVideoUrl;
-                        if (!urlToDelete) return;
-                        try {
-                          await storageService.deleteFile(urlToDelete);
-                          setSoraReferenceVideoUrl('');
+                  </div>
+
+                  {/* Sora Reference Video Upload - 仅在 Sora 模式显示 */}
+                  <div className={cn(
+                    "mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800",
+                    consistencyMode !== 'sora-reference' && "hidden"
+                  )}>
+                    <label className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2 flex items-center gap-2">
+                      <span>Sora 参考视频</span>
+                      <span className="text-xs font-normal text-zinc-400">(可选)</span>
+                    </label>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+                      上传 3-10s 的角色动态视频，可跳过&quot;图生视频&quot;步骤，直接注册 Sora 角色 ID。
+                    </p>
+
+                    <input
+                      ref={videoInputRef}
+                      type="file"
+                      accept="video/*"
+                      onChange={(e) => {
+                        handleVideoUpload(e);
+                        // Ensure status is reset so we can register this new video
+                        if (soraStatus === 'registered') {
                           setSoraStatus('none');
                           setSoraUsername('');
-                          setCurrentTaskId(undefined);
-                          setIsSoraProcessing(false);
-                          toast.success('云端视频源文件已清理');
-                        } catch (e: any) {
-                          console.warn('Failed to delete file from R2:', e);
-                          toast.error(e?.message || '删除失败，请稍后重试');
                         }
                       }}
-                      className="absolute top-2 right-2 p-2 rounded-full bg-black/60 text-white hover:bg-red-500 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => videoInputRef.current?.click()}
-                    disabled={isUploadingVideo}
-                    className="w-full group relative overflow-hidden rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-700 hover:border-emerald-400 dark:hover:border-emerald-500 bg-zinc-50/50 dark:bg-white/5 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-all duration-300 p-6 flex flex-col items-center justify-center gap-2"
-                  >
-                    {isUploadingVideo ? (
-                      <Loader2 className="w-6 h-6 text-emerald-500 animate-spin" />
+                      className="hidden"
+                    />
+
+                    {soraReferenceVideoUrl ? (
+                      <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
+                        <video
+                          ref={videoPreviewRef}
+                          src={soraReferenceVideoUrl}
+                          controls
+                          className="w-full h-full object-contain"
+                          onLoadedMetadata={(e) => {
+                            const duration = e.currentTarget.duration;
+                            if (Number.isFinite(duration)) setVideoDuration(duration);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const urlToDelete = soraReferenceVideoUrl;
+                            if (!urlToDelete) return;
+                            try {
+                              await storageService.deleteFile(urlToDelete);
+                              setSoraReferenceVideoUrl('');
+                              setSoraStatus('none');
+                              setSoraUsername('');
+                              setCurrentTaskId(undefined);
+                              setIsSoraProcessing(false);
+                              toast.success('云端视频源文件已清理');
+                            } catch (e: any) {
+                              console.warn('Failed to delete file from R2:', e);
+                              toast.error(e?.message || '删除失败，请稍后重试');
+                            }
+                          }}
+                          className="absolute top-2 right-2 p-2 rounded-full bg-black/60 text-white hover:bg-red-500 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     ) : (
-                      <Upload className="w-6 h-6 text-zinc-400 group-hover:text-emerald-500 transition-colors" />
+                      <button
+                        type="button"
+                        onClick={() => videoInputRef.current?.click()}
+                        disabled={isUploadingVideo}
+                        className="w-full group relative overflow-hidden rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-700 hover:border-emerald-400 dark:hover:border-emerald-500 bg-zinc-50/50 dark:bg-white/5 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-all duration-300 p-6 flex flex-col items-center justify-center gap-2"
+                      >
+                        {isUploadingVideo ? (
+                          <Loader2 className="w-6 h-6 text-emerald-500 animate-spin" />
+                        ) : (
+                          <Upload className="w-6 h-6 text-zinc-400 group-hover:text-emerald-500 transition-colors" />
+                        )}
+                        <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                          {isUploadingVideo ? '上传中...' : '点击上传 Sora 视频'}
+                        </p>
+                        <p className="text-xs text-zinc-400">MP4, MOV (最大 100MB)</p>
+                      </button>
                     )}
-                    <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                      {isUploadingVideo ? '上传中...' : '点击上传 Sora 视频'}
-                    </p>
-                    <p className="text-xs text-zinc-400">MP4, MOV (最大 100MB)</p>
-                  </button>
-                )}
-              </div>
-            </div>
-
-
-            {/* Sora Identity Section - 仅在 Sora 模式显示 */}
-            <div className={cn(
-              "mt-6 pt-6 border-t border-dashed border-zinc-200 dark:border-white/10",
-              consistencyMode !== 'sora-reference' && "hidden"
-            )}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                    <Video className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-zinc-900 dark:text-white">Sora 角色一致性</h3>
-                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400">注册角色 ID 以确保视频生成的一致性</p>
                   </div>
                 </div>
+
+
+                {/* Sora Identity Section - 仅在 Sora 模式显示 */}
                 <div className={cn(
-                  "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
-                  soraStatus === 'registered'
-                    ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
-                    : (soraStatus === 'generating' || soraStatus === 'registering')
-                      ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20"
-                      : (soraStatus === 'pending')
-                        ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/20"
-                        : "bg-zinc-50 dark:bg-white/5 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-white/10"
+                  "mt-6 pt-6 border-t border-dashed border-zinc-200 dark:border-white/10",
+                  consistencyMode !== 'sora-reference' && "hidden"
                 )}>
-                  {soraStatus === 'registered' ? 'Active' :
-                    (soraStatus === 'generating' || soraStatus === 'registering') ? 'Processing' :
-                      soraStatus === 'pending' ? 'Ready' : 'Inactive'}
-                </div>
-              </div>
-              <div className="flex items-center justify-between mb-4 text-[10px] text-zinc-500 dark:text-zinc-400">
-                <span>步骤：1 保存角色 → 2 生成参考视频 → 3 注册 Sora ID</span>
-                <div className="flex items-center gap-2">
-                  {!savedCharacterId ? (
-                    <button
-                      type="button"
-                      onClick={() => void persistCharacter({ closeAfter: false, showToast: true })}
-                      className="px-2 py-1 rounded-md border border-zinc-200 dark:border-white/10 bg-white/70 dark:bg-black/30 hover:bg-white dark:hover:bg-black/50 transition-colors"
-                    >
-                      保存并继续
-                    </button>
-                  ) : (
-                    <span className="text-emerald-600 dark:text-emerald-400">已保存</span>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                        <Video className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-zinc-900 dark:text-white">Sora 角色一致性</h3>
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">注册角色 ID 以确保视频生成的一致性</p>
+                      </div>
+                    </div>
+                    <div className={cn(
+                      "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
+                      soraStatus === 'registered'
+                        ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
+                        : (soraStatus === 'generating' || soraStatus === 'registering')
+                          ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20"
+                          : (soraStatus === 'pending')
+                            ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/20"
+                            : "bg-zinc-50 dark:bg-white/5 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-white/10"
+                    )}>
+                      {soraStatus === 'registered' ? 'Active' :
+                        (soraStatus === 'generating' || soraStatus === 'registering') ? 'Processing' :
+                          soraStatus === 'pending' ? 'Ready' : 'Inactive'}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mb-4 text-[10px] text-zinc-500 dark:text-zinc-400">
+                    <span>步骤：1 保存角色 → 2 生成参考视频 → 3 注册 Sora ID</span>
+                    <div className="flex items-center gap-2">
+                      {!savedCharacterId ? (
+                        <button
+                          type="button"
+                          onClick={() => void persistCharacter({ closeAfter: false, showToast: true })}
+                          className="px-2 py-1 rounded-md border border-zinc-200 dark:border-white/10 bg-white/70 dark:bg-black/30 hover:bg-white dark:hover:bg-black/50 transition-colors"
+                        >
+                          保存并继续
+                        </button>
+                      ) : (
+                        <span className="text-emerald-600 dark:text-emerald-400">已保存</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleManualRefresh}
+                        disabled={isRefreshing}
+                        className="px-2 py-1 rounded-md border border-zinc-200 dark:border-white/10 bg-white/70 dark:bg-black/30 hover:bg-white dark:hover:bg-black/50 transition-colors"
+                      >
+                        {isRefreshing ? '刷新中...' : '刷新状态'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {soraReferenceVideoUrl && soraStatus !== 'registered' && (
+                    <div className="mb-3 rounded-lg border border-dashed border-zinc-200 dark:border-white/10 p-3 text-[10px] text-zinc-500 dark:text-zinc-400">
+                      <div className="flex items-center justify-between gap-3">
+                        <span>选择注册片段（秒）</span>
+                        <span>{videoDuration ? `视频时长 ${videoDuration.toFixed(2)}s` : '时长读取中...'}</span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={segmentStart}
+                          onChange={(e) => setSegmentStart(e.target.value)}
+                          className="w-20 rounded-md border border-zinc-200 dark:border-white/10 bg-white/80 dark:bg-black/30 px-2 py-1 text-xs text-zinc-700 dark:text-zinc-200"
+                          placeholder="开始"
+                        />
+                        <span className="text-zinc-400">到</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          max={videoDuration ? videoDuration.toFixed(2) : undefined}
+                          value={segmentEnd}
+                          onChange={(e) => setSegmentEnd(e.target.value)}
+                          className="w-20 rounded-md border border-zinc-200 dark:border-white/10 bg-white/80 dark:bg-black/30 px-2 py-1 text-xs text-zinc-700 dark:text-zinc-200"
+                          placeholder="结束"
+                        />
+                      </div>
+                    </div>
                   )}
-                  <button
-                    type="button"
-                    onClick={handleManualRefresh}
-                    disabled={isRefreshing}
-                    className="px-2 py-1 rounded-md border border-zinc-200 dark:border-white/10 bg-white/70 dark:bg-black/30 hover:bg-white dark:hover:bg-black/50 transition-colors"
-                  >
-                    {isRefreshing ? '刷新中...' : '刷新状态'}
-                  </button>
-                </div>
-              </div>
 
-              {soraReferenceVideoUrl && soraStatus !== 'registered' && (
-                <div className="mb-3 rounded-lg border border-dashed border-zinc-200 dark:border-white/10 p-3 text-[10px] text-zinc-500 dark:text-zinc-400">
-                  <div className="flex items-center justify-between gap-3">
-                    <span>选择注册片段（秒）</span>
-                    <span>{videoDuration ? `视频时长 ${videoDuration.toFixed(2)}s` : '时长读取中...'}</span>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={segmentStart}
-                      onChange={(e) => setSegmentStart(e.target.value)}
-                      className="w-20 rounded-md border border-zinc-200 dark:border-white/10 bg-white/80 dark:bg-black/30 px-2 py-1 text-xs text-zinc-700 dark:text-zinc-200"
-                      placeholder="开始"
-                    />
-                    <span className="text-zinc-400">到</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      max={videoDuration ? videoDuration.toFixed(2) : undefined}
-                      value={segmentEnd}
-                      onChange={(e) => setSegmentEnd(e.target.value)}
-                      className="w-20 rounded-md border border-zinc-200 dark:border-white/10 bg-white/80 dark:bg-black/30 px-2 py-1 text-xs text-zinc-700 dark:text-zinc-200"
-                      placeholder="结束"
-                    />
-                  </div>
-                </div>
-              )}
+                  <div className="relative group overflow-hidden rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50/50 dark:bg-white/5 transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-white/5">
+                    {/* Status Background Effect */}
+                    <div className={cn(
+                      "absolute inset-0 opacity-0 transition-opacity duration-500",
+                      soraStatus === 'registered' ? "bg-gradient-to-br from-emerald-500/5 to-transparent opacity-100" :
+                        (soraStatus === 'generating' || soraStatus === 'registering') ? "bg-gradient-to-br from-amber-500/5 to-transparent opacity-100" :
+                          soraStatus === 'pending' ? "bg-gradient-to-br from-sky-500/5 to-transparent opacity-100" : ""
+                    )} />
 
-              <div className="relative group overflow-hidden rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50/50 dark:bg-white/5 transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-white/5">
-                {/* Status Background Effect */}
-                <div className={cn(
-                  "absolute inset-0 opacity-0 transition-opacity duration-500",
-                  soraStatus === 'registered' ? "bg-gradient-to-br from-emerald-500/5 to-transparent opacity-100" :
-                    (soraStatus === 'generating' || soraStatus === 'registering') ? "bg-gradient-to-br from-amber-500/5 to-transparent opacity-100" :
-                      soraStatus === 'pending' ? "bg-gradient-to-br from-sky-500/5 to-transparent opacity-100" : ""
-                )} />
-
-                <div className="relative p-5">
-                  {soraStatus === 'registered' ? (
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center border-4 border-white dark:border-white/5 shadow-sm">
-                          <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-0.5">Sora Identity Reference</p>
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-2 group/edit relative w-fit">
-                              <input
-                                type="text"
-                                value={soraUsername}
-                                onChange={(e) => {
-                                  const val = e.target.value.trim();
-                                  setSoraUsername(val);
-                                  if (val === '') {
-                                    setSoraStatus('none');
-                                    // Optionally clear video if they want a fresh start, but maybe keep it?
-                                    // User said: "If I delete Sora code... hope to have place to create Sora video".
-                                    // If video persists, they can't create new video unless they delete video too.
-                                    // Safe to just reset status.
-                                  }
-                                }}
-                                className="px-3 py-1.5 rounded-md bg-white dark:bg-black/50 border-2 border-zinc-200 dark:border-white/10 text-sm font-mono font-bold text-black dark:text-white w-48 shadow-sm focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
-                              />
-                              <Pencil className="w-3 h-3 text-zinc-400 opacity-0 group-hover/edit:opacity-100 transition-opacity absolute -right-5 top-1/2 -translate-y-1/2 cursor-pointer" />
+                    <div className="relative p-5">
+                      {soraStatus === 'registered' ? (
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center border-4 border-white dark:border-white/5 shadow-sm">
+                              <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                             </div>
+                            <div className="flex-1">
+                              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-0.5">Sora Identity Reference</p>
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 group/edit relative w-fit">
+                                  <input
+                                    type="text"
+                                    value={soraUsername}
+                                    onChange={(e) => {
+                                      const val = e.target.value.trim();
+                                      setSoraUsername(val);
+                                      if (val === '') {
+                                        setSoraStatus('none');
+                                        // Optionally clear video if they want a fresh start, but maybe keep it?
+                                        // User said: "If I delete Sora code... hope to have place to create Sora video".
+                                        // If video persists, they can't create new video unless they delete video too.
+                                        // Safe to just reset status.
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 rounded-md bg-white dark:bg-black/50 border-2 border-zinc-200 dark:border-white/10 text-sm font-mono font-bold text-black dark:text-white w-48 shadow-sm focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                                  />
+                                  <Pencil className="w-3 h-3 text-zinc-400 opacity-0 group-hover/edit:opacity-100 transition-opacity absolute -right-5 top-1/2 -translate-y-1/2 cursor-pointer" />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={handleManualSoraCodeWriteback}
+                                  disabled={isWritingSoraCode || !soraUsername.trim()}
+                                  className={cn(
+                                    "px-2 py-1 rounded-md text-xs font-medium border transition-colors",
+                                    isWritingSoraCode || !soraUsername.trim()
+                                      ? "border-zinc-200 dark:border-white/10 text-zinc-400 cursor-not-allowed"
+                                      : "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                                  )}
+                                >
+                                  {isWritingSoraCode ? '写回中' : '写回'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          {soraReferenceVideoUrl && (
+                            <div className="mt-1 p-2 rounded-lg bg-black/5 dark:bg-black/20 border border-black/5 dark:border-white/5 flex items-center gap-3">
+                              <div className="h-8 w-12 rounded bg-black flex items-center justify-center overflow-hidden">
+                                <video src={soraReferenceVideoUrl} className="w-full h-full object-cover opacity-80" />
+                              </div>
+                              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">参考视频已绑定</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="flex gap-4">
+                            <div className={cn(
+                              "w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-2",
+                              isSoraProcessing
+                                ? "border-amber-100 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10"
+                                : "border-indigo-100 dark:border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/10"
+                            )}>
+                              {isSoraProcessing ? (
+                                <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-5 h-5 text-indigo-500" />
+                              )}
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-medium text-zinc-900 dark:text-white mb-1">
+                                {isSoraProcessing ? "正在处理中..." : "建立角色一致性"}
+                              </h4>
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                                {isSoraProcessing
+                                  ? (soraReferenceVideoUrl
+                                    ? "正在使用参考视频注册 Sora 身份 ID。"
+                                    : "正在生成 10s 参考视频并注册角色 ID。")
+                                  : (soraReferenceVideoUrl
+                                    ? "参考视频已就绪，可直接注册 Sora 身份 ID。"
+                                    : "系统将使用参考图片生成 10s 标准动态视频，并自动注册角色 ID (消耗积分)。")}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleSoraRegister}
+                            disabled={isSoraProcessing || hasSoraCode}
+                            className={cn(
+                              "w-full py-3 text-sm font-bold rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 relative overflow-hidden group",
+                              isSoraProcessing || hasSoraCode
+                                ? "bg-zinc-100 dark:bg-white/5 text-zinc-400 cursor-not-allowed"
+                                : "bg-black/90 text-white dark:bg-white/90 dark:text-black backdrop-blur-md shadow-xl shadow-black/10 dark:shadow-white/5 hover:scale-[1.02] active:scale-[0.98] ring-1 ring-white/10 dark:ring-black/5"
+                            )}
+                          >
+                            {/* Glossy Reflection Effect */}
+                            {!isSoraProcessing && (
+                              <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                            )}
+
+                            {isSoraProcessing ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>处理中...</span>
+                              </>
+                            ) : (
+                              <>
+                                {hasSoraCode ? '已填写 Sora ID' : (soraReferenceVideoUrl ? '立即注册角色 ID' : '生成视频并注册')}
+                                <Wand2 className="w-4 h-4 opacity-80 group-hover:rotate-12 transition-transform duration-300" />
+                              </>
+                            )}
+                          </button>
+                          <div className="mt-3 flex items-center justify-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
+                            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">已有 Sora ID?</span>
+                            <input
+                              type="text"
+                              placeholder="输入 @ch_..."
+                              className="bg-transparent border-b-2 border-zinc-400 dark:border-white/20 text-xs py-1 focus:outline-none focus:border-emerald-500 w-28 text-zinc-900 dark:text-white placeholder-zinc-500 font-mono text-center font-medium"
+                              onChange={(e) => {
+                                const val = e.target.value.trim();
+                                setSoraUsername(val);
+                                if (val) {
+                                  setSoraStatus('registered');
+                                } else {
+                                  setSoraStatus('none');
+                                }
+                              }}
+                            />
                             <button
                               type="button"
                               onClick={handleManualSoraCodeWriteback}
                               disabled={isWritingSoraCode || !soraUsername.trim()}
                               className={cn(
-                                "px-2 py-1 rounded-md text-xs font-medium border transition-colors",
+                                "px-2 py-0.5 rounded text-[10px] font-medium border transition-colors",
                                 isWritingSoraCode || !soraUsername.trim()
                                   ? "border-zinc-200 dark:border-white/10 text-zinc-400 cursor-not-allowed"
                                   : "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
@@ -1429,163 +1544,68 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                             </button>
                           </div>
                         </div>
-                      </div>
-                      {soraReferenceVideoUrl && (
-                        <div className="mt-1 p-2 rounded-lg bg-black/5 dark:bg-black/20 border border-black/5 dark:border-white/5 flex items-center gap-3">
-                          <div className="h-8 w-12 rounded bg-black flex items-center justify-center overflow-hidden">
-                            <video src={soraReferenceVideoUrl} className="w-full h-full object-cover opacity-80" />
-                          </div>
-                          <span className="text-[10px] text-zinc-500 dark:text-zinc-400">参考视频已绑定</span>
-                        </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="flex gap-4">
-                        <div className={cn(
-                          "w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-2",
-                          isSoraProcessing
-                            ? "border-amber-100 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10"
-                            : "border-indigo-100 dark:border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/10"
-                        )}>
-                          {isSoraProcessing ? (
-                            <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
-                          ) : (
-                            <Sparkles className="w-5 h-5 text-indigo-500" />
-                          )}
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-zinc-900 dark:text-white mb-1">
-                            {isSoraProcessing ? "正在处理中..." : "建立角色一致性"}
-                          </h4>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                            {isSoraProcessing
-                              ? (soraReferenceVideoUrl
-                                ? "正在使用参考视频注册 Sora 身份 ID。"
-                                : "正在生成 10s 参考视频并注册角色 ID。")
-                              : (soraReferenceVideoUrl
-                                ? "参考视频已就绪，可直接注册 Sora 身份 ID。"
-                                : "系统将使用参考图片生成 10s 标准动态视频，并自动注册角色 ID (消耗积分)。")}
-                          </p>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleSoraRegister}
-                        disabled={isSoraProcessing || hasSoraCode}
-                        className={cn(
-                          "w-full py-3 text-sm font-bold rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 relative overflow-hidden group",
-                          isSoraProcessing || hasSoraCode
-                            ? "bg-zinc-100 dark:bg-white/5 text-zinc-400 cursor-not-allowed"
-                            : "bg-black/90 text-white dark:bg-white/90 dark:text-black backdrop-blur-md shadow-xl shadow-black/10 dark:shadow-white/5 hover:scale-[1.02] active:scale-[0.98] ring-1 ring-white/10 dark:ring-black/5"
-                        )}
-                      >
-                        {/* Glossy Reflection Effect */}
-                        {!isSoraProcessing && (
-                          <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-                        )}
-
-                        {isSoraProcessing ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>处理中...</span>
-                          </>
-                        ) : (
-                          <>
-                            {hasSoraCode ? '已填写 Sora ID' : (soraReferenceVideoUrl ? '立即注册角色 ID' : '生成视频并注册')}
-                            <Wand2 className="w-4 h-4 opacity-80 group-hover:rotate-12 transition-transform duration-300" />
-                          </>
-                        )}
-                      </button>
-                      <div className="mt-3 flex items-center justify-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
-                        <span className="text-[10px] text-zinc-500 dark:text-zinc-400">已有 Sora ID?</span>
-                        <input
-                          type="text"
-                          placeholder="输入 @ch_..."
-                          className="bg-transparent border-b-2 border-zinc-400 dark:border-white/20 text-xs py-1 focus:outline-none focus:border-emerald-500 w-28 text-zinc-900 dark:text-white placeholder-zinc-500 font-mono text-center font-medium"
-                          onChange={(e) => {
-                            const val = e.target.value.trim();
-                            setSoraUsername(val);
-                            if (val) {
-                              setSoraStatus('registered');
-                            } else {
-                              setSoraStatus('none');
-                            }
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleManualSoraCodeWriteback}
-                          disabled={isWritingSoraCode || !soraUsername.trim()}
-                          className={cn(
-                            "px-2 py-0.5 rounded text-[10px] font-medium border transition-colors",
-                            isWritingSoraCode || !soraUsername.trim()
-                              ? "border-zinc-200 dark:border-white/10 text-zinc-400 cursor-not-allowed"
-                              : "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
-                          )}
-                        >
-                          {isWritingSoraCode ? '写回中' : '写回'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
+
+
+              </form>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 px-6 py-5 border-t border-black/5 dark:border-white/5 bg-white/50 dark:bg-black/20 backdrop-blur-xl">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="seko-button px-5 py-2.5 hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void persistCharacter({ closeAfter: false, showToast: true })}
+                  className="seko-button px-5 py-2.5"
+                >
+                  保存并继续
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  className="seko-button seko-button-primary px-6 py-2.5 flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  {mode === 'add' && !savedCharacterId ? '添加角色' : '保存修改'}
+                </button>
               </div>
-            </div>
-
-
-          </form>
-
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-3 px-6 py-5 border-t border-black/5 dark:border-white/5 bg-white/50 dark:bg-black/20 backdrop-blur-xl">
-            <button
-              type="button"
-              onClick={onClose}
-              className="seko-button px-5 py-2.5 hover:bg-black/5 dark:hover:bg-white/5"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              onClick={() => void persistCharacter({ closeAfter: false, showToast: true })}
-              className="seko-button px-5 py-2.5"
-            >
-              保存并继续
-            </button>
-            <button
-              onClick={handleSubmit}
-              className="seko-button seko-button-primary px-6 py-2.5 flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              {mode === 'add' && !savedCharacterId ? '添加角色' : '保存修改'}
-            </button>
+            </motion.div>
           </div>
-        </motion.div>
-      </div>
-
-      {previewImage && (
-        <div
-          key="character-preview-overlay"
-          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-in fade-in duration-300"
-          onClick={() => setPreviewImage(null)}
-        >
-          <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={previewImage}
-              alt="预览"
-              className="max-w-full max-h-[90vh] rounded-lg shadow-2xl"
-            />
-            <button
-              onClick={() => setPreviewImage(null)}
-              className="absolute -top-12 right-0 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-            >
-              <X className="w-6 h-6" />
-            </button>
-          </div>
-        </div>
+        </AnimatePresence>,
+        document.body
       )}
-    </AnimatePresence>,
-    document.body
+
+      {
+        previewImage && createPortal(
+          <div
+            key="character-preview-overlay"
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-in fade-in duration-300"
+            onClick={() => setPreviewImage(null)}
+          >
+            <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+              <img
+                src={previewImage}
+                alt="预览"
+                className="max-w-full max-h-[90vh] rounded-lg shadow-2xl"
+              />
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="absolute -top-12 right-0 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+          </div>,
+          document.body
+        )
+      }
+    </>
   );
 }

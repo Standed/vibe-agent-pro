@@ -48,7 +48,11 @@ export interface UseAgentResult {
   } | null;
 }
 
-export function useAgent(): UseAgentResult {
+export interface UseAgentOptions {
+  chatChannel?: string;
+}
+
+export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
   const {
     project,
     currentSceneId,
@@ -63,6 +67,7 @@ export function useAgent(): UseAgentResult {
   } = useProjectStore();
 
   const { isAuthenticated, user, loading } = useAuth();
+  const chatChannel = options.chatChannel;
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
@@ -206,6 +211,7 @@ export function useAgent(): UseAgentResult {
 
       // ⭐ 保存用户消息到云端数据库（chat_messages表）
       if (user && project) {
+        const metadata = chatChannel ? { channel: chatChannel } : undefined;
         void dataService.saveChatMessage({
           id: generateMessageId(),
           userId: user.id,
@@ -213,6 +219,7 @@ export function useAgent(): UseAgentResult {
           scope: 'project',
           role: 'user',
           content: message,
+          metadata,
           timestamp: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -668,6 +675,10 @@ export function useAgent(): UseAgentResult {
       await sessionManager.addMessage(assistantMessage);
 
       if (user && project) {
+        const metadata = {
+          ...(chatChannel ? { channel: chatChannel } : {}),
+          thinkingSteps: thinkingSteps, // Persist thinking steps for UI expansion
+        };
         void dataService.saveChatMessage({
           id: generateMessageId(),
           userId: user.id,
@@ -675,9 +686,7 @@ export function useAgent(): UseAgentResult {
           scope: 'project',
           role: 'assistant',
           content: finalSummary,
-          metadata: {
-            thinkingSteps: thinkingSteps, // Persist thinking steps for UI expansion
-          },
+          metadata,
           timestamp: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -724,6 +733,7 @@ export function useAgent(): UseAgentResult {
     lastMessageHash,
     user,
     isAuthenticated,
+    chatChannel,
   ]);
 
   // Clear session
