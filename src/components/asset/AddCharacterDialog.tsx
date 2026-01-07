@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus, Upload, Trash2, Sparkles, Loader2, ChevronDown, Wand2, CheckCircle2, AlertCircle, Video, Pencil, Check } from 'lucide-react';
 import type { Character } from '@/types/project';
@@ -12,6 +12,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { JimengModel } from '@/components/jimeng/JimengOptions';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSoraCharacter } from '@/hooks/useSoraCharacter';
 
 type SaveOptions = {
   keepOpen?: boolean;
@@ -26,150 +27,88 @@ interface AddCharacterDialogProps {
 
 export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initialCharacter }: AddCharacterDialogProps) {
   const { user } = useAuth();
+
+  // ===== 通用角色信息状态 =====
   const [name, setName] = useState(initialCharacter?.name || '');
   const [description, setDescription] = useState(initialCharacter?.description || '');
   const [appearance, setAppearance] = useState(initialCharacter?.appearance || '');
   const [referenceImages, setReferenceImages] = useState<string[]>(initialCharacter?.referenceImages || []);
-  const [soraReferenceVideoUrl, setSoraReferenceVideoUrl] = useState<string>(
-    initialCharacter?.soraReferenceVideoUrl || initialCharacter?.soraIdentity?.referenceVideoUrl || ''
-  );
   const [selectedRefIndex, setSelectedRefIndex] = useState<number>(0);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [generationPrompt, setGenerationPrompt] = useState('');
-  const [aspectRatio, setAspectRatio] = useState<'21:9' | '16:9'>('21:9');
-  const [genMode, setGenMode] = useState<'seedream' | 'gemini' | 'jimeng'>('jimeng');
-  const [jimengModel, setJimengModel] = useState<JimengModel>('jimeng-4.5');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [mounted, setMounted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
 
-  const [isSoraProcessing, setIsSoraProcessing] = useState(
-    initialCharacter?.soraIdentity?.status === 'generating' ||
-    initialCharacter?.soraIdentity?.status === 'registering' ||
-    false
-  );
-  const [soraStatus, setSoraStatus] = useState<'none' | 'pending' | 'generating' | 'registering' | 'registered' | 'failed'>(
-    initialCharacter?.soraIdentity?.status as any || 'none'
-  );
-  const [soraUsername, setSoraUsername] = useState(initialCharacter?.soraIdentity?.username || '');
-  const [currentTaskId, setCurrentTaskId] = useState(initialCharacter?.soraIdentity?.taskId);
-  const hasSoraCode = soraUsername.trim().length > 0;
-  const [savedCharacterId, setSavedCharacterId] = useState<string | null>(initialCharacter?.id || null);
-  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const pollingCountRef = useRef(0);
-  const pollingStoppedRef = useRef(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const MAX_POLL_ATTEMPTS = 12;
-  const POLL_INTERVAL_MS = 30000;
-  const [isWritingSoraCode, setIsWritingSoraCode] = useState(false);
-  const lastWrittenSoraUsernameRef = useRef(initialCharacter?.soraIdentity?.username || '');
-  const [videoDuration, setVideoDuration] = useState<number | null>(null);
-  const [segmentStart, setSegmentStart] = useState('1');
-  const [segmentEnd, setSegmentEnd] = useState('3');
+  // ===== 三视图模式状态（与 Sora 完全解耦）=====
+  const [generationPrompt, setGenerationPrompt] = useState('');
+  const [aspectRatio, setAspectRatio] = useState<'21:9' | '16:9'>('21:9');
+  const [genMode, setGenMode] = useState<'seedream' | 'gemini' | 'jimeng'>('jimeng');
+  const [jimengModel, setJimengModel] = useState<JimengModel>('jimeng-4.5');
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  // ===== Sora 参考模式状态（使用独立 Hook）=====
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
 
   // 一致性模式切换
   type ConsistencyMode = 'three-view' | 'sora-reference';
   const [consistencyMode, setConsistencyMode] = useState<ConsistencyMode>(
     initialCharacter?.soraIdentity?.username ? 'sora-reference' : 'three-view'
   );
-  const pollTaskStatus = async (taskId: string, showError = false) => {
-    try {
-      const res = await fetch(`/api/sora/character/status?taskId=${taskId}`);
-      if (!res.ok) {
-        if (showError) {
-          const text = await res.text();
-          toast.error(`刷新失败: ${text || res.status}`);
-        }
-        return false;
-      }
 
-      const data = await res.json();
-
-      if (data.status === 'completed' && data.videoUrl) {
-        setSoraReferenceVideoUrl(data.videoUrl);
-        const resolvedUsername = (data.username || '').trim();
-        if (resolvedUsername) {
-          setSoraStatus('registered');
-          setSoraUsername(resolvedUsername);
-          setIsSoraProcessing(false);
-          stopPolling();
-          toast.success('Sora 角色参考视频生成并注册成功！');
-          return true;
-        }
-        setSoraStatus('registering');
-        setSoraUsername('');
-        setIsSoraProcessing(true);
-        return false;
-      }
-
-      if (data.status === 'failed') {
-        setSoraStatus('failed');
-        setIsSoraProcessing(false);
-        stopPolling();
-        toast.error('Sora 任务失败: ' + (data.error || '未知错误'));
-        return true;
-      }
-
-      if (data.status === 'registering') {
-        if (data.videoUrl) setSoraReferenceVideoUrl(data.videoUrl);
-        setSoraStatus('registering');
-        setSoraUsername('');
-        setIsSoraProcessing(true);
-        return false;
-      }
-
-      return false;
-    } catch (e) {
-      console.error('Polling error', e);
-      if (showError) toast.error('刷新失败，请稍后重试');
-      return false;
+  // 使用 Sora 角色管理 Hook（封装所有 Sora 相关状态和逻辑）
+  const sora = useSoraCharacter({
+    initialCharacter,
+    name,
+    description,
+    appearance,
+    referenceImages,
+    userId: user?.id,
+    persistCharacter: async () => {
+      // 提供一个简化的持久化函数供 hook 使用
+      const result = await persistCharacter({ closeAfter: false, showToast: false });
+      return result;
     }
-  };
+  });
 
-  // Polling for Sora Task (frontend fallback/real-time update)
-  useEffect(() => {
-    // Poll if status implies work in progress and we have a Task ID
-    const activeStates = ['generating', 'registering', 'pending'];
-    if (activeStates.includes(soraStatus) && currentTaskId) {
-      startPolling(currentTaskId);
-    } else {
-      stopPolling();
-    }
-    return () => stopPolling();
-  }, [soraStatus, currentTaskId]);
+  // 从 hook 解构常用值（保持向后兼容）
+  const {
+    soraStatus, setSoraStatus,
+    soraUsername, setSoraUsername,
+    soraReferenceVideoUrl, setSoraReferenceVideoUrl,
+    isSoraProcessing, setIsSoraProcessing,
+    isRefreshing, isWritingSoraCode,
+    currentTaskId,
+    videoDuration,
+    segmentStart, setSegmentStart,
+    segmentEnd, setSegmentEnd,
+    hasSoraCode,
+    savedCharacterId, setSavedCharacterId,
+    // Sora 操作方法（来自 hook）
+    handleSoraRegister,
+    handleManualRefresh,
+    handleManualSoraCodeWriteback,
+    writebackSoraCode,
+    getSoraIdentityForSave,
+    lastWrittenSoraUsernameRef,
+    // 额外导出（供组件内遗留代码使用）
+    setCurrentTaskId,
+    setIsWritingSoraCode,
+    setIsRefreshing,
+    setVideoDuration,
+    pollingTimerRef,
+    pollingCountRef,
+    pollingStoppedRef,
+    startPolling,
+    stopPolling,
+    pollTaskStatus,
+  } = sora;
 
-  const stopPolling = () => {
-    if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-    pollingTimerRef.current = null;
-  };
 
-  const startPolling = (taskId: string) => {
-    stopPolling();
-    setIsSoraProcessing(true); // Ensure flag is set
-    pollingCountRef.current = 0;
-    pollingStoppedRef.current = false;
+  // 注意：MAX_POLL_ATTEMPTS 和 POLL_INTERVAL_MS 常量已在 useSoraCharacter hook 中定义
 
-    void pollTaskStatus(taskId);
 
-    pollingTimerRef.current = setInterval(async () => {
-      pollingCountRef.current += 1;
-      if (pollingCountRef.current > MAX_POLL_ATTEMPTS) {
-        stopPolling();
-        if (!pollingStoppedRef.current) {
-          pollingStoppedRef.current = true;
-          toast.info('已暂停自动刷新，可点击“刷新状态”手动更新');
-        }
-        setIsSoraProcessing(false);
-        setSoraStatus('none');
-        return;
-      }
-
-      await pollTaskStatus(taskId);
-    }, POLL_INTERVAL_MS);
-  };
+  // 注意：pollTaskStatus, polling useEffect, startPolling, stopPolling 已移至 useSoraCharacter hook
 
   const parseSeconds = (value: string) => {
     if (!value) return null;
@@ -193,266 +132,17 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     });
   };
 
-  // Also fix handleSoraRegister to set isSoraProcessing
-  const handleSoraRegister = async () => {
-    let effectiveCharacterId = savedCharacterId || initialCharacter?.id || null;
-    if (!effectiveCharacterId) {
-      const persisted = await persistCharacter({ closeAfter: false, showToast: false });
-      if (!persisted) return;
-      effectiveCharacterId = persisted.id;
-    }
+  // 注意：handleSoraRegister 已移至 useSoraCharacter hook
 
-    if (hasSoraCode) {
-      toast.success('已填写 Sora 角色码，将以此为准');
-      return;
-    }
-
-    if (soraReferenceVideoUrl) {
-      // Manual registration with existing video
-      if (!name) return toast.error('请输入名称');
-      const startSeconds = parseSeconds(segmentStart);
-      const endSeconds = parseSeconds(segmentEnd);
-      if (startSeconds === null || endSeconds === null) {
-        return toast.error('请输入有效的时间段（秒）');
-      }
-      if (startSeconds < 0 || endSeconds <= startSeconds) {
-        return toast.error('结束时间必须大于开始时间');
-      }
-      const duration = await resolveVideoDuration(soraReferenceVideoUrl);
-      if (duration && endSeconds > duration + 0.01) {
-        return toast.error(`结束时间不能超过视频时长 ${duration.toFixed(2)}s`);
-      }
-
-      const timestamps = `${startSeconds},${endSeconds}`;
-      setIsSoraProcessing(true);
-      try {
-        const res = await fetch('/api/sora/character/register', {
-          method: 'POST',
-          body: JSON.stringify({
-            character: {
-              id: effectiveCharacterId,
-              name,
-              description,
-              appearance,
-              referenceImages: referenceImages,
-              // pass current video url
-              soraReferenceVideoUrl: soraReferenceVideoUrl,
-              metadata: { soraIdentity: { status: 'none' } }
-            },
-            timestamps,
-            mode: 'register_direct',
-            userId: user?.id,
-            projectId: initialCharacter?.projectId
-          })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-
-        setSoraUsername(data.character.soraIdentity.username);
-        setSoraStatus('registered');
-        toast.success('Sora ID 注册成功！');
-
-      } catch (e: any) {
-        toast.error(e.message);
-      } finally {
-        setIsSoraProcessing(false);
-      }
-      return;
-    }
-
-    if (referenceImages.length === 0) return toast.error('请至少上传一张参考图');
-
-    setIsSoraProcessing(true);
-    setSoraStatus('generating'); // or registering
-
-    try {
-      // Mode: direct if video exists, else generate
-      const mode = soraReferenceVideoUrl ? 'register_direct' : 'generate_and_register';
-
-      if (mode === 'generate_and_register' && referenceImages.length === 0) {
-        setIsSoraProcessing(false);
-        return toast.error('生成视频需要至少 1 张参考图');
-      }
-
-      const res = await fetch('/api/sora/character/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          characterId: effectiveCharacterId,
-          character: {
-            id: effectiveCharacterId,
-            name,
-            description,
-            appearance,
-            referenceImages: referenceImages.length ? referenceImages : [],
-            soraReferenceVideoUrl
-          },
-          projectId: initialCharacter?.projectId,
-          mode
-        })
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      if (mode === 'register_direct') {
-        setSoraStatus('registered');
-        setSoraUsername(data.character.soraIdentity.username);
-        setIsSoraProcessing(false);
-        toast.success(`注册成功: ${data.character.soraIdentity.username}`);
-      } else {
-        setSoraStatus('generating');
-        toast.success('已开始生成参考视频并自动注册...');
-        if (data.task?.id) {
-          setCurrentTaskId(data.task.id);
-          startPolling(data.task.id);
-        }
-      }
-
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message);
-      setIsSoraProcessing(false);
-      setSoraStatus('failed');
-    }
-  };
-
-  const handleManualSoraCodeWriteback = async () => {
-    const normalized = soraUsername.trim();
-    if (!normalized) {
-      toast.error('请输入 Sora 角色码');
-      return;
-    }
-
-    let effectiveCharacterId = savedCharacterId || initialCharacter?.id || null;
-    if (!effectiveCharacterId) {
-      const persisted = await persistCharacter({ closeAfter: false, showToast: false });
-      if (!persisted) return;
-      effectiveCharacterId = persisted.id;
-    }
-
-    setIsWritingSoraCode(true);
-    await writebackSoraCode({
-      characterId: effectiveCharacterId,
-      username: normalized,
-      referenceVideoUrl: soraReferenceVideoUrl || undefined,
-      silent: false,
-      retries: 0
-    });
-    setIsWritingSoraCode(false);
-  };
-
-  const writebackSoraCode = async (options: {
-    characterId: string;
-    username: string;
-    referenceVideoUrl?: string;
-    silent?: boolean;
-    retries?: number;
-  }): Promise<boolean> => {
-    const { characterId, username, referenceVideoUrl, silent = false, retries = 0 } = options;
-    for (let attempt = 0; attempt <= retries; attempt += 1) {
-      try {
-        const res = await fetch('/api/sora/character/manual', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            characterId,
-            username,
-            referenceVideoUrl: referenceVideoUrl || undefined
-          })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          if (res.status === 404 && attempt < retries) {
-            await sleep(800);
-            continue;
-          }
-          throw new Error(data.error || '写回失败');
-        }
-
-        const nextUsername = data?.character?.soraIdentity?.username || username;
-        const nextVideoUrl = data?.character?.soraReferenceVideoUrl || referenceVideoUrl || '';
-        setSoraUsername(nextUsername);
-        setSoraReferenceVideoUrl(nextVideoUrl);
-        setSoraStatus('registered');
-        setIsSoraProcessing(false);
-        setSavedCharacterId(characterId);
-        lastWrittenSoraUsernameRef.current = nextUsername;
-        if (!silent) {
-          toast.success('Sora ID 已写回');
-        }
-        return true;
-      } catch (error: any) {
-        if (attempt < retries) {
-          await sleep(800);
-          continue;
-        }
-        if (!silent) {
-          toast.error(error.message || '写回失败');
-        }
-        return false;
-      }
-    }
-    return false;
-  };
-
+  // 注意：handleManualSoraCodeWriteback 和 writebackSoraCode 已移至 useSoraCharacter hook
 
   useEffect(() => {
     setMounted(true);
     return () => setMounted(false);
   }, []);
 
-  const handleManualRefresh = async () => {
-    const characterId = savedCharacterId || initialCharacter?.id;
-    if (!characterId) {
-      toast.error('请先保存角色再刷新');
-      return;
-    }
+  // 注意：handleManualRefresh 已移至 useSoraCharacter hook
 
-    setIsRefreshing(true);
-    try {
-      if (currentTaskId) {
-        await pollTaskStatus(currentTaskId, true);
-        return;
-      }
-
-      const res = await fetch(`/api/sora/character/latest-video?characterId=${characterId}`);
-      if (!res.ok) {
-        const text = await res.text();
-        toast.error(`刷新失败: ${text || res.status}`);
-        return;
-      }
-      const data = await res.json();
-      if (!data?.success) {
-        if (data?.reason === 'no_completed_task') {
-          toast.info('暂无已完成的参考视频');
-        } else if (data?.reason === 'video_url_missing') {
-          toast.info('已完成任务但视频地址缺失');
-        } else {
-          toast.info('暂无可用视频');
-        }
-        return;
-      }
-      if (data.videoUrl) {
-        setSoraReferenceVideoUrl(data.videoUrl);
-        setCurrentTaskId(data.taskId || undefined);
-        if (data.username) {
-          setSoraUsername(data.username);
-          setSoraStatus('registered');
-          setIsSoraProcessing(false);
-        } else {
-          setSoraStatus('none');
-          setIsSoraProcessing(false);
-        }
-        toast.success('已刷新最新视频');
-      }
-    } catch (error) {
-      console.error('Manual refresh failed:', error);
-      toast.error('刷新失败，请稍后重试');
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
 
   useEffect(() => {
     if (mode !== 'edit' || !initialCharacter?.id) return;
@@ -807,28 +497,9 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
 
     // 构建 Sora 身份信息
     // 关键点：初始化为 null (而非 undefined)，确保当条件不满足时，数据库中的字段会被清空
-    let finalSoraIdentity: Character['soraIdentity'] | null = null;
-
-    // 数据模型中的有效状态
-    const validStatuses = ['pending', 'generating', 'registering', 'registered', 'failed'];
-
+    // 构建 Sora 身份信息 (使用 hook 提供的逻辑)
+    const finalSoraIdentity = getSoraIdentityForSave();
     const normalizedSoraUsername = soraUsername.trim();
-    if (normalizedSoraUsername) {
-      finalSoraIdentity = {
-        username: normalizedSoraUsername,
-        referenceVideoUrl: soraReferenceVideoUrl || '',
-        status: 'registered' as any,
-        taskId: currentTaskId || initialCharacter?.soraIdentity?.taskId
-      };
-    } else if (validStatuses.includes(soraStatus)) {
-      finalSoraIdentity = {
-        username: soraUsername || '',
-        referenceVideoUrl: soraReferenceVideoUrl || '',
-        status: soraStatus as any,
-        // Use currentTaskId if available (new task), otherwise fallback to initial (if unchanged)
-        taskId: currentTaskId || initialCharacter?.soraIdentity?.taskId
-      };
-    }
 
     const character: Character = {
       id: savedCharacterId || initialCharacter?.id || `character_${Date.now()}`,
@@ -975,7 +646,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                         )}>Sora 参考模式</span>
                       </div>
                       <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                        上传参考视频注册 Sora ID，适合真人、写实类项目
+                        上传参考视频注册 Sora ID，适合动漫、卡通风格项目
                       </p>
                     </button>
                   </div>
