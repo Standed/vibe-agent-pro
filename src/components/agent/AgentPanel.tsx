@@ -35,7 +35,8 @@ export default function AgentPanel() {
           projectId: project.id,
           scope: 'project',
         });
-        setChatHistory(messages);
+        const filteredMessages = messages.filter(msg => msg.metadata?.channel !== 'planning');
+        setChatHistory(filteredMessages);
       } catch (error) {
         console.error('加载聊天历史失败:', error);
         setChatHistory([]);
@@ -90,7 +91,8 @@ export default function AgentPanel() {
         projectId: project.id,
         scope: 'project',
       });
-      setChatHistory(messages);
+      const filteredMessages = messages.filter(msg => msg.metadata?.channel !== 'planning');
+      setChatHistory(filteredMessages);
     }
   };
 

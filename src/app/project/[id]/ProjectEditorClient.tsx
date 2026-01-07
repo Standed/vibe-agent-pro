@@ -14,7 +14,6 @@ import { Film } from 'lucide-react';
 import ViewSwitcher, { ViewType } from '@/components/layout/ViewSwitcher';
 import { createPortal } from 'react-dom';
 import PlanningView from '@/components/director/PlanningView';
-import { AspectRatio } from '@/types/project';
 
 export function ProjectEditorClient() {
     const params = useParams();
@@ -174,7 +173,11 @@ export function ProjectEditorClient() {
     return (
         <div className="h-screen bg-light-bg dark:bg-cine-black flex flex-col overflow-hidden">
             {/* View Switcher */}
-            <ViewSwitcher activeView={activeView} onViewChange={handleViewChange} />
+            <ViewSwitcher
+                activeView={activeView}
+                onViewChange={handleViewChange}
+                className={activeView === 'planning' ? 'top-24' : ''}
+            />
 
             {/* Fullscreen Timeline View */}
             {showTimelineView && (
@@ -184,38 +187,13 @@ export function ProjectEditorClient() {
             {/* Planning View (Director Mode) */}
             {showDirectorMode && createPortal(
                 <div className="fixed inset-0 z-[100]">
-                    <PlanningView
-                        onClose={() => setShowDirectorMode(false)}
-                        showExitButton={true}
+                        <PlanningView
+                            onClose={() => setShowDirectorMode(false)}
                         showHomeButton={true}
-                        activeView="planning"
                         onSwitchToCanvas={() => setShowDirectorMode(false)}
                         onSwitchToTimeline={() => {
                             setShowDirectorMode(false);
                             setShowTimelineView(true);
-                        }}
-                        onOpenGridSelection={(fullGridUrl, slices) => {
-                            // We can use the store to set the grid result, which might be picked up by a global modal or we need to handle it here.
-                            // Since GridPreviewModal is in ChatPanel, and ChatPanel is in RightPanel.
-                            // If we are in PlanningView, RightPanel is not the main focus, but it might be visible if we toggle it.
-                            // However, for now, let's assume we want to use the store to trigger the modal.
-                            // But wait, GridPreviewModal is inside ChatPanel. If ChatPanel is not mounted or active, it won't show.
-                            // We might need to move GridPreviewModal to a higher level or ProjectEditorClient.
-
-                            // For now, let's try setting it in the store and see if it works if ChatPanel is active.
-                            // If not, we might need to move GridPreviewModal.
-                            useProjectStore.getState().setGridResult({
-                                fullImage: fullGridUrl,
-                                slices: slices,
-                                sceneId: useProjectStore.getState().currentSceneId || '', // We might need a better way to get sceneId
-                                gridRows: 2, // Default or infer
-                                gridCols: 2, // Default or infer
-                                gridSize: slices.length === 9 ? '3x3' : '2x2',
-                                prompt: '', // We might not have this easily
-                                aspectRatio: AspectRatio.WIDE // Default
-                            });
-                            // Also ensure RightPanel is open and in Pro mode if we want to show it there?
-                            // Or maybe we should move GridPreviewModal to ProjectEditorClient.
                         }}
                     />
                 </div>,

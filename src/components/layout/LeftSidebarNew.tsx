@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
   Loader2,
-  Download,
   Film,
   FileText,
   FolderOpen,
@@ -19,22 +18,20 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
-import { batchDownloadAssets } from '@/utils/batchDownload';
 import AddShotDialog from '@/components/shot/AddShotDialog';
 import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import AddLocationDialog from '@/components/asset/AddLocationDialog';
 import { toast } from 'sonner';
-import { Shot, Scene, Project, ShotSize, CameraMovement, Character, Location, SHOT_SIZE_OPTIONS, CAMERA_MOVEMENT_OPTIONS } from '@/types/project';
-import { translateShotSize, translateCameraMovement } from '@/utils/translations';
+import { Shot, ShotSize, CameraMovement, Character, Location } from '@/types/project';
 import { createPortal } from 'react-dom';
 import { useAIStoryboard } from '@/hooks/useAIStoryboard';
 import { StoryboardTab } from './sidebar/StoryboardTab';
 import { AssetsTab } from './sidebar/AssetsTab';
 import { ShotEditor } from './sidebar/ShotEditor';
 import ShotTableEditor from '../project/ShotTableEditor';
-import PlanningView from '../director/PlanningView';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { storageService } from '@/lib/storageService';
 
 type Tab = 'storyboard' | 'assets';
 
@@ -75,7 +72,6 @@ export default function LeftSidebarNew({
 
   const [activeTab, setActiveTab] = useState<Tab>('storyboard');
   const [collapsedScenes, setCollapsedScenes] = useState<Set<string>>(new Set());
-  const [isDownloading, setIsDownloading] = useState(false);
   const [showAddShotDialog, setShowAddShotDialog] = useState(false);
   const [selectedSceneForNewShot, setSelectedSceneForNewShot] = useState<string>('');
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
@@ -89,6 +85,7 @@ export default function LeftSidebarNew({
   const [editingShot, setEditingShot] = useState<Shot | null>(null);
   const [shotImagePreview, setShotImagePreview] = useState<string | null>(null);
   const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [shotInsertIndex, setShotInsertIndex] = useState<number | null>(null);
   const [charactersCollapsed, setCharactersCollapsed] = useState(false);
   const [locationsCollapsed, setLocationsCollapsed] = useState(false);
@@ -107,6 +104,7 @@ export default function LeftSidebarNew({
     cameraMovement: '',
     duration: 3,
   });
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const { isGenerating, handleAIStoryboard } = useAIStoryboard();
 
@@ -168,15 +166,90 @@ export default function LeftSidebarNew({
     });
   };
 
+  const resolveSelectionMeta = (shot: Shot | null, url: string) => {
+    if (!shot) return {};
+    const historyMatch = shot.generationHistory?.find((item) => item.type === 'image' && item.result === url);
+    const params = (historyMatch?.parameters || {}) as any;
+    if (params?.fullGridUrl || params?.slices) {
+      return {
+        fullGridUrl: params.fullGridUrl as string | undefined,
+        gridImages: params.slices as string[] | undefined,
+      };
+    }
+    if (shot.gridImages?.includes(url)) {
+      return {
+        fullGridUrl: shot.fullGridUrl,
+        gridImages: shot.gridImages,
+      };
+    }
+    return {};
+  };
+
   const saveShotEdit = () => {
     if (!editingShot) return;
-    updateShot(editingShot.id, {
+    const updates: Partial<Shot> = {
       ...shotForm,
       shotSize: shotForm.shotSize as ShotSize,
       cameraMovement: shotForm.cameraMovement as CameraMovement,
-    });
+    };
+    if (selectedHistoryImage) {
+      const meta = resolveSelectionMeta(liveEditingShot || null, selectedHistoryImage);
+      updates.referenceImage = selectedHistoryImage;
+      updates.status = 'done';
+      if (meta.fullGridUrl) updates.fullGridUrl = meta.fullGridUrl;
+      if (meta.gridImages) updates.gridImages = meta.gridImages;
+    }
+    updateShot(editingShot.id, updates);
     setEditingShot(null);
     toast.success('分镜已更新');
+  };
+
+  const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingShot) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('请选择图片文件');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('图片大小不能超过 10MB');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const result = await storageService.uploadFile(file, `shots/${editingShot.id}`);
+      const imageUrl = result.url;
+
+      const shot = project?.shots.find(s => s.id === editingShot.id);
+      if (shot) {
+        const historyItem = {
+          id: `upload_${Date.now()}`,
+          type: 'image' as const,
+          timestamp: new Date(),
+          result: imageUrl,
+          prompt: '用户上传图片',
+          parameters: {
+            model: 'upload',
+            source: 'user_upload',
+          },
+          status: 'success' as const,
+        };
+        const newHistory = [...(shot.generationHistory || []), historyItem];
+        updateShot(editingShot.id, { generationHistory: newHistory });
+      }
+
+      toast.success('图片上传成功');
+      setSelectedHistoryImage(imageUrl);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('图片上传失败');
+    } finally {
+      setIsUploading(false);
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
+    }
   };
 
   const handleAddShotClick = (sceneId: string, insertIndex?: number) => {
@@ -262,26 +335,6 @@ export default function LeftSidebarNew({
     setEditingSceneId(null);
     setEditingSceneName('');
   };
-
-  const handleBatchDownload = async () => {
-    if (!project) return;
-    setIsDownloading(true);
-    const downloadToast = toast.loading('正在打包下载...');
-    try {
-      const result = await batchDownloadAssets(project, {
-        onProgress: (progress) => {
-          toast.loading(progress.message || '正在打包下载...', { id: downloadToast });
-        }
-      });
-      toast.success('下载完成！', { id: downloadToast });
-    } catch (error) {
-      toast.error('下载失败', { id: downloadToast });
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-
 
   return (
     <div className="fixed left-6 top-1/2 -translate-y-1/2 z-50 flex items-center gap-4 pointer-events-none">
@@ -388,18 +441,6 @@ export default function LeftSidebarNew({
               </button>
             </div>
 
-            {/* Batch Download */}
-            <div className="px-6 py-4 border-b border-black/5 dark:border-white/5">
-              <button
-                onClick={handleBatchDownload}
-                disabled={isDownloading}
-                className="w-full h-10 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
-              >
-                {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                <span>批量下载项目素材</span>
-              </button>
-            </div>
-
             {/* Tab Content */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               {activeTab === 'storyboard' && (
@@ -483,12 +524,13 @@ export default function LeftSidebarNew({
         />
       )}
 
-      {shotImagePreview && (
+      {shotImagePreview && createPortal(
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" onClick={() => setShotImagePreview(null)}>
           <div className="max-w-5xl w-full max-h-[90vh]">
             <img src={shotImagePreview} alt="预览" className="w-full h-full object-contain rounded-lg" />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <ShotEditor
@@ -500,9 +542,9 @@ export default function LeftSidebarNew({
         shotHistoryImages={shotHistoryImages}
         selectedHistoryImage={selectedHistoryImage}
         setSelectedHistoryImage={setSelectedHistoryImage}
-        liveEditingShot={liveEditingShot}
-        updateShot={updateShot}
         setShotImagePreview={setShotImagePreview}
+        onUploadClick={() => uploadInputRef.current?.click()}
+        isUploading={isUploading}
       />
 
       {showAddShotDialog && selectedSceneForNewShot && (
@@ -518,6 +560,14 @@ export default function LeftSidebarNew({
           }}
         />
       )}
+
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleUploadImage}
+        className="hidden"
+      />
 
       {showAddCharacterDialog && (
         <AddCharacterDialog

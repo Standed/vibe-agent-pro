@@ -125,8 +125,9 @@ export default function ChatPanel() {
                 }
 
                 const loadedMessages = await dataService.getChatMessages(filters, user?.id);
+                const filteredMessages = loadedMessages.filter(msg => msg.metadata?.channel !== 'planning');
 
-                const converted: ChatPanelMessage[] = loadedMessages.map((msg) => ({
+                const converted: ChatPanelMessage[] = filteredMessages.map((msg) => ({
                     id: msg.id,
                     role: msg.role as 'user' | 'assistant',
                     content: msg.content,
@@ -144,85 +145,50 @@ export default function ChatPanel() {
                     }
                 }));
 
+
+
                 // Inject Generation History if a shot is selected
                 if (selectedShotId && project?.shots) {
                     const currentShot = project.shots.find(s => s.id === selectedShotId);
                     if (currentShot && currentShot.generationHistory && currentShot.generationHistory.length > 0) {
                         const historyMessages: ChatPanelMessage[] = currentShot.generationHistory.map(h => {
-                            // Check if this history item is already represented by a chat message (deduplication)
-                            // This is a heuristic; ideally we'd link them via ID, but history IDs are different from message IDs
-                            // We can check if there's a message with the same image URL
                             const existingMsg = converted.find(m => m.images?.includes(h.result));
                             if (existingMsg) return null;
 
-                            return {
-                                id: h.id, // Use history ID as message ID
-                                role: 'assistant',
-                                content: h.parameters?.model === 'gemini-grid' ? 'Agent Generated Grid' : 'Agent Generated Image',
-                                timestamp: new Date(h.timestamp),
-                                images: [h.result],
-                                model: h.parameters?.model as GenerationModel,
-                                shotId: selectedShotId,
-                                gridData: h.parameters?.model === 'gemini-grid' ? {
-                                    fullImage: h.parameters.fullGridUrl || h.result,
-                                    slices: h.parameters.slices || [],
-                                    gridRows: 2, // Default, logic to infer?
-                                    gridCols: 2,
-                                    gridSize: h.parameters.gridSize as any || '2x2',
-                                    prompt: h.parameters.prompt,
-                                    aspectRatio: project.settings.aspectRatio || AspectRatio.WIDE,
-                                    sceneId: currentShot.sceneId
-                                } : undefined,
-                                metadata: {
-                                    prompt: h.parameters?.prompt,
-                                    model: h.parameters?.model
-                                }
-                            };
-                        }).filter((m): m is ChatPanelMessage => m !== null);
-
-                        converted.push(...historyMessages);
-                        // Re-sort by timestamp
-                        converted.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-                    }
-                }
-
-                // Inject Generation History if a shot is selected
-                if (selectedShotId && project?.shots) {
-                    const currentShot = project.shots.find(s => s.id === selectedShotId);
-                    if (currentShot && currentShot.generationHistory && currentShot.generationHistory.length > 0) {
-                        const historyMessages = currentShot.generationHistory.map(h => {
-                            // Check if this history item is already represented by a chat message (deduplication)
-                            const existingMsg = converted.find(m => m.images?.includes(h.result));
-                            if (existingMsg) return null;
+                            const params = (h.parameters || {}) as any;
+                            const isGrid = params.model === 'gemini-grid' || params.gridSize || Array.isArray(params.slices);
+                            const gridSize = params.gridSize as '2x2' | '3x3' | undefined;
+                            const gridRows = params.gridRows || (gridSize === '3x3' ? 3 : gridSize === '2x2' ? 2 : (Array.isArray(params.slices) && params.slices.length === 9 ? 3 : 2));
+                            const gridCols = params.gridCols || (gridSize === '3x3' ? 3 : gridSize === '2x2' ? 2 : (Array.isArray(params.slices) && params.slices.length === 9 ? 3 : 2));
+                            const promptText = h.prompt || params.prompt || '';
 
                             const msg: ChatPanelMessage = {
                                 id: h.id,
                                 role: 'assistant',
-                                content: h.parameters?.model === 'gemini-grid' ? 'Agent Generated Grid' : 'Agent Generated Image',
+                                content: isGrid ? 'Agent Generated Grid' : 'Agent Generated Image',
                                 timestamp: new Date(h.timestamp),
                                 images: [h.result],
-                                model: h.parameters?.model as GenerationModel,
+                                model: (isGrid ? 'gemini-grid' : params.model) as GenerationModel,
                                 shotId: selectedShotId,
-                                gridData: h.parameters?.model === 'gemini-grid' ? {
-                                    fullImage: (h.parameters.fullGridUrl as string) || h.result,
-                                    slices: (h.parameters.slices as string[]) || [],
-                                    gridRows: 2,
-                                    gridCols: 2,
-                                    gridSize: (h.parameters.gridSize as any) || '2x2',
-                                    prompt: h.parameters.prompt as string,
+                                gridData: isGrid ? {
+                                    fullImage: (params.fullGridUrl as string) || h.result,
+                                    slices: (params.slices as string[]) || [],
+                                    gridRows,
+                                    gridCols,
+                                    gridSize: gridSize || (gridRows === 3 ? '3x3' : '2x2'),
+                                    prompt: promptText,
                                     aspectRatio: project.settings.aspectRatio || AspectRatio.WIDE,
                                     sceneId: currentShot.sceneId
                                 } : undefined,
                                 metadata: {
-                                    prompt: h.parameters?.prompt,
-                                    model: h.parameters?.model
+                                    prompt: promptText,
+                                    model: params.model
                                 }
                             };
                             return msg;
-                        }).filter(m => m !== null) as ChatPanelMessage[];
+                        }).filter((m): m is ChatPanelMessage => m !== null);
 
                         converted.push(...historyMessages);
-                        // Re-sort by timestamp
                         converted.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
                     }
                 }
@@ -691,7 +657,12 @@ export default function ChatPanel() {
                     gridCols={gridResult.gridCols}
                     onAssign={(assignments) => {
                         Object.entries(assignments).forEach(([shotId, imageUrl]) => {
-                            updateShot(shotId, { referenceImage: imageUrl, fullGridUrl: gridResult.fullImage, status: 'done' });
+                            updateShot(shotId, {
+                                referenceImage: imageUrl,
+                                fullGridUrl: gridResult.fullImage,
+                                gridImages: gridResult.slices,
+                                status: 'done'
+                            });
                         });
                         clearGridResult();
                     }}
@@ -716,7 +687,12 @@ export default function ChatPanel() {
                     onSelectSlice={(sliceIndex) => {
                         const url = sliceSelectorData.gridData!.slices[sliceIndex];
                         if (sliceSelectorData.shotId) {
-                            updateShot(sliceSelectorData.shotId, { referenceImage: url, fullGridUrl: sliceSelectorData.gridData!.fullImage, status: 'done' });
+                            updateShot(sliceSelectorData.shotId, {
+                                referenceImage: url,
+                                fullGridUrl: sliceSelectorData.gridData!.fullImage,
+                                gridImages: sliceSelectorData.gridData!.slices,
+                                status: 'done'
+                            });
                             toast.success(`已选择切片 #${sliceIndex + 1}`);
                         }
                         setSliceSelectorData(null);
