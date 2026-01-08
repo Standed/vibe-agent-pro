@@ -1,6 +1,6 @@
 'use client';
 
-import { Home, Settings, ChevronLeft, Sparkles, Wand2, History } from 'lucide-react';
+import { Home, Settings, ChevronLeft, Sparkles, Wand2, History, X } from 'lucide-react';
 import Link from 'next/link';
 import { Project } from '@/types/project';
 
@@ -11,6 +11,7 @@ interface PlanningHeaderProps {
     showHomeButton?: boolean;
     onAiAssistantClick: () => void;
     onHistoryClick: () => void;
+    onClose?: () => void;
 }
 
 export default function PlanningHeader({
@@ -19,7 +20,8 @@ export default function PlanningHeader({
     setIsSidebarCollapsed,
     showHomeButton = true,
     onAiAssistantClick,
-    onHistoryClick
+    onHistoryClick,
+    onClose
 }: PlanningHeaderProps) {
     return (
         <div className="h-20 px-8 border-b border-black/5 dark:border-white/5 flex items-center justify-between bg-white/50 dark:bg-black/20 backdrop-blur-md z-20">
@@ -58,6 +60,15 @@ export default function PlanningHeader({
                     <History size={16} />
                     <span>历史记录</span>
                 </button>
+                {onClose && (
+                    <button
+                        onClick={onClose}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-bold transition-all"
+                    >
+                        <X size={16} />
+                        <span>退出</span>
+                    </button>
+                )}
             </div>
         </div>
     );

@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { useAIStoryboard } from '@/hooks/useAIStoryboard';
 import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import AddLocationDialog from '@/components/asset/AddLocationDialog';
-import { useAgent } from '@/hooks/useAgent';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { dataService } from '@/lib/dataService';
 import { useParams } from 'next/navigation';
@@ -14,7 +13,7 @@ import { ChatMessage, Character, Location } from '@/types/project';
 
 // Sub-components
 import PlanningHeader from './PlanningHeader';
-import PlanningSidebar from './PlanningSidebar';
+import LeftSidebarNew from '@/components/layout/LeftSidebarNew';
 import PlanningChat from './PlanningChat';
 
 interface PlanningViewProps {
@@ -39,23 +38,34 @@ export default function PlanningView({
         addLocation,
         updateLocation,
         deleteLocation,
+        updateScript,
         setControlMode,
         rightSidebarCollapsed,
         toggleRightSidebar
     } = useProjectStore();
 
+    const generateMessageId = useCallback(() => {
+        if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+            return crypto.randomUUID();
+        }
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = (Math.random() * 16) | 0;
+            const v = c === 'x' ? r : (r & 0x3) | 0x8;
+            return v.toString(16);
+        });
+    }, []);
+
     // UI State
-    const [activeTab, setActiveTab] = useState<'storyboard' | 'characters' | 'locations'>('storyboard');
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+    // const [activeTab, setActiveTab] = useState<'storyboard' | 'characters' | 'locations'>('storyboard');
+    // const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
     // Agent state
     const { user } = useAuth();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
     const messagesTopRef = useRef<HTMLDivElement | null>(null);
-
-    const { isProcessing, thinkingSteps, sendMessage } = useAgent({ chatChannel: 'planning' });
 
     // Dialog states
     const [showAddCharacter, setShowAddCharacter] = useState(false);
@@ -97,12 +107,12 @@ export default function PlanningView({
     // Scroll to bottom when new message
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages, thinkingSteps]);
+    }, [messages]);
 
     // 自动触发 AI 分镜生成：当项目有剧本但没有场景/镜头时
     useEffect(() => {
         if (!project || !project.id || project.id !== (params?.id as string)) return;
-        if (isGenerating || isProcessing) return;
+        if (isGenerating || isSubmitting) return;
 
         const hasScenes = project.scenes && project.scenes.length > 0;
         const hasShots = project.shots && project.shots.length > 0;
@@ -121,29 +131,41 @@ export default function PlanningView({
             }, 2000);
             return () => clearTimeout(timer);
         }
-    }, [project?.id, project?.script, project?.scenes?.length, isGenerating, isProcessing, params?.id, handleAIStoryboard]);
+    }, [project?.id, project?.script, project?.scenes?.length, isGenerating, isSubmitting, params?.id, handleAIStoryboard]);
 
-    // 自动切换到分镜选项卡：当生成完成且有了分镜数据时
-    const prevIsGenerating = useRef(isGenerating);
-    useEffect(() => {
-        if (!project) return;
-        if (prevIsGenerating.current && !isGenerating && project.shots && project.shots.length > 0 && activeTab !== 'storyboard') {
-            setActiveTab('storyboard');
-            setIsSidebarCollapsed(false);
-        }
-        prevIsGenerating.current = isGenerating;
-    }, [isGenerating, project?.shots?.length, activeTab, project]);
+    // 自动切换到分镜选项卡逻辑已移除，由 Sidebar 内部管理
+    // const prevIsGenerating = useRef(isGenerating);
+    // useEffect(() => {
+    //     if (!project) return;
+    //     if (prevIsGenerating.current && !isGenerating && project.shots && project.shots.length > 0 && activeTab !== 'storyboard') {
+    //         setActiveTab('storyboard');
+    //         setIsSidebarCollapsed(false);
+    //     }
+    //     prevIsGenerating.current = isGenerating;
+    // }, [isGenerating, project?.shots?.length, activeTab, project]);
 
     const handleSendMessage = async (textOverride?: string) => {
         const text = textOverride || inputText;
-        if (!text.trim() || isProcessing || isGenerating) return;
+        if (!text.trim() || isSubmitting || isGenerating) return;
+        if (!project) {
+            toast.error('请先创建或打开一个项目');
+            return;
+        }
+        if (!user) {
+            toast.error('请先登录以使用 AI 功能');
+            return;
+        }
 
         const userContent = text.trim();
         setInputText('');
+        setIsSubmitting(true);
+
+        const hasScript = !!project.script?.trim();
+        const scriptToUse = hasScript ? project.script.trim() : userContent;
 
         // 立即添加用户消息到本地状态（乐观更新）
         const userMessage: ChatMessage = {
-            id: `user_${Date.now()}`,
+            id: generateMessageId(),
             userId: user?.id || '',
             projectId: project?.id || '',
             scope: 'project',
@@ -156,21 +178,36 @@ export default function PlanningView({
         };
         setMessages((prev) => [...prev, userMessage]);
 
-        // 调用 Agent
-        await sendMessage(userContent);
+        try {
+            await dataService.saveChatMessage(userMessage);
+        } catch (error) {
+            console.warn('保存聊天消息失败:', error);
+        }
 
-        // 重新加载聊天历史（包含 AI 回复）
-        if (project && user) {
-            const history = await dataService.getChatMessages({
-                projectId: project.id,
-                scope: 'project',
-            });
-            setMessages(filterPlanningMessages(history));
+        if (!hasScript) {
+            updateScript(userContent);
+        }
+
+        try {
+            await handleAIStoryboard(scriptToUse);
+        } finally {
+            // 重新加载聊天历史（包含 AI 回复）
+            try {
+                const history = await dataService.getChatMessages({
+                    projectId: project.id,
+                    scope: 'project',
+                });
+                setMessages(filterPlanningMessages(history));
+            } catch (error) {
+                console.error('加载聊天历史失败:', error);
+            } finally {
+                setIsSubmitting(false);
+            }
         }
     };
 
     const handleDeleteCharacter = (id: string, name: string) => {
-        if (isProcessing || isGenerating) return;
+        if (isSubmitting || isGenerating) return;
         if (confirm(`确定要删除角色 "${name}" 吗？`)) {
             deleteCharacter(id);
             toast.success('角色已删除');
@@ -178,7 +215,7 @@ export default function PlanningView({
     };
 
     const handleDeleteLocation = (id: string, name: string) => {
-        if (isProcessing || isGenerating) return;
+        if (isSubmitting || isGenerating) return;
         if (confirm(`确定要删除场景 "${name}" 吗？`)) {
             deleteLocation(id);
             toast.success('场景已删除');
@@ -189,27 +226,17 @@ export default function PlanningView({
 
     return (
         <div className="h-screen w-full bg-[#f8f9fa] dark:bg-[#0a0a0a] flex overflow-hidden relative">
-            <PlanningSidebar
-                project={project}
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                isSidebarCollapsed={isSidebarCollapsed}
-                setIsSidebarCollapsed={setIsSidebarCollapsed}
-                showHomeButton={showHomeButton}
-                onClose={onClose}
-                onAddCharacter={() => setShowAddCharacter(true)}
-                onEditCharacter={setEditingCharacter}
-                onDeleteCharacter={handleDeleteCharacter}
-                onAddLocation={() => setShowAddLocation(true)}
-                onEditLocation={setEditingLocation}
-                onDeleteLocation={handleDeleteLocation}
+            <LeftSidebarNew
+                activeView="planning"
+                onSwitchToTimeline={onSwitchToTimeline}
             />
 
             <div className="flex-1 flex flex-col relative bg-white dark:bg-[#0a0a0a]">
                 <PlanningHeader
                     project={project}
-                    isSidebarCollapsed={isSidebarCollapsed}
-                    setIsSidebarCollapsed={setIsSidebarCollapsed}
+                    isSidebarCollapsed={false}
+                    setIsSidebarCollapsed={() => { }}
+                    onClose={onClose}
                     onAiAssistantClick={() => {
                         setControlMode('agent');
                         if (rightSidebarCollapsed) toggleRightSidebar();
@@ -225,9 +252,9 @@ export default function PlanningView({
                     messages={messages}
                     inputText={inputText}
                     setInputText={setInputText}
-                    isProcessing={isProcessing}
+                    isProcessing={isSubmitting}
                     isGenerating={isGenerating}
-                    thinkingSteps={thinkingSteps}
+                    thinkingSteps={[]}
                     handleSendMessage={handleSendMessage}
                     currentStep={currentStep}
                     messagesEndRef={messagesEndRef}

@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Project, Shot, ChatMessage } from '@/types/project';
 import { useProjectStore } from '@/store/useProjectStore';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { dataService } from '@/lib/dataService';
 import { addCandidateName, applyCharacterDesigns } from '@/utils/characterDesignUtils';
 
@@ -45,6 +46,7 @@ function groupShotsIntoScenes(shots: any[]): any[] {
 
 export const useAIStoryboard = () => {
     const { project, addScene, addShot, updateCharacter, addCharacter } = useProjectStore();
+    const { user } = useAuth();
     const [isGenerating, setIsGenerating] = useState(false);
     const [currentStep, setCurrentStep] = useState<StoryboardStep | null>(null);
 
@@ -71,8 +73,10 @@ export const useAIStoryboard = () => {
         return data;
     };
 
-    const handleAIStoryboard = useCallback(async () => {
-        if (!project?.script || !project.script.trim()) {
+    const handleAIStoryboard = useCallback(async (scriptOverride?: string) => {
+        const activeProject = project;
+        const script = (scriptOverride ?? activeProject?.script || '').trim();
+        if (!script) {
             toast.error('请先输入剧本内容');
             return;
         }
@@ -82,14 +86,14 @@ export const useAIStoryboard = () => {
         try {
             // 1. Analyze script
             updateStep(1, 'running');
-            const analysis = await apiCall('analyzeScript', { script: project.script });
+            const analysis = await apiCall('analyzeScript', { script });
             updateStep(1, 'completed');
 
             // 2. Generate shots
             updateStep(2, 'running');
             const generatedShots = await apiCall('generateShots', {
-                script: project.script,
-                artStyle: project.metadata.artStyle
+                script,
+                artStyle: activeProject?.metadata.artStyle
             });
             updateStep(2, 'completed', `已生成 ${generatedShots.length} 个镜头`);
 
@@ -131,7 +135,7 @@ export const useAIStoryboard = () => {
 
             // 5. Generate Characters
             const candidateMap = new Map<string, string>();
-            project.characters.forEach((c) => addCandidateName(candidateMap, c.name));
+            activeProject?.characters.forEach((c) => addCandidateName(candidateMap, c.name));
             generatedShots.forEach((shot: any) => {
                 (shot.mainCharacters || []).forEach((name: string) => addCandidateName(candidateMap, name));
             });
@@ -143,13 +147,13 @@ export const useAIStoryboard = () => {
                     updateStep(5, 'running', `正在 design ${characterCandidates.length} 个角色形象...`);
 
                     const characterDesigns = await apiCall('generateCharacterDesigns', {
-                        script: project.script,
+                        script,
                         characterNames: characterCandidates,
-                        artStyle: project.metadata.artStyle,
-                        projectSummary: `${project.metadata.title || ''} ${project.metadata.description || ''}`.trim(),
+                        artStyle: activeProject?.metadata.artStyle,
+                        projectSummary: `${activeProject?.metadata.title || ''} ${activeProject?.metadata.description || ''}`.trim(),
                         shots: generatedShots,
                         // Pass existing characters' descriptions as context to avoid conflicts
-                        existingContext: project.characters.map(c => `${c.name}: ${c.description || ''}`).join('\n')
+                        existingContext: activeProject?.characters.map(c => `${c.name}: ${c.description || ''}`).join('\n')
                     });
 
                     // First pass
@@ -167,10 +171,10 @@ export const useAIStoryboard = () => {
                         updateStep(5, 'running', `正在补充 ${firstPass.missing.length} 个角色设计...`);
                         try {
                             const retryDesigns = await apiCall('generateCharacterDesigns', {
-                                script: project.script,
+                                script,
                                 characterNames: firstPass.missing,
-                                artStyle: project.metadata.artStyle,
-                                projectSummary: `${project.metadata.title || ''} ${project.metadata.description || ''}`.trim(),
+                                artStyle: activeProject?.metadata.artStyle,
+                                projectSummary: `${activeProject?.metadata.title || ''} ${activeProject?.metadata.description || ''}`.trim(),
                                 shots: generatedShots,
                             });
                             applyCharacterDesigns(
@@ -200,16 +204,21 @@ export const useAIStoryboard = () => {
             if (project) {
                 const summaryMessage: ChatMessage = {
                     id: crypto.randomUUID(),
-                    userId: (project as any).userId || '',
+                    userId: user?.id || (project as any).userId || '',
                     projectId: project.id,
                     scope: 'project',
                     role: 'assistant',
                     content: `✨ **AI 导演已完成策划！**\n\n我已根据剧本为您生成了：\n- **${sceneGroups.length}** 个场景\n- **${generatedShots.length}** 个镜头\n- **${characterCandidates.length}** 个角色形象设计\n\n您现在可以在左侧面板查看并编辑这些内容。`,
+                    metadata: { channel: 'planning' },
                     timestamp: new Date(),
                     createdAt: new Date(),
                     updatedAt: new Date(),
                 };
-                void dataService.saveChatMessage(summaryMessage);
+                try {
+                    await dataService.saveChatMessage(summaryMessage);
+                } catch (error) {
+                    console.warn('保存策划总结消息失败:', error);
+                }
             }
 
         } catch (error: any) {
@@ -219,7 +228,7 @@ export const useAIStoryboard = () => {
         } finally {
             setIsGenerating(false);
         }
-    }, [project, addScene, addShot, updateCharacter, addCharacter, updateStep, currentStep]);
+    }, [project, addScene, addShot, updateCharacter, addCharacter, updateStep, currentStep, user?.id]);
 
     return {
         isGenerating,
