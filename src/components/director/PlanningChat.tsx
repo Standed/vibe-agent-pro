@@ -58,9 +58,9 @@ export default function PlanningChat({
                             </div>
                             <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
                                 {[
-                                    { icon: <FileText size={16} />, text: '帮我完善剧本', prompt: '请根据我目前的创意，帮我完善一下剧本，增加一些戏剧冲突和细节描写。' },
-                                    { icon: <Users size={16} />, text: '设计主要角色', prompt: '请根据剧本内容，为我设计 3 个性格鲜明的主要角色，包含外貌和性格描述。' },
-                                    { icon: <MapPin size={16} />, text: '构思关键场景', prompt: '这个故事需要哪些关键场景？请帮我列出并描述它们的视觉风格。' },
+                                    { icon: <FileText size={16} />, text: '帮我完善剧本', prompt: '请根据我目前的创意，帮我完善一下剧本，增加一些戏剧冲突和细节描写，并更新到项目中。' },
+                                    { icon: <Users size={16} />, text: '设计主要角色', prompt: '请根据剧本内容，为我设计 3 个性格鲜明的主要角色，包含外貌和性格描述，并添加到项目中。' },
+                                    { icon: <MapPin size={16} />, text: '构思关键场景', prompt: '这个故事需要哪些关键场景？请帮我列出并描述它们的视觉风格，并添加到项目中。' },
                                     { icon: <MessageSquare size={16} />, text: '分析故事节奏', prompt: '请分析一下我目前剧本的节奏，并给出改进建议。' },
                                 ].map((item, i) => (
                                     <button
