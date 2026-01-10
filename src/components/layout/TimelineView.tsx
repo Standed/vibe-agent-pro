@@ -405,13 +405,39 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     }, []);
 
     const syncedTaskIdsRef = useRef(new Set<string>());
+    const notifiedTaskIdsRef = useRef(new Set<string>());
 
     useEffect(() => {
         if (!project?.id) return;
         const tasks = Array.from(soraTasks.values());
         const updates: Promise<any>[] = [];
+
         tasks.forEach((task) => {
             if (task.status !== 'completed') return;
+
+            // 检查是否需要通知（针对多镜头任务）
+            if (task.shotIds && task.shotIds.length > 1 && !notifiedTaskIdsRef.current.has(task.id)) {
+                notifiedTaskIdsRef.current.add(task.id);
+                // 只有当任务是最近完成的（比如1分钟内创建的，或者简单点直接提示）
+                // 为了避免页面刷新时弹出大量提示，可以检查任务更新时间是否在最近
+                const isRecent = new Date(task.updatedAt).getTime() > Date.now() - 60000;
+                if (isRecent) {
+                    const shotLabels = task.shotIds
+                        .map(id => shotIndexById.get(id))
+                        .filter(idx => idx !== undefined)
+                        .map(idx => idx! + 1)
+                        .sort((a, b) => a - b);
+
+                    if (shotLabels.length > 0) {
+                        const rangeStr = `${shotLabels[0]}-${shotLabels[shotLabels.length - 1]}`;
+                        toast.success(`Sora视频已生成 (镜头 ${rangeStr})`, {
+                            description: "新视频覆盖了指定镜头范围。如与旧视频重叠，请手动确认效果。",
+                            duration: 5000,
+                        });
+                    }
+                }
+            }
+
             const videoUrl = task.r2Url || task.kaponaiUrl;
             if (!videoUrl) return;
 
@@ -424,7 +450,11 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                 const shot = shotsById.get(shotId);
                 if (!shot?.sceneId) return;
                 if (shot.videoClip === videoUrl) return;
+
+                // 检查是否已经有视频，且不是来自同一个任务
+                // 如果是单镜头任务，且分镜已有视频，则跳过（防止覆盖用户手动绑定的）
                 if (shot.videoClip) return;
+
                 if (syncedTaskIdsRef.current.has(`${task.id}:${shotId}`)) return;
 
                 syncedTaskIdsRef.current.add(`${task.id}:${shotId}`);
@@ -444,7 +474,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         if (updates.length > 0) {
             Promise.allSettled(updates).catch(() => { });
         }
-    }, [soraTasks, shotsById, project?.id, updateShot]);
+    }, [soraTasks, shotsById, project?.id, updateShot, shotIndexById]);
 
     const applyStatusUpdate = async (task: SoraTask, data: any, notify: boolean) => {
         const remoteStatus = data.status;
@@ -923,6 +953,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                 return '排队中';
             case 'processing':
             case 'generating':
+            case 'in_progress':
                 return '生成中';
             case 'completed':
                 return '已完成';
@@ -939,6 +970,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                 return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-300';
             case 'processing':
             case 'generating':
+            case 'in_progress':
                 return 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300';
             case 'completed':
                 return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300';

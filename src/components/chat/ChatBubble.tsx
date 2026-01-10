@@ -12,6 +12,7 @@ interface ChatMessage {
     images?: string[];
     model?: any;
     shotId?: string;
+    videoUrl?: string;  // Sora生成的视频URL
     gridData?: {
         fullImage: string;
         slices: string[];
@@ -31,6 +32,7 @@ interface ChatBubbleProps {
     onReusePrompt?: (prompt: string) => void;
     onReuseImage?: (url: string) => void;
     onApplyToShot?: (url: string) => void;
+    onApplyVideoToShot?: (url: string) => void;  // 应用视频到分镜
 }
 
 export function ChatBubble({
@@ -39,10 +41,12 @@ export function ChatBubble({
     onSliceSelect,
     onReusePrompt,
     onReuseImage,
-    onApplyToShot
+    onApplyToShot,
+    onApplyVideoToShot
 }: ChatBubbleProps) {
     const isUser = message.role === 'user';
     const hasImages = message.images && message.images.length > 0;
+    const hasVideo = !!message.videoUrl;
 
     return (
         <div className={cn("flex w-full mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300", isUser ? "justify-end" : "justify-start")}>
@@ -84,6 +88,32 @@ export function ChatBubble({
                                     <RefreshCw size={10} />
                                 </button>
                             )}
+                        </div>
+                    )}
+
+                    {/* Video (Sora生成的视频) */}
+                    {hasVideo && !isUser && (
+                        <div className="max-w-[360px] w-auto mt-1 rounded-2xl overflow-hidden">
+                            <div className="relative group/video rounded-xl overflow-hidden border border-black/5 dark:border-white/10 shadow-sm">
+                                <video
+                                    src={message.videoUrl}
+                                    controls
+                                    className="w-auto h-auto max-w-full max-h-[280px] object-contain"
+                                />
+                                {/* 操作按钮 */}
+                                <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 via-black/30 to-transparent opacity-0 group-hover/video:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
+                                    {onApplyVideoToShot && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onApplyVideoToShot(message.videoUrl!); }}
+                                            className="px-2 py-1 rounded-full bg-white/20 hover:bg-white/40 text-white text-xs backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm flex items-center gap-1"
+                                            title="应用到当前分镜"
+                                        >
+                                            <Grid3x3 size={12} />
+                                            <span>应用到分镜</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
 

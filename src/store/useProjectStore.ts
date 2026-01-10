@@ -58,7 +58,8 @@ interface ProjectStore {
     title: string,
     description: string,
     artStyle?: string,
-    aspectRatio?: string
+    aspectRatio?: string,
+    script?: string
   ) => void;
   updateProjectMetadata: (metadata: Partial<Project['metadata']>) => void;
   updateScript: (script: string) => void;
@@ -199,7 +200,7 @@ export const useProjectStore = create<ProjectStore>()(
       }, SAVE_DEBOUNCE_DELAY);
     },
 
-    createNewProject: (title, description, artStyle = '', aspectRatio = '9:16') => {
+    createNewProject: (title, description, artStyle = '', aspectRatio = '9:16', script = '') => {
       // 根据画面比例设置分辨率
       const resolutionMap: Record<string, { width: number; height: number }> = {
         '16:9': { width: 1920, height: 1080 },
@@ -225,7 +226,7 @@ export const useProjectStore = create<ProjectStore>()(
           characters: [],
           locations: [],
           audioAssets: [],
-          script: description || '',
+          script: script || '',
           scenes: [],
           shots: [],
           timeline: [

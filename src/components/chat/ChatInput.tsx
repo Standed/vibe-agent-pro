@@ -4,8 +4,7 @@ import MentionInput from '@/components/input/MentionInput';
 import { JimengOptions, JimengModel, JimengResolution } from '@/components/jimeng/JimengOptions';
 import { cn } from '@/lib/utils';
 import { getCommandSuggestions, SLASH_COMMANDS, type SlashCommand } from '@/utils/slashCommands';
-
-export type GenerationModel = 'seedream' | 'gemini-direct' | 'gemini-grid' | 'jimeng';
+import { GenerationModel } from '@/types/project';
 
 interface ChatInputProps {
     inputText: string;
@@ -28,6 +27,11 @@ interface ChatInputProps {
     setGridSize: (size: '2x2' | '3x3') => void;
     manualReferenceUrls?: string[];
     onRemoveReferenceUrl?: (index: number) => void;
+    // Sora specific
+    soraAspectRatio?: '16:9' | '9:16';
+    setSoraAspectRatio?: (ratio: '16:9' | '9:16') => void;
+    soraDuration?: 10 | 15;
+    setSoraDuration?: (duration: 10 | 15) => void;
 }
 
 export function ChatInput({
@@ -48,7 +52,11 @@ export function ChatInput({
     gridSize,
     setGridSize,
     manualReferenceUrls = [],
-    onRemoveReferenceUrl
+    onRemoveReferenceUrl,
+    soraAspectRatio = '16:9',
+    setSoraAspectRatio,
+    soraDuration = 10,
+    setSoraDuration
 }: ChatInputProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [commandSuggestions, setCommandSuggestions] = useState<SlashCommand[]>([]);
@@ -89,11 +97,12 @@ export function ChatInput({
         setShowCommands(false);
     };
 
-    const models: { id: GenerationModel; label: string }[] = [
-        { id: 'gemini-grid', label: 'Grid' },
-        { id: 'gemini-direct', label: 'Gemini' },
-        { id: 'seedream', label: 'SeeDream' },
-        { id: 'jimeng', label: '即梦' },
+    const models: { id: GenerationModel; label: string; category?: 'image' | 'video' }[] = [
+        { id: 'gemini-grid', label: 'Grid', category: 'image' },
+        { id: 'gemini-direct', label: 'Gemini', category: 'image' },
+        { id: 'seedream', label: 'SeeDream', category: 'image' },
+        { id: 'jimeng', label: '即梦', category: 'image' },
+        { id: 'sora-video', label: 'Sora视频', category: 'video' },
     ];
 
     return (
@@ -232,6 +241,52 @@ export function ChatInput({
                             onModelChange={setJimengModel}
                             onResolutionChange={setJimengResolution}
                         />
+                    </div>
+                )}
+
+                {/* Sora Video Options Panel */}
+                {selectedModel === 'sora-video' && (
+                    <div className="px-1 animate-in fade-in slide-in-from-top-2 flex items-center gap-4">
+                        {/* 尺寸选择 */}
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-zinc-500">尺寸:</span>
+                            <div className="flex p-0.5 bg-zinc-100 dark:bg-white/5 rounded-lg">
+                                {(['16:9', '9:16'] as const).map((ratio) => (
+                                    <button
+                                        key={ratio}
+                                        onClick={() => setSoraAspectRatio?.(ratio)}
+                                        className={cn(
+                                            "px-2 py-1 text-[10px] font-medium rounded transition-all",
+                                            soraAspectRatio === ratio
+                                                ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
+                                                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                        )}
+                                    >
+                                        {ratio === '16:9' ? '横屏' : '竖屏'}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        {/* 时长选择 */}
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-zinc-500">时长:</span>
+                            <div className="flex p-0.5 bg-zinc-100 dark:bg-white/5 rounded-lg">
+                                {([10, 15] as const).map((dur) => (
+                                    <button
+                                        key={dur}
+                                        onClick={() => setSoraDuration?.(dur)}
+                                        className={cn(
+                                            "px-2 py-1 text-[10px] font-medium rounded transition-all",
+                                            soraDuration === dur
+                                                ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
+                                                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                        )}
+                                    >
+                                        {dur}s
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 )}
 
