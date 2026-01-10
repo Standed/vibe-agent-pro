@@ -1,6 +1,6 @@
-# Sora 视频生成 - 架构与流程文档 (v2.2)
+# Sora 视频生成 - 架构与流程文档 (v2.3)
 
-本项目已成功集成 Sora2 视频生成能力。当前版本通过"动态比例识别"、"精简 JSON 剧本协议"与**全局 Prompt 后缀**，提升角色一致性与镜头质感，并支持**单任务覆盖多分镜**。
+本项目已成功集成 Sora2 视频生成能力。当前版本通过"动态比例识别"、"精简 JSON 剧本协议"与**全局 Prompt 后缀**，提升角色一致性与镜头质感，并支持**单任务覆盖多分镜**以及**Pro模式独立创作**。
 
 ---
 
@@ -12,6 +12,7 @@
 | **KaponaiService** | `src/services/KaponaiService.ts` | Sora API 底层封装 (创建视频、查询状态、下载) |
 | **CharacterConsistencyService** | `src/services/CharacterConsistencyService.ts` | 角色参考视频生成与注册 |
 | **SoraPromptService** | `src/services/SoraPromptService.ts` | Sora 专用提示词生成与角色码注入 |
+| **soraCharacterReplace** | `src/utils/soraCharacterReplace.ts` | **[New]** 角色@提及自动替换工具 |
 
 ---
 
@@ -20,6 +21,8 @@
 ```mermaid
 graph TD
     User[User / Agent] -->|Call| Orchestrator[SoraOrchestrator]
+    ProUser[Pro Mode] -->|Direct Call| API[Kaponai API]
+    
     Orchestrator -->|1. Init| DBService[UnifiedDataService]
     Orchestrator -->|2. Check| CharStatus{Char Registered?}
     
@@ -39,7 +42,9 @@ graph TD
     ShotConv[convertShotToSoraShot] -->|3. Compile| JSON[Lean JSON Script + global_prompt]
     note[New Protocol:\nShotType + @ID Action + global_prompt] -.-> ShotConv
     
-    JSON -->|4. Submit| API[Kaponai API]
+    JSON -->|4. Submit| API
+    ProUser -->|Submit| API
+    
     API -->|Task IDs| SaveTask[DB: Save Tasks\nsora_tasks(shotIds/shotRanges) + scene.soraGeneration]
     SaveTask --> Return[Return Task IDs]
     SaveTask --> Queue[Timeline Queue\nBatch Refresh + Auto Writeback]
@@ -73,7 +78,7 @@ graph TD
 8. 获取 @username → 保存到数据库
 ```
 
-### 3.2 视频生成流程
+### 3.2 视频生成流程 (Agent模式)
 
 ```
 1. 识别场景涉及的角色
@@ -91,6 +96,23 @@ graph TD
 5. 提交视频任务 (Kaponai createVideo)
    ↓
 6. 保存任务 ID 到数据库 (shotIds/shotRanges)
+```
+
+### 3.3 Pro模式生成流程 **[New]**
+
+```
+1. 用户输入提示词 (支持 @角色名)
+   ↓
+2. 自动替换角色码 (replaceSoraCharacterCodes)
+   - 匹配 @角色名 或 角色全名 → 替换为 @sora_id
+   ↓
+3. 提交任务 (/api/sora/generate)
+   ↓
+4. 前端轮询任务状态
+   ↓
+5. 完成后在聊天显示视频
+   ↓
+6. 用户点击"应用到分镜" → 绑定到当前分镜
 ```
 
 ---
@@ -131,12 +153,21 @@ graph TD
 统一在脚本层级注入（`global_prompt`），确保仅追加一次：
 > "中文配音，不要增减旁白，无字幕，高清，无配乐，画面无闪烁。请根据这个参考图片里的场景帮我生成动画。"
 
-### 4.4 多镜头任务映射
+### 4.4 多镜头任务映射与提示 **[Updated]**
 
-- 单个 Sora 任务可覆盖多个分镜：`sora_tasks.shot_ids` 记录覆盖镜头，`shot_ranges` 记录每个镜头在视频中的时间区间。
-- 前端时间轴会将同一任务渲染为一个连续的视频块；仅**单镜头任务**会自动写回 `shots.video_clip`。
+- **映射逻辑**：单个 Sora 任务可覆盖多个分镜。`sora_tasks.shot_ids` 记录覆盖镜头。
+- **时间轴显示**：将同一任务渲染为一个连续的视频块（Video Group）。
+- **自动绑定 (Agent模式)**：当多镜头任务（如覆盖镜头7-10）完成时，系统会自动将生成的视频 URL 回写到**所有涉及分镜**（Shot 7, 8, 9, 10）的 `video_clip` 字段，并追加到各自的 `generationHistory` 中。
+- **手动绑定 (Pro模式)**：Pro 模式生成的视频需用户手动点击“应用到分镜”，目前仅支持应用到当前选中的**单个分镜**，并保存到该分镜的历史记录中。
+- **覆盖提示**：当任务完成时，若检测到任务更新时间在最近 1 分钟内，前端会弹出 Toast 提示。对于多镜头任务，提示会明确指出覆盖范围。
 
-### 4.5 时长策略
+### 4.5 视频版本管理 **[New]**
+
+- **历史记录**：无论是 Agent 自动生成还是 Pro 手动应用，所有视频结果都会被保存到对应分镜的 `generationHistory` 字段。
+- **回退机制**：用户可以在分镜详情页（Shot Detail Panel）的“生成历史”区域查看所有历史视频，并一键回退/切换版本。
+- **多镜头回退**：对于多镜头任务生成的视频，它会分别存在于每个涉及分镜的历史记录中，用户需分别对每个分镜进行回退操作（如果需要完全撤销）。
+
+### 4.6 时长策略
 
 | 场景时长 | 处理方式 |
 |----------|----------|
@@ -151,6 +182,7 @@ graph TD
 | 端点 | 方法 | 功能 |
 |------|------|------|
 | `/api/agent/tools/execute` | POST | Agent 触发 Sora 编排入口 |
+| `/api/sora/generate` | POST | **[New]** Pro模式直接生成入口 |
 | `/api/sora/status` | GET | 查询任务状态 |
 | `/api/sora/status/batch` | POST | 批量查询/刷新任务状态 |
 | `/api/sora/tasks/list` | GET | 查询项目 Sora 任务列表 |
@@ -192,6 +224,12 @@ npx tsx scripts/test-sora-full-flow.ts
 - "帮我把当前场景生成 Sora 视频"
 - "批量生成视频"
 
+### Pro 模式验证 **[New]**
+1. 切换到 Pro 模式，选择 "Sora 视频"
+2. 输入包含 "@角色名" 的提示词
+3. 验证是否自动替换为 Sora 码
+4. 生成完成后点击 "应用到分镜"
+
 ### 数据库验证
 检查以下表/字段：
 - `sora_tasks` 表 - 任务状态
@@ -201,5 +239,5 @@ npx tsx scripts/test-sora-full-flow.ts
 
 ---
 
-**最后更新**: 2025-12-26
-**版本**: v2.2
+**最后更新**: 2026-01-10
+**版本**: v2.3

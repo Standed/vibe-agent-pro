@@ -89,7 +89,7 @@ export default function PlanningChat({
                     )}
 
                     {/* AI Storyboard Progress */}
-                    {isGenerating && currentStep && (
+                    {isGenerating && (
                         <motion.div
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -99,62 +99,78 @@ export default function PlanningChat({
                                 <Sparkles size={16} className="text-white" />
                             </div>
                             <div className="flex-1 max-w-xl">
-                                <div className="bg-white dark:bg-zinc-900/80 backdrop-blur-xl rounded-2xl p-6 border border-black/5 dark:border-white/10 shadow-2xl">
-                                    <div className="flex items-center gap-3 mb-6">
-                                        <div className="p-2 rounded-xl bg-light-accent/10 dark:bg-cine-accent/10">
-                                            <Wand2 size={18} className="text-light-accent dark:text-cine-accent animate-pulse" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-sm font-black text-zinc-900 dark:text-white tracking-tight">嘿！我已经为你规划好了创作流程</h3>
-                                            <p className="text-[10px] text-zinc-500 font-medium">让我们一起把这个精彩的故事变成现实吧！</p>
+                                {!currentStep ? (
+                                    /* 初始化状态 - 当 currentStep 还未设置时显示 */
+                                    <div className="bg-white dark:bg-zinc-900/80 backdrop-blur-xl rounded-2xl p-6 border border-black/5 dark:border-white/10 shadow-2xl">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 rounded-xl bg-light-accent/10 dark:bg-cine-accent/10">
+                                                <Loader2 size={18} className="text-light-accent dark:text-cine-accent animate-spin" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-black text-zinc-900 dark:text-white tracking-tight">正在启动 AI 分镜分析...</h3>
+                                                <p className="text-[10px] text-zinc-500 font-medium">请稍候，AI 正在理解你的故事</p>
+                                            </div>
                                         </div>
                                     </div>
+                                ) : (
+                                    /* 正常进度显示 - 当 currentStep 已设置时显示 */
+                                    <div className="bg-white dark:bg-zinc-900/80 backdrop-blur-xl rounded-2xl p-6 border border-black/5 dark:border-white/10 shadow-2xl">
+                                        <div className="flex items-center gap-3 mb-6">
+                                            <div className="p-2 rounded-xl bg-light-accent/10 dark:bg-cine-accent/10">
+                                                <Wand2 size={18} className="text-light-accent dark:text-cine-accent animate-pulse" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-black text-zinc-900 dark:text-white tracking-tight">嘿！我已经为你规划好了创作流程</h3>
+                                                <p className="text-[10px] text-zinc-500 font-medium">让我们一起把这个精彩的故事变成现实吧！</p>
+                                            </div>
+                                        </div>
 
-                                    <div className="space-y-4">
-                                        {[1, 2, 3, 4, 5].map((step) => {
-                                            const stepStatus = currentStep.step > step ? 'completed' : currentStep.step === step ? currentStep.status : 'pending';
-                                            const stepTitles = [
-                                                '构建短片的核心故事线和情节发展',
-                                                '确定整体视觉风格和美术表现形式',
-                                                '设计短片中的主要角色形象和特征',
-                                                '设计短片中出现的各个场景',
-                                                '绘制详细的分镜图，规划镜头语言'
-                                            ];
+                                        <div className="space-y-4">
+                                            {[1, 2, 3, 4, 5].map((step) => {
+                                                const stepStatus = currentStep.step > step ? 'completed' : currentStep.step === step ? currentStep.status : 'pending';
+                                                const stepTitles = [
+                                                    '构建短片的核心故事线和情节发展',
+                                                    '确定整体视觉风格和美术表现形式',
+                                                    '设计短片中的主要角色形象和特征',
+                                                    '设计短片中出现的各个场景',
+                                                    '绘制详细的分镜图，规划镜头语言'
+                                                ];
 
-                                            return (
-                                                <div key={step} className="group">
-                                                    <div className="flex items-start gap-3">
-                                                        <div className={cn(
-                                                            "mt-0.5 transition-colors duration-300",
-                                                            stepStatus === 'completed' ? "text-emerald-500" :
-                                                                stepStatus === 'running' ? "text-light-accent dark:text-cine-accent" : "text-zinc-300 dark:text-zinc-700"
-                                                        )}>
-                                                            {stepStatus === 'completed' ? <CheckCircle2 size={16} /> : <Circle size={16} />}
-                                                        </div>
-                                                        <div className="flex-1 space-y-1">
+                                                return (
+                                                    <div key={step} className="group">
+                                                        <div className="flex items-start gap-3">
                                                             <div className={cn(
-                                                                "text-xs font-bold transition-colors duration-300",
-                                                                stepStatus === 'completed' || stepStatus === 'running' ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-400"
+                                                                "mt-0.5 transition-colors duration-300",
+                                                                stepStatus === 'completed' ? "text-emerald-500" :
+                                                                    stepStatus === 'running' ? "text-light-accent dark:text-cine-accent" : "text-zinc-300 dark:text-zinc-700"
                                                             )}>
-                                                                {stepTitles[step - 1]}
+                                                                {stepStatus === 'completed' ? <CheckCircle2 size={16} /> : <Circle size={16} />}
                                                             </div>
-                                                            {stepStatus === 'running' && (
-                                                                <motion.div
-                                                                    initial={{ opacity: 0, height: 0 }}
-                                                                    animate={{ opacity: 1, height: 'auto' }}
-                                                                    className="text-xs text-zinc-500 flex items-center gap-2"
-                                                                >
-                                                                    <Loader2 size={12} className="animate-spin" />
-                                                                    <span>{currentStep.description}</span>
-                                                                </motion.div>
-                                                            )}
+                                                            <div className="flex-1 space-y-1">
+                                                                <div className={cn(
+                                                                    "text-xs font-bold transition-colors duration-300",
+                                                                    stepStatus === 'completed' || stepStatus === 'running' ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-400"
+                                                                )}>
+                                                                    {stepTitles[step - 1]}
+                                                                </div>
+                                                                {stepStatus === 'running' && (
+                                                                    <motion.div
+                                                                        initial={{ opacity: 0, height: 0 }}
+                                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                                        className="text-xs text-zinc-500 flex items-center gap-2"
+                                                                    >
+                                                                        <Loader2 size={12} className="animate-spin" />
+                                                                        <span>{currentStep.description}</span>
+                                                                    </motion.div>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         </motion.div>
                     )}

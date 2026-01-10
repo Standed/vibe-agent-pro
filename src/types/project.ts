@@ -346,6 +346,7 @@ export interface Shot {
 
   // 生成的素材
   referenceImage?: string;
+  videoUrl?: string; // Pro模式Sora视频生成结果URL
   gridImages?: string[];
   fullGridUrl?: string;
   videoClip?: string;
@@ -490,3 +491,21 @@ export interface SoraTask {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type GenerationModel = 'seedream' | 'gemini-direct' | 'gemini-grid' | 'jimeng' | 'sora-video';
+
+export interface ChatPanelMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  images?: string[];
+  referenceImages?: string[];
+  model?: GenerationModel;
+  shotId?: string;
+  sceneId?: string;
+  gridData?: GridData;
+  metadata?: any;
+  videoUrl?: string;
+}
+

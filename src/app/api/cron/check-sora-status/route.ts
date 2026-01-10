@@ -122,7 +122,7 @@ export async function GET(req: Request) {
                         }
                     }
 
-                    if (normalizedStatus === 'completed' && task.type === 'shot_generation') {
+                    if (normalizedStatus === 'completed' && (task.type === 'shot_generation' || task.type === 'direct_generation')) {
                         let finalVideoUrl = task.r2_url || statusRes.video_url || task.kaponai_url;
                         if (!task.r2_url && statusRes.video_url) {
                             try {
@@ -130,7 +130,12 @@ export async function GET(req: Request) {
                                 if (!vidRes.ok) throw new Error('Failed to download video from Kaponai');
                                 const vidBuffer = Buffer.from(await vidRes.arrayBuffer());
                                 const filename = `sora_${task.id}_${Date.now()}.mp4`;
-                                const baseFolder = task.shot_id ? `shots/${task.shot_id}` : `scenes/${task.scene_id || 'unknown'}`;
+
+                                let baseFolder = `generated/${task.user_id || 'anonymous'}`;
+                                if (task.shot_id) baseFolder = `shots/${task.shot_id}`;
+                                else if (task.scene_id) baseFolder = `scenes/${task.scene_id}`;
+                                else if (task.project_id) baseFolder = `projects/${task.project_id}`;
+
                                 const key = `${task.user_id}/${baseFolder}/${filename}`;
                                 const r2Url = await uploadBufferToR2({
                                     buffer: vidBuffer,
@@ -140,25 +145,51 @@ export async function GET(req: Request) {
                                 finalVideoUrl = r2Url;
                                 await supabase.from('sora_tasks').update({ r2_url: r2Url }).eq('id', task.id);
                             } catch (uploadErr) {
-                                console.error(`[Cron] Shot R2 upload failed for task ${task.id}:`, uploadErr);
+                                console.error(`[Cron] Shot/Direct R2 upload failed for task ${task.id}:`, uploadErr);
                             }
                         }
 
-                        if (task.shot_id && finalVideoUrl) {
-                            const { data: shotData } = await supabase
+                        const targetShotIds = task.shot_ids || (task.shot_id ? [task.shot_id] : []);
+
+                        if (targetShotIds.length > 0 && finalVideoUrl) {
+                            // Fetch all affected shots
+                            const { data: shotsData } = await supabase
                                 .from('shots')
-                                .select('metadata')
-                                .eq('id', task.shot_id)
-                                .single();
-                            await supabase.from('shots').update({
-                                video_clip: finalVideoUrl,
-                                status: 'done',
-                                metadata: {
-                                    ...(shotData?.metadata || {}),
-                                    soraTaskId: task.id,
-                                    soraVideoUrl: finalVideoUrl
+                                .select('id, metadata, generation_history')
+                                .in('id', targetShotIds);
+
+                            if (shotsData && shotsData.length > 0) {
+                                for (const shotData of shotsData) {
+                                    const newHistoryItem = {
+                                        id: `sora_${task.id}_${Date.now()}`,
+                                        type: 'video',
+                                        timestamp: new Date().toISOString(),
+                                        result: finalVideoUrl,
+                                        prompt: task.prompt || 'Sora Video Generation',
+                                        parameters: {
+                                            model: 'sora',
+                                            taskId: task.id,
+                                            isMultiShot: targetShotIds.length > 1,
+                                            coveredShots: targetShotIds
+                                        },
+                                        status: 'success'
+                                    };
+
+                                    const currentHistory = shotData.generation_history || [];
+                                    const updatedHistory = [newHistoryItem, ...currentHistory];
+
+                                    await supabase.from('shots').update({
+                                        video_clip: finalVideoUrl,
+                                        status: 'done',
+                                        metadata: {
+                                            ...(shotData.metadata || {}),
+                                            soraTaskId: task.id,
+                                            soraVideoUrl: finalVideoUrl
+                                        },
+                                        generation_history: updatedHistory
+                                    }).eq('id', shotData.id);
                                 }
-                            }).eq('id', task.shot_id);
+                            }
                         }
                     }
                 } else {

@@ -11,11 +11,14 @@ import NewProjectDialog from '@/components/project/NewProjectDialog';
 import NewSeriesDialog from '@/components/project/NewSeriesDialog';
 import { useProjectStore } from '@/store/useProjectStore';
 import { dataService } from '@/lib/dataService';
-import type { Project, Series, Character } from '@/types/project';
+import type { Project, Series, Character, Scene, Shot } from '@/types/project';
 import { useAuth, useRequireWhitelist } from '@/components/auth/AuthProvider';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
+import { getShotSizeFromValue, getCameraMovementFromValue } from '@/utils/translations';
 
 export default function Home() {
   const { t } = useI18n();
@@ -23,7 +26,7 @@ export default function Home() {
   const searchParams = useSearchParams();
   const currentSeriesId = searchParams.get('seriesId');
 
-  const { createNewProject, project } = useProjectStore();
+  const { createNewProject, project, batchUpdateScenesAndShots } = useProjectStore();
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
   const [showNewSeriesDialog, setShowNewSeriesDialog] = useState(false);
 
@@ -49,6 +52,13 @@ export default function Home() {
     cursorPos: number;
   }>({ visible: false, x: 0, y: 0, filter: '', cursorPos: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [uploadedScript, setUploadedScript] = useState('');
+  const [importedStoryboard, setImportedStoryboard] = useState<{
+    scenes: Scene[];
+    shots: Shot[];
+    errors: { row: number; msg: string; type: 'error' | 'warning' }[];
+    fileName?: string;
+  } | null>(null);
 
   // Close menus on click outside
   useEffect(() => {
@@ -84,6 +94,109 @@ export default function Home() {
   } | null>(null);
 
   const { user, profile, signOut, loading: authLoading } = useRequireWhitelist();
+
+  const parseStoryboardRows = (rows: any[]) => {
+    const errors: { row: number; msg: string; type: 'error' | 'warning' }[] = [];
+    const scenes: Scene[] = [];
+    const shots: Shot[] = [];
+    const sceneIdMap = new Map<string, string>();
+
+    rows.forEach((row, idx) => {
+      if (!row || row.length === 0) return;
+      const normalizedRow = row.map((cell: any) => (cell === null || cell === undefined ? '' : String(cell).trim()));
+      if (normalizedRow.every((cell: string) => !cell)) return;
+
+      const rowNum = idx + 2; // +1 for header, +1 for 0-index
+      const [sceneName, , description, dialogue, narration, shotSizeVal, cameraMoveVal, durationVal] = normalizedRow;
+
+      if (!sceneName) {
+        errors.push({ row: rowNum, msg: '场景名称不能为空', type: 'error' });
+        return;
+      }
+
+      const shotSizeParsed = getShotSizeFromValue(shotSizeVal);
+      const cameraMovementParsed = getCameraMovementFromValue(cameraMoveVal);
+      const shotSize = shotSizeParsed || 'Medium Shot';
+      const cameraMovement = cameraMovementParsed || 'Static';
+
+      if (!shotSizeParsed && shotSizeVal) {
+        errors.push({ row: rowNum, msg: `未知景别 "${shotSizeVal}"，已默认设为中景`, type: 'warning' });
+      }
+
+      if (!cameraMovementParsed && cameraMoveVal) {
+        errors.push({ row: rowNum, msg: `未知运镜 "${cameraMoveVal}"，已默认设为固定镜头`, type: 'warning' });
+      }
+
+      const durationNum = parseFloat(durationVal);
+      const duration = !Number.isNaN(durationNum) && durationNum > 0 ? durationNum : 3;
+      if (Number.isNaN(durationNum) || durationNum <= 0) {
+        errors.push({ row: rowNum, msg: `时长格式错误 "${durationVal}"，已设为默认 3s`, type: 'warning' });
+      }
+
+      let sceneId = sceneIdMap.get(sceneName);
+      if (!sceneId) {
+        sceneId = crypto.randomUUID();
+        scenes.push({
+          id: sceneId,
+          name: sceneName,
+          location: '',
+          description: '',
+          shotIds: [],
+          position: { x: scenes.length * 300, y: 100 },
+          order: scenes.length + 1,
+          status: 'draft',
+        });
+        sceneIdMap.set(sceneName, sceneId);
+      }
+
+      const shotId = crypto.randomUUID();
+      const scene = scenes.find(s => s.id === sceneId);
+      if (scene) {
+        scene.shotIds.push(shotId);
+      }
+
+      shots.push({
+        id: shotId,
+        sceneId,
+        order: 0,
+        shotSize,
+        cameraMovement,
+        duration,
+        description: description || '',
+        narration: narration || '',
+        dialogue: dialogue || '',
+        status: 'draft',
+        gridImages: [],
+        generationHistory: [],
+      });
+    });
+
+    return { scenes, shots, errors };
+  };
+
+  const parseStoryboardFile = async (file: File) => {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!extension) {
+      throw new Error('无法识别文件格式');
+    }
+
+    if (extension === 'xlsx' || extension === 'xls') {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[];
+      return parseStoryboardRows(rows.slice(1));
+    }
+
+    if (extension === 'csv') {
+      const text = await file.text();
+      const results = Papa.parse(text, { header: false, skipEmptyLines: true });
+      return parseStoryboardRows((results.data as any[]).slice(1));
+    }
+
+    throw new Error('不支持的分镜脚本格式，请上传 CSV 或 Excel 文件');
+  };
 
   // 加载数据
   useEffect(() => {
@@ -200,7 +313,8 @@ export default function Home() {
 
   const handleAiDirectorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!aiDirectorInput.trim()) return;
+    const brainstormInput = uploadedScript.trim() ? uploadedScript : aiDirectorInput;
+    if (!brainstormInput.trim()) return;
 
     setIsAiBrainstorming(true);
     setAiProposal(null); // Reset previous proposal
@@ -210,7 +324,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          input: aiDirectorInput,
+          input: brainstormInput,
           artStyle: selectedArtStyle,
           characterIds: selectedCharacters
         })
@@ -240,8 +354,9 @@ export default function Home() {
     } catch (error) {
       console.error('Brainstorming failed:', error);
       toast.error('AI 构思失败，请直接手动创建');
-      // Fallback: open dialog with raw input as description
-      setAiProposal({ description: aiDirectorInput });
+      // Fallback: open dialog with manual summary if provided
+      const fallbackDescription = aiDirectorInput.trim();
+      setAiProposal({ description: fallbackDescription || undefined });
       setShowNewProjectDialog(true);
     } finally {
       setIsAiBrainstorming(false);
@@ -255,8 +370,13 @@ export default function Home() {
     aspectRatio: string
   ) => {
     try {
-      createNewProject(title, description, artStyle, aspectRatio);
+      const scriptContent = uploadedScript.trim();
+      createNewProject(title, description, artStyle, aspectRatio, scriptContent);
       await new Promise(resolve => setTimeout(resolve, 100));
+      if (importedStoryboard && importedStoryboard.shots.length > 0) {
+        batchUpdateScenesAndShots(importedStoryboard.scenes, importedStoryboard.shots);
+      }
+
       const currentProject = useProjectStore.getState().project;
 
       if (!currentProject) throw new Error('Project creation failed');
@@ -268,6 +388,8 @@ export default function Home() {
       await dataService.saveProject(currentProject, user?.id);
 
       setShowNewProjectDialog(false);
+      setUploadedScript('');
+      setImportedStoryboard(null);
       router.push(`/project/${currentProject.id}/planning`);
     } catch (error) {
       console.error('[HomePage] ❌ Create failed:', error);
@@ -450,7 +572,7 @@ export default function Home() {
                             const reader = new FileReader();
                             reader.onload = (ev) => {
                               const content = ev.target?.result as string;
-                              setAiDirectorInput(content.slice(0, 2000) + (content.length > 2000 ? '...' : ''));
+                              setUploadedScript(content || '');
                               toast.success(`已导入剧本: ${file.name}`);
                             };
                             reader.readAsText(file);
@@ -465,18 +587,33 @@ export default function Home() {
                       <span className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-zinc-900 text-white text-[11px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap pointer-events-none shadow-xl">上传分镜脚本</span>
                       <input
                         type="file"
-                        accept=".json,.txt,.md"
+                        accept=".csv,.xlsx,.xls"
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (ev) => {
-                              const content = ev.target?.result as string;
-                              setAiDirectorInput(`[分镜脚本] ${file.name}`);
-                              toast.success(`已导入分镜脚本: ${file.name}`);
-                            };
-                            reader.readAsText(file);
+                            parseStoryboardFile(file)
+                              .then((result) => {
+                                setImportedStoryboard({
+                                  scenes: result.scenes,
+                                  shots: result.shots,
+                                  errors: result.errors,
+                                  fileName: file.name
+                                });
+                                const warningCount = result.errors.filter(e => e.type === 'warning').length;
+                                const errorCount = result.errors.filter(e => e.type === 'error').length;
+                                if (errorCount > 0) {
+                                  toast.error(`分镜脚本导入完成（${errorCount} 条错误，${warningCount} 条警告）`);
+                                } else if (warningCount > 0) {
+                                  toast.warning(`分镜脚本导入完成（${warningCount} 条警告）`);
+                                } else {
+                                  toast.success(`已导入分镜脚本: ${file.name}`);
+                                }
+                              })
+                              .catch((error: Error) => {
+                                console.error('Storyboard import failed:', error);
+                                toast.error(error.message || '分镜脚本导入失败');
+                              });
                           }
                         }}
                       />
