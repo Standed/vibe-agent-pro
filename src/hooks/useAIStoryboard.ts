@@ -75,7 +75,7 @@ export const useAIStoryboard = () => {
 
     const handleAIStoryboard = useCallback(async (scriptOverride?: string) => {
         const activeProject = project;
-        const script = (scriptOverride ?? activeProject?.script || '').trim();
+        const script = ((scriptOverride ?? activeProject?.script) || '').trim();
         if (!script) {
             toast.error('请先输入剧本内容');
             return;
