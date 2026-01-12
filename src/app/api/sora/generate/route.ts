@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { KaponaiService } from '@/services/KaponaiService';
 import { createClient } from '@supabase/supabase-js';
+import { authenticateRequest, checkCredits, checkWhitelist, consumeCredits } from '@/lib/auth-middleware';
+import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 export const maxDuration = 60;
 
@@ -23,6 +25,16 @@ const supabase = createClient(supabaseUrl, supabaseKey);
  */
 export async function POST(req: NextRequest) {
     try {
+        const authResult = await authenticateRequest(req);
+        if ('error' in authResult) return authResult.error;
+        const { user } = authResult;
+
+        const whitelistCheck = checkWhitelist(user);
+        if ('error' in whitelistCheck) return whitelistCheck.error;
+
+        const requiredCredits = calculateCredits('VOLCANO_VIDEO', user.role);
+        const operationDesc = getOperationDescription('VOLCANO_VIDEO');
+
         const body = await req.json();
         const {
             prompt,
@@ -31,7 +43,6 @@ export async function POST(req: NextRequest) {
             size = '1280x720',
             input_reference,
             projectId,
-            userId,
         } = body;
 
         if (!prompt) {
@@ -40,6 +51,9 @@ export async function POST(req: NextRequest) {
                 { status: 400 }
             );
         }
+
+        const creditsCheck = checkCredits(user, requiredCredits);
+        if ('error' in creditsCheck) return creditsCheck.error;
 
         const kaponai = new KaponaiService();
 
@@ -56,12 +70,24 @@ export async function POST(req: NextRequest) {
             params.input_reference = input_reference;
         }
 
+        if (projectId) {
+            const { data: project, error: projectError } = await supabase
+                .from('projects')
+                .select('id,user_id')
+                .eq('id', projectId)
+                .single();
+
+            if (projectError || !project || project.user_id !== user.id) {
+                return NextResponse.json({ error: 'Unauthorized project access' }, { status: 403 });
+            }
+        }
+
         const result = await kaponai.createVideo(params);
 
         // 保存任务到数据库
         const soraTask = {
             id: result.id,
-            user_id: userId || null,
+            user_id: user.id,
             project_id: projectId || null,
             status: result.status || 'queued',
             progress: result.progress ?? 0,
@@ -71,6 +97,7 @@ export async function POST(req: NextRequest) {
             target_size: size,
             kaponai_url: result.video_url || null,
             type: 'direct_generation',
+            point_cost: requiredCredits,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
         };
@@ -82,6 +109,20 @@ export async function POST(req: NextRequest) {
         if (saveError) {
             console.warn('Failed to save sora task to database:', saveError);
             // 不阻断流程，任务已提交成功
+        }
+
+        try {
+            const consumeResult = await consumeCredits(
+                user.id,
+                requiredCredits,
+                'sora-generate',
+                operationDesc
+            );
+            if (!consumeResult.success) {
+                console.error('[SoraGenerate] Credits consume failed:', consumeResult.error);
+            }
+        } catch (consumeError) {
+            console.error('[SoraGenerate] Credits consume exception:', consumeError);
         }
 
         return NextResponse.json({

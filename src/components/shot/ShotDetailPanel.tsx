@@ -37,7 +37,7 @@ interface ShotDetailPanelProps {
 }
 
 export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProps) {
-  const { project, updateShot, selectedShotId, addGenerationHistory } = useProjectStore();
+  const { project, updateShot, selectedShotId, addGenerationHistory, refreshShot } = useProjectStore();
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -75,6 +75,12 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
     });
     return Array.from(urls);
   }, [shot]);
+
+  useEffect(() => {
+    if (shotId) {
+      refreshShot(shotId);
+    }
+  }, [shotId, refreshShot]);
 
   useEffect(() => {
     if (shot?.referenceImage) {

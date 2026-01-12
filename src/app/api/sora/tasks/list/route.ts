@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { readSessionCookie, parseJWT, isTokenExpired } from '@/lib/supabase/cookie-utils';
+import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
 
 export const maxDuration = 60;
 
@@ -10,6 +10,13 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(req: NextRequest) {
   try {
+    const authResult = await authenticateRequest(req);
+    if ('error' in authResult) return authResult.error;
+    const { user } = authResult;
+
+    const whitelistCheck = checkWhitelist(user);
+    if ('error' in whitelistCheck) return whitelistCheck.error;
+
     const body = await req.json();
     const projectId = body?.projectId as string | undefined;
 
@@ -17,28 +24,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
     }
 
-    const cookieHeader = req.headers.get('cookie') || '';
-    if (!cookieHeader) {
-      return NextResponse.json({ error: 'Missing session cookie' }, { status: 401 });
-    }
-    const session = readSessionCookie(cookieHeader);
-    if (!session?.access_token || isTokenExpired(session.access_token)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    const payload = parseJWT(session.access_token);
-    const userId = payload?.sub as string | undefined;
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { data: project, error: projectError } = await supabase
       .from('projects')
       .select('id, user_id')
       .eq('id', projectId)
-      .eq('user_id', userId)
+      .eq('user_id', user.id)
       .single();
 
-    if (projectError || !project || project.user_id !== userId) {
+    if (projectError || !project || project.user_id !== user.id) {
       return NextResponse.json({ error: 'Unauthorized project access' }, { status: 403 });
     }
 

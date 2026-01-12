@@ -1,4 +1,6 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { GenerationResult } from './GenerationResult';
 import { AspectRatio } from '@/types/project';
@@ -73,12 +75,18 @@ export function ChatBubble({
                     {/* Text Content */}
                     {message.content && (
                         <div className={cn(
-                            "relative group/text px-4 py-3 shadow-sm border text-sm whitespace-pre-wrap break-words",
+                            "relative group/text px-4 py-3 shadow-sm border text-sm break-words",
                             isUser
-                                ? "bg-white dark:bg-zinc-800 text-black dark:text-white border-black/5 dark:border-white/10 rounded-2xl rounded-tr-sm"
-                                : "bg-zinc-100 dark:bg-zinc-900/50 text-zinc-800 dark:text-zinc-200 border-black/5 dark:border-white/10 rounded-2xl rounded-tl-sm backdrop-blur-sm"
+                                ? "bg-white dark:bg-zinc-800 text-black dark:text-white border-black/5 dark:border-white/10 rounded-2xl rounded-tr-sm whitespace-pre-wrap"
+                                : "bg-zinc-100 dark:bg-zinc-900/50 text-zinc-800 dark:text-zinc-200 border-black/5 dark:border-white/10 rounded-2xl rounded-tl-sm backdrop-blur-sm prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-code:bg-zinc-200 dark:prose-code:bg-zinc-700 prose-code:px-1 prose-code:rounded prose-pre:bg-zinc-200 dark:prose-pre:bg-zinc-700 prose-pre:p-2 prose-pre:rounded-lg"
                         )}>
-                            {message.content}
+                            {isUser ? (
+                                message.content
+                            ) : (
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {message.content}
+                                </ReactMarkdown>
+                            )}
                             {isUser && onReusePrompt && (
                                 <button
                                     onClick={() => onReusePrompt(message.content)}

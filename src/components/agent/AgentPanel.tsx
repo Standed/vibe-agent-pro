@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Send, Loader2, User, Bot, Trash2, Sparkles, Image as ImageIcon, Grid3x3, Grid2x2, Video, CircleStop, ChevronDown, ChevronUp } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { ChatMessage } from '@/types/project';
@@ -198,7 +200,15 @@ export default function AgentPanel() {
                         : 'glass-card text-gray-800 dark:text-gray-100 rounded-tl-sm'
                         }`}
                     >
-                      <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                      <div className={`text-sm ${msg.role === 'user' ? 'whitespace-pre-wrap' : 'prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-code:bg-zinc-200 dark:prose-code:bg-zinc-700 prose-code:px-1 prose-code:rounded prose-pre:bg-zinc-200 dark:prose-pre:bg-zinc-700 prose-pre:p-2 prose-pre:rounded-lg'}`}>
+                        {msg.role === 'user' ? (
+                          msg.content
+                        ) : (
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {msg.content}
+                          </ReactMarkdown>
+                        )}
+                      </div>
 
                       {/* Timestamp */}
                       <div className={`text-xs mt-1 ${msg.role === 'user'

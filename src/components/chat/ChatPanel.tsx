@@ -136,6 +136,7 @@ export default function ChatPanel() {
                     shotId: msg.shotId,
                     sceneId: msg.sceneId,
                     gridData: msg.metadata?.gridData as ChatPanelMessage['gridData'] | undefined,
+                    videoUrl: msg.metadata?.videoUrl as string | undefined,
                     metadata: {
                         ...msg.metadata,
                         prompt: msg.metadata?.prompt,
@@ -188,6 +189,32 @@ export default function ChatPanel() {
 
                         converted.push(...historyMessages);
                         converted.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                    }
+
+                    // Auto-inject Agent-generated video if shot has videoClip but no existing video message
+                    if (currentShot?.videoClip) {
+                        const hasVideoMessage = converted.some(m =>
+                            m.videoUrl === currentShot.videoClip ||
+                            m.metadata?.type === 'sora_video_complete' ||
+                            (m.metadata?.videoUrl && m.metadata.videoUrl === currentShot.videoClip)
+                        );
+
+                        if (!hasVideoMessage) {
+                            const videoMessage: ChatPanelMessage = {
+                                id: `auto_video_${currentShot.id}_${Date.now()}`,
+                                role: 'assistant',
+                                content: 'Sora 视频已生成完成！',
+                                timestamp: new Date(),
+                                videoUrl: currentShot.videoClip,
+                                shotId: selectedShotId,
+                                metadata: {
+                                    type: 'sora_video_complete',
+                                    videoUrl: currentShot.videoClip,
+                                    source: 'auto_injected'
+                                }
+                            };
+                            converted.push(videoMessage);
+                        }
                     }
                 }
 

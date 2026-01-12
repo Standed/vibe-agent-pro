@@ -212,7 +212,52 @@ graph TD
 
 ---
 
-## 7. 如何验证
+## 7. 数据同步机制 **[New v2.4]**
+
+### 7.1 Agent 生成视频 → Pro 模式显示
+
+**问题**：Agent 模式生成的 Sora 视频通过 Cron 任务回写数据库，但 Pro 模式的聊天记录不会自动同步。
+
+**解决方案**：
+
+1. **Cron 任务插入消息**（主动）
+   - 文件：`src/app/api/cron/check-sora-status/route.ts`
+   - 当 Sora 任务完成时，自动往对应分镜的 Pro 模式聊天插入 `sora_video_complete` 消息。
+
+2. **ChatPanel 自动补充**（兜底）
+   - 文件：`src/components/chat/ChatPanel.tsx`
+   - 加载 Pro 聊天时，检测分镜是否有 `videoClip` 但无对应消息，自动注入视频消息。
+
+3. **ShotDetailPanel 远程刷新**
+   - 文件：`src/store/useProjectStore.ts` → `refreshShot` action
+   - 文件：`src/lib/dataService.ts` → `getShot` 方法
+   - 组件挂载时从数据库拉取最新分镜数据。
+
+### 7.2 状态规范化
+
+Kaponai API 返回的 `status` 可能为 `'in_progress'`，但 Supabase 的 `sora_tasks` 表只允许：
+- `pending`, `processing`, `completed`, `failed`
+
+**映射规则**（`dataService.saveSoraTask`）：
+- `'generating'` → `'processing'`
+- `'in_progress'` → `'processing'`
+
+---
+
+## 8. 聊天 Markdown 支持 **[New v2.4]**
+
+- **Agent 模式**：`src/components/agent/AgentPanel.tsx`
+- **Pro 模式**：`src/components/chat/ChatBubble.tsx`
+
+AI 助手回复使用 `react-markdown` + `remark-gfm` 渲染，支持：
+- 粗体、斜体、删除线
+- 代码块（含高亮）
+- 列表、表格
+- 链接
+
+---
+
+## 9. 如何验证
 
 ### 全链路测试
 ```bash
@@ -224,11 +269,12 @@ npx tsx scripts/test-sora-full-flow.ts
 - "帮我把当前场景生成 Sora 视频"
 - "批量生成视频"
 
-### Pro 模式验证 **[New]**
+### Pro 模式验证
 1. 切换到 Pro 模式，选择 "Sora 视频"
 2. 输入包含 "@角色名" 的提示词
 3. 验证是否自动替换为 Sora 码
 4. 生成完成后点击 "应用到分镜"
+5. **重新进入 Pro 模式，验证视频是否自动显示在聊天中**
 
 ### 数据库验证
 检查以下表/字段：
@@ -236,8 +282,9 @@ npx tsx scripts/test-sora-full-flow.ts
 - `sora_tasks.shot_ids / shot_ranges` - 任务与分镜映射
 - `scenes.sora_generation` - 场景生成状态
 - `characters.metadata.soraIdentity` - 角色注册状态
+- `chat_messages` - Pro 模式视频消息 (`metadata.type: 'sora_video_complete'`)
 
 ---
 
-**最后更新**: 2026-01-10
-**版本**: v2.3
+**最后更新**: 2026-01-12
+**版本**: v2.4

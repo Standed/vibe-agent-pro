@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KaponaiService } from '@/services/KaponaiService';
 import { uploadBufferToR2 } from '@/lib/cloudflare-r2';
+import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
@@ -21,6 +22,13 @@ const normalizeStatus = (status?: string) => {
 
 export async function POST(req: NextRequest) {
   try {
+    const authResult = await authenticateRequest(req);
+    if ('error' in authResult) return authResult.error;
+    const { user } = authResult;
+
+    const whitelistCheck = checkWhitelist(user);
+    if ('error' in whitelistCheck) return whitelistCheck.error;
+
     const body = await req.json();
     const taskIds = (body?.taskIds || []) as string[];
     const limit = Number(body?.limit) || 30;
@@ -39,6 +47,44 @@ export async function POST(req: NextRequest) {
 
     if (taskError || !taskRows) {
       return NextResponse.json({ error: taskError?.message || 'Tasks not found' }, { status: 404 });
+    }
+
+    const projectIdsToCheck = Array.from(new Set(taskRows.filter(t => !t.user_id && t.project_id).map(t => t.project_id)));
+    const characterIdsToCheck = Array.from(new Set(taskRows.filter(t => !t.user_id && t.character_id).map(t => t.character_id)));
+
+    const projectMap = new Map<string, any>();
+    if (projectIdsToCheck.length > 0) {
+      const { data: projects } = await supabase
+        .from('projects')
+        .select('id,user_id')
+        .in('id', projectIdsToCheck as string[]);
+      (projects || []).forEach((p: any) => projectMap.set(p.id, p));
+    }
+
+    const characterMap = new Map<string, any>();
+    if (characterIdsToCheck.length > 0) {
+      const { data: characters } = await supabase
+        .from('characters')
+        .select('id,user_id')
+        .in('id', characterIdsToCheck as string[]);
+      (characters || []).forEach((c: any) => characterMap.set(c.id, c));
+    }
+
+    const unauthorized = taskRows.filter((task: any) => {
+      if (task.user_id) return task.user_id !== user.id;
+      if (task.project_id) {
+        const project = projectMap.get(task.project_id);
+        return !project || project.user_id !== user.id;
+      }
+      if (task.character_id) {
+        const character = characterMap.get(task.character_id);
+        return !character || character.user_id !== user.id;
+      }
+      return true;
+    });
+
+    if (unauthorized.length > 0) {
+      return NextResponse.json({ error: 'Unauthorized task access' }, { status: 403 });
     }
 
     const kaponai = new KaponaiService();

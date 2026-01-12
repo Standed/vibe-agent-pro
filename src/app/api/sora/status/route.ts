@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KaponaiService } from '@/services/KaponaiService';
+import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
@@ -20,6 +21,13 @@ const normalizeStatus = (status?: string) => {
 
 export async function GET(req: NextRequest) {
   try {
+    const authResult = await authenticateRequest(req);
+    if ('error' in authResult) return authResult.error;
+    const { user } = authResult;
+
+    const whitelistCheck = checkWhitelist(user);
+    if ('error' in whitelistCheck) return whitelistCheck.error;
+
     const { searchParams } = new URL(req.url);
     const taskId = searchParams.get('taskId');
 
@@ -38,6 +46,32 @@ export async function GET(req: NextRequest) {
     }
 
     const task = taskData as any;
+    if (task.user_id && task.user_id !== user.id) {
+      return NextResponse.json({ error: 'Unauthorized task access' }, { status: 403 });
+    }
+    if (!task.user_id) {
+      if (task.project_id) {
+        const { data: project } = await supabase
+          .from('projects')
+          .select('id,user_id')
+          .eq('id', task.project_id)
+          .single();
+        if (!project || project.user_id !== user.id) {
+          return NextResponse.json({ error: 'Unauthorized task access' }, { status: 403 });
+        }
+      } else if (task.character_id) {
+        const { data: character } = await supabase
+          .from('characters')
+          .select('id,user_id')
+          .eq('id', task.character_id)
+          .single();
+        if (!character || character.user_id !== user.id) {
+          return NextResponse.json({ error: 'Unauthorized task access' }, { status: 403 });
+        }
+      } else {
+        return NextResponse.json({ error: 'Unauthorized task access' }, { status: 403 });
+      }
+    }
     const kaponai = new KaponaiService();
     const isFinal = task.status === 'completed' || task.status === 'failed';
     let statusRes: any = null;

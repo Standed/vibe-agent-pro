@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
 
 export const maxDuration = 60;
 
@@ -16,13 +17,19 @@ type BackfillTask = {
 
 export async function POST(req: NextRequest) {
   try {
+    const authResult = await authenticateRequest(req);
+    if ('error' in authResult) return authResult.error;
+    const { user } = authResult;
+
+    const whitelistCheck = checkWhitelist(user);
+    if ('error' in whitelistCheck) return whitelistCheck.error;
+
     const body = await req.json();
     const projectId = body?.projectId as string | undefined;
-    const userId = body?.userId as string | undefined;
     const tasks = (body?.tasks || []) as BackfillTask[];
 
-    if (!projectId || !userId || !Array.isArray(tasks)) {
-      return NextResponse.json({ error: 'projectId, userId, tasks are required' }, { status: 400 });
+    if (!projectId || !Array.isArray(tasks)) {
+      return NextResponse.json({ error: 'projectId, tasks are required' }, { status: 400 });
     }
 
     const { data: project, error: projectError } = await supabase
@@ -31,7 +38,7 @@ export async function POST(req: NextRequest) {
       .eq('id', projectId)
       .single();
 
-    if (projectError || !project || project.user_id !== userId) {
+    if (projectError || !project || project.user_id !== user.id) {
       return NextResponse.json({ error: 'Unauthorized project access' }, { status: 403 });
     }
 
@@ -59,7 +66,7 @@ export async function POST(req: NextRequest) {
         const input = inputById.get(id);
         return {
           id,
-          user_id: userId,
+          user_id: user.id,
           project_id: projectId,
           scene_id: input?.sceneId || null,
           shot_id: input?.shotId || null,
