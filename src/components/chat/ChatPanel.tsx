@@ -605,9 +605,9 @@ export default function ChatPanel() {
             return;
         }
         try {
-            // 获取当前 Shot 的历史记录
-            const currentShot = project?.shots.find(s => s.id === selectedShotId);
-            const currentHistory = currentShot?.generationHistory || [];
+            // 从数据库获取最新的 Shot 数据，确保不丢失历史记录
+            const latestShot = await dataService.getShot(selectedShotId);
+            const currentHistory = latestShot?.generationHistory || [];
 
             const newHistoryItem = {
                 id: `sora_pro_${Date.now()}`,
@@ -624,19 +624,25 @@ export default function ChatPanel() {
 
             const updatedHistory = [newHistoryItem, ...currentHistory];
 
-            await dataService.saveShot(sceneId, {
-                id: selectedShotId,
-                videoClip: videoUrl,
-                status: 'done',
-                generationHistory: updatedHistory
-            } as any);
-
+            // 1. 立即更新前端状态 (Optimistic Update)
             updateShot(selectedShotId, {
                 videoClip: videoUrl,
                 status: 'done',
                 generationHistory: updatedHistory
             } as any);
             toast.success("视频已应用到当前分镜");
+
+            // 2. 后台异步保存到数据库 (不阻塞 UI)
+            dataService.saveShot(sceneId, {
+                id: selectedShotId,
+                videoClip: videoUrl,
+                status: 'done',
+                generationHistory: updatedHistory
+            } as any).catch(err => {
+                console.error('Background save failed:', err);
+                toast.error("保存到数据库失败，请刷新重试");
+            });
+
         } catch (e) {
             console.error('Apply video to shot error:', e);
             toast.error("应用视频失败");
