@@ -188,6 +188,34 @@ export async function GET(req: Request) {
                                         },
                                         generation_history: updatedHistory
                                     }).eq('id', shotData.id);
+
+                                    // Insert a message into Pro mode chat for this shot
+                                    if (task.project_id) {
+                                        const chatMessage = {
+                                            id: `sora_complete_${task.id}_${shotData.id}_${Date.now()}`,
+                                            user_id: task.user_id,
+                                            project_id: task.project_id,
+                                            scene_id: task.scene_id || null,
+                                            shot_id: shotData.id,
+                                            scope: 'pro',
+                                            role: 'assistant',
+                                            content: `Sora 视频生成完成！`,
+                                            metadata: {
+                                                type: 'sora_video_complete',
+                                                videoUrl: finalVideoUrl,
+                                                taskId: task.id,
+                                                model: 'sora-2',
+                                                prompt: task.prompt || '',
+                                                isMultiShot: targetShotIds.length > 1,
+                                                coveredShots: targetShotIds
+                                            },
+                                            created_at: new Date().toISOString(),
+                                            updated_at: new Date().toISOString()
+                                        };
+
+                                        await supabase.from('chat_messages').insert(chatMessage);
+                                        console.log(`[Cron] Inserted Pro chat message for shot ${shotData.id}`);
+                                    }
                                 }
                             }
                         }

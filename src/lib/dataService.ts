@@ -30,6 +30,7 @@ interface DataBackend {
   deleteScene(sceneId: string): Promise<void>;
   saveShot(sceneId: string, shot: Shot): Promise<void>;
   deleteShot(shotId: string): Promise<void>;
+  getShot(shotId: string): Promise<Shot | undefined>;
   saveCharacter(projectId: string | null, character: Character): Promise<void>;
   deleteCharacter(characterId: string): Promise<void>;
   saveAudioAsset(projectId: string, audio: AudioAsset): Promise<void>;
@@ -579,6 +580,45 @@ class SupabaseBackend implements DataBackend {
     });
   }
 
+  async getShot(shotId: string): Promise<Shot | undefined> {
+    try {
+      const shots = await this.callSupabaseAPI({
+        table: 'shots',
+        operation: 'select',
+        filters: { eq: { id: shotId } },
+        select: 'id, scene_id, order_index, shot_size, camera_movement, duration, description, dialogue, narration, reference_image, video_clip, grid_images, generation_history, status, metadata',
+        single: true,
+      });
+
+      const shot = Array.isArray(shots) ? shots[0] : shots;
+      if (!shot) return undefined;
+
+      return {
+        id: shot.id,
+        sceneId: shot.scene_id,
+        order: shot.order_index,
+        shotSize: shot.shot_size || 'medium',
+        cameraMovement: shot.camera_movement || 'static',
+        duration: shot.duration || 3,
+        description: shot.description || '',
+        dialogue: shot.dialogue || undefined,
+        narration: shot.narration || undefined,
+        referenceImage: shot.reference_image || undefined,
+        videoClip: shot.video_clip || undefined,
+        gridImages: shot.grid_images || [],
+        generationHistory: shot.generation_history || [],
+        status: shot.status || 'draft',
+        mainCharacters: shot.metadata?.mainCharacters || [],
+        mainScenes: shot.metadata?.mainScenes || [],
+        generationConfig: shot.metadata?.generationConfig || undefined,
+        error: shot.metadata?.error || undefined,
+      };
+    } catch (err) {
+      console.error('[SupabaseBackend] ❌ getShot failed:', err);
+      return undefined;
+    }
+  }
+
   async saveCharacter(projectId: string | null, character: Character): Promise<void> {
     const data: any = {
       id: character.id,
@@ -763,7 +803,8 @@ class SupabaseBackend implements DataBackend {
   async saveSoraTask(task: SoraTask): Promise<void> {
     const serverClient = this.getServerSupabase();
     const client = serverClient || (supabase as any);
-    const normalizedStatus = task.status === 'generating' ? 'processing' : task.status;
+    // Normalize status to match database constraint (pending, processing, completed, failed)
+    const normalizedStatus = (task.status === 'generating' || task.status === 'in_progress') ? 'processing' : task.status;
     const { error } = await client
       .from('sora_tasks')
       .upsert({
@@ -1085,6 +1126,11 @@ export class UnifiedDataService {
   async deleteShot(shotId: string): Promise<void> {
     await this.ensureInitialized();
     return this.backend!.deleteShot(shotId);
+  }
+
+  async getShot(shotId: string, userId?: string): Promise<Shot | undefined> {
+    await this.ensureInitialized(userId);
+    return this.backend!.getShot(shotId);
   }
 
   async saveCharacter(projectId: string | null, character: Character): Promise<void> {

@@ -1046,13 +1046,6 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                             <RefreshCw size={14} />
                             <span>刷新状态</span>
                         </button>
-                        <button
-                            onClick={onClose}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-light-accent/10 dark:bg-cine-accent/10 hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 rounded text-sm text-light-text dark:text-white transition-colors"
-                        >
-                            <Grid3X3 size={14} />
-                            <span>故事板视图</span>
-                        </button>
                     </div>
                 </div>
 

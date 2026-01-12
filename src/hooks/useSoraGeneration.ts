@@ -64,7 +64,6 @@ export function useSoraGeneration({
                     size: resolution,
                     input_reference: [...(uploadedUrls.length > 0 ? uploadedUrls : []), ...manualReferenceUrls],
                     projectId: project?.id,
-                    userId: user?.id,
                 }),
             });
 

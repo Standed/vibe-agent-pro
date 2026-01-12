@@ -83,6 +83,7 @@ interface ProjectStore {
   selectShot: (id: string) => void;
   reorderShots: (sceneId: string, shotIds: string[]) => void;
   addGenerationHistory: (shotId: string, historyItem: GenerationHistoryItem) => void;
+  refreshShot: (shotId: string) => Promise<void>;
 
   // Character Actions
   addCharacter: (character: Character, options?: { keepOpen?: boolean }) => void;
@@ -462,6 +463,27 @@ export const useProjectStore = create<ProjectStore>()(
       });
       // 自动保存到 IndexedDB
       get().debouncedSaveProject();
+    },
+
+    refreshShot: async (shotId) => {
+      try {
+        const remoteShot = await dataService.getShot(shotId);
+        if (remoteShot) {
+          set((state) => {
+            const shot = state.project?.shots.find((s) => s.id === shotId);
+            if (shot) {
+              // Merge remote data, prioritizing remote for video/history
+              shot.videoClip = remoteShot.videoClip || shot.videoClip;
+              shot.referenceImage = remoteShot.referenceImage || shot.referenceImage;
+              shot.generationHistory = remoteShot.generationHistory || shot.generationHistory;
+              shot.status = remoteShot.status || shot.status;
+              console.log('[Store] refreshShot: merged remote data for', shotId);
+            }
+          });
+        }
+      } catch (error) {
+        console.error('[Store] refreshShot error:', error);
+      }
     },
 
     // Character Actions
