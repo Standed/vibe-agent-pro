@@ -64,6 +64,8 @@ export function useSoraGeneration({
                     size: resolution,
                     input_reference: [...(uploadedUrls.length > 0 ? uploadedUrls : []), ...manualReferenceUrls],
                     projectId: project?.id,
+                    contextShotId: currentShotId || undefined,
+                    contextSceneId: currentSceneIdCaptured || undefined,
                 }),
             });
 

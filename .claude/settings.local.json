@@ -67,7 +67,11 @@
       "Bash(kill:*)",
       "Bash(cmd.exe //c \"taskkill /F /PID 8332\")",
       "Bash(cmd.exe:*)",
-      "Bash(npm run dev)"
+      "Bash(npm run dev)",
+      "Bash(cmd /c \"taskkill /F /PID 17804\")",
+      "WebSearch",
+      "Bash(node --version:*)",
+      "mcp__web-search-prime__webSearchPrime"
     ]
   }
 }

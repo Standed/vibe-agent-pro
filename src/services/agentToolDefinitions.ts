@@ -411,6 +411,26 @@ export const AGENT_TOOLS: ToolDefinition[] = [
             },
             required: ['shotId']
         }
+    },
+    {
+        name: 'generateLocationImages',
+        description: '批量为没有参考图的场景地点生成参考图，用于 Sora 视频生成时的场景一致性',
+        parameters: {
+            type: 'object',
+            properties: {
+                locationIds: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '要生成图片的 Location ID 列表（可选，不传则处理所有无图的 Location）'
+                },
+                model: {
+                    type: 'string',
+                    description: '使用的图片生成模型（默认 jimeng）',
+                    enum: ['jimeng', 'gemini']
+                }
+            },
+            required: []
+        }
     }
 ];
 

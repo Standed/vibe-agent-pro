@@ -10,10 +10,10 @@ export async function authenticatedFetch(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  console.log('[authenticatedFetch] 开始处理请求:', url);
+  // console.log('[authenticatedFetch] 开始处理请求:', url);
 
   // 直接从 cookie 读取 session（避免 supabase.auth.getSession() 挂起）
-  console.log('[authenticatedFetch] 从 cookie 读取 session...');
+  // console.log('[authenticatedFetch] 从 cookie 读取 session...');
 
   let cookieString = '';
   let finalUrl = url;
@@ -34,7 +34,7 @@ export async function authenticatedFetch(
         if (host) {
           const protocol = host.includes('localhost') || host.includes('127.0.0.1') ? 'http' : 'https';
           finalUrl = `${protocol}://${host}${url}`;
-          console.log('[authenticatedFetch] 服务器端补齐路径:', finalUrl);
+          // console.log('[authenticatedFetch] 服务器端补齐路径:', finalUrl);
         } else {
           // 兜底方案：使用环境变量
           const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000';
@@ -42,7 +42,7 @@ export async function authenticatedFetch(
           finalUrl = `${prefix}${baseUrl}${url}`;
         }
       }
-      console.log('[authenticatedFetch] 服务器端获取到 cookie 长度:', cookieString.length);
+      // console.log('[authenticatedFetch] 服务器端获取到 cookie 长度:', cookieString.length);
     } catch (e) {
       console.warn('[authenticatedFetch] 服务器端无法从上下文获取补全路径，保持原始:', url);
     }
@@ -50,7 +50,7 @@ export async function authenticatedFetch(
 
   const sessionTokens = readSessionCookie(cookieString);
 
-  console.log('[authenticatedFetch] Cookie session:', sessionTokens ? '存在' : '不存在');
+  // console.log('[authenticatedFetch] Cookie session:', sessionTokens ? '存在' : '不存在');
 
   if (!sessionTokens?.access_token) {
     console.error('[authenticatedFetch] ❌ Session 不存在，抛出错误');
@@ -63,7 +63,7 @@ export async function authenticatedFetch(
     throw new Error('登录已过期，请重新登录');
   }
 
-  console.log('[authenticatedFetch] ✅ Session 有效，准备发送请求...');
+  // console.log('[authenticatedFetch] ✅ Session 有效，准备发送请求...');
 
   // 合并 headers，添加 Authorization
   const headers = new Headers(options.headers || {});
@@ -82,13 +82,13 @@ export async function authenticatedFetch(
   }
 
   // 发送请求
-  console.log('[authenticatedFetch] 🚀 发送 fetch 请求到:', finalUrl);
+  // console.log('[authenticatedFetch] 🚀 发送 fetch 请求到:', finalUrl);
   const response = await fetch(finalUrl, {
     ...options,
     headers,
   });
 
-  console.log('[authenticatedFetch] ✅ 请求完成，状态码:', response.status);
+  // console.log('[authenticatedFetch] ✅ 请求完成，状态码:', response.status);
   return response;
 }
 

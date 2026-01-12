@@ -120,11 +120,29 @@ export class SoraOrchestrator {
 
             console.log(`[SoraOrchestrator] Generating Task ${i + 1}/${chunks.length}: ${requestSeconds}s (Raw: ${rawDuration.toFixed(1)}), ${targetSize}`);
 
+            // 选择参考图：优先级 分镜图 > 场景地点图
+            let referenceImageForSora: string | undefined;
+
+            // 1. 优先使用第一个分镜的 referenceImage
+            if (chunkShots[0]?.referenceImage) {
+                referenceImageForSora = chunkShots[0].referenceImage;
+                console.log(`[SoraOrchestrator] Using shot reference image: ${referenceImageForSora.substring(0, 50)}...`);
+            }
+            // 2. 否则使用场景地点的参考图（精确匹配）
+            else if (scene.location && project.locations) {
+                const location = project.locations.find(loc => loc.name === scene.location);
+                if (location?.referenceImages && location.referenceImages.length > 0) {
+                    referenceImageForSora = location.referenceImages[0];
+                    console.log(`[SoraOrchestrator] Using location reference image: ${referenceImageForSora.substring(0, 50)}...`);
+                }
+            }
+
             const task = await this.kaponai.createVideo({
                 model: 'sora-2', // User requested cost saving
                 prompt: script,
                 seconds: requestSeconds,
-                size: targetSize
+                size: targetSize,
+                input_reference: referenceImageForSora ? [referenceImageForSora] : undefined
             });
 
             taskIds.push(task.id);
@@ -249,6 +267,7 @@ export class SoraOrchestrator {
         const errors: string[] = [];
         await Promise.all(charsToRegister.map(async (char) => {
             let tempFilePath: string | null = null;
+            let tempVideoPath: string | null = null;
             try {
                 let refVideoUrl = char.soraIdentity?.referenceVideoUrl || char.soraReferenceVideoUrl;
 
@@ -313,7 +332,7 @@ export class SoraOrchestrator {
                 // Step A.5: 上传到 R2 (持久化)
                 try {
                     console.log(`[Orchestrator] Uploading reference video to R2...`);
-                    const tempVideoPath = await this.downloadTempFile(refVideoUrl);
+                    tempVideoPath = await this.downloadTempFile(refVideoUrl);
                     const videoBuffer = fs.readFileSync(tempVideoPath);
                     const videoBase64 = videoBuffer.toString('base64');
                     const r2Filename = `sora_ref_${char.id}_${Date.now()}.mp4`;
@@ -332,8 +351,6 @@ export class SoraOrchestrator {
                     if (!char.soraIdentity) char.soraIdentity = { username: '', referenceVideoUrl: '', status: 'pending' };
                     char.soraIdentity.referenceVideoUrl = refVideoUrl;
                     char.soraReferenceVideoUrl = refVideoUrl;
-
-                    this.deleteTempFile(tempVideoPath);
                 } catch (uploadErr) {
                     console.error(`[Orchestrator] R2 Upload failed, proceeding with original URL:`, uploadErr);
                 }
@@ -362,7 +379,9 @@ export class SoraOrchestrator {
                     await this.dataService.saveCharacter(projectId, char);
                 }
             } finally {
+                // 确保临时文件被清理
                 if (tempFilePath) this.deleteTempFile(tempFilePath);
+                if (tempVideoPath) this.deleteTempFile(tempVideoPath);
             }
         }));
 

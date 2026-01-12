@@ -43,6 +43,8 @@ export async function POST(req: NextRequest) {
             size = '1280x720',
             input_reference,
             projectId,
+            contextShotId,
+            contextSceneId,
         } = body;
 
         if (!prompt) {
@@ -50,6 +52,69 @@ export async function POST(req: NextRequest) {
                 { error: 'Prompt is required' },
                 { status: 400 }
             );
+        }
+
+        let resolvedProjectId: string | null = projectId || null;
+        let resolvedSceneId: string | null = contextSceneId || null;
+        let resolvedShotIds: string[] | null = null;
+
+        if (contextShotId) {
+            const { data: shotData, error: shotError } = await supabase
+                .from('shots')
+                .select('id, scene_id')
+                .eq('id', contextShotId)
+                .single();
+
+            if (shotError || !shotData) {
+                return NextResponse.json({ error: 'Shot not found' }, { status: 404 });
+            }
+
+            const { data: sceneData, error: sceneError } = await supabase
+                .from('scenes')
+                .select('id, project_id')
+                .eq('id', shotData.scene_id)
+                .single();
+
+            if (sceneError || !sceneData) {
+                return NextResponse.json({ error: 'Scene not found for shot' }, { status: 404 });
+            }
+
+            if (resolvedProjectId && resolvedProjectId !== sceneData.project_id) {
+                return NextResponse.json({ error: 'Shot does not belong to project' }, { status: 403 });
+            }
+
+            resolvedProjectId = resolvedProjectId || sceneData.project_id;
+            resolvedSceneId = sceneData.id;
+            resolvedShotIds = [contextShotId];
+        } else if (contextSceneId) {
+            const { data: sceneData, error: sceneError } = await supabase
+                .from('scenes')
+                .select('id, project_id')
+                .eq('id', contextSceneId)
+                .single();
+
+            if (sceneError || !sceneData) {
+                return NextResponse.json({ error: 'Scene not found' }, { status: 404 });
+            }
+
+            if (resolvedProjectId && resolvedProjectId !== sceneData.project_id) {
+                return NextResponse.json({ error: 'Scene does not belong to project' }, { status: 403 });
+            }
+
+            resolvedProjectId = resolvedProjectId || sceneData.project_id;
+            resolvedSceneId = sceneData.id;
+        }
+
+        if (resolvedProjectId) {
+            const { data: project, error: projectError } = await supabase
+                .from('projects')
+                .select('id,user_id')
+                .eq('id', resolvedProjectId)
+                .single();
+
+            if (projectError || !project || project.user_id !== user.id) {
+                return NextResponse.json({ error: 'Unauthorized project access' }, { status: 403 });
+            }
         }
 
         const creditsCheck = checkCredits(user, requiredCredits);
@@ -70,25 +135,15 @@ export async function POST(req: NextRequest) {
             params.input_reference = input_reference;
         }
 
-        if (projectId) {
-            const { data: project, error: projectError } = await supabase
-                .from('projects')
-                .select('id,user_id')
-                .eq('id', projectId)
-                .single();
-
-            if (projectError || !project || project.user_id !== user.id) {
-                return NextResponse.json({ error: 'Unauthorized project access' }, { status: 403 });
-            }
-        }
-
         const result = await kaponai.createVideo(params);
 
         // 保存任务到数据库
         const soraTask = {
             id: result.id,
             user_id: user.id,
-            project_id: projectId || null,
+            project_id: resolvedProjectId || null,
+            scene_id: resolvedSceneId || null,
+            shot_ids: resolvedShotIds || null,
             status: result.status || 'queued',
             progress: result.progress ?? 0,
             model: model,
