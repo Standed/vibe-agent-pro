@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
     for (const [id, row] of existingMap.entries()) {
       const input = inputById.get(id);
       const updates: Record<string, any> = {};
-      if (!row.user_id) updates.user_id = userId;
+      if (!row.user_id) updates.user_id = user.id;
       if (!row.project_id) updates.project_id = projectId;
       if (!row.scene_id && input?.sceneId) updates.scene_id = input.sceneId;
       if (!row.shot_id && input?.shotId) updates.shot_id = input.shotId;
