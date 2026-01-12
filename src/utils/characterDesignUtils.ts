@@ -125,7 +125,17 @@ export const applyCharacterDesigns = (
 
     const findDesign = (name: string) => {
         const key = normalizeNameKey(name);
-        return designs[name] || designByKey[key];
+        // 1. Exact match or normalized key match
+        if (designs[name]) return designs[name];
+        if (designByKey[key]) return designByKey[key];
+
+        // 2. Loose match (check if one contains the other)
+        // e.g. "顾渊" vs "顾渊(CEO)"
+        const looseMatch = Object.values(designs).find(d => {
+            const dKey = normalizeNameKey(d.name);
+            return (dKey && key && (dKey.includes(key) || key.includes(dKey)));
+        });
+        return looseMatch;
     };
 
     names.forEach((name) => {

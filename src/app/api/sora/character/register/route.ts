@@ -1,6 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { characterConsistencyService } from '@/services/CharacterConsistencyService';
 import { createClient } from '@supabase/supabase-js';
+import { authenticateRequest, checkCredits, checkWhitelist, consumeCredits } from '@/lib/auth-middleware';
+import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 export const maxDuration = 60;
 
@@ -9,14 +11,21 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
     try {
+        const authResult = await authenticateRequest(req);
+        if ('error' in authResult) return authResult.error;
+        const { user } = authResult;
+
+        const whitelistCheck = checkWhitelist(user);
+        if ('error' in whitelistCheck) return whitelistCheck.error;
+
         const body = await req.json();
         const { characterId, projectId, mode, timestamps } = body;
         // mode: 'register_direct' (video exists) or 'generate_and_register' (images only)
 
         let character = null;
-        let userId = body.userId || 'anonymous'; // Fallback
+        let userId = user.id;
         let fallbackVideoUrl: string | null = null;
 
         if (characterId) {
@@ -28,6 +37,9 @@ export async function POST(req: Request) {
                 .single();
 
             if (data) {
+                if (data.user_id && data.user_id !== user.id) {
+                    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+                }
                 character = {
                     id: data.id,
                     name: data.name,
@@ -50,6 +62,17 @@ export async function POST(req: Request) {
 
         if (!character) {
             return NextResponse.json({ error: 'Character data missing' }, { status: 400 });
+        }
+
+        if (projectId) {
+            const { data: project } = await supabase
+                .from('projects')
+                .select('id,user_id')
+                .eq('id', projectId)
+                .single();
+            if (!project || project.user_id !== user.id) {
+                return NextResponse.json({ error: 'Unauthorized project access' }, { status: 403 });
+            }
         }
 
         if (mode === 'register_direct') {
@@ -85,6 +108,11 @@ export async function POST(req: Request) {
         } else if (mode === 'generate_and_register') {
             // Trigger generation
             const prompt = body.prompt || `Character ${character.name}: ${character.description}, ${character.appearance} `;
+            const requiredCredits = calculateCredits('VOLCANO_VIDEO', user.role);
+            const operationDesc = getOperationDescription('VOLCANO_VIDEO');
+
+            const creditsCheck = checkCredits(user, requiredCredits);
+            if ('error' in creditsCheck) return creditsCheck.error;
 
             const task = await characterConsistencyService.generateReferenceVideo(
                 character,
@@ -95,6 +123,20 @@ export async function POST(req: Request) {
             void characterConsistencyService
                 .waitAndRegisterTask(task.id, userId, timestamps)
                 .catch((err) => console.error('[AutoRegister] Failed:', err));
+
+            try {
+                const consumeResult = await consumeCredits(
+                    user.id,
+                    requiredCredits,
+                    'sora-character-reference',
+                    operationDesc
+                );
+                if (!consumeResult.success) {
+                    console.error('[SoraCharacter] Credits consume failed:', consumeResult.error);
+                }
+            } catch (consumeError) {
+                console.error('[SoraCharacter] Credits consume exception:', consumeError);
+            }
 
             return NextResponse.json({ success: true, task, status: 'generating_reference' });
 

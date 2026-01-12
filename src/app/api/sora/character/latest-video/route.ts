@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { authenticateRequest } from '@/lib/auth-middleware';
+import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
 import { KaponaiService } from '@/services/KaponaiService';
 import { uploadBufferToR2 } from '@/lib/cloudflare-r2';
 
@@ -17,6 +17,10 @@ export async function GET(req: NextRequest) {
     return authResult.error;
   }
   const { user } = authResult;
+  const whitelistCheck = checkWhitelist(user);
+  if ('error' in whitelistCheck) {
+    return whitelistCheck.error;
+  }
 
   try {
     const { searchParams } = new URL(req.url);

@@ -15,7 +15,12 @@ export class KaponaiService {
     private baseUrl: string;
 
     constructor(apiKey?: string, baseUrl?: string) {
-        this.apiKey = apiKey || process.env.KAPONAI_API_KEY || 'sk-31dWTKpesPhgKiE_WwshxcW_qbjeojMI1Co-MqSiDrSkTnl3OJ-CQCqKSdg';
+        // 强制从环境变量读取，避免硬编码泄露
+        const envApiKey = apiKey || process.env.KAPONAI_API_KEY;
+        if (!envApiKey) {
+            throw new Error('KAPONAI_API_KEY is required. Please set it in your environment variables.');
+        }
+        this.apiKey = envApiKey;
         this.baseUrl = (baseUrl || process.env.KAPONAI_BASE_URL || 'https://models.kapon.cloud').replace(/\/$/, '');
     }
 
@@ -37,6 +42,17 @@ export class KaponaiService {
      * 可以基于现有视频 URL 或任务 ID
      */
     async createCharacter(params: KaponaiCharacterParams): Promise<KaponaiCharacterResponse> {
+        // 记录完整的请求信息
+        console.log('========== Kaponai CreateCharacter 请求详情 ==========');
+        console.log('请求URL:', `${this.baseUrl}/sora/v1/characters`);
+        console.log('请求方法:', 'POST');
+        console.log('请求头:', JSON.stringify({
+            'Authorization': `Bearer ${this.apiKey.substring(0, 20)}...`,
+            'Content-Type': 'application/json'
+        }, null, 2));
+        console.log('请求体:', JSON.stringify(params, null, 2));
+        console.log('====================================================');
+
         let lastError: any;
         for (let attempt = 1; attempt <= 3; attempt++) {
             try {
@@ -51,6 +67,11 @@ export class KaponaiService {
 
                 if (!response.ok) {
                     const error = await response.text();
+                    console.error('========== Kaponai CreateCharacter 错误响应 ==========');
+                    console.error('状态码:', response.status);
+                    console.error('响应体:', error);
+                    console.error('====================================================');
+
                     // 专门针对负载高的情况进行重试
                     if (response.status === 429 || response.status === 500) {
                         console.warn(`[Kaponai] 创建角色尝试 ${attempt} 失败 (状态码: ${response.status})，准备重试...`);
@@ -63,7 +84,11 @@ export class KaponaiService {
                     throw new Error(`Kaponai Create Character Error: ${response.status} ${error}`);
                 }
 
-                return await response.json() as KaponaiCharacterResponse;
+                const result = await response.json() as KaponaiCharacterResponse;
+                console.log('========== Kaponai CreateCharacter 成功响应 ==========');
+                console.log('响应:', JSON.stringify(result, null, 2));
+                console.log('====================================================');
+                return result;
             } catch (error: any) {
                 lastError = error;
                 // 网络层面的错误也值得重试

@@ -1,19 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Film, Clock, Trash2, LogOut, Coins, Folder, Sparkles, User, Image as ImageIcon } from 'lucide-react';
+import { Plus, Film, Clock, Trash2, LogOut, Coins, Folder, Sparkles, User, Image as ImageIcon, FileText, Upload, ArrowRight, Palette, UserCircle2, ChevronDown, MapPin, Loader2 } from 'lucide-react';
 import { UserNav } from '@/components/layout/UserNav';
 import { useI18n } from '@/components/providers/I18nProvider';
 import NewProjectDialog from '@/components/project/NewProjectDialog';
 import NewSeriesDialog from '@/components/project/NewSeriesDialog';
 import { useProjectStore } from '@/store/useProjectStore';
 import { dataService } from '@/lib/dataService';
-import type { Project, Series } from '@/types/project';
+import type { Project, Series, Character, Scene, Shot } from '@/types/project';
 import { useAuth, useRequireWhitelist } from '@/components/auth/AuthProvider';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
+import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
+import { getShotSizeFromValue, getCameraMovementFromValue } from '@/utils/translations';
 
 export default function Home() {
   const { t } = useI18n();
@@ -21,7 +26,7 @@ export default function Home() {
   const searchParams = useSearchParams();
   const currentSeriesId = searchParams.get('seriesId');
 
-  const { createNewProject, project } = useProjectStore();
+  const { createNewProject, project, batchUpdateScenesAndShots } = useProjectStore();
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
   const [showNewSeriesDialog, setShowNewSeriesDialog] = useState(false);
 
@@ -33,6 +38,54 @@ export default function Home() {
   // AI Director Input State
   const [aiDirectorInput, setAiDirectorInput] = useState('');
   const [isAiBrainstorming, setIsAiBrainstorming] = useState(false);
+  const [selectedArtStyle, setSelectedArtStyle] = useState('智能推荐');
+  const [selectedSubject, setSelectedSubject] = useState('自动识别');
+  const [showStyleMenu, setShowStyleMenu] = useState(false);
+  const [showSubjectMenu, setShowSubjectMenu] = useState(false);
+  const [globalCharacters, setGlobalCharacters] = useState<Character[]>([]);
+  const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
+  const [mentionState, setMentionState] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    filter: string;
+    cursorPos: number;
+  }>({ visible: false, x: 0, y: 0, filter: '', cursorPos: 0 });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [uploadedScript, setUploadedScript] = useState('');
+  const [importedStoryboard, setImportedStoryboard] = useState<{
+    scenes: Scene[];
+    shots: Shot[];
+    errors: { row: number; msg: string; type: 'error' | 'warning' }[];
+    fileName?: string;
+  } | null>(null);
+
+  // Close menus on click outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setShowStyleMenu(false);
+      setShowSubjectMenu(false);
+    };
+    if (showStyleMenu || showSubjectMenu) {
+      window.addEventListener('click', handleClickOutside);
+    }
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [showStyleMenu, showSubjectMenu]);
+
+  const artStyles = [
+    { name: '智能推荐', icon: <Sparkles size={14} /> },
+    { name: '写实电影', icon: <Film size={14} /> },
+    { name: '二次元动漫', icon: <ImageIcon size={14} /> },
+    { name: '赛博朋克', icon: <Palette size={14} /> },
+    { name: '水墨国风', icon: <Palette size={14} /> },
+  ];
+
+  const subjects = [
+    { name: '自动识别', icon: <Sparkles size={14} /> },
+    { name: '人物故事', icon: <User size={14} /> },
+    { name: '风景名胜', icon: <MapPin size={14} /> },
+    { name: '产品广告', icon: <ImageIcon size={14} /> },
+  ];
   const [aiProposal, setAiProposal] = useState<{
     title?: string;
     description?: string;
@@ -41,6 +94,109 @@ export default function Home() {
   } | null>(null);
 
   const { user, profile, signOut, loading: authLoading } = useRequireWhitelist();
+
+  const parseStoryboardRows = (rows: any[]) => {
+    const errors: { row: number; msg: string; type: 'error' | 'warning' }[] = [];
+    const scenes: Scene[] = [];
+    const shots: Shot[] = [];
+    const sceneIdMap = new Map<string, string>();
+
+    rows.forEach((row, idx) => {
+      if (!row || row.length === 0) return;
+      const normalizedRow = row.map((cell: any) => (cell === null || cell === undefined ? '' : String(cell).trim()));
+      if (normalizedRow.every((cell: string) => !cell)) return;
+
+      const rowNum = idx + 2; // +1 for header, +1 for 0-index
+      const [sceneName, , description, dialogue, narration, shotSizeVal, cameraMoveVal, durationVal] = normalizedRow;
+
+      if (!sceneName) {
+        errors.push({ row: rowNum, msg: '场景名称不能为空', type: 'error' });
+        return;
+      }
+
+      const shotSizeParsed = getShotSizeFromValue(shotSizeVal);
+      const cameraMovementParsed = getCameraMovementFromValue(cameraMoveVal);
+      const shotSize = shotSizeParsed || 'Medium Shot';
+      const cameraMovement = cameraMovementParsed || 'Static';
+
+      if (!shotSizeParsed && shotSizeVal) {
+        errors.push({ row: rowNum, msg: `未知景别 "${shotSizeVal}"，已默认设为中景`, type: 'warning' });
+      }
+
+      if (!cameraMovementParsed && cameraMoveVal) {
+        errors.push({ row: rowNum, msg: `未知运镜 "${cameraMoveVal}"，已默认设为固定镜头`, type: 'warning' });
+      }
+
+      const durationNum = parseFloat(durationVal);
+      const duration = !Number.isNaN(durationNum) && durationNum > 0 ? durationNum : 3;
+      if (Number.isNaN(durationNum) || durationNum <= 0) {
+        errors.push({ row: rowNum, msg: `时长格式错误 "${durationVal}"，已设为默认 3s`, type: 'warning' });
+      }
+
+      let sceneId = sceneIdMap.get(sceneName);
+      if (!sceneId) {
+        sceneId = crypto.randomUUID();
+        scenes.push({
+          id: sceneId,
+          name: sceneName,
+          location: '',
+          description: '',
+          shotIds: [],
+          position: { x: scenes.length * 300, y: 100 },
+          order: scenes.length + 1,
+          status: 'draft',
+        });
+        sceneIdMap.set(sceneName, sceneId);
+      }
+
+      const shotId = crypto.randomUUID();
+      const scene = scenes.find(s => s.id === sceneId);
+      if (scene) {
+        scene.shotIds.push(shotId);
+      }
+
+      shots.push({
+        id: shotId,
+        sceneId,
+        order: 0,
+        shotSize,
+        cameraMovement,
+        duration,
+        description: description || '',
+        narration: narration || '',
+        dialogue: dialogue || '',
+        status: 'draft',
+        gridImages: [],
+        generationHistory: [],
+      });
+    });
+
+    return { scenes, shots, errors };
+  };
+
+  const parseStoryboardFile = async (file: File) => {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!extension) {
+      throw new Error('无法识别文件格式');
+    }
+
+    if (extension === 'xlsx' || extension === 'xls') {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[];
+      return parseStoryboardRows(rows.slice(1));
+    }
+
+    if (extension === 'csv') {
+      const text = await file.text();
+      const results = Papa.parse(text, { header: false, skipEmptyLines: true });
+      return parseStoryboardRows((results.data as any[]).slice(1));
+    }
+
+    throw new Error('不支持的分镜脚本格式，请上传 CSV 或 Excel 文件');
+  };
 
   // 加载数据
   useEffect(() => {
@@ -62,15 +218,18 @@ export default function Home() {
     }
 
     try {
-      const [allProjects, allSeries] = await Promise.all([
+      const [allProjects, allSeries, allGlobalCharacters] = await Promise.all([
         dataService.getAllProjects(user.id),
-        dataService.getAllSeries()
+        dataService.getAllSeries(),
+        dataService.getGlobalCharacters(user.id)
       ]);
       console.log('[HomePage] Raw projects:', allProjects);
       console.log('[HomePage] Raw series:', allSeries);
+      console.log('[HomePage] Global characters:', allGlobalCharacters);
 
       setProjects(allProjects);
       setSeries(allSeries);
+      setGlobalCharacters(allGlobalCharacters);
       console.log('[HomePage] ✅ 数据加载完成', { projects: allProjects.length, series: allSeries.length });
     } catch (error) {
       console.error('[HomePage] ❌ 加载失败:', error);
@@ -94,9 +253,68 @@ export default function Home() {
     }
   })();
 
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setAiDirectorInput(value);
+
+    const cursorPos = e.target.selectionStart;
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const atIndex = textBeforeCursor.lastIndexOf('@');
+
+    if (atIndex !== -1 && (atIndex === 0 || textBeforeCursor[atIndex - 1] === ' ' || textBeforeCursor[atIndex - 1] === '\n')) {
+      const filter = textBeforeCursor.slice(atIndex + 1);
+      if (!filter.includes(' ')) {
+        // Calculate position (simplified, for better accuracy we'd need a hidden mirror div)
+        const rect = e.target.getBoundingClientRect();
+        // Approximate position based on cursor
+        setMentionState({
+          visible: true,
+          x: 32, // Relative to form
+          y: 80, // Relative to form
+          filter,
+          cursorPos
+        });
+        return;
+      }
+    }
+    setMentionState(prev => ({ ...prev, visible: false }));
+  };
+
+  const insertMention = (char: Character) => {
+    const value = aiDirectorInput;
+    const cursorPos = mentionState.cursorPos;
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const atIndex = textBeforeCursor.lastIndexOf('@');
+
+    const newValue = value.slice(0, atIndex) + `@${char.name} ` + value.slice(cursorPos);
+    setAiDirectorInput(newValue);
+    setMentionState(prev => ({ ...prev, visible: false }));
+
+    // Add to selected characters if not already there
+    if (!selectedCharacters.includes(char.id)) {
+      setSelectedCharacters(prev => [...prev, char.id]);
+    }
+
+    // Focus back to textarea
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        const newPos = atIndex + char.name.length + 2;
+        textareaRef.current.setSelectionRange(newPos, newPos);
+      }
+    }, 0);
+  };
+
+  const toggleCharacter = (charId: string) => {
+    setSelectedCharacters(prev =>
+      prev.includes(charId) ? prev.filter(id => id !== charId) : [...prev, charId]
+    );
+  };
+
   const handleAiDirectorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!aiDirectorInput.trim()) return;
+    const brainstormInput = uploadedScript.trim() ? uploadedScript : aiDirectorInput;
+    if (!brainstormInput.trim()) return;
 
     setIsAiBrainstorming(true);
     setAiProposal(null); // Reset previous proposal
@@ -105,7 +323,11 @@ export default function Home() {
       const response = await fetch('/api/ai/brainstorm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: aiDirectorInput })
+        body: JSON.stringify({
+          input: brainstormInput,
+          artStyle: selectedArtStyle,
+          characterIds: selectedCharacters
+        })
       });
 
       if (!response.ok) throw new Error('AI request failed');
@@ -132,8 +354,9 @@ export default function Home() {
     } catch (error) {
       console.error('Brainstorming failed:', error);
       toast.error('AI 构思失败，请直接手动创建');
-      // Fallback: open dialog with raw input as description
-      setAiProposal({ description: aiDirectorInput });
+      // Fallback: open dialog with manual summary if provided
+      const fallbackDescription = aiDirectorInput.trim();
+      setAiProposal({ description: fallbackDescription || undefined });
       setShowNewProjectDialog(true);
     } finally {
       setIsAiBrainstorming(false);
@@ -147,8 +370,13 @@ export default function Home() {
     aspectRatio: string
   ) => {
     try {
-      createNewProject(title, description, artStyle, aspectRatio);
+      const scriptContent = uploadedScript.trim();
+      createNewProject(title, description, artStyle, aspectRatio, scriptContent);
       await new Promise(resolve => setTimeout(resolve, 100));
+      if (importedStoryboard && importedStoryboard.shots.length > 0) {
+        batchUpdateScenesAndShots(importedStoryboard.scenes, importedStoryboard.shots);
+      }
+
       const currentProject = useProjectStore.getState().project;
 
       if (!currentProject) throw new Error('Project creation failed');
@@ -160,7 +388,9 @@ export default function Home() {
       await dataService.saveProject(currentProject, user?.id);
 
       setShowNewProjectDialog(false);
-      router.push(`/project/${currentProject.id}`);
+      setUploadedScript('');
+      setImportedStoryboard(null);
+      router.push(`/project/${currentProject.id}/planning`);
     } catch (error) {
       console.error('[HomePage] ❌ Create failed:', error);
       toast.error('创建项目失败');
@@ -249,41 +479,291 @@ export default function Home() {
         </header>
 
         {/* AI Director Hero Section */}
+        {/* AI Director Hero Section */}
         {!currentSeriesId && (
-          <section className="mb-12 text-center">
-            <h2 className="text-4xl md:text-5xl font-bold text-light-text dark:text-white mb-6">
-              What&apos;s your story today?
+          <section className="mb-20 text-center relative">
+            {/* Background Glow */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-light-accent/10 dark:bg-cine-accent/5 blur-[120px] rounded-full -z-10" />
+
+            <h2 className="text-5xl md:text-6xl font-black text-zinc-900 dark:text-white mb-10 tracking-tight leading-tight">
+              有什么新的故事灵感？
             </h2>
-            <div className="max-w-3xl mx-auto relative">
-              <form onSubmit={handleAiDirectorSubmit} className="relative">
-                <input
-                  type="text"
-                  value={aiDirectorInput}
-                  onChange={(e) => setAiDirectorInput(e.target.value)}
-                  placeholder="描述你的创意，AI 导演将为你生成策划案..."
-                  className="w-full bg-white dark:bg-cine-panel border-2 border-light-border dark:border-cine-border rounded-full py-4 px-8 pr-32 text-lg focus:outline-none focus:border-light-accent dark:focus:border-cine-accent shadow-lg transition-all"
-                />
-                <button
-                  type="submit"
-                  disabled={isAiBrainstorming}
-                  className="absolute right-2 top-2 bottom-2 bg-light-accent dark:bg-cine-accent text-white dark:text-cine-bg px-6 rounded-full font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent/90 transition-colors flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                  {isAiBrainstorming ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>思考中...</span>
+
+            <div className="max-w-4xl mx-auto px-4">
+              <form
+                onSubmit={handleAiDirectorSubmit}
+                className="relative bg-white/40 dark:bg-zinc-900/40 border border-white/20 dark:border-white/10 rounded-[40px] p-3 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] dark:shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] focus-within:border-light-accent/40 dark:focus-within:border-cine-accent/40 transition-all backdrop-blur-[40px] saturate-150"
+              >
+                <div className="relative">
+                  <textarea
+                    ref={textareaRef}
+                    value={aiDirectorInput}
+                    onChange={handleTextareaChange}
+                    placeholder="输入你的灵感，输入 @ 召唤角色..."
+                    rows={4}
+                    className="w-full bg-transparent border-none py-6 px-8 text-xl focus:outline-none focus:ring-0 resize-none text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600 font-medium leading-relaxed"
+                  />
+
+                  {/* @ Mention Menu */}
+                  <AnimatePresence>
+                    {mentionState.visible && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute left-8 top-20 w-64 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-2xl p-2 shadow-2xl z-50 max-h-60 overflow-y-auto"
+                      >
+                        <div className="px-3 py-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">召唤全局角色</div>
+                        {globalCharacters
+                          .filter(c => c.name.toLowerCase().includes(mentionState.filter.toLowerCase()))
+                          .map((char) => (
+                            <button
+                              key={char.id}
+                              type="button"
+                              onClick={() => insertMention(char)}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors text-left"
+                            >
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-light-accent/20 to-cine-accent/20 flex items-center justify-center text-xs font-bold border border-white/20">
+                                {char.name[0]}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-bold text-zinc-900 dark:text-white truncate">{char.name}</div>
+                                <div className="text-[10px] text-zinc-500 truncate">{char.description || '无描述'}</div>
+                              </div>
+                            </button>
+                          ))}
+                        {globalCharacters.length === 0 && (
+                          <div className="px-3 py-4 text-center text-xs text-zinc-500">暂无全局角色</div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 px-6 mb-2">
+                  {selectedCharacters.map(id => {
+                    const char = globalCharacters.find(c => c.id === id);
+                    if (!char) return null;
+                    return (
+                      <span key={id} className="flex items-center gap-1.5 px-3 py-1 bg-light-accent/10 dark:bg-cine-accent/10 border border-light-accent/20 dark:border-cine-accent/20 rounded-full text-[11px] font-bold text-light-accent dark:text-cine-accent">
+                        <UserCircle2 size={12} />
+                        {char.name}
+                        <button type="button" onClick={() => toggleCharacter(id)} className="hover:text-red-500 transition-colors">
+                          <Plus size={12} className="rotate-45" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between px-6 pb-4">
+                  <div className="flex items-center gap-2">
+                    {/* 上传剧本 */}
+                    <label className="p-3 rounded-2xl hover:bg-white/20 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-400 cursor-pointer transition-all group relative active:scale-95">
+                      <FileText size={22} />
+                      <span className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-zinc-900 text-white text-[11px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap pointer-events-none shadow-xl">上传剧本</span>
+                      <input
+                        type="file"
+                        accept=".txt,.md,.fdx"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              const content = ev.target?.result as string;
+                              setUploadedScript(content || '');
+                              toast.success(`已导入剧本: ${file.name}`);
+                            };
+                            reader.readAsText(file);
+                          }
+                        }}
+                      />
+                    </label>
+
+                    {/* 上传分镜脚本 */}
+                    <label className="p-3 rounded-2xl hover:bg-white/20 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-400 cursor-pointer transition-all group relative active:scale-95">
+                      <Upload size={22} />
+                      <span className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-zinc-900 text-white text-[11px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap pointer-events-none shadow-xl">上传分镜脚本</span>
+                      <input
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            parseStoryboardFile(file)
+                              .then((result) => {
+                                setImportedStoryboard({
+                                  scenes: result.scenes,
+                                  shots: result.shots,
+                                  errors: result.errors,
+                                  fileName: file.name
+                                });
+                                const warningCount = result.errors.filter(e => e.type === 'warning').length;
+                                const errorCount = result.errors.filter(e => e.type === 'error').length;
+                                if (errorCount > 0) {
+                                  toast.error(`分镜脚本导入完成（${errorCount} 条错误，${warningCount} 条警告）`);
+                                } else if (warningCount > 0) {
+                                  toast.warning(`分镜脚本导入完成（${warningCount} 条警告）`);
+                                } else {
+                                  toast.success(`已导入分镜脚本: ${file.name}`);
+                                }
+                              })
+                              .catch((error: Error) => {
+                                console.error('Storyboard import failed:', error);
+                                toast.error(error.message || '分镜脚本导入失败');
+                              });
+                          }
+                        }}
+                      />
+                    </label>
+
+                    <div className="w-px h-6 bg-zinc-200 dark:bg-white/10 mx-2" />
+
+                    {/* 角色多选 */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setShowSubjectMenu(!showSubjectMenu); setShowStyleMenu(false); }}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/30 dark:bg-white/5 hover:bg-white/50 dark:hover:bg-white/10 text-zinc-700 dark:text-zinc-300 transition-all text-xs font-bold border border-white/20 dark:border-white/5 active:scale-95"
+                      >
+                        <UserCircle2 size={16} />
+                        <span>选择角色 ({selectedCharacters.length})</span>
+                        <ChevronDown size={14} className={cn("transition-transform", showSubjectMenu && "rotate-180")} />
+                      </button>
+
+                      <AnimatePresence>
+                        {showSubjectMenu && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute bottom-full mb-3 left-0 w-64 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-2xl p-2 shadow-2xl z-50 max-h-80 overflow-y-auto"
+                          >
+                            <div className="px-3 py-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">我的全局角色库</div>
+                            {globalCharacters.map((char) => (
+                              <button
+                                key={char.id}
+                                type="button"
+                                onClick={() => toggleCharacter(char.id)}
+                                className={cn(
+                                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-colors",
+                                  selectedCharacters.includes(char.id)
+                                    ? "bg-light-accent/20 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent"
+                                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5"
+                                )}
+                              >
+                                <div className={cn(
+                                  "w-6 h-6 rounded-full flex items-center justify-center text-[10px] border",
+                                  selectedCharacters.includes(char.id) ? "border-current" : "border-zinc-200 dark:border-white/10"
+                                )}>
+                                  {char.name[0]}
+                                </div>
+                                <span className="flex-1 text-left truncate">{char.name}</span>
+                                {selectedCharacters.includes(char.id) && <Sparkles size={12} />}
+                              </button>
+                            ))}
+                            {globalCharacters.length === 0 && (
+                              <div className="px-3 py-6 text-center">
+                                <p className="text-xs text-zinc-500 mb-3">暂无全局角色</p>
+                                <Link href="/assets" className="text-[10px] font-bold text-light-accent dark:text-cine-accent hover:underline">去素材库创建</Link>
+                              </div>
+                            )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
-                  ) : (
-                    <>
-                      <Sparkles size={18} />
-                      <span>开始</span>
-                    </>
-                  )}
-                </button>
+
+                    {/* 画风选择 */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setShowStyleMenu(!showStyleMenu); setShowSubjectMenu(false); }}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/30 dark:bg-white/5 hover:bg-white/50 dark:hover:bg-white/10 text-zinc-700 dark:text-zinc-300 transition-all text-xs font-bold border border-white/20 dark:border-white/5 active:scale-95"
+                      >
+                        <Palette size={16} />
+                        <span>{selectedArtStyle}</span>
+                        <ChevronDown size={14} className={cn("transition-transform", showStyleMenu && "rotate-180")} />
+                      </button>
+
+                      <AnimatePresence>
+                        {showStyleMenu && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute bottom-full mb-3 left-0 w-48 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-2xl p-2 shadow-2xl z-50"
+                          >
+                            {artStyles.map((style) => (
+                              <button
+                                key={style.name}
+                                type="button"
+                                onClick={() => { setSelectedArtStyle(style.name); setShowStyleMenu(false); }}
+                                className={cn(
+                                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-colors",
+                                  selectedArtStyle === style.name
+                                    ? "bg-light-accent dark:bg-cine-accent text-white dark:text-black"
+                                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5"
+                                )}
+                              >
+                                {style.icon}
+                                {style.name}
+                              </button>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isAiBrainstorming || !aiDirectorInput.trim()}
+                    className={cn(
+                      "group relative flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-xl disabled:opacity-20 disabled:scale-100 disabled:cursor-not-allowed overflow-hidden",
+                      isAiBrainstorming
+                        ? "bg-zinc-900 dark:bg-zinc-100 scale-110"
+                        : "bg-zinc-900 dark:bg-zinc-100 hover:scale-110 active:scale-95"
+                    )}
+                  >
+                    {/* Rotating Glow Effect for Loading */}
+                    {isAiBrainstorming && (
+                      <div className="absolute inset-0">
+                        <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0%,#3b82f6_30%,transparent_100%)] animate-[spin_2s_linear_infinite]" />
+                        <div className="absolute inset-[2px] bg-zinc-900 dark:bg-zinc-100 rounded-full z-10" />
+                      </div>
+                    )}
+
+                    <div className="absolute inset-0 bg-gradient-to-tr from-light-accent/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+                    {isAiBrainstorming ? (
+                      <div className="relative z-20 flex items-center justify-center">
+                        <Loader2 size={24} className="animate-spin text-zinc-100 dark:text-zinc-900" />
+                      </div>
+                    ) : (
+                      <ArrowRight size={24} className="relative z-10 text-zinc-100 dark:text-zinc-900" />
+                    )}
+                  </button>
+                </div>
               </form>
-              <p className="mt-4 text-light-text-muted dark:text-cine-text-muted text-sm">
-                试一试: &ldquo;一个赛博朋克风格的侦探故事&rdquo; 或 &ldquo;关于咖啡制作的纪录片&rdquo;
-              </p>
+
+              <div className="mt-10 flex flex-wrap justify-center gap-4">
+                {['婚礼上的背叛', '小猫游九寨沟', '风魔劫', '三生三世的羁绊'].map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() => setAiDirectorInput(tag)}
+                    className="px-6 py-2.5 bg-white/40 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 rounded-2xl text-sm font-bold text-zinc-700 dark:text-zinc-300 transition-all flex items-center gap-3 border border-white/20 dark:border-white/5 backdrop-blur-md hover:scale-105 active:scale-95 shadow-sm"
+                  >
+                    <div className="w-6 h-6 rounded-full overflow-hidden bg-zinc-200 dark:bg-zinc-800 flex-shrink-0 border border-white/20">
+                      <div className="w-full h-full bg-gradient-to-br from-light-accent/40 to-cine-accent/40 animate-pulse" />
+                    </div>
+                    {tag}
+                  </button>
+                ))}
+              </div>
             </div>
           </section>
         )}
@@ -301,37 +781,48 @@ export default function Home() {
         )}
 
         {/* Content Controls */}
-        <div className="mb-6 flex items-center justify-between">
-          <h3 className="text-xl font-bold text-light-text dark:text-white">
-            {currentSeriesId ? '剧集列表' : '最近项目'}
-          </h3>
-          <div className="flex gap-2">
+        <div className="mb-8 flex items-end justify-between">
+          <div>
+            <h3 className="text-2xl font-black text-zinc-900 dark:text-white tracking-tight">
+              {currentSeriesId ? '剧集内容' : '全部作品'}
+            </h3>
+            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-1">
+              {currentSeriesId ? '该剧集下的所有分集' : '您最近的项目和剧集'}
+            </p>
+          </div>
+          <div className="flex gap-3">
             {!currentSeriesId && (
               <button
                 onClick={() => setShowNewSeriesDialog(true)}
-                className="inline-flex items-center gap-2 bg-white dark:bg-cine-panel text-light-text dark:text-white border border-light-border dark:border-cine-border px-4 py-2 rounded-lg font-bold hover:border-light-accent dark:hover:border-cine-accent transition-colors"
+                className="inline-flex items-center gap-2 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white border border-zinc-200 dark:border-zinc-800 px-5 py-2.5 rounded-2xl font-bold hover:border-zinc-900 dark:hover:border-white transition-all active:scale-95 shadow-sm"
               >
                 <Folder size={18} />
-                新建剧集
+                <span>新建剧集</span>
               </button>
             )}
             <button
               onClick={() => setShowNewProjectDialog(true)}
-              className="inline-flex items-center gap-2 bg-light-accent dark:bg-cine-accent text-white dark:text-cine-bg px-4 py-2 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent/90 transition-colors"
+              className="inline-flex items-center gap-2 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 px-5 py-2.5 rounded-2xl font-bold hover:opacity-90 transition-all active:scale-95 shadow-xl shadow-black/10 dark:shadow-white/10"
             >
               <Plus size={18} />
-              {currentSeriesId ? '新建分集' : '新建项目'}
+              <span>{currentSeriesId ? '新建分集' : '新建项目'}</span>
             </button>
           </div>
         </div>
 
         {/* Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
           {isLoading ? (
-            <div className="col-span-full py-20 text-center text-light-text-muted dark:text-cine-text-muted">加载中...</div>
+            <div className="col-span-full py-32 flex flex-col items-center justify-center gap-4">
+              <Loader2 className="w-8 h-8 animate-spin text-zinc-300" />
+              <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">正在加载...</p>
+            </div>
           ) : displayedItems.length === 0 ? (
-            <div className="col-span-full py-20 border-2 border-dashed border-light-border dark:border-cine-border rounded-lg text-center">
-              <p className="text-light-text-muted dark:text-cine-text-muted">没有项目</p>
+            <div className="col-span-full py-32 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[32px] flex flex-col items-center justify-center gap-4 bg-zinc-50/50 dark:bg-white/5">
+              <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+                <Film size={24} className="text-zinc-400" />
+              </div>
+              <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">暂无作品</p>
             </div>
           ) : (
             displayedItems.map((item) => {
@@ -341,26 +832,34 @@ export default function Home() {
                   <Link
                     key={`series-${s.id}`}
                     href={`/?seriesId=${s.id}`}
-                    className="group bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl p-4 hover:border-light-accent dark:hover:border-cine-accent transition-all relative"
+                    className="group relative flex flex-col bg-white dark:bg-zinc-900 rounded-[32px] border border-black/5 dark:border-white/10 p-4 transition-all duration-500 hover:shadow-2xl hover:shadow-black/5 dark:hover:shadow-white/5 hover:-translate-y-1"
                   >
-                    <div className="aspect-[4/3] bg-gray-100 dark:bg-gray-800 rounded-lg mb-4 flex items-center justify-center relative overflow-hidden">
+                    <div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[24px] mb-4 flex items-center justify-center relative overflow-hidden">
                       {s.coverImage ? (
-                        <img src={s.coverImage} alt={s.title} className="w-full h-full object-cover" />
+                        <img src={s.coverImage} alt={s.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                       ) : (
-                        <Folder size={48} className="text-light-accent dark:text-cine-accent opacity-50" />
+                        <div className="flex flex-col items-center gap-2 opacity-20">
+                          <Folder size={40} className="text-zinc-900 dark:text-white" />
+                        </div>
                       )}
-                      <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded max-w-full truncate">
-                        剧集
+                      <div className="absolute top-3 left-3 px-2.5 py-1 bg-zinc-900/90 dark:bg-white/90 backdrop-blur-md rounded-full shadow-lg">
+                        <span className="text-[10px] font-black text-white dark:text-zinc-900 uppercase tracking-tighter">剧集</span>
                       </div>
                     </div>
-                    <h4 className="font-bold text-light-text dark:text-white truncate">{s.title}</h4>
-                    <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">{formatDate(s.updated)}</p>
+                    <div className="px-2 pb-2">
+                      <h4 className="font-black text-zinc-900 dark:text-white truncate tracking-tight">{s.title}</h4>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{formatDate(s.updated)}</span>
+                        <div className="w-1 h-1 rounded-full bg-zinc-200 dark:bg-zinc-800" />
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">合集</span>
+                      </div>
+                    </div>
 
                     <button
                       onClick={(e) => handleDeleteSeries(s.id, e)}
-                      className="absolute top-2 right-2 p-2 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 rounded hover:bg-black/40"
+                      className="absolute top-6 right-6 p-2 bg-red-500 text-white rounded-full shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 hover:scale-110"
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={14} />
                     </button>
                   </Link>
                 );
@@ -370,33 +869,39 @@ export default function Home() {
                   <Link
                     key={`proj-${p.id}`}
                     href={`/project/${p.id}`}
-                    className="group bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl overflow-hidden hover:border-light-accent dark:hover:border-cine-accent transition-all relative"
+                    className="group relative flex flex-col bg-white dark:bg-zinc-900 rounded-[32px] border border-black/5 dark:border-white/10 p-4 transition-all duration-500 hover:shadow-2xl hover:shadow-black/5 dark:hover:shadow-white/5 hover:-translate-y-1"
                   >
-                    <div className="aspect-video bg-gray-100 dark:bg-black relative">
-                      {p.shots && p.shots.length > 0 && p.shots[0].referenceImage ? (
-                        <img src={p.shots[0].referenceImage} alt={p.metadata.title} className="w-full h-full object-cover" />
+                    <div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[24px] mb-4 flex items-center justify-center relative overflow-hidden">
+                      {p.shots?.find(s => s.referenceImage)?.referenceImage ? (
+                        <img src={p.shots.find(s => s.referenceImage)!.referenceImage} alt={p.metadata.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Film size={32} className="text-gray-400" />
+                        <div className="flex flex-col items-center gap-2 opacity-20">
+                          <Film size={40} className="text-zinc-900 dark:text-white" />
                         </div>
                       )}
-
-                      <button
-                        onClick={(e) => handleDeleteProject(p.id, e)}
-                        className="absolute top-2 right-2 p-2 bg-red-500/80 hover:bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                    <div className="p-3">
-                      <h4 className="font-bold text-sm text-light-text dark:text-white truncate mb-1">{p.metadata.title}</h4>
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <span>{formatDate(p.metadata.modified)}</span>
-                        <span className="flex items-center gap-1"><Film size={10} /> {p.shots?.length || 0}</span>
+                      <div className="absolute top-3 left-3 px-2.5 py-1 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md rounded-full shadow-lg border border-black/5 dark:border-white/10">
+                        <span className="text-[10px] font-black text-zinc-900 dark:text-white uppercase tracking-tighter">项目</span>
                       </div>
                     </div>
+                    <div className="px-2 pb-2">
+                      <h4 className="font-black text-zinc-900 dark:text-white truncate tracking-tight">{p.metadata.title}</h4>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{formatDate(p.metadata.modified)}</span>
+                        <div className="w-1 h-1 rounded-full bg-zinc-200 dark:bg-zinc-800" />
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-1">
+                          <Film size={10} /> {p.shots?.length || 0} 个分镜
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={(e) => handleDeleteProject(p.id, e)}
+                      className="absolute top-6 right-6 p-2 bg-red-500 text-white rounded-full shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 hover:scale-110"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </Link>
-                )
+                );
               }
             })
           )}

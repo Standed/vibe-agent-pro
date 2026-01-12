@@ -10,7 +10,7 @@ interface StoryboardTabProps {
     collapsedScenes: Set<string>;
     toggleSceneCollapse: (sceneId: string) => void;
     handleAddScene: () => void;
-    setShowScriptEditor: (show: boolean) => void;
+    setShowScriptEditor?: (show: boolean) => void;
     editingSceneId: string | null;
     editingSceneName: string;
     setEditingSceneName: (name: string) => void;
@@ -64,13 +64,15 @@ export const StoryboardTab: React.FC<StoryboardTabProps> = ({
                         <Plus size={12} />
                         <span>添加场景</span>
                     </button>
-                    <button
-                        onClick={() => setShowScriptEditor(true)}
-                        className="flex items-center gap-1 text-xs px-2 py-1 glass-button rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                    >
-                        <Edit2 size={12} />
-                        <span>编辑分镜脚本</span>
-                    </button>
+                    {setShowScriptEditor && (
+                        <button
+                            onClick={() => setShowScriptEditor(true)}
+                            className="flex items-center gap-1 text-xs px-2 py-1 glass-button rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                        >
+                            <Edit2 size={12} />
+                            <span>编辑分镜脚本</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -259,7 +261,7 @@ export const StoryboardTab: React.FC<StoryboardTabProps> = ({
                     <div className="text-center py-12 text-light-text-muted dark:text-cine-text-muted">
                         <Film size={48} className="mx-auto mb-3 opacity-30" />
                         <p className="text-sm">还没有分镜</p>
-                        <p className="text-xs mt-1">在剧本标签页使用 AI 自动分镜</p>
+                        <p className="text-xs mt-1">使用 AI 自动分镜后，这里会出现镜头</p>
                     </div>
                 )}
             </div>

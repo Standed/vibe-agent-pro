@@ -53,6 +53,51 @@ const aspectRatioOptions = [
   },
 ];
 
+// 预设画风选项
+const artStyleOptions = [
+  {
+    value: 'realistic',
+    label: '真实写实',
+    prompt: '照片级真实写实风格，高质量渲染，自然光影，photo realistic, cinematic lighting',
+    description: '照片级真实感',
+    color: 'from-gray-400 to-gray-600',
+  },
+  {
+    value: 'cyberpunk',
+    label: '赛博朋克',
+    prompt: '赛博朋克风格，霓虹灯光，科技感，cyberpunk, neon lights, futuristic city',
+    description: '霓虹、科技感',
+    color: 'from-purple-500 to-blue-500',
+  },
+  {
+    value: 'anime',
+    label: '日系动漫',
+    prompt: '日系动漫风格，细腻线条，鲜艳色彩，anime style, Japanese animation, vibrant colors',
+    description: '动漫风格',
+    color: 'from-pink-400 to-rose-400',
+  },
+  {
+    value: 'chinese_ink',
+    label: '国风水墨',
+    prompt: '中国传统水墨画风格，古典意境，留白艺术，Chinese ink painting, traditional art style',
+    description: '中国传统风格',
+    color: 'from-slate-400 to-slate-600',
+  },
+  {
+    value: '3d_cartoon',
+    label: '3D 卡通',
+    prompt: '皮克斯3D卡通风格，圆润建模，明亮色彩，Pixar style, 3D cartoon, bright colors',
+    description: '皮克斯风格',
+    color: 'from-orange-400 to-red-400',
+  },
+  {
+    value: 'custom',
+    label: '自定义',
+    prompt: '',
+    description: '自行输入画风描述',
+    color: 'from-gray-300 to-gray-400',
+  },
+];
 export default function NewProjectDialog({
   onConfirm,
   onClose,
@@ -64,6 +109,7 @@ export default function NewProjectDialog({
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
   const [artStyle, setArtStyle] = useState(initialArtStyle);
+  const [selectedArtStyleType, setSelectedArtStyleType] = useState<string>('custom');
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<string>(
     // Ensure the aspect ratio from AI matches one of our enums, otherwise fallback to MOBILE
     Object.values(AspectRatio).includes(initialAspectRatio as AspectRatio)
@@ -72,6 +118,14 @@ export default function NewProjectDialog({
   );
   const [isCreating, setIsCreating] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  // 处理画风选择
+  const handleArtStyleSelect = (option: typeof artStyleOptions[0]) => {
+    setSelectedArtStyleType(option.value);
+    if (option.value !== 'custom') {
+      setArtStyle(option.prompt);
+    }
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -164,22 +218,62 @@ export default function NewProjectDialog({
             />
           </div>
 
-          {/* Art Style */}
+
+          {/* Art Style Selection */}
           <div>
-            <label className="block text-sm font-bold text-light-text dark:text-white mb-2">
-              🎨 画风描述
+            <label className="block text-sm font-bold text-light-text dark:text-white mb-3">
+              🎨 画风选择
             </label>
-            <input
-              type="text"
-              value={artStyle}
-              onChange={(e) => setArtStyle(e.target.value)}
-              placeholder="例如：国风3D动漫、赛博朋克、写实风格"
-              disabled={isCreating}
-              className="glass-input w-full px-4 py-3 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            />
-            <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-2">
-              画风信息将用于生成分镜图片时的提示词
-            </p>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              {artStyleOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => handleArtStyleSelect(option)}
+                  disabled={isCreating}
+                  className={`p-3 rounded-xl border transition-all duration-200 text-left disabled:opacity-50 disabled:cursor-not-allowed group ${selectedArtStyleType === option.value
+                      ? 'bg-light-accent/10 dark:bg-cine-accent/10 border-light-accent dark:border-cine-accent'
+                      : 'glass-card border-transparent hover:border-light-accent/30 dark:hover:border-cine-accent/30'
+                    }`}
+                >
+                  <div className="flex flex-col items-center text-center gap-1">
+                    <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${option.color} opacity-80`} />
+                    <span className={`text-sm font-medium ${selectedArtStyleType === option.value
+                        ? 'text-light-accent dark:text-cine-accent'
+                        : 'text-light-text dark:text-white'
+                      }`}>
+                      {option.label}
+                    </span>
+                    <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                      {option.description}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* 自定义画风输入（仅在选择"自定义"时显示，或允许用户编辑预设） */}
+            <div className="mt-3">
+              <label className="block text-xs text-light-text-muted dark:text-cine-text-muted mb-1">
+                画风提示词 {selectedArtStyleType !== 'custom' && '(可编辑)'}
+              </label>
+              <textarea
+                value={artStyle}
+                onChange={(e) => {
+                  setArtStyle(e.target.value);
+                  if (selectedArtStyleType !== 'custom') {
+                    setSelectedArtStyleType('custom');
+                  }
+                }}
+                placeholder="例如：国风3D动漫、赛博朋克、写实风格..."
+                rows={2}
+                disabled={isCreating}
+                className="glass-input w-full px-4 py-3 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed resize-none text-sm"
+              />
+              <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
+                💡 画风信息将用于生成分镜图片时的提示词，创建后不可更改
+              </p>
+            </div>
           </div>
 
           {/* Aspect Ratio Selection */}

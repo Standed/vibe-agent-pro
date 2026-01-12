@@ -46,6 +46,44 @@ export default function ThinkingProcess({
     }
   };
 
+  const TOOL_DISPLAY_NAMES: Record<string, string> = {
+    'getProjectContext': '获取项目上下文',
+    'searchScenes': '搜索场景',
+    'getSceneShots': '获取场景镜头',
+    'getShotDetails': '获取镜头详情',
+    'createScene': '创建场景',
+    'addShot': '添加镜头',
+    'addShots': '批量添加镜头',
+    'updateShot': '更新镜头',
+    'batchGenerateSceneImages': '批量生成场景图片',
+    'generateShotVideo': '生成镜头视频',
+    'generateShotImage': '生成镜头图片',
+    'batchGenerateProjectImages': '批量生成项目图片',
+    'generateSceneVideo': '生成场景视频',
+    'generateShotsVideo': '生成分镜视频',
+    'batchGenerateProjectVideosSora': '批量生成项目视频',
+    'generateCharacterThreeView': '生成角色三视图',
+    'addCharacter': '添加角色',
+    'updateCharacter': '更新角色',
+    'deleteCharacter': '删除角色',
+    'updateScene': '更新场景',
+    'deleteScene': '删除场景',
+    'deleteShot': '删除镜头',
+  };
+
+  const getStepContent = (step: ThinkingStep) => {
+    if (step.type === 'tool') {
+      // Extract tool name from content (assuming content is like "Calling tool: toolName" or just "toolName")
+      // But typically step.content for tool type might be the tool name itself or a description.
+      // Let's try to match the tool name.
+      const toolName = Object.keys(TOOL_DISPLAY_NAMES).find(name => step.content.includes(name));
+      if (toolName) {
+        return step.content.replace(toolName, TOOL_DISPLAY_NAMES[toolName]);
+      }
+    }
+    return step.content;
+  };
+
   const getStepLabel = (step: ThinkingStep) => {
     switch (step.type) {
       case 'thinking':
@@ -144,7 +182,7 @@ export default function ThinkingProcess({
                     [{getStepLabel(step)}]
                   </span>
                   <span className="text-light-text dark:text-white">
-                    {step.content}
+                    {getStepContent(step)}
                   </span>
                 </div>
 

@@ -2,19 +2,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SoraOrchestrator } from '@/services/SoraOrchestrator';
 import { Project } from '@/types/project';
+import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
+import { createClient } from '@supabase/supabase-js';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
 export async function POST(req: NextRequest) {
     try {
-        const { tool, args, project, userId } = await req.json();
+        const authResult = await authenticateRequest(req);
+        if ('error' in authResult) return authResult.error;
+        const { user } = authResult;
+
+        const whitelistCheck = checkWhitelist(user);
+        if ('error' in whitelistCheck) return whitelistCheck.error;
+
+        const { tool, args, project } = await req.json();
 
         if (!project) {
             return NextResponse.json(
                 { success: false, error: 'Project context is required' },
                 { status: 400 }
             );
+        }
+
+        if (!project.id) {
+            return NextResponse.json({ success: false, error: 'Project id is required' }, { status: 400 });
+        }
+
+        const { data: projectRow } = await supabase
+            .from('projects')
+            .select('id,user_id')
+            .eq('id', project.id)
+            .single();
+
+        if (!projectRow || projectRow.user_id !== user.id) {
+            return NextResponse.json({ success: false, error: 'Unauthorized project access' }, { status: 403 });
         }
 
         const orchestrator = new SoraOrchestrator();
@@ -26,7 +53,7 @@ export async function POST(req: NextRequest) {
 
         switch (tool) {
             case 'generateSceneVideo':
-                const taskIds = await orchestrator.generateSceneVideo(project as Project, args.sceneId, userId);
+                const taskIds = await orchestrator.generateSceneVideo(project as Project, args.sceneId, user.id);
                 result = {
                     taskIds: taskIds,
                     message: `Sora 视频生成任务已提交，共拆分为 ${taskIds.length} 个子任务`
@@ -38,7 +65,7 @@ export async function POST(req: NextRequest) {
                     project as Project,
                     args.sceneId,
                     args.shotIds,
-                    userId
+                    user.id
                 );
                 result = {
                     taskIds: shotTaskIds,
@@ -54,7 +81,7 @@ export async function POST(req: NextRequest) {
                 result = await orchestrator.batchGenerateProjectVideos(
                     project as Project,
                     args.force,
-                    userId
+                    user.id
                     // No progress callback for API mode currently
                 );
                 break;

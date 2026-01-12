@@ -75,7 +75,9 @@ export async function GET(req: Request) {
 
                     await supabase.from('sora_tasks').update(updates).eq('id', task.id);
                     results.push({ id: task.id, status: normalizedStatus, updated: true });
-                    if (task.scene_id) touchedScenes.add(task.scene_id);
+                    if (task.scene_id && (task.type === 'shot_generation' || !task.type)) {
+                        touchedScenes.add(task.scene_id);
+                    }
 
                     // 3. Auto-register if completed character reference
                     if (normalizedStatus === 'completed' && task.type === 'character_reference' && task.character_id && statusRes.video_url) {
@@ -122,7 +124,7 @@ export async function GET(req: Request) {
                         }
                     }
 
-                    if (normalizedStatus === 'completed' && task.type === 'shot_generation') {
+                    if (normalizedStatus === 'completed' && (task.type === 'shot_generation' || task.type === 'direct_generation')) {
                         let finalVideoUrl = task.r2_url || statusRes.video_url || task.kaponai_url;
                         if (!task.r2_url && statusRes.video_url) {
                             try {
@@ -130,7 +132,12 @@ export async function GET(req: Request) {
                                 if (!vidRes.ok) throw new Error('Failed to download video from Kaponai');
                                 const vidBuffer = Buffer.from(await vidRes.arrayBuffer());
                                 const filename = `sora_${task.id}_${Date.now()}.mp4`;
-                                const baseFolder = task.shot_id ? `shots/${task.shot_id}` : `scenes/${task.scene_id || 'unknown'}`;
+
+                                let baseFolder = `generated/${task.user_id || 'anonymous'}`;
+                                if (task.shot_id) baseFolder = `shots/${task.shot_id}`;
+                                else if (task.scene_id) baseFolder = `scenes/${task.scene_id}`;
+                                else if (task.project_id) baseFolder = `projects/${task.project_id}`;
+
                                 const key = `${task.user_id}/${baseFolder}/${filename}`;
                                 const r2Url = await uploadBufferToR2({
                                     buffer: vidBuffer,
@@ -140,30 +147,163 @@ export async function GET(req: Request) {
                                 finalVideoUrl = r2Url;
                                 await supabase.from('sora_tasks').update({ r2_url: r2Url }).eq('id', task.id);
                             } catch (uploadErr) {
-                                console.error(`[Cron] Shot R2 upload failed for task ${task.id}:`, uploadErr);
+                                console.error(`[Cron] Shot/Direct R2 upload failed for task ${task.id}:`, uploadErr);
                             }
                         }
 
-                        if (task.shot_id && finalVideoUrl) {
-                            const { data: shotData } = await supabase
-                                .from('shots')
-                                .select('metadata')
-                                .eq('id', task.shot_id)
-                                .single();
-                            await supabase.from('shots').update({
-                                video_clip: finalVideoUrl,
-                                status: 'done',
-                                metadata: {
-                                    ...(shotData?.metadata || {}),
-                                    soraTaskId: task.id,
-                                    soraVideoUrl: finalVideoUrl
+                        const targetShotIds = task.shot_ids || (task.shot_id ? [task.shot_id] : []);
+                        console.log(`[Cron] Task ${task.id}: shot_ids=${JSON.stringify(task.shot_ids)}, shot_id=${task.shot_id}, targetShotIds=${JSON.stringify(targetShotIds)}`);
+
+                        if (task.type === 'shot_generation') {
+                            if (targetShotIds.length > 0 && finalVideoUrl) {
+                                // Fetch all affected shots
+                                const { data: shotsData, error: shotsError } = await supabase
+                                    .from('shots')
+                                    .select('id, metadata, generation_history')
+                                    .in('id', targetShotIds);
+
+                                console.log(`[Cron] Fetched shots: count=${shotsData?.length}, error=${shotsError?.message}`);
+
+                                if (shotsData && shotsData.length > 0) {
+                                    for (const shotData of shotsData) {
+                                        const newHistoryItem = {
+                                            id: `sora_${task.id}_${Date.now()}`,
+                                            type: 'video',
+                                            timestamp: new Date().toISOString(),
+                                            result: finalVideoUrl,
+                                            prompt: task.prompt || 'Sora Video Generation',
+                                            parameters: {
+                                                model: 'sora',
+                                                taskId: task.id,
+                                                isMultiShot: targetShotIds.length > 1,
+                                                coveredShots: targetShotIds
+                                            },
+                                            status: 'success'
+                                        };
+
+                                        const currentHistory = shotData.generation_history || [];
+                                        const updatedHistory = [newHistoryItem, ...currentHistory];
+
+                                        const { error: updateError } = await supabase.from('shots').update({
+                                            video_clip: finalVideoUrl,
+                                            status: 'done',
+                                            metadata: {
+                                                ...(shotData.metadata || {}),
+                                                soraTaskId: task.id,
+                                                soraVideoUrl: finalVideoUrl
+                                            },
+                                            generation_history: updatedHistory
+                                        }).eq('id', shotData.id);
+
+                                        if (updateError) {
+                                            console.error(`[Cron] ❌ Failed to update shot ${shotData.id}:`, updateError);
+                                        } else {
+                                            console.log(`[Cron] ✅ Updated shot ${shotData.id}: generation_history length = ${updatedHistory.length}`);
+                                        }
+                                    }
                                 }
-                            }).eq('id', task.shot_id);
+                            }
+                        } else if (task.type === 'direct_generation') {
+                            if (targetShotIds.length > 0 && finalVideoUrl) {
+                                const { data: shotsData, error: shotsError } = await supabase
+                                    .from('shots')
+                                    .select('id, generation_history')
+                                    .in('id', targetShotIds);
+
+                                console.log(`[Cron] Pro shots fetched: count=${shotsData?.length}, error=${shotsError?.message}`);
+
+                                if (shotsData && shotsData.length > 0) {
+                                    for (const shotData of shotsData) {
+                                        const newHistoryItem = {
+                                            id: `sora_${task.id}_${Date.now()}`,
+                                            type: 'video',
+                                            timestamp: new Date().toISOString(),
+                                            result: finalVideoUrl,
+                                            prompt: task.prompt || 'Sora Video Generation',
+                                            parameters: {
+                                                model: 'sora',
+                                                taskId: task.id,
+                                                source: 'pro',
+                                                isMultiShot: targetShotIds.length > 1,
+                                                coveredShots: targetShotIds
+                                            },
+                                            status: 'success'
+                                        };
+
+                                        const currentHistory = shotData.generation_history || [];
+                                        const updatedHistory = [newHistoryItem, ...currentHistory];
+
+                                        const { error: updateError } = await supabase.from('shots').update({
+                                            generation_history: updatedHistory
+                                        }).eq('id', shotData.id);
+
+                                        if (updateError) {
+                                            console.error(`[Cron] ❌ Failed to update pro history for shot ${shotData.id}:`, updateError);
+                                        } else {
+                                            console.log(`[Cron] ✅ Pro history updated for shot ${shotData.id}: generation_history length = ${updatedHistory.length}`);
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (task.project_id && finalVideoUrl) {
+                                const baseChatMessage = {
+                                    user_id: task.user_id,
+                                    project_id: task.project_id,
+                                    role: 'assistant',
+                                    content: 'Sora 视频生成完成！',
+                                    metadata: {
+                                        type: 'sora_video_complete',
+                                        videoUrl: finalVideoUrl,
+                                        taskId: task.id,
+                                        model: 'sora-2',
+                                        prompt: task.prompt || '',
+                                        source: 'pro',
+                                        isMultiShot: targetShotIds.length > 1,
+                                        coveredShots: targetShotIds
+                                    },
+                                    created_at: new Date().toISOString(),
+                                    updated_at: new Date().toISOString()
+                                };
+
+                                if (targetShotIds.length > 0) {
+                                    for (const shotId of targetShotIds) {
+                                        await supabase.from('chat_messages').insert({
+                                            id: `sora_complete_${task.id}_${shotId}_${Date.now()}`,
+                                            ...baseChatMessage,
+                                            scope: 'shot',
+                                            scene_id: task.scene_id || null,
+                                            shot_id: shotId
+                                        });
+                                        console.log(`[Cron] Inserted Pro chat message for shot ${shotId}`);
+                                    }
+                                } else if (task.scene_id) {
+                                    await supabase.from('chat_messages').insert({
+                                        id: `sora_complete_${task.id}_${Date.now()}`,
+                                        ...baseChatMessage,
+                                        scope: 'scene',
+                                        scene_id: task.scene_id,
+                                        shot_id: null
+                                    });
+                                    console.log(`[Cron] Inserted Pro chat message for scene ${task.scene_id}`);
+                                } else {
+                                    await supabase.from('chat_messages').insert({
+                                        id: `sora_complete_${task.id}_${Date.now()}`,
+                                        ...baseChatMessage,
+                                        scope: 'project',
+                                        scene_id: null,
+                                        shot_id: null
+                                    });
+                                    console.log(`[Cron] Inserted Pro chat message for project ${task.project_id}`);
+                                }
+                            }
                         }
                     }
                 } else {
                     results.push({ id: task.id, status: normalizedStatus, updated: false });
-                    if (task.scene_id) touchedScenes.add(task.scene_id);
+                    if (task.scene_id && (task.type === 'shot_generation' || !task.type)) {
+                        touchedScenes.add(task.scene_id);
+                    }
                 }
             } catch (err: any) {
                 console.error(`[Cron] Failed to poll task ${task.id}:`, err);
@@ -176,7 +316,8 @@ export async function GET(req: Request) {
                 const { data: sceneTasks } = await supabase
                     .from('sora_tasks')
                     .select('id, status, progress, r2_url, kaponai_url')
-                    .eq('scene_id', sceneId);
+                    .eq('scene_id', sceneId)
+                    .or('type.eq.shot_generation,type.is.null');
 
                 if (!sceneTasks || sceneTasks.length === 0) continue;
 
