@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
         // mode: 'register_direct' (video exists) or 'generate_and_register' (images only)
 
         let character = null;
-        const userId = user.id;
+        let userId = user.id;
         let fallbackVideoUrl: string | null = null;
 
         if (characterId) {

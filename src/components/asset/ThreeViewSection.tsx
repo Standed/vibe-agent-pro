@@ -97,11 +97,12 @@ export function ThreeViewGenerator({ hook, name }: ThreeViewComponentProps) {
                             <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">比例:</span>
                             <select
                                 value={aspectRatio}
-                                onChange={(e) => setAspectRatio(e.target.value as '21:9' | '16:9')}
+                                onChange={(e) => setAspectRatio(e.target.value as '21:9' | '16:9' | '9:16')}
                                 className="text-[10px] font-medium bg-transparent text-zinc-700 dark:text-zinc-300 border-none p-0 focus:ring-0 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
                             >
                                 <option value="21:9" className="dark:bg-zinc-900">21:9 超宽</option>
                                 <option value="16:9" className="dark:bg-zinc-900">16:9 宽屏</option>
+                                <option value="9:16" className="dark:bg-zinc-900">9:16 竖屏</option>
                             </select>
                         </div>
                         <span className="text-[10px] text-zinc-400">消耗 1 次生成额度</span>

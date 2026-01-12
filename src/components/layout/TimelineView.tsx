@@ -495,14 +495,40 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
 
             if (isTransition && videoUrl) {
                 if (task.shotId && task.sceneId) {
+                    // Fetch current shot to get existing generation_history
+                    const currentShotData = await dataService.getShot(task.shotId);
+                    const existingHistory = currentShotData?.generationHistory || [];
+
+                    // Check if this video is already in history
+                    const alreadyExists = existingHistory.some(h => h.result === videoUrl);
+
+                    const newHistory = alreadyExists ? existingHistory : [
+                        {
+                            id: `sora_${task.id}_${Date.now()}`,
+                            type: 'video' as const,
+                            timestamp: new Date().toISOString(),
+                            result: videoUrl,
+                            prompt: typeof task.prompt === 'string' ? task.prompt : 'Sora Video Generation',
+                            parameters: {
+                                model: 'sora',
+                                taskId: task.id,
+                            },
+                            status: 'success' as const
+                        },
+                        ...existingHistory
+                    ];
+
                     await dataService.saveShot(task.sceneId, {
                         id: task.shotId,
                         status: 'done',
                         videoClip: videoUrl,
+                        generationHistory: newHistory,
                     } as any);
+                    console.log('[TimelineView] Saved shot with generationHistory:', task.shotId, 'length:', newHistory.length, 'type:', newHistory[0]?.type);
                     updateShot(task.shotId, {
                         status: 'done',
                         videoClip: videoUrl,
+                        generationHistory: newHistory,
                     } as any);
                 }
 

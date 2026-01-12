@@ -18,8 +18,8 @@ interface UseThreeViewGenerationProps {
 export interface UseThreeViewGenerationReturn {
     generationPrompt: string;
     setGenerationPrompt: (value: string) => void;
-    aspectRatio: '21:9' | '16:9';
-    setAspectRatio: (value: '21:9' | '16:9') => void;
+    aspectRatio: '21:9' | '16:9' | '9:16';
+    setAspectRatio: (value: '21:9' | '16:9' | '9:16') => void;
     genMode: 'seedream' | 'gemini' | 'jimeng';
     setGenMode: (value: 'seedream' | 'gemini' | 'jimeng') => void;
     jimengModel: JimengModel;
@@ -39,7 +39,7 @@ export function useThreeViewGeneration({
     setSelectedRefIndex
 }: UseThreeViewGenerationProps): UseThreeViewGenerationReturn {
     const [generationPrompt, setGenerationPrompt] = useState('');
-    const [aspectRatio, setAspectRatio] = useState<'21:9' | '16:9'>('21:9');
+    const [aspectRatio, setAspectRatio] = useState<'21:9' | '16:9' | '9:16'>('21:9');
     const [genMode, setGenMode] = useState<'seedream' | 'gemini' | 'jimeng'>('jimeng');
     const [jimengModel, setJimengModel] = useState<JimengModel>('jimeng-4.5');
     const [isGenerating, setIsGenerating] = useState(false);

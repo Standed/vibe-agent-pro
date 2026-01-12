@@ -21,6 +21,7 @@ import { Sparkles, Bug, Loader2 } from 'lucide-react';
 import { compressImage, compressFileToBase64 } from '@/utils/imageCompression';
 import { replaceSoraCharacterCodes } from '@/utils/soraCharacterReplace';
 import { useSoraGeneration } from '@/hooks/useSoraGeneration';
+import { useSoraVideoMessages } from '@/hooks/useSoraVideoMessages';
 import { ChatPanelMessage, GenerationModel } from '@/types/project';
 import { generateMessageId } from '@/lib/utils';
 
@@ -40,6 +41,7 @@ export default function ChatPanel() {
         setGenerationRequest,
         generationProgress,
         setGenerationProgress,
+        refreshShot,
     } = useProjectStore();
 
     const { user } = useAuth();
@@ -102,6 +104,9 @@ export default function ChatPanel() {
     const selectedShotLabel = selectedShot ? formatShotLabel(selectedScene?.order, selectedShot.order, selectedShot.globalOrder) : undefined;
     const projectId = project?.id || 'default';
 
+    // Load video messages from sora_tasks (most reliable source, independent of Cron)
+    const { videoMessages, refresh: refreshVideoMessages } = useSoraVideoMessages(project?.id, selectedShotId || undefined);
+
     // Load History
     useEffect(() => {
         const loadHistory = async () => {
@@ -147,14 +152,44 @@ export default function ChatPanel() {
 
 
                 // Inject Generation History if a shot is selected
-                if (selectedShotId && project?.shots) {
-                    const currentShot = project.shots.find(s => s.id === selectedShotId);
+                if (selectedShotId) {
+                    // Fetch latest shot data directly from database (not via store to avoid re-render loops)
+                    const latestShot = await dataService.getShot(selectedShotId);
+                    const currentShot = latestShot || project?.shots?.find(s => s.id === selectedShotId);
                     if (currentShot && currentShot.generationHistory && currentShot.generationHistory.length > 0) {
                         const historyMessages: ChatPanelMessage[] = currentShot.generationHistory.map(h => {
+                            const params = (h.parameters || {}) as any;
+
+                            // 处理视频类型
+                            if (h.type === 'video') {
+                                const existingVideoMsg = converted.find(m =>
+                                    m.videoUrl === h.result ||
+                                    m.metadata?.videoUrl === h.result
+                                );
+                                if (existingVideoMsg) return null;
+
+                                return {
+                                    id: h.id,
+                                    role: 'assistant' as const,
+                                    content: 'Sora 视频生成完成',
+                                    timestamp: new Date(h.timestamp),
+                                    videoUrl: h.result,
+                                    shotId: selectedShotId,
+                                    metadata: {
+                                        type: 'sora_video_complete',
+                                        videoUrl: h.result,
+                                        prompt: h.prompt || params.prompt || '',
+                                        model: 'sora',
+                                        taskId: params.taskId,
+                                        source: 'generation_history'
+                                    }
+                                };
+                            }
+
+                            // 处理图片类型（原有逻辑）
                             const existingMsg = converted.find(m => m.images?.includes(h.result));
                             if (existingMsg) return null;
 
-                            const params = (h.parameters || {}) as any;
                             const isGrid = params.model === 'gemini-grid' || params.gridSize || Array.isArray(params.slices);
                             const gridSize = params.gridSize as '2x2' | '3x3' | undefined;
                             const gridRows = params.gridRows || (gridSize === '3x3' ? 3 : gridSize === '2x2' ? 2 : (Array.isArray(params.slices) && params.slices.length === 9 ? 3 : 2));
@@ -188,35 +223,11 @@ export default function ChatPanel() {
                         }).filter((m): m is ChatPanelMessage => m !== null);
 
                         converted.push(...historyMessages);
-                        converted.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-                    }
-
-                    // Auto-inject Agent-generated video if shot has videoClip but no existing video message
-                    if (currentShot?.videoClip) {
-                        const hasVideoMessage = converted.some(m =>
-                            m.videoUrl === currentShot.videoClip ||
-                            m.metadata?.type === 'sora_video_complete' ||
-                            (m.metadata?.videoUrl && m.metadata.videoUrl === currentShot.videoClip)
-                        );
-
-                        if (!hasVideoMessage) {
-                            const videoMessage: ChatPanelMessage = {
-                                id: `auto_video_${currentShot.id}_${Date.now()}`,
-                                role: 'assistant',
-                                content: 'Sora 视频已生成完成！',
-                                timestamp: new Date(),
-                                videoUrl: currentShot.videoClip,
-                                shotId: selectedShotId,
-                                metadata: {
-                                    type: 'sora_video_complete',
-                                    videoUrl: currentShot.videoClip,
-                                    source: 'auto_injected'
-                                }
-                            };
-                            converted.push(videoMessage);
-                        }
                     }
                 }
+
+                // Sort all messages by timestamp (video messages from hook will be merged after)
+                converted.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
                 setMessages(converted);
 
@@ -266,6 +277,29 @@ export default function ChatPanel() {
         setMentionedAssets({ characters: [], locations: [] });
         setManualReferenceUrls([]);
     }, [project?.id, selectedShotId, currentSceneId, user, project?.shots]);
+
+    // Merge video messages from sora_tasks hook into messages state
+    useEffect(() => {
+        if (videoMessages.length === 0) return;
+
+        setMessages(prev => {
+            // Filter out duplicates by checking taskId or videoUrl
+            const newVideoMessages = videoMessages.filter(vm =>
+                !prev.some(m =>
+                    m.id === vm.id ||
+                    m.metadata?.taskId === vm.metadata.taskId ||
+                    m.videoUrl === vm.videoUrl
+                )
+            ) as ChatPanelMessage[];
+
+            if (newVideoMessages.length === 0) return prev;
+
+            // Merge and sort
+            const merged = [...prev, ...newVideoMessages];
+            merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+            return merged;
+        });
+    }, [videoMessages]);
 
     // Handle Generation Request from other components (e.g. Storyboard)
     useEffect(() => {

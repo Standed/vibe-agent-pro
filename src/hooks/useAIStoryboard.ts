@@ -45,7 +45,7 @@ function groupShotsIntoScenes(shots: any[]): any[] {
 }
 
 export const useAIStoryboard = () => {
-    const { project, addScene, addShot, updateCharacter, addCharacter } = useProjectStore();
+    const { project, addScene, addShot, updateCharacter, addCharacter, addLocation } = useProjectStore();
     const { user } = useAuth();
     const [isGenerating, setIsGenerating] = useState(false);
     const [currentStep, setCurrentStep] = useState<StoryboardStep | null>(null);
@@ -102,7 +102,24 @@ export const useAIStoryboard = () => {
             const sceneGroups = groupShotsIntoScenes(generatedShots);
             updateStep(3, 'completed', `已划分 ${sceneGroups.length} 个场景`);
 
-            // 4. Add scenes/shots
+            // 4. Auto-create missing Location assets (before adding scenes)
+            const existingLocationNames = new Set((activeProject?.locations || []).map(l => l.name));
+            const uniqueLocations = new Set(sceneGroups.map((g: any) => g.location));
+            uniqueLocations.forEach((locationName: string) => {
+                if (!existingLocationNames.has(locationName)) {
+                    const newLocation = {
+                        id: crypto.randomUUID(),
+                        name: locationName,
+                        type: locationName.includes('室内') || locationName.includes('内部') ? 'interior' as const : 'exterior' as const,
+                        description: '',
+                        referenceImages: []
+                    };
+                    addLocation(newLocation);
+                    console.log(`[useAIStoryboard] Auto-created Location: ${locationName}`);
+                }
+            });
+
+            // 5. Add scenes/shots
             updateStep(4, 'running');
             sceneGroups.forEach((sceneGroup: any, idx: number) => {
                 const scene = {

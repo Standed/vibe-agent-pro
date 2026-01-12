@@ -182,9 +182,10 @@ graph TD
 | 端点 | 方法 | 功能 |
 |------|------|------|
 | `/api/agent/tools/execute` | POST | Agent 触发 Sora 编排入口 |
-| `/api/sora/generate` | POST | **[New]** Pro模式直接生成入口 |
+| `/api/sora/generate` | POST | Pro模式直接生成入口 |
 | `/api/sora/status` | GET | 查询任务状态 |
 | `/api/sora/status/batch` | POST | 批量查询/刷新任务状态 |
+| `/api/sora/tasks` | GET | **[New v2.5]** 查询分镜已完成视频 |
 | `/api/sora/tasks/list` | GET | 查询项目 Sora 任务列表 |
 | `/api/sora/tasks/backfill` | POST | 回填任务到 `sora_tasks` |
 | `/api/sora/character/register` | POST | 角色注册 (直接/生成+注册) |
@@ -278,13 +279,63 @@ npx tsx scripts/test-sora-full-flow.ts
 
 ### 数据库验证
 检查以下表/字段：
-- `sora_tasks` 表 - 任务状态
-- `sora_tasks.shot_ids / shot_ranges` - 任务与分镜映射
+- `sora_tasks` 表 - 任务状态和 `shot_ids`
+- `shots.generation_history` - 分镜生成历史
 - `scenes.sora_generation` - 场景生成状态
 - `characters.metadata.soraIdentity` - 角色注册状态
 - `chat_messages` - Pro 模式视频消息 (`metadata.type: 'sora_video_complete'`)
 
 ---
 
+## 10. v2.5 新增内容
+
+### 10.1 视频历史实时加载 Hook
+
+**问题**：Cron Job 每天只执行一次（`vercel.json` 配置为 `0 0 * * *`），视频完成后需要等到第二天才能在 Pro 模式看到。
+
+**解决方案**：
+
+| 组件 | 路径 | 职责 |
+|------|------|------|
+| **useSoraVideoMessages** | `src/hooks/useSoraVideoMessages.ts` | 直接查询 sora_tasks，不依赖 Cron |
+| **/api/sora/tasks** | `src/app/api/sora/tasks/route.ts` | 服务端查询接口 |
+
+**Hook 使用示例**：
+```typescript
+const { videoMessages, loading, error, refresh } = useSoraVideoMessages(projectId, shotId);
+```
+
+**API 参数**：
+- `projectId` (必须) - 项目 ID
+- `shotId` (可选) - 按分镜过滤
+
+### 10.2 状态刷新时更新历史
+
+`TimelineView.tsx` 的 `applyStatusUpdate` 函数现在会：
+1. 检测任务完成时，创建新的 `generation_history` 条目
+2. 同时更新数据库和前端状态
+3. 确保"刷新状态"后立即可见于 Pro 模式
+
+### 10.3 架构图
+
+```mermaid
+graph TD
+    subgraph "实时视频历史加载"
+        A[ChatPanel 加载] --> B[useSoraVideoMessages Hook]
+        B --> C[/api/sora/tasks]
+        C --> D[查询 sora_tasks where status=completed]
+        D --> E[返回 videoMessages]
+        E --> F[合并到消息列表]
+    end
+    
+    subgraph "Cron 备份机制"
+        G[check-sora-status Cron] --> H[检测任务完成]
+        H --> I[写入 generation_history]
+        H --> J[插入 chat_messages]
+    end
+```
+
+---
+
 **最后更新**: 2026-01-12
-**版本**: v2.4
+**版本**: v2.5

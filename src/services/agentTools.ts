@@ -573,6 +573,12 @@ export class AgentToolExecutor {
             toolCall.arguments.artStyle
           );
 
+        case 'generateLocationImages':
+          return await this.generateLocationImages(
+            toolCall.arguments.locationIds,
+            toolCall.arguments.model
+          );
+
         default:
           return {
             tool: toolCall.name,
@@ -1372,5 +1378,119 @@ export class AgentToolExecutor {
 
     this.storeCallbacks.deleteShot(shotId);
     return { tool: 'deleteShot', result: { shotId }, success: true };
+  }
+
+  /**
+   * 批量为没有参考图的场景地点生成参考图
+   */
+  private async generateLocationImages(locationIds?: string[], model: string = 'jimeng'): Promise<ToolResult> {
+    if (!this.project) return { tool: 'generateLocationImages', result: null, success: false, error: 'Project not found' };
+
+    const locations = this.project.locations || [];
+
+    // Filter locations to process
+    let targetLocations = locations.filter(loc => !loc.referenceImages || loc.referenceImages.length === 0);
+
+    if (locationIds && locationIds.length > 0) {
+      targetLocations = targetLocations.filter(loc => locationIds.includes(loc.id));
+    }
+
+    if (targetLocations.length === 0) {
+      return {
+        tool: 'generateLocationImages',
+        result: { message: '所有场景地点都已有参考图' },
+        success: true
+      };
+    }
+
+    const results: Array<{ locationId: string; name: string; status: string; imageUrl?: string; error?: string }> = [];
+    let successCount = 0;
+
+    for (const location of targetLocations) {
+      try {
+        // Build prompt from location data
+        const prompt = this.buildLocationPrompt(location);
+
+        // Generate image using Jimeng (via VolcanoEngineService)
+        const volcanoEngine = new VolcanoEngineService();
+        const aspectRatio = this.project.settings?.aspectRatio || '21:9';
+
+        const imageBase64 = await volcanoEngine.generateSingleImage(prompt, aspectRatio);
+
+        if (!imageBase64) {
+          throw new Error('图片生成失败');
+        }
+
+        // Upload to R2
+        let finalUrl = imageBase64;
+        if (this.userId && imageBase64.startsWith('data:')) {
+          try {
+            const base64Data = imageBase64.split(',')[1];
+            const folder = `projects/${this.project.id}/locations`;
+            finalUrl = await storageService.uploadBase64ToR2(
+              base64Data,
+              folder,
+              `${location.id}_reference_${Date.now()}.png`,
+              this.userId
+            );
+          } catch (uploadErr) {
+            console.warn('[generateLocationImages] R2 upload failed, using base64');
+          }
+        }
+
+        results.push({
+          locationId: location.id,
+          name: location.name,
+          status: 'success',
+          imageUrl: finalUrl
+        });
+        successCount++;
+
+      } catch (err: any) {
+        results.push({
+          locationId: location.id,
+          name: location.name,
+          status: 'failed',
+          error: err.message
+        });
+      }
+    }
+
+    return {
+      tool: 'generateLocationImages',
+      result: {
+        total: targetLocations.length,
+        success: successCount,
+        failed: targetLocations.length - successCount,
+        details: results
+      },
+      success: successCount > 0
+    };
+  }
+
+  private buildLocationPrompt(location: { name: string; type: string; description: string }): string {
+    const parts: string[] = [];
+
+    if (location.name) {
+      parts.push(location.name);
+    }
+
+    if (location.description) {
+      parts.push(location.description);
+    }
+
+    if (location.type === 'interior') {
+      parts.push('室内场景');
+    } else {
+      parts.push('室外场景');
+    }
+
+    parts.push('电影级场景概念设计图，高质量，细节丰富，光影考究，宽屏构图');
+
+    if (this.project?.metadata?.artStyle) {
+      parts.push(`艺术风格: ${this.project.metadata.artStyle}`);
+    }
+
+    return parts.join('，');
   }
 }

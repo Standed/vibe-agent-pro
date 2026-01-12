@@ -477,7 +477,7 @@ export interface SoraTask {
   shotIds?: string[];
   shotRanges?: Array<{ shotId: string; start: number; end: number }>;
   characterId?: string; // 关联的角色 ID
-  type?: 'shot_generation' | 'character_reference'; // 任务类型
+  type?: 'shot_generation' | 'character_reference' | 'direct_generation'; // 任务类型
   status: 'queued' | 'processing' | 'generating' | 'completed' | 'failed' | 'in_progress';
   progress: number;
   model: string;

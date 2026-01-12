@@ -205,6 +205,14 @@ class SupabaseBackend implements DataBackend {
     console.log('[SupabaseBackend] 💾 保存项目 (通过统一 API):', project.id, project.metadata.title);
 
     try {
+      const safeLocations = (project.locations || []).map((location) => ({
+        id: location.id,
+        name: location.name,
+        type: location.type,
+        description: location.description,
+        referenceImages: (location.referenceImages || []).filter((url) => !url.startsWith('data:')),
+      }));
+
       // 保存项目基本信息
       await this.callSupabaseAPI({
         table: 'projects',
@@ -222,6 +230,7 @@ class SupabaseBackend implements DataBackend {
             script: project.script || '',
             chatHistory: project.chatHistory || [],
             timeline: project.timeline || [],
+            locations: safeLocations,
           },
           scene_count: project.scenes?.length || 0,
           shot_count: project.shots?.length || 0,
@@ -397,6 +406,19 @@ class SupabaseBackend implements DataBackend {
         audioAssetsPromise,
       ]);
 
+      const rawLocations = Array.isArray(project.metadata?.locations)
+        ? project.metadata.locations
+        : [];
+      const locations = rawLocations
+        .filter((loc: any) => loc && typeof loc === 'object')
+        .map((loc: any) => ({
+          id: loc.id || crypto.randomUUID(),
+          name: loc.name || '未命名地点',
+          type: loc.type === 'interior' || loc.type === 'exterior' ? loc.type : 'exterior',
+          description: loc.description || '',
+          referenceImages: Array.isArray(loc.referenceImages) ? loc.referenceImages.filter((url: any) => typeof url === 'string') : [],
+        }));
+
       return {
         id: project.id,
         seriesId: project.series_id || undefined,
@@ -460,7 +482,7 @@ class SupabaseBackend implements DataBackend {
           url: a.file_url,
           duration: a.duration || 0,
         })),
-        locations: [],
+        locations,
       };
     } catch (err) {
       console.error('[SupabaseBackend] ❌ loadProject 失败:', err);
