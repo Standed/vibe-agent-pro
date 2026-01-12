@@ -15,7 +15,13 @@ export type ShotSize =
   | 'Point of View Shot'
   | 'Bird\'s Eye View'
   | 'Dutch Angle'
-  | 'Establishing Shot';
+  | 'Establishing Shot'
+  | 'Cowboy Shot'
+  | 'Eye Level Shot'
+  | 'Worm\'s Eye View'
+  | 'Ground Level Shot'
+  | 'Aerial Shot'
+  | 'Macro Shot';
 
 export type CameraMovement =
   | 'Pan'
@@ -39,7 +45,14 @@ export type CameraMovement =
   | 'Pedestal Down'
   | 'Handheld'
   | 'Arc'
-  | 'Crane';
+  | 'Crane'
+  | 'Tracking Shot'
+  | 'Steadicam'
+  | 'Rack Focus'
+  | 'Whip Pan'
+  | 'Push In'
+  | 'Pull Out'
+  | 'Vertigo Effect';
 
 export const SHOT_SIZE_OPTIONS: ShotSize[] = [
   'Extreme Wide Shot',
@@ -56,7 +69,13 @@ export const SHOT_SIZE_OPTIONS: ShotSize[] = [
   'Point of View Shot',
   'Bird\'s Eye View',
   'Dutch Angle',
-  'Establishing Shot'
+  'Establishing Shot',
+  'Cowboy Shot',
+  'Eye Level Shot',
+  'Worm\'s Eye View',
+  'Ground Level Shot',
+  'Aerial Shot',
+  'Macro Shot'
 ];
 
 export const CAMERA_MOVEMENT_OPTIONS: CameraMovement[] = [
@@ -81,7 +100,14 @@ export const CAMERA_MOVEMENT_OPTIONS: CameraMovement[] = [
   'Pedestal Down',
   'Handheld',
   'Arc',
-  'Crane'
+  'Crane',
+  'Tracking Shot',
+  'Steadicam',
+  'Rack Focus',
+  'Whip Pan',
+  'Push In',
+  'Pull Out',
+  'Vertigo Effect'
 ];
 
 export type GenerationMode = 'grid' | 'single';
@@ -132,6 +158,7 @@ export interface ProjectMetadata {
   artStyle: string;
   created: Date;
   modified: Date;
+  planningHistory?: any[]; // 策划阶段的聊天历史
 }
 
 export interface Character {
@@ -319,6 +346,7 @@ export interface Shot {
 
   // 生成的素材
   referenceImage?: string;
+  videoUrl?: string; // Pro模式Sora视频生成结果URL
   gridImages?: string[];
   fullGridUrl?: string;
   videoClip?: string;
@@ -449,8 +477,8 @@ export interface SoraTask {
   shotIds?: string[];
   shotRanges?: Array<{ shotId: string; start: number; end: number }>;
   characterId?: string; // 关联的角色 ID
-  type?: 'shot_generation' | 'character_reference'; // 任务类型
-  status: 'queued' | 'processing' | 'generating' | 'completed' | 'failed';
+  type?: 'shot_generation' | 'character_reference' | 'direct_generation'; // 任务类型
+  status: 'queued' | 'processing' | 'generating' | 'completed' | 'failed' | 'in_progress';
   progress: number;
   model: string;
   prompt: string;
@@ -463,3 +491,21 @@ export interface SoraTask {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type GenerationModel = 'seedream' | 'gemini-direct' | 'gemini-grid' | 'jimeng' | 'sora-video';
+
+export interface ChatPanelMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  images?: string[];
+  referenceImages?: string[];
+  model?: GenerationModel;
+  shotId?: string;
+  sceneId?: string;
+  gridData?: GridData;
+  metadata?: any;
+  videoUrl?: string;
+}
+

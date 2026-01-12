@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticateRequest, checkCredits, checkWhitelist, consumeCredits } from '@/lib/auth-middleware';
+import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 export const maxDuration = 60;
 
@@ -9,11 +11,24 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 
 export async function POST(request: NextRequest) {
     try {
+        const authResult = await authenticateRequest(request);
+        if ('error' in authResult) return authResult.error;
+        const { user } = authResult;
+
+        const whitelistCheck = checkWhitelist(user);
+        if ('error' in whitelistCheck) return whitelistCheck.error;
+
+        const requiredCredits = calculateCredits('GEMINI_TEXT', user.role);
+        const operationDesc = getOperationDescription('GEMINI_TEXT');
+
         const { input } = await request.json();
 
         if (!input || !input.trim()) {
             return NextResponse.json({ error: 'Input is required' }, { status: 400 });
         }
+
+        const creditsCheck = checkCredits(user, requiredCredits);
+        if ('error' in creditsCheck) return creditsCheck.error;
 
         if (!GEMINI_API_KEY) {
             console.error('Missing GEMINI_API_KEY');
@@ -69,6 +84,20 @@ export async function POST(request: NextRequest) {
             // Fallback cleanup if model returns markdown ticks
             const cleanText = resultText.replace(/```json/g, '').replace(/```/g, '').trim();
             parsedResult = JSON.parse(cleanText);
+        }
+
+        try {
+            const consumeResult = await consumeCredits(
+                user.id,
+                requiredCredits,
+                'ai-brainstorm',
+                operationDesc
+            );
+            if (!consumeResult.success) {
+                console.error('[Brainstorm] Credits consume failed:', consumeResult.error);
+            }
+        } catch (consumeError) {
+            console.error('[Brainstorm] Credits consume exception:', consumeError);
         }
 
         return NextResponse.json(parsedResult);

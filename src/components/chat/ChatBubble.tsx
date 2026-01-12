@@ -1,4 +1,6 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { GenerationResult } from './GenerationResult';
 import { AspectRatio } from '@/types/project';
@@ -12,6 +14,7 @@ interface ChatMessage {
     images?: string[];
     model?: any;
     shotId?: string;
+    videoUrl?: string;  // Sora生成的视频URL
     gridData?: {
         fullImage: string;
         slices: string[];
@@ -31,6 +34,7 @@ interface ChatBubbleProps {
     onReusePrompt?: (prompt: string) => void;
     onReuseImage?: (url: string) => void;
     onApplyToShot?: (url: string) => void;
+    onApplyVideoToShot?: (url: string) => void;  // 应用视频到分镜
 }
 
 export function ChatBubble({
@@ -39,10 +43,12 @@ export function ChatBubble({
     onSliceSelect,
     onReusePrompt,
     onReuseImage,
-    onApplyToShot
+    onApplyToShot,
+    onApplyVideoToShot
 }: ChatBubbleProps) {
     const isUser = message.role === 'user';
     const hasImages = message.images && message.images.length > 0;
+    const hasVideo = !!message.videoUrl;
 
     return (
         <div className={cn("flex w-full mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300", isUser ? "justify-end" : "justify-start")}>
@@ -69,12 +75,18 @@ export function ChatBubble({
                     {/* Text Content */}
                     {message.content && (
                         <div className={cn(
-                            "relative group/text px-4 py-3 shadow-sm border text-sm whitespace-pre-wrap break-words",
+                            "relative group/text px-4 py-3 shadow-sm border text-sm break-words",
                             isUser
-                                ? "bg-white dark:bg-zinc-800 text-black dark:text-white border-black/5 dark:border-white/10 rounded-2xl rounded-tr-sm"
-                                : "bg-zinc-100 dark:bg-zinc-900/50 text-zinc-800 dark:text-zinc-200 border-black/5 dark:border-white/10 rounded-2xl rounded-tl-sm backdrop-blur-sm"
+                                ? "bg-white dark:bg-zinc-800 text-black dark:text-white border-black/5 dark:border-white/10 rounded-2xl rounded-tr-sm whitespace-pre-wrap"
+                                : "bg-zinc-100 dark:bg-zinc-900/50 text-zinc-800 dark:text-zinc-200 border-black/5 dark:border-white/10 rounded-2xl rounded-tl-sm backdrop-blur-sm prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-code:bg-zinc-200 dark:prose-code:bg-zinc-700 prose-code:px-1 prose-code:rounded prose-pre:bg-zinc-200 dark:prose-pre:bg-zinc-700 prose-pre:p-2 prose-pre:rounded-lg"
                         )}>
-                            {message.content}
+                            {isUser ? (
+                                message.content
+                            ) : (
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {message.content}
+                                </ReactMarkdown>
+                            )}
                             {isUser && onReusePrompt && (
                                 <button
                                     onClick={() => onReusePrompt(message.content)}
@@ -84,6 +96,32 @@ export function ChatBubble({
                                     <RefreshCw size={10} />
                                 </button>
                             )}
+                        </div>
+                    )}
+
+                    {/* Video (Sora生成的视频) */}
+                    {hasVideo && !isUser && (
+                        <div className="max-w-[360px] w-auto mt-1 rounded-2xl overflow-hidden">
+                            <div className="relative group/video rounded-xl overflow-hidden border border-black/5 dark:border-white/10 shadow-sm">
+                                <video
+                                    src={message.videoUrl}
+                                    controls
+                                    className="w-auto h-auto max-w-full max-h-[280px] object-contain"
+                                />
+                                {/* 操作按钮 */}
+                                <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 via-black/30 to-transparent opacity-0 group-hover/video:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
+                                    {onApplyVideoToShot && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onApplyVideoToShot(message.videoUrl!); }}
+                                            className="px-2 py-1 rounded-full bg-white/20 hover:bg-white/40 text-white text-xs backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm flex items-center gap-1"
+                                            title="应用到当前分镜"
+                                        >
+                                            <Grid3x3 size={12} />
+                                            <span>应用到分镜</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
 

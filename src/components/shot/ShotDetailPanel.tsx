@@ -15,9 +15,13 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  Check,
   Loader2,
   Sparkles,
+  Upload,
+  Layers,
 } from 'lucide-react';
+import { translateShotSize, translateCameraMovement } from '@/utils/translations';
 import { useProjectStore } from '@/store/useProjectStore';
 import type { Shot, ShotSize, CameraMovement, GenerationHistoryItem } from '@/types/project';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
@@ -33,7 +37,7 @@ interface ShotDetailPanelProps {
 }
 
 export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProps) {
-  const { project, updateShot, selectedShotId, addGenerationHistory } = useProjectStore();
+  const { project, updateShot, selectedShotId, addGenerationHistory, refreshShot } = useProjectStore();
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -45,9 +49,11 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [shotImagePreview, setShotImagePreview] = useState<string | null>(null);
   const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // 添加历史记录区域的 ref，用于自动滚动
   const historyRef = useRef<HTMLDivElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const shot = project?.shots.find((s) => s.id === shotId);
   const scene = project?.scenes.find((sc) => sc.shotIds.includes(shotId));
@@ -69,6 +75,12 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
     });
     return Array.from(urls);
   }, [shot]);
+
+  useEffect(() => {
+    if (shotId) {
+      refreshShot(shotId);
+    }
+  }, [shotId, refreshShot]);
 
   useEffect(() => {
     if (shot?.referenceImage) {
@@ -277,6 +289,73 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
     }
   };
 
+  // 处理上传图片
+  const handleUploadImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // 验证文件类型
+    if (!file.type.startsWith('image/')) {
+      toast.error('请上传图片文件');
+      return;
+    }
+
+    // 验证文件大小 (最大 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('图片大小不能超过 10MB');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      // 上传图片到存储服务
+      const result = await storageService.uploadFile(file, `shots/${shotId}`);
+      const imageUrl = result.url;
+
+      // 更新分镜的参考图片
+      updateShot(shotId, {
+        referenceImage: imageUrl,
+        status: 'done'
+      });
+
+      // 添加到生成历史
+      const historyItem: GenerationHistoryItem = {
+        id: `upload_${Date.now()}`,
+        type: 'image',
+        timestamp: new Date(),
+        result: imageUrl,
+        prompt: '用户上传图片',
+        parameters: {
+          model: 'upload',
+          source: 'user_upload',
+        },
+        status: 'success',
+      };
+      addGenerationHistory(shotId, historyItem);
+
+      toast.success('图片上传成功');
+      setSelectedHistoryImage(imageUrl);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('图片上传失败', {
+        description: error instanceof Error ? error.message : '未知错误'
+      });
+    } finally {
+      setIsUploading(false);
+      // 清空 input 以便可以重复上传同一文件
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = '';
+      }
+    }
+  };
+
+  // 从草稿应用（占位功能，待草稿模式实现后完善）
+  const handleApplyFromDraft = () => {
+    toast.info('草稿模式正在开发中', {
+      description: '此功能将在草稿模式完成后可用'
+    });
+  };
+
   const handleDownload = () => {
     if (hasVideo && shot.videoClip) {
       // Download video
@@ -397,41 +476,73 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-5 gap-2">
             <button
               onClick={() => setIsEditing(!isEditing)}
-              className="flex items-center justify-center gap-2 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm transition-colors"
+              className="flex items-center justify-center gap-1 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-2 py-2 text-sm transition-colors"
+              title="编辑"
             >
               <Edit3 size={16} />
-              <span>编辑</span>
+              <span className="hidden sm:inline">编辑</span>
+            </button>
+
+            {/* 上传图片按钮 */}
+            <button
+              onClick={() => uploadInputRef.current?.click()}
+              disabled={isUploading}
+              className="flex items-center justify-center gap-1 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-2 py-2 text-sm transition-colors disabled:opacity-50"
+              title="上传图片"
+            >
+              {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+              <span className="hidden sm:inline">上传</span>
+            </button>
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleUploadImage}
+              className="hidden"
+            />
+
+            {/* 从草稿应用按钮 */}
+            <button
+              onClick={handleApplyFromDraft}
+              className="flex items-center justify-center gap-1 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-2 py-2 text-sm transition-colors"
+              title="从草稿应用"
+            >
+              <Layers size={16} />
+              <span className="hidden sm:inline">草稿</span>
             </button>
 
             {/* 如果没有图片，显示"生成"按钮；否则显示"重生成"按钮 */}
             {!hasImage ? (
               <button
                 onClick={handleRegenerate}
-                className="flex items-center justify-center gap-2 bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black rounded-lg px-3 py-2 text-sm transition-colors font-medium"
+                className="flex items-center justify-center gap-1 bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black rounded-lg px-2 py-2 text-sm transition-colors font-medium"
+                title="生成"
               >
                 <Sparkles size={16} />
-                <span>生成</span>
+                <span className="hidden sm:inline">生成</span>
               </button>
             ) : (
               <button
                 onClick={handleRegenerate}
-                className="flex items-center justify-center gap-2 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm transition-colors"
+                className="flex items-center justify-center gap-1 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-2 py-2 text-sm transition-colors"
+                title="重生成"
               >
                 <RotateCcw size={16} />
-                <span>重生成</span>
+                <span className="hidden sm:inline">重生成</span>
               </button>
             )}
 
             <button
               onClick={handleDownload}
               disabled={!hasImage && !hasVideo}
-              className="flex items-center justify-center gap-2 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center gap-1 bg-light-panel dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded-lg px-2 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="下载"
             >
               <Download size={16} />
-              <span>下载</span>
+              <span className="hidden sm:inline">下载</span>
             </button>
           </div>
 
@@ -445,14 +556,24 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                 {shotHistoryImages.map((url, idx) => (
                   <div
                     key={idx}
-                    className={`relative aspect-video rounded-lg overflow-hidden border cursor-pointer transition-colors ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/40 dark:ring-cine-accent/40' : 'border-light-border/70 dark:border-cine-border/70 hover:border-light-accent dark:hover:border-cine-accent'}`}
-                    onClick={() => {
-                      setSelectedHistoryImage(url);
-                      updateShot(shotId, { referenceImage: url, status: 'done' });
-                    }}
-                    onDoubleClick={() => setShotImagePreview(url)}
+                    className={`group relative aspect-video rounded-lg overflow-hidden border cursor-pointer transition-colors ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/40 dark:ring-cine-accent/40' : 'border-light-border/70 dark:border-cine-border/70 hover:border-light-accent dark:hover:border-cine-accent'}`}
+                    onClick={() => setShotImagePreview(url)}
                   >
                     <img src={url} alt={`history-${idx + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedHistoryImage(url);
+                        updateShot(shotId, { referenceImage: url, status: 'done' });
+                      }}
+                      className={`absolute bottom-1 right-1 p-1.5 rounded-full shadow-lg transition-all z-10 ${selectedHistoryImage === url
+                        ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black opacity-100'
+                        : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-light-accent dark:hover:bg-cine-accent hover:text-white dark:hover:text-black'
+                        }`}
+                      title="应用此图片"
+                    >
+                      <Check size={12} />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -550,14 +671,14 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                   onChange={(e) => handleFieldUpdate('shotSize', e.target.value as ShotSize)}
                   className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                 >
-                  <option value="Extreme Wide Shot">Extreme Wide Shot</option>
-                  <option value="Wide Shot">Wide Shot</option>
-                  <option value="Medium Shot">Medium Shot</option>
-                  <option value="Close-Up">Close-Up</option>
-                  <option value="Extreme Close-Up">Extreme Close-Up</option>
+                  <option value="Extreme Wide Shot">大远景 (EWS)</option>
+                  <option value="Wide Shot">远景 (WS)</option>
+                  <option value="Medium Shot">中景 (MS)</option>
+                  <option value="Close-Up">特写 (CU)</option>
+                  <option value="Extreme Close-Up">大特写 (ECU)</option>
                 </select>
               ) : (
-                <div className="text-sm text-light-text dark:text-white">{shot.shotSize}</div>
+                <div className="text-sm text-light-text dark:text-white">{translateShotSize(shot.shotSize)}</div>
               )}
             </div>
 
@@ -572,19 +693,19 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                   onChange={(e) => handleFieldUpdate('cameraMovement', e.target.value as CameraMovement)}
                   className="w-full bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-light-accent dark:focus:border-cine-accent"
                 >
-                  <option value="Static">Static</option>
-                  <option value="Pan Left">Pan Left</option>
-                  <option value="Pan Right">Pan Right</option>
-                  <option value="Tilt Up">Tilt Up</option>
-                  <option value="Tilt Down">Tilt Down</option>
-                  <option value="Dolly In">Dolly In</option>
-                  <option value="Dolly Out">Dolly Out</option>
-                  <option value="Zoom In">Zoom In</option>
-                  <option value="Zoom Out">Zoom Out</option>
-                  <option value="Handheld">Handheld</option>
+                  <option value="Static">固定镜头</option>
+                  <option value="Pan Left">左摇</option>
+                  <option value="Pan Right">右摇</option>
+                  <option value="Tilt Up">上摇</option>
+                  <option value="Tilt Down">下摇</option>
+                  <option value="Dolly In">推镜头</option>
+                  <option value="Dolly Out">拉镜头</option>
+                  <option value="Zoom In">变焦推</option>
+                  <option value="Zoom Out">变焦拉</option>
+                  <option value="Handheld">手持</option>
                 </select>
               ) : (
-                <div className="text-sm text-light-text dark:text-white">{shot.cameraMovement}</div>
+                <div className="text-sm text-light-text dark:text-white">{translateCameraMovement(shot.cameraMovement)}</div>
               )}
             </div>
 
@@ -617,7 +738,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                   生成历史 ({shot.generationHistory.length})
                 </h3>
                 <span className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                  点击图片使用该版本
+                  点击图片预览，右下角选择
                 </span>
               </div>
 
@@ -649,7 +770,7 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                               src={item.result}
                               alt={`生成 ${idx + 1}`}
                               className="w-full h-48 object-cover cursor-pointer"
-                              onClick={() => handleFieldUpdate('referenceImage', item.result)}
+                              onClick={() => setShotImagePreview(item.result)}
                             />
                           ) : (
                             <video
@@ -662,9 +783,26 @@ export default function ShotDetailPanel({ shotId, onClose }: ShotDetailPanelProp
                           {/* Overlay */}
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex items-center justify-center">
                             <span className="text-white text-sm opacity-0 group-hover:opacity-100 transition-opacity">
-                              点击使用此版本
+                              {item.type === 'image' ? '点击预览' : '点击使用此版本'}
                             </span>
                           </div>
+
+                          {item.type === 'image' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateShot(shotId, { referenceImage: item.result, status: 'done' });
+                                setSelectedHistoryImage(item.result);
+                              }}
+                              className={`absolute bottom-2 right-2 p-1.5 rounded-full shadow-lg transition-all z-10 ${selectedHistoryImage === item.result
+                                ? 'bg-light-accent dark:bg-cine-accent text-white dark:text-black opacity-100'
+                                : 'bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-light-accent dark:hover:bg-cine-accent hover:text-white dark:hover:text-black'
+                                }`}
+                              title="应用此图片"
+                            >
+                              <Check size={12} />
+                            </button>
+                          )}
 
                           {/* Type Badge */}
                           <div className="absolute top-2 right-2 bg-black/60 text-white px-2 py-1 rounded text-xs flex items-center gap-1">

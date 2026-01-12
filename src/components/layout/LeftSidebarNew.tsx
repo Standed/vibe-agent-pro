@@ -6,31 +6,44 @@ import {
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
   Loader2,
-  Download,
   Film,
   FileText,
   FolderOpen,
+  Settings,
+  X,
+  Plus,
+  ArrowRight,
+  Layout,
+  Clock
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
-import { batchDownloadAssets } from '@/utils/batchDownload';
 import AddShotDialog from '@/components/shot/AddShotDialog';
 import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import AddLocationDialog from '@/components/asset/AddLocationDialog';
 import { toast } from 'sonner';
-import { Shot, Scene, Project, ShotSize, CameraMovement, Character, Location, SHOT_SIZE_OPTIONS, CAMERA_MOVEMENT_OPTIONS } from '@/types/project';
-import { translateShotSize, translateCameraMovement } from '@/utils/translations';
+import { Shot, ShotSize, CameraMovement, Character, Location } from '@/types/project';
 import { createPortal } from 'react-dom';
 import { useAIStoryboard } from '@/hooks/useAIStoryboard';
 import { StoryboardTab } from './sidebar/StoryboardTab';
 import { AssetsTab } from './sidebar/AssetsTab';
 import { ShotEditor } from './sidebar/ShotEditor';
-import ShotTableEditor from '../project/ShotTableEditor'; // Added import for ShotTableEditor
-import DirectorMode from '../director/DirectorMode';
+import ShotTableEditor from '../project/ShotTableEditor';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
+import { storageService } from '@/lib/storageService';
 
-type Tab = 'planning' | 'storyboard' | 'assets';
+type Tab = 'storyboard' | 'assets';
 
-export default function LeftSidebarNew() {
+interface LeftSidebarNewProps {
+  activeView?: 'planning' | 'canvas' | 'timeline' | 'drafts';
+  onSwitchToTimeline?: () => void;
+}
+
+export default function LeftSidebarNew({
+  activeView = 'canvas',
+  onSwitchToTimeline,
+}: LeftSidebarNewProps) {
   const router = useRouter();
   const {
     project,
@@ -59,8 +72,6 @@ export default function LeftSidebarNew() {
 
   const [activeTab, setActiveTab] = useState<Tab>('storyboard');
   const [collapsedScenes, setCollapsedScenes] = useState<Set<string>>(new Set());
-  // isGenerating is now handled by useAIStoryboard
-  const [isDownloading, setIsDownloading] = useState(false);
   const [showAddShotDialog, setShowAddShotDialog] = useState(false);
   const [selectedSceneForNewShot, setSelectedSceneForNewShot] = useState<string>('');
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
@@ -74,6 +85,7 @@ export default function LeftSidebarNew() {
   const [editingShot, setEditingShot] = useState<Shot | null>(null);
   const [shotImagePreview, setShotImagePreview] = useState<string | null>(null);
   const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [shotInsertIndex, setShotInsertIndex] = useState<number | null>(null);
   const [charactersCollapsed, setCharactersCollapsed] = useState(false);
   const [locationsCollapsed, setLocationsCollapsed] = useState(false);
@@ -92,35 +104,9 @@ export default function LeftSidebarNew() {
     cameraMovement: '',
     duration: 3,
   });
-
-  const shotSizeOptions = SHOT_SIZE_OPTIONS;
-  const cameraMovementOptions = CAMERA_MOVEMENT_OPTIONS;
-  const [sidebarWidth, setSidebarWidth] = useState(320);
-  const [resizing, setResizing] = useState(false);
-  const resizeState = useRef<{ startX: number; startWidth: number } | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const { isGenerating, handleAIStoryboard } = useAIStoryboard();
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!resizing || !resizeState.current) return;
-      const delta = e.clientX - resizeState.current.startX;
-      const next = Math.min(Math.max(resizeState.current.startWidth + delta, 260), 520);
-      setSidebarWidth(next);
-    };
-    const onUp = () => setResizing(false);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-  }, [resizing]);
-
-  const startResize = (e: React.MouseEvent) => {
-    setResizing(true);
-    resizeState.current = { startX: e.clientX, startWidth: sidebarWidth };
-  };
 
   const scenes = project?.scenes || [];
   const shots = project?.shots || [];
@@ -157,18 +143,15 @@ export default function LeftSidebarNew() {
   const toggleSceneCollapse = (sceneId: string) => {
     setCollapsedScenes((prev) => {
       const newSet = new Set(prev);
-      if (newSet.has(sceneId)) {
-        newSet.delete(sceneId);
-      } else {
-        newSet.add(sceneId);
-      }
+      if (newSet.has(sceneId)) newSet.delete(sceneId);
+      else newSet.add(sceneId);
       return newSet;
     });
   };
 
   const handleShotClick = (shotId: string) => {
     selectShot(shotId);
-    setControlMode('pro'); // 点击镜头直接进入 Pro 模式，配合右侧上下文
+    setControlMode('pro');
   };
 
   const openShotEditor = (shot: Shot) => {
@@ -183,26 +166,90 @@ export default function LeftSidebarNew() {
     });
   };
 
+  const resolveSelectionMeta = (shot: Shot | null, url: string) => {
+    if (!shot) return {};
+    const historyMatch = shot.generationHistory?.find((item) => item.type === 'image' && item.result === url);
+    const params = (historyMatch?.parameters || {}) as any;
+    if (params?.fullGridUrl || params?.slices) {
+      return {
+        fullGridUrl: params.fullGridUrl as string | undefined,
+        gridImages: params.slices as string[] | undefined,
+      };
+    }
+    if (shot.gridImages?.includes(url)) {
+      return {
+        fullGridUrl: shot.fullGridUrl,
+        gridImages: shot.gridImages,
+      };
+    }
+    return {};
+  };
+
   const saveShotEdit = () => {
     if (!editingShot) return;
-    if (!shotForm.description.trim()) {
-      toast.error('分镜描述不能为空');
-      return;
+    const updates: Partial<Shot> = {
+      ...shotForm,
+      shotSize: shotForm.shotSize as ShotSize,
+      cameraMovement: shotForm.cameraMovement as CameraMovement,
+    };
+    if (selectedHistoryImage) {
+      const meta = resolveSelectionMeta(liveEditingShot || null, selectedHistoryImage);
+      updates.referenceImage = selectedHistoryImage;
+      updates.status = 'done';
+      if (meta.fullGridUrl) updates.fullGridUrl = meta.fullGridUrl;
+      if (meta.gridImages) updates.gridImages = meta.gridImages;
     }
-    if (!shotForm.shotSize || !shotForm.cameraMovement) {
-      toast.error('请选择镜头景别和镜头运动');
-      return;
-    }
-    updateShot(editingShot.id, {
-      description: shotForm.description.trim(),
-      narration: shotForm.narration.trim(),
-      dialogue: shotForm.dialogue.trim(),
-      shotSize: shotForm.shotSize,
-      cameraMovement: shotForm.cameraMovement,
-      duration: shotForm.duration,
-    });
-    toast.success('分镜已更新');
+    updateShot(editingShot.id, updates);
     setEditingShot(null);
+    toast.success('分镜已更新');
+  };
+
+  const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingShot) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('请选择图片文件');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('图片大小不能超过 10MB');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const result = await storageService.uploadFile(file, `shots/${editingShot.id}`);
+      const imageUrl = result.url;
+
+      const shot = project?.shots.find(s => s.id === editingShot.id);
+      if (shot) {
+        const historyItem = {
+          id: `upload_${Date.now()}`,
+          type: 'image' as const,
+          timestamp: new Date(),
+          result: imageUrl,
+          prompt: '用户上传图片',
+          parameters: {
+            model: 'upload',
+            source: 'user_upload',
+          },
+          status: 'success' as const,
+        };
+        const newHistory = [...(shot.generationHistory || []), historyItem];
+        updateShot(editingShot.id, { generationHistory: newHistory });
+      }
+
+      toast.success('图片上传成功');
+      setSelectedHistoryImage(imageUrl);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('图片上传失败');
+    } finally {
+      setIsUploading(false);
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
+    }
   };
 
   const handleAddShotClick = (sceneId: string, insertIndex?: number) => {
@@ -225,7 +272,6 @@ export default function LeftSidebarNew() {
     };
 
     addShot(newShot);
-    // 更新场景 shotIds 顺序并重排 order
     if (scene) {
       const newShotIds = [...sceneShots.map(s => s.id)];
       newShotIds.splice(targetIndex, 0, newShot.id);
@@ -233,42 +279,21 @@ export default function LeftSidebarNew() {
     }
 
     setShotInsertIndex(null);
-    toast.success('镜头添加成功！', {
-      description: `已添加到 ${scene?.name || ''}`
-    });
+    toast.success('镜头添加成功！');
   };
 
   const handleDeleteShot = (shotId: string, shotOrder: number, sceneName: string) => {
-    const confirmed = confirm(
-      `确定要删除镜头 #${shotOrder} 吗？\n\n此操作将同时删除该镜头的所有生成内容（图片、视频、历史记录等），且无法恢复。`
-    );
-
-    if (confirmed) {
+    if (confirm(`确定要删除镜头 #${shotOrder} 吗？`)) {
       deleteShot(shotId);
-      toast.success('镜头已删除', {
-        description: `已从 ${sceneName} 中删除`
-      });
+      toast.success('镜头已删除');
     }
   };
 
   const handleDeleteScene = (sceneId: string, sceneName: string) => {
-    const scene = scenes.find(s => s.id === sceneId);
-    if (!scene) return;
-
-    // 直接按 sceneId 统计镜头数量，避免 shotIds 不准确
-    const shotCount = shots.filter(s => s.sceneId === sceneId).length;
-    toast.warning(`删除场景 "${sceneName}"？`, {
-      description: `该场景包含 ${shotCount} 个镜头，删除后无法恢复`,
-      action: {
-        label: '删除',
-        onClick: () => {
-          deleteScene(sceneId);
-          toast.success('场景已删除', {
-            description: `已删除场景 "${sceneName}" 及其所有镜头`
-          });
-        }
-      }
-    });
+    if (confirm(`确定要删除场景 "${sceneName}" 吗？`)) {
+      deleteScene(sceneId);
+      toast.success('场景已删除');
+    }
   };
 
   const handleAddScene = () => {
@@ -287,7 +312,7 @@ export default function LeftSidebarNew() {
     };
     addScene(scene);
     selectScene(scene.id);
-    toast.success('已添加新场景', { description: scene.name });
+    toast.success('已添加新场景');
   };
 
   const handleStartEditScene = (sceneId: string, currentName: string) => {
@@ -300,7 +325,6 @@ export default function LeftSidebarNew() {
       toast.error('场景名称不能为空');
       return;
     }
-
     updateScene(sceneId, { name: editingSceneName.trim() });
     setEditingSceneId(null);
     setEditingSceneName('');
@@ -312,265 +336,186 @@ export default function LeftSidebarNew() {
     setEditingSceneName('');
   };
 
-  const handleBatchDownload = async () => {
-    if (!project) {
-      toast.error('没有可下载的项目');
-      return;
-    }
-
-    // 检查是否有素材
-    const hasAssets = project.shots.some(
-      shot => shot.referenceImage || shot.gridImages?.length || shot.videoClip || shot.generationHistory?.length
-    ) || project.audioAssets?.length || project.characters?.some(c => c.referenceImages?.length) || project.locations?.some(l => l.referenceImages?.length);
-
-    if (!hasAssets) {
-      toast.warning('项目中还没有任何素材', {
-        description: '请先生成图片或视频'
-      });
-      return;
-    }
-
-    setIsDownloading(true);
-    const downloadToast = toast.loading('正在打包下载...');
-    let lastUpdate = 0;
-    let lastMessage = '';
-
-    try {
-      const result = await batchDownloadAssets(project, {
-        onProgress: (progress) => {
-          const now = Date.now();
-          const message = progress.message || '正在打包下载...';
-          if (message === lastMessage && now - lastUpdate < 300) {
-            return;
-          }
-          lastMessage = message;
-          if (now - lastUpdate < 250 && progress.phase === 'download') {
-            return;
-          }
-          lastUpdate = now;
-          toast.loading(message, { id: downloadToast });
-        }
-      });
-      toast.success('下载完成！', {
-        id: downloadToast,
-        description: `图片: ${result.imageCount} 个 | 视频: ${result.videoCount} 个 | 音频: ${result.audioCount} 个`
-      });
-    } catch (error) {
-      console.error('批量下载失败:', error);
-      toast.error('下载失败', {
-        id: downloadToast,
-        description: '请重试'
-      });
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  if (leftSidebarCollapsed) {
-    return (
-      <div className="w-16 glass-panel flex flex-col items-center py-6 z-20">
-        <button
-          onClick={toggleLeftSidebar}
-          className="p-3 glass-button rounded-xl group"
-          title="展开侧边栏"
-        >
-          <ChevronRightIcon size={20} className="text-gray-500 dark:text-gray-400 group-hover:text-black dark:group-hover:text-white" />
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div
-      className="glass-panel flex flex-col relative shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.2)] z-20"
-      style={{ width: sidebarWidth }}
-    >
-      {/* Header */}
-      <div className="p-6 flex items-center justify-between">
+    <div className="fixed left-6 top-1/2 -translate-y-1/2 z-50 flex items-center gap-4 pointer-events-none">
+      {/* Floating Icon Bar */}
+      <div className="flex flex-col items-center p-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl rounded-full border border-black/5 dark:border-white/10 shadow-2xl pointer-events-auto">
+        {/* Home Logo */}
         <button
           onClick={() => router.push('/')}
-          className="flex items-center gap-2 text-sm text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-colors"
+          className="mb-2 group"
+          title="返回首页"
         >
-          <Home size={16} />
-          <span>返回首页</span>
+          <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-lg border border-black/5 transition-all duration-300 group-hover:scale-110 group-hover:rotate-3 overflow-hidden">
+            <img
+              src="https://storage.googleapis.com/n8n-bucket-xys/%E7%AB%96%E7%89%88logo%E9%80%8F%E6%98%8E%E5%BA%95.png"
+              alt="Logo"
+              className="w-7 h-7 object-contain"
+            />
+          </div>
         </button>
+
+        <div className="w-8 h-px bg-black/5 dark:bg-white/10 my-2" />
+
+        {/* Storyboard */}
         <button
-          onClick={toggleLeftSidebar}
-          className="p-1 glass-button rounded-lg"
-          title="收起侧边栏"
+          onClick={() => {
+            if (activeTab === 'storyboard' && !leftSidebarCollapsed) {
+              toggleLeftSidebar();
+            } else {
+              setActiveTab('storyboard');
+              if (leftSidebarCollapsed) toggleLeftSidebar();
+            }
+          }}
+          className={cn(
+            "p-3 rounded-full transition-all duration-300 mb-1 group relative",
+            activeTab === 'storyboard' && !leftSidebarCollapsed
+              ? "bg-light-accent dark:bg-cine-accent text-white dark:text-black shadow-lg shadow-light-accent/20 dark:shadow-cine-accent/20"
+              : "text-zinc-400 dark:text-zinc-500 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-zinc-200"
+          )}
+          title="分镜"
         >
-          <ChevronLeft size={16} className="text-gray-500 dark:text-gray-400" />
+          <Film size={20} strokeWidth={activeTab === 'storyboard' && !leftSidebarCollapsed ? 2.5 : 2} />
+        </button>
+
+        {/* Assets */}
+        <button
+          onClick={() => {
+            if (activeTab === 'assets' && !leftSidebarCollapsed) {
+              toggleLeftSidebar();
+            } else {
+              setActiveTab('assets');
+              if (leftSidebarCollapsed) toggleLeftSidebar();
+            }
+          }}
+          className={cn(
+            "p-3 rounded-full transition-all duration-300 mb-1 group relative",
+            activeTab === 'assets' && !leftSidebarCollapsed
+              ? "bg-light-accent dark:bg-cine-accent text-white dark:text-black shadow-lg shadow-light-accent/20 dark:shadow-cine-accent/20"
+              : "text-zinc-400 dark:text-zinc-500 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-zinc-200"
+          )}
+          title="资源"
+        >
+          <FolderOpen size={20} strokeWidth={activeTab === 'assets' && !leftSidebarCollapsed ? 2.5 : 2} />
+        </button>
+
+        <div className="w-8 h-px bg-black/5 dark:bg-white/10 my-2" />
+
+        <button className="p-3 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-zinc-400 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 mt-auto">
+          <Settings size={20} />
         </button>
       </div>
-      <div
-        className={`absolute right-0 top-0 h-full w-1 cursor-col-resize ${resizing ? 'bg-light-accent/30 dark:bg-cine-accent/30' : 'bg-transparent hover:bg-light-border dark:hover:bg-cine-border'}`}
-        onMouseDown={startResize}
-      />
 
-      {/* Project Info */}
-      <div className="px-6 pb-6">
-        <div className="flex items-center gap-2">
-          <h2 className="font-bold text-lg text-light-text dark:text-white truncate">
-            {project?.metadata.title || '未命名项目'}
-          </h2>
-          {isSaving && (
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-light-accent/10 dark:bg-cine-accent/10 border border-light-accent/20 dark:border-cine-accent/20 animate-pulse">
-              <Loader2 size={10} className="animate-spin text-light-accent dark:text-cine-accent" />
-              <span className="text-[10px] font-medium text-light-accent dark:text-cine-accent">同步中</span>
+      {/* Content Panel */}
+      <AnimatePresence>
+        {!leftSidebarCollapsed && (
+          <motion.div
+            initial={{ opacity: 0, x: -20, scale: 0.95 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: -20, scale: 0.95 }}
+            className="w-[400px] h-[80vh] bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl rounded-[32px] border border-black/5 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col pointer-events-auto self-center"
+          >
+            {/* Header */}
+            <div className="p-6 border-b border-black/5 dark:border-white/5 flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-sm font-black text-zinc-900 dark:text-white truncate tracking-tight uppercase">
+                  {project?.metadata.title || '未命名项目'}
+                </h2>
+                <div className="flex items-center gap-2 mt-1">
+                  {isSaving && (
+                    <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-light-accent/10 dark:bg-cine-accent/10">
+                      <Loader2 size={10} className="animate-spin text-light-accent dark:text-cine-accent" />
+                      <span className="text-[8px] font-bold text-light-accent dark:text-cine-accent uppercase">Saving</span>
+                    </div>
+                  )}
+                  <span className="text-[10px] text-zinc-500 font-medium">
+                    {activeTab === 'storyboard' ? '分镜脚本' : '资源库'}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={toggleLeftSidebar}
+                className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              >
+                <X size={18} className="text-zinc-400" />
+              </button>
             </div>
-          )}
-        </div>
-        {project?.metadata.description && (
-          <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 line-clamp-2">
-            {project.metadata.description}
-          </p>
+
+            {/* Tab Content */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {activeTab === 'storyboard' && (
+                <StoryboardTab
+                  shots={shots}
+                  scenes={scenes}
+                  collapsedScenes={collapsedScenes}
+                  toggleSceneCollapse={toggleSceneCollapse}
+                  handleAddScene={handleAddScene}
+                  editingSceneId={editingSceneId}
+                  editingSceneName={editingSceneName}
+                  setEditingSceneName={setEditingSceneName}
+                  handleSaveSceneName={handleSaveSceneName}
+                  handleCancelEditScene={handleCancelEditScene}
+                  handleStartEditScene={handleStartEditScene}
+                  handleEditSceneDetails={(sceneId) => {
+                    const scene = scenes.find(s => s.id === sceneId);
+                    if (!scene) return;
+                    setSceneIdHandlingLocation(sceneId);
+                    const linkedLocation = project?.locations.find(l =>
+                      l.name.toLowerCase() === (scene.location || scene.name).toLowerCase()
+                    );
+                    setEditingLocation((linkedLocation || {
+                      id: '',
+                      name: scene.location || scene.name,
+                      description: scene.description,
+                      type: 'interior',
+                      referenceImages: []
+                    }) as any);
+                  }}
+                  handleDeleteScene={handleDeleteScene}
+                  handleAddShotClick={handleAddShotClick}
+                  setShowScriptEditor={setShowTableEditor}
+                  selectedShotId={selectedShotId}
+                  handleShotClick={handleShotClick}
+                  openShotEditor={openShotEditor}
+                  handleDeleteShot={handleDeleteShot}
+                  handleShotImageClick={(shot) => {
+                    const scene = scenes.find(s => s.id === shot.sceneId);
+                    const sceneContext = scene?.description ? `\n场景环境: ${scene.description}` : '';
+                    const fullPrompt = `镜头画面: ${shot.description || ''}${sceneContext}`;
+                    useProjectStore.getState().setGenerationRequest({
+                      prompt: fullPrompt,
+                      model: 'jimeng',
+                      jimengModel: 'jimeng-4.5',
+                      jimengResolution: '2k'
+                    });
+                    selectShot(shot.id);
+                    setControlMode('pro');
+                    if (useProjectStore.getState().rightSidebarCollapsed) {
+                      useProjectStore.getState().toggleRightSidebar();
+                    }
+                  }}
+                />
+              )}
+
+              {activeTab === 'assets' && (
+                <AssetsTab
+                  project={project!}
+                  charactersCollapsed={charactersCollapsed}
+                  setCharactersCollapsed={setCharactersCollapsed}
+                  setShowAddCharacterDialog={setShowAddCharacterDialog}
+                  setEditingCharacter={setEditingCharacter}
+                  deleteCharacter={deleteCharacter}
+                  locationsCollapsed={locationsCollapsed}
+                  setLocationsCollapsed={setLocationsCollapsed}
+                  setShowAddLocationDialog={setShowAddLocationDialog}
+                  setEditingLocation={setEditingLocation}
+                  deleteLocation={deleteLocation}
+                />
+              )}
+            </div>
+          </motion.div>
         )}
-        {/* Batch Download Button */}
-        <button
-          onClick={handleBatchDownload}
-          disabled={isDownloading}
-          className="w-full mt-3 glass-button rounded-xl px-3 py-2 text-xs flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isDownloading ? (
-            <>
-              <Loader2 size={14} className="animate-spin" />
-              <span>打包下载中...</span>
-            </>
-          ) : (
-            <>
-              <Download size={14} />
-              <span>批量下载素材</span>
-            </>
-          )}
-        </button>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="px-6 pb-2">
-        <div className="flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
-          <button
-            onClick={() => setActiveTab('planning')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${activeTab === 'planning'
-              ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
-              }`}
-          >
-            <FileText size={14} />
-            <span>策划</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('storyboard')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${activeTab === 'storyboard'
-              ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
-              }`}
-          >
-            <Film size={14} />
-            <span>分镜</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('assets')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${activeTab === 'assets'
-              ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
-              }`}
-          >
-            <FolderOpen size={14} />
-            <span>资源</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto">
-        {activeTab === 'planning' && (
-          <DirectorMode
-            isOpen={true}
-            onClose={() => setActiveTab('storyboard')}
-          />
-        )}
-
-        {activeTab === 'storyboard' && (
-          <StoryboardTab
-            shots={shots}
-            scenes={scenes}
-            collapsedScenes={collapsedScenes}
-            toggleSceneCollapse={toggleSceneCollapse}
-            handleAddScene={handleAddScene}
-            editingSceneId={editingSceneId}
-            editingSceneName={editingSceneName}
-            setEditingSceneName={setEditingSceneName}
-            handleSaveSceneName={handleSaveSceneName}
-            handleCancelEditScene={handleCancelEditScene}
-            handleStartEditScene={handleStartEditScene}
-            handleEditSceneDetails={(sceneId) => {
-              const scene = scenes.find(s => s.id === sceneId);
-              if (!scene) return;
-
-              setSceneIdHandlingLocation(sceneId);
-
-              const linkedLocation = project?.locations.find(l =>
-                l.name.toLowerCase() === (scene.location || scene.name).toLowerCase()
-              );
-
-              const initialLocationData = linkedLocation || {
-                id: '',
-                name: scene.location || scene.name,
-                description: scene.description,
-                type: 'interior',
-                referenceImages: []
-              };
-
-              setEditingLocation(initialLocationData as any);
-            }}
-            handleDeleteScene={handleDeleteScene}
-            handleAddShotClick={handleAddShotClick}
-            setShowScriptEditor={setShowTableEditor}
-            selectedShotId={selectedShotId}
-            handleShotClick={handleShotClick}
-            openShotEditor={openShotEditor}
-            handleDeleteShot={handleDeleteShot}
-            handleShotImageClick={(shot) => {
-              // 1. 设置生成请求 (先设置，以免被后续的副作用清除)
-              const scene = scenes.find(s => s.id === shot.sceneId);
-              const sceneContext = scene?.description ? `\n场景环境: ${scene.description}` : '';
-              const fullPrompt = `镜头画面: ${shot.description || ''}${sceneContext}`;
-
-              useProjectStore.getState().setGenerationRequest({
-                prompt: fullPrompt,
-                model: 'jimeng',
-                jimengModel: 'jimeng-4.5',
-                jimengResolution: '2k'
-              });
-
-              // 2. 选中镜头
-              selectShot(shot.id);
-
-              // 3. 切换到 Pro 模式并确保侧边栏展开
-              setControlMode('pro');
-              if (useProjectStore.getState().rightSidebarCollapsed) {
-                useProjectStore.getState().toggleRightSidebar();
-              }
-            }}
-          />
-        )}
-
-        {activeTab === 'assets' && (
-          <AssetsTab
-            project={project}
-            charactersCollapsed={charactersCollapsed}
-            setCharactersCollapsed={setCharactersCollapsed}
-            setShowAddCharacterDialog={setShowAddCharacterDialog}
-            setEditingCharacter={setEditingCharacter}
-            deleteCharacter={deleteCharacter}
-            locationsCollapsed={locationsCollapsed}
-            setLocationsCollapsed={setLocationsCollapsed}
-            setShowAddLocationDialog={setShowAddLocationDialog}
-            setEditingLocation={setEditingLocation}
-            deleteLocation={deleteLocation}
-          />
-        )}
-      </div>
+      </AnimatePresence>
 
       {showTableEditor && (
         <ShotTableEditor
@@ -579,12 +524,13 @@ export default function LeftSidebarNew() {
         />
       )}
 
-      {shotImagePreview && (
+      {shotImagePreview && createPortal(
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" onClick={() => setShotImagePreview(null)}>
           <div className="max-w-5xl w-full max-h-[90vh]">
             <img src={shotImagePreview} alt="预览" className="w-full h-full object-contain rounded-lg" />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <ShotEditor
@@ -596,9 +542,9 @@ export default function LeftSidebarNew() {
         shotHistoryImages={shotHistoryImages}
         selectedHistoryImage={selectedHistoryImage}
         setSelectedHistoryImage={setSelectedHistoryImage}
-        liveEditingShot={liveEditingShot}
-        updateShot={updateShot}
         setShotImagePreview={setShotImagePreview}
+        onUploadClick={() => uploadInputRef.current?.click()}
+        isUploading={isUploading}
       />
 
       {showAddShotDialog && selectedSceneForNewShot && (
@@ -614,6 +560,14 @@ export default function LeftSidebarNew() {
           }}
         />
       )}
+
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleUploadImage}
+        className="hidden"
+      />
 
       {showAddCharacterDialog && (
         <AddCharacterDialog
@@ -643,21 +597,17 @@ export default function LeftSidebarNew() {
           mode={editingLocation.id ? "edit" : "add"}
           initialLocation={editingLocation}
           onAdd={(updated) => {
-            // 1. Update/Add Location Asset
             if (editingLocation.id) {
               updateLocation(editingLocation.id, updated);
             } else {
               addLocation(updated);
             }
-
-            // 2. Sync back to Scene (Critical for prompt generation)
             if (sceneIdHandlingLocation) {
               updateScene(sceneIdHandlingLocation, {
                 location: updated.name,
                 description: updated.description
               });
             }
-
             setEditingLocation(null);
             setSceneIdHandlingLocation(null);
           }}

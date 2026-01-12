@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Edit2, Plus, MoreHorizontal, Check } from 'lucide-react';
+import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Plus, Loader2, Edit2, Upload } from 'lucide-react';
 import type { ShotSize, CameraMovement, Shot } from '@/types/project';
 import { translateShotSize, translateCameraMovement } from '@/utils/translations';
 import { formatShotLabel } from '@/utils/shotOrder';
@@ -12,6 +12,8 @@ import AddLocationDialog from '@/components/asset/AddLocationDialog';
 import ShotListItem from '@/components/shot/ShotListItem';
 import { toast } from 'sonner';
 import { CanvasUserWidget } from '@/components/layout/CanvasUserWidget';
+import { ShotEditor } from '@/components/layout/sidebar/ShotEditor';
+import { batchDownloadAssets } from '@/utils/batchDownload';
 
 export default function InfiniteCanvas() {
   const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed, updateShot, addShot, reorderShots, addCharacter, addLocation } = useProjectStore();
@@ -42,7 +44,6 @@ export default function InfiniteCanvas() {
     cameraMovement: '',
     duration: 3,
   });
-  const [shotImagePreview, setShotImagePreview] = useState<string | null>(null);
   const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
 
   // Dialog State
@@ -53,9 +54,9 @@ export default function InfiniteCanvas() {
   const [showAddLocationDialog, setShowAddLocationDialog] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<any | null>(null);
   const [editingLocation, setEditingLocation] = useState<any | null>(null);
-
-  const shotSizeOptions: ShotSize[] = ['Extreme Wide Shot', 'Wide Shot', 'Medium Shot', 'Close-Up', 'Extreme Close-Up'];
-  const cameraMovementOptions: CameraMovement[] = ['Static', 'Pan Left', 'Pan Right', 'Tilt Up', 'Tilt Down', 'Dolly In', 'Dolly Out', 'Zoom In', 'Zoom Out', 'Handheld'];
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const liveEditingShot = editingShot
     ? project?.shots.find((s) => s.id === editingShot.id) || editingShot
@@ -210,17 +211,44 @@ export default function InfiniteCanvas() {
     });
   };
 
+  const resolveSelectionMeta = (shot: Shot | null, url: string) => {
+    if (!shot) return {};
+    const historyMatch = shot.generationHistory?.find((item) => item.type === 'image' && item.result === url);
+    const params = (historyMatch?.parameters || {}) as any;
+    if (params?.fullGridUrl || params?.slices) {
+      return {
+        fullGridUrl: params.fullGridUrl as string | undefined,
+        gridImages: params.slices as string[] | undefined,
+      };
+    }
+    if (shot.gridImages?.includes(url)) {
+      return {
+        fullGridUrl: shot.fullGridUrl,
+        gridImages: shot.gridImages,
+      };
+    }
+    return {};
+  };
+
   const saveShotEdit = () => {
     if (!editingShot) return;
     if (!shotForm.description.trim()) return;
-    updateShot(editingShot.id, {
+    const updates: Partial<Shot> = {
       description: shotForm.description.trim(),
       narration: shotForm.narration.trim(),
       dialogue: shotForm.dialogue.trim(),
       shotSize: shotForm.shotSize || undefined,
       cameraMovement: shotForm.cameraMovement || undefined,
       duration: shotForm.duration,
-    });
+    };
+    if (selectedHistoryImage) {
+      const meta = resolveSelectionMeta(liveEditingShot || null, selectedHistoryImage);
+      updates.referenceImage = selectedHistoryImage;
+      updates.status = 'done';
+      if (meta.fullGridUrl) updates.fullGridUrl = meta.fullGridUrl;
+      if (meta.gridImages) updates.gridImages = meta.gridImages;
+    }
+    updateShot(editingShot.id, updates);
     setEditingShot(null);
   };
 
@@ -257,6 +285,76 @@ export default function InfiniteCanvas() {
     if (confirm(`确定要删除镜头 #${shotOrder} 吗？`)) {
       useProjectStore.getState().deleteShot(shotId);
       toast.success('镜头已删除');
+    }
+  };
+
+  const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>, shotId: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 验证文件类型
+    if (!file.type.startsWith('image/')) {
+      toast.error('请选择图片文件');
+      return;
+    }
+
+    // 验证文件大小 (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('图片大小不能超过 10MB');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const { storageService } = await import('@/lib/storageService');
+      const result = await storageService.uploadFile(file, `shots/${shotId}`);
+      const imageUrl = result.url;
+
+      // 添加到历史记录
+      const shot = project?.shots.find(s => s.id === shotId);
+      if (shot) {
+        const historyItem = {
+          id: `upload_${Date.now()}`,
+          type: 'image' as const,
+          timestamp: new Date(),
+          result: imageUrl,
+          prompt: '用户上传图片',
+          parameters: {
+            model: 'upload',
+            source: 'user_upload',
+          },
+          status: 'success' as const,
+        };
+        const newHistory = [...(shot.generationHistory || []), historyItem];
+        updateShot(shotId, { generationHistory: newHistory });
+      }
+
+      toast.success('图片上传成功');
+      setSelectedHistoryImage(imageUrl);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('图片上传失败');
+    } finally {
+      setIsUploading(false);
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
+    }
+  };
+
+  const handleBatchDownload = async () => {
+    if (!project) return;
+    setIsDownloading(true);
+    const downloadToast = toast.loading('正在打包下载...');
+    try {
+      await batchDownloadAssets(project, {
+        onProgress: (progress) => {
+          toast.loading(progress.message || '正在打包下载...', { id: downloadToast });
+        }
+      });
+      toast.success('下载完成！', { id: downloadToast });
+    } catch (error) {
+      toast.error('下载失败', { id: downloadToast });
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -299,6 +397,17 @@ export default function InfiniteCanvas() {
             <ZoomIn className="w-4 h-4" />
           </button>
         </div>
+      </div>
+
+      <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2 interactive">
+        <button
+          onClick={handleBatchDownload}
+          disabled={isDownloading}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-900/90 dark:bg-white/90 text-white dark:text-black text-xs font-bold shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
+        >
+          {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          <span>批量下载素材</span>
+        </button>
       </div>
 
       {/* Canvas Content Container */}
@@ -378,9 +487,6 @@ export default function InfiniteCanvas() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 selectShot(shot.id);
-                                if (shot.referenceImage) {
-                                  handlePreview(shot.referenceImage);
-                                }
                               }}
                               className={`group bg-white/40 dark:bg-black/40 rounded-2xl overflow-hidden hover:border-light-accent/50 dark:hover:border-cine-accent/50 transition-all duration-300 ${isShotSelected
                                 ? 'border-2 border-light-accent dark:border-cine-accent shadow-lg shadow-light-accent/20 dark:shadow-cine-accent/20 scale-[1.02]'
@@ -400,6 +506,7 @@ export default function InfiniteCanvas() {
                                     <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
                                       <button onClick={(e) => handleDownload(shot.referenceImage!, shot.order, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="下载"><Download size={12} /></button>
                                       <button onClick={(e) => handleEditShot(shot, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="编辑"><Edit2 size={12} /></button>
+                                      <button onClick={(e) => { e.stopPropagation(); selectShot(shot.id); uploadInputRef.current?.click(); }} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="上传图片"><Upload size={12} /></button>
                                       <button onClick={(e) => handleGenerate(shot.id, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="重新生成"><RefreshCw size={12} /></button>
                                     </div>
                                   </>
@@ -412,6 +519,7 @@ export default function InfiniteCanvas() {
                                       onClick={(e) => { e.stopPropagation(); handlePreview(shot.gridImages![0]); }}
                                     />
                                     <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
+                                      <button onClick={(e) => { e.stopPropagation(); selectShot(shot.id); uploadInputRef.current?.click(); }} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="上传图片"><Upload size={12} /></button>
                                       <button onClick={(e) => handleGenerate(shot.id, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="重新生成"><RefreshCw size={12} /></button>
                                     </div>
                                   </>
@@ -419,6 +527,7 @@ export default function InfiniteCanvas() {
                                   <>
                                     <ImageIcon size={24} className="text-light-text-muted dark:text-cine-text-muted" />
                                     <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
+                                      <button onClick={(e) => { e.stopPropagation(); selectShot(shot.id); uploadInputRef.current?.click(); }} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="上传图片"><Upload size={12} /></button>
                                       <button onClick={(e) => handleGenerate(shot.id, e)} className="px-3 py-1.5 rounded-full bg-light-accent hover:bg-light-accent-hover text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm flex items-center gap-1 text-xs"><Sparkles size={12} /> 生成图片</button>
                                     </div>
                                   </>
@@ -482,209 +591,19 @@ export default function InfiniteCanvas() {
           </div>
         </div>
       )}
-
-      {editingShot && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] p-4 md:p-8">
-          <div className="bg-white dark:bg-[#0c0c0e] border border-white/20 dark:border-white/10 rounded-[2rem] shadow-2xl w-full max-w-6xl max-h-full overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 ring-1 ring-black/5">
-            {/* Header Toolbar */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-light-border dark:border-cine-border bg-light-bg/50 dark:bg-cine-dark/50 backdrop-blur-xl">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-light-accent dark:bg-cine-accent rounded-xl text-white dark:text-black">
-                  <Edit2 size={18} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-base font-bold text-light-text dark:text-white">分镜详情编辑</span>
-                    <div className="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]"></div>
-                  </div>
-                  <div className="flex items-center gap-2 text-[10px] text-light-text-muted dark:text-cine-text-muted mt-0.5">
-                    <span>镜头 #{editingShot.order}</span>
-                    <span className="opacity-30">•</span>
-                    <span>{editingShot.shotSize}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5">
-                  <button className="px-3 py-1.5 text-xs font-medium rounded-lg hover:bg-white dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-all">
-                    Web search
-                  </button>
-                  <button className="px-3 py-1.5 text-xs font-medium rounded-lg hover:bg-white dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-all">
-                    Copy
-                  </button>
-                  <button className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted transition-all">
-                    <MoreHorizontal size={16} />
-                  </button>
-                </div>
-                <div className="w-px h-6 bg-black/5 dark:bg-white/10 mx-1"></div>
-                <button
-                  onClick={() => setEditingShot(null)}
-                  className="p-2 rounded-xl hover:bg-red-500/10 text-light-text-muted dark:text-cine-text-muted hover:text-red-500 transition-all"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-
-            {/* Main Content Area */}
-            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                {/* Left Column: Description & Text */}
-                <div className="lg:col-span-7 space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider ml-1">镜头描述</label>
-                    <textarea
-                      value={shotForm.description}
-                      onChange={(e) => setShotForm((prev) => ({ ...prev, description: e.target.value }))}
-                      className="w-full h-48 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-2xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-light-accent/20 dark:focus:ring-cine-accent/20 focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white transition-all"
-                      placeholder="详细描述镜头画面内容..."
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider ml-1">对白</label>
-                      <textarea
-                        value={shotForm.dialogue}
-                        onChange={(e) => setShotForm((prev) => ({ ...prev, dialogue: e.target.value }))}
-                        className="w-full h-32 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-2xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-light-accent/20 dark:focus:ring-cine-accent/20 focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white transition-all"
-                        placeholder="角色对白（可选）"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider ml-1">旁白</label>
-                      <textarea
-                        value={shotForm.narration}
-                        onChange={(e) => setShotForm((prev) => ({ ...prev, narration: e.target.value }))}
-                        className="w-full h-32 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-2xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-light-accent/20 dark:focus:ring-cine-accent/20 focus:border-light-accent dark:focus:border-cine-accent text-light-text dark:text-white transition-all"
-                        placeholder="旁白/场景说明"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Column: Settings & History */}
-                <div className="lg:col-span-5 space-y-6">
-                  <div className="bg-light-bg-secondary dark:bg-cine-bg-secondary rounded-3xl p-6 border border-light-border dark:border-cine-border space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider ml-1">镜头景别</label>
-                        <select
-                          value={shotForm.shotSize}
-                          onChange={(e) => setShotForm((prev) => ({ ...prev, shotSize: e.target.value as ShotSize }))}
-                          className="w-full bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl p-2.5 text-sm text-light-text dark:text-white focus:outline-none focus:border-light-accent dark:focus:border-cine-accent transition-all"
-                        >
-                          <option value="">选择景别</option>
-                          {shotSizeOptions.map((size) => (
-                            <option key={size} value={size}>{size}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider ml-1">镜头运动</label>
-                        <select
-                          value={shotForm.cameraMovement}
-                          onChange={(e) => setShotForm((prev) => ({ ...prev, cameraMovement: e.target.value as CameraMovement }))}
-                          className="w-full bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl p-2.5 text-sm text-light-text dark:text-white focus:outline-none focus:border-light-accent dark:focus:border-cine-accent transition-all"
-                        >
-                          <option value="">选择运动</option>
-                          {cameraMovementOptions.map((move) => (
-                            <option key={move} value={move}>{move}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider ml-1">时长 (秒)</label>
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="range"
-                          min={1}
-                          max={10}
-                          step={0.5}
-                          value={shotForm.duration}
-                          onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))}
-                          className="flex-1 accent-light-accent dark:accent-cine-accent"
-                        />
-                        <input
-                          type="number"
-                          min={1}
-                          value={shotForm.duration}
-                          onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))}
-                          className="w-16 bg-light-bg dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl p-2 text-center text-sm font-bold text-light-text dark:text-white"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between ml-1">
-                      <label className="text-xs font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider">历史分镜图片</label>
-                      <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full">
-                        {shotHistoryImages.length} 张记录
-                      </span>
-                    </div>
-
-                    {shotHistoryImages.length === 0 ? (
-                      <div className="bg-light-bg-secondary dark:bg-cine-bg-secondary border border-dashed border-light-border dark:border-cine-border rounded-2xl py-8 text-center">
-                        <ImageIcon size={24} className="mx-auto mb-2 text-light-text-muted dark:text-cine-text-muted opacity-30" />
-                        <p className="text-xs text-light-text-muted dark:text-cine-text-muted">暂无历史图片</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-2">
-                        {shotHistoryImages.map((url, idx) => (
-                          <div
-                            key={idx}
-                            className={`group relative aspect-video bg-light-bg dark:bg-cine-black rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent ring-4 ring-light-accent/10 dark:ring-cine-accent/10' : 'border-transparent hover:border-light-accent/30 dark:hover:border-cine-accent/30'}`}
-                            onClick={() => {
-                              setSelectedHistoryImage(url);
-                              if (liveEditingShot) {
-                                updateShot(liveEditingShot.id, { referenceImage: url, status: 'done' });
-                              }
-                            }}
-                          >
-                            <img src={url} alt={`history-${idx + 1}`} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-                            {selectedHistoryImage === url && (
-                              <div className="absolute inset-0 bg-light-accent/10 dark:bg-cine-accent/10 flex items-center justify-center">
-                                <div className="bg-light-accent dark:bg-cine-accent text-white dark:text-black p-1 rounded-full shadow-lg">
-                                  <Check size={12} />
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer Actions */}
-            <div className="flex items-center justify-between px-8 py-6 border-t border-light-border dark:border-cine-border bg-light-bg-secondary dark:bg-cine-bg-secondary">
-              <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                最后修改: {new Date().toLocaleTimeString()}
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setEditingShot(null)}
-                  className="px-6 py-2.5 text-sm font-bold rounded-xl glass-button text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/5 transition-all"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={saveShotEdit}
-                  className="px-8 py-2.5 text-sm font-bold rounded-xl bg-black dark:bg-white text-white dark:text-black shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
-                >
-                  <span>保存并应用</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ShotEditor
+        editingShot={editingShot}
+        setEditingShot={setEditingShot}
+        shotForm={shotForm}
+        setShotForm={setShotForm}
+        saveShotEdit={saveShotEdit}
+        shotHistoryImages={shotHistoryImages}
+        selectedHistoryImage={selectedHistoryImage}
+        setSelectedHistoryImage={setSelectedHistoryImage}
+        setShotImagePreview={setImagePreview}
+        onUploadClick={() => uploadInputRef.current?.click()}
+        isUploading={isUploading}
+      />
 
       {showAddShotDialog && selectedSceneForNewShot && (
         <AddShotDialog
@@ -696,6 +615,17 @@ export default function InfiniteCanvas() {
           onClose={() => { setShowAddShotDialog(false); setShotInsertIndex(null); }}
         />
       )}
+
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="image/*"
+        onChange={(e) => {
+          const shotId = selectedShotId || editingShot?.id;
+          if (shotId) handleUploadImage(e, shotId);
+        }}
+        className="hidden"
+      />
     </div>
   );
 }

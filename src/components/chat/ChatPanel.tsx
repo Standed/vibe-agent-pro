@@ -16,34 +16,17 @@ import { storageService } from '@/lib/storageService';
 import { useJimengGeneration } from '@/hooks/useJimengGeneration';
 import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
 import { ChatBubble } from './ChatBubble';
-import { ChatInput, GenerationModel } from './ChatInput';
+import { ChatInput } from './ChatInput';
 import { Sparkles, Bug, Loader2 } from 'lucide-react';
 import { compressImage, compressFileToBase64 } from '@/utils/imageCompression';
+import { replaceSoraCharacterCodes } from '@/utils/soraCharacterReplace';
+import { useSoraGeneration } from '@/hooks/useSoraGeneration';
+import { useSoraVideoMessages } from '@/hooks/useSoraVideoMessages';
+import { ChatPanelMessage, GenerationModel } from '@/types/project';
+import { generateMessageId } from '@/lib/utils';
 
 // Types
-interface ChatPanelMessage {
-    id: string;
-    role: 'user' | 'assistant';
-    content: string;
-    timestamp: Date;
-    images?: string[];
-    referenceImages?: string[];
-    model?: GenerationModel;
-    shotId?: string;
-    sceneId?: string;
-    gridData?: GridData;
-}
 
-const generateMessageId = () => {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-        return crypto.randomUUID();
-    }
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0;
-        const v = c === 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-    });
-};
 
 export default function ChatPanel() {
     const {
@@ -58,6 +41,7 @@ export default function ChatPanel() {
         setGenerationRequest,
         generationProgress,
         setGenerationProgress,
+        refreshShot,
     } = useProjectStore();
 
     const { user } = useAuth();
@@ -85,11 +69,28 @@ export default function ChatPanel() {
     // Preview State
     const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+    // Sora specific
+    const [soraAspectRatio, setSoraAspectRatio] = useState<'16:9' | '9:16'>('16:9');
+    const [soraDuration, setSoraDuration] = useState<10 | 15>(10);
+
     // Jimeng Hook
     const jimengGeneration = useJimengGeneration({
         setMessages: setMessages as any, // Type compatibility
         manualReferenceUrls,
         mentionedAssets
+    });
+
+    const { generateSoraVideo } = useSoraGeneration({
+        project,
+        user,
+        selectedModel,
+        soraAspectRatio,
+        soraDuration,
+        setMessages,
+        setIsGenerating,
+        setInputText,
+        setUploadedImages,
+        setManualReferenceUrls
     });
 
     // Refs
@@ -102,6 +103,9 @@ export default function ChatPanel() {
     const selectedScene = scenes.find((s) => s.id === (selectedShot?.sceneId || currentSceneId));
     const selectedShotLabel = selectedShot ? formatShotLabel(selectedScene?.order, selectedShot.order, selectedShot.globalOrder) : undefined;
     const projectId = project?.id || 'default';
+
+    // Load video messages from sora_tasks (most reliable source, independent of Cron)
+    const { videoMessages, refresh: refreshVideoMessages } = useSoraVideoMessages(project?.id, selectedShotId || undefined);
 
     // Load History
     useEffect(() => {
@@ -124,8 +128,9 @@ export default function ChatPanel() {
                 }
 
                 const loadedMessages = await dataService.getChatMessages(filters, user?.id);
+                const filteredMessages = loadedMessages.filter(msg => msg.metadata?.channel !== 'planning');
 
-                const converted: ChatPanelMessage[] = loadedMessages.map((msg) => ({
+                const converted: ChatPanelMessage[] = filteredMessages.map((msg) => ({
                     id: msg.id,
                     role: msg.role as 'user' | 'assistant',
                     content: msg.content,
@@ -136,12 +141,93 @@ export default function ChatPanel() {
                     shotId: msg.shotId,
                     sceneId: msg.sceneId,
                     gridData: msg.metadata?.gridData as ChatPanelMessage['gridData'] | undefined,
+                    videoUrl: msg.metadata?.videoUrl as string | undefined,
                     metadata: {
                         ...msg.metadata,
                         prompt: msg.metadata?.prompt,
                         basePrompt: msg.metadata?.basePrompt
                     }
                 }));
+
+
+
+                // Inject Generation History if a shot is selected
+                if (selectedShotId) {
+                    // Fetch latest shot data directly from database (not via store to avoid re-render loops)
+                    const latestShot = await dataService.getShot(selectedShotId);
+                    const currentShot = latestShot || project?.shots?.find(s => s.id === selectedShotId);
+                    if (currentShot && currentShot.generationHistory && currentShot.generationHistory.length > 0) {
+                        const historyMessages: ChatPanelMessage[] = currentShot.generationHistory.map(h => {
+                            const params = (h.parameters || {}) as any;
+
+                            // 处理视频类型
+                            if (h.type === 'video') {
+                                const existingVideoMsg = converted.find(m =>
+                                    m.videoUrl === h.result ||
+                                    m.metadata?.videoUrl === h.result
+                                );
+                                if (existingVideoMsg) return null;
+
+                                return {
+                                    id: h.id,
+                                    role: 'assistant' as const,
+                                    content: 'Sora 视频生成完成',
+                                    timestamp: new Date(h.timestamp),
+                                    videoUrl: h.result,
+                                    shotId: selectedShotId,
+                                    metadata: {
+                                        type: 'sora_video_complete',
+                                        videoUrl: h.result,
+                                        prompt: h.prompt || params.prompt || '',
+                                        model: 'sora',
+                                        taskId: params.taskId,
+                                        source: 'generation_history'
+                                    }
+                                };
+                            }
+
+                            // 处理图片类型（原有逻辑）
+                            const existingMsg = converted.find(m => m.images?.includes(h.result));
+                            if (existingMsg) return null;
+
+                            const isGrid = params.model === 'gemini-grid' || params.gridSize || Array.isArray(params.slices);
+                            const gridSize = params.gridSize as '2x2' | '3x3' | undefined;
+                            const gridRows = params.gridRows || (gridSize === '3x3' ? 3 : gridSize === '2x2' ? 2 : (Array.isArray(params.slices) && params.slices.length === 9 ? 3 : 2));
+                            const gridCols = params.gridCols || (gridSize === '3x3' ? 3 : gridSize === '2x2' ? 2 : (Array.isArray(params.slices) && params.slices.length === 9 ? 3 : 2));
+                            const promptText = h.prompt || params.prompt || '';
+
+                            const msg: ChatPanelMessage = {
+                                id: h.id,
+                                role: 'assistant',
+                                content: isGrid ? 'Agent Generated Grid' : 'Agent Generated Image',
+                                timestamp: new Date(h.timestamp),
+                                images: [h.result],
+                                model: (isGrid ? 'gemini-grid' : params.model) as GenerationModel,
+                                shotId: selectedShotId,
+                                gridData: isGrid ? {
+                                    fullImage: (params.fullGridUrl as string) || h.result,
+                                    slices: (params.slices as string[]) || [],
+                                    gridRows,
+                                    gridCols,
+                                    gridSize: gridSize || (gridRows === 3 ? '3x3' : '2x2'),
+                                    prompt: promptText,
+                                    aspectRatio: project.settings.aspectRatio || AspectRatio.WIDE,
+                                    sceneId: currentShot.sceneId
+                                } : undefined,
+                                metadata: {
+                                    prompt: promptText,
+                                    model: params.model
+                                }
+                            };
+                            return msg;
+                        }).filter((m): m is ChatPanelMessage => m !== null);
+
+                        converted.push(...historyMessages);
+                    }
+                }
+
+                // Sort all messages by timestamp (video messages from hook will be merged after)
+                converted.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
                 setMessages(converted);
 
@@ -191,6 +277,29 @@ export default function ChatPanel() {
         setMentionedAssets({ characters: [], locations: [] });
         setManualReferenceUrls([]);
     }, [project?.id, selectedShotId, currentSceneId, user, project?.shots]);
+
+    // Merge video messages from sora_tasks hook into messages state
+    useEffect(() => {
+        if (videoMessages.length === 0) return;
+
+        setMessages(prev => {
+            // Filter out duplicates by checking taskId or videoUrl
+            const newVideoMessages = videoMessages.filter(vm =>
+                !prev.some(m =>
+                    m.id === vm.id ||
+                    m.metadata?.taskId === vm.metadata.taskId ||
+                    m.videoUrl === vm.videoUrl
+                )
+            ) as ChatPanelMessage[];
+
+            if (newVideoMessages.length === 0) return prev;
+
+            // Merge and sort
+            const merged = [...prev, ...newVideoMessages];
+            merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+            return merged;
+        });
+    }, [videoMessages]);
 
     // Handle Generation Request from other components (e.g. Storyboard)
     useEffect(() => {
@@ -352,7 +461,15 @@ export default function ChatPanel() {
         }
 
         try {
-            if (selectedModel === 'jimeng') {
+            if (selectedModel === 'sora-video') {
+                await generateSoraVideo(
+                    userMessage.content,
+                    uploadedUrls,
+                    manualReferenceUrls,
+                    currentShotId || undefined,
+                    currentSceneIdCaptured || undefined
+                );
+            } else if (selectedModel === 'jimeng') {
                 await jimengGeneration.generateImage(userMessage.content, currentShotId, currentSceneIdCaptured, contextKey, uploadedUrls);
             } else {
                 const { enrichedPrompt, referenceImageUrls } = enrichPromptWithAssets(userMessage.content, project, undefined);
@@ -476,6 +593,62 @@ export default function ChatPanel() {
         toast.success("已应用到当前分镜");
     };
 
+    const handleApplyVideoToShot = async (videoUrl: string) => {
+        if (!selectedShotId) {
+            toast.error("请先选择一个分镜");
+            return;
+        }
+        // 使用currentSceneId
+        const sceneId = currentSceneId || project?.scenes?.[0]?.id;
+        if (!sceneId) {
+            toast.error("未找到场景信息");
+            return;
+        }
+        try {
+            // 从数据库获取最新的 Shot 数据，确保不丢失历史记录
+            const latestShot = await dataService.getShot(selectedShotId);
+            const currentHistory = latestShot?.generationHistory || [];
+
+            const newHistoryItem = {
+                id: `sora_pro_${Date.now()}`,
+                type: 'video' as const,
+                timestamp: new Date(),
+                result: videoUrl,
+                prompt: 'Sora Pro Mode Generation',
+                parameters: {
+                    model: 'sora-video',
+                    source: 'pro-chat'
+                },
+                status: 'success' as const
+            };
+
+            const updatedHistory = [newHistoryItem, ...currentHistory];
+
+            // 1. 立即更新前端状态 (Optimistic Update)
+            updateShot(selectedShotId, {
+                videoClip: videoUrl,
+                status: 'done',
+                generationHistory: updatedHistory
+            } as any);
+            toast.success("视频已应用到当前分镜");
+
+            // 2. 后台异步保存到数据库 (不阻塞 UI)
+            dataService.saveShot(sceneId, {
+                id: selectedShotId,
+                videoClip: videoUrl,
+                status: 'done',
+                generationHistory: updatedHistory
+            } as any).catch(err => {
+                console.error('Background save failed:', err);
+                toast.error("保存到数据库失败，请刷新重试");
+            });
+
+        } catch (e) {
+            console.error('Apply video to shot error:', e);
+            toast.error("应用视频失败");
+        }
+    };
+
     const handleFeedback = async () => {
         const content = window.prompt('请输入您的反馈或遇到的问题：');
         if (content?.trim()) toast.success('反馈已提交');
@@ -529,6 +702,7 @@ export default function ChatPanel() {
                         onReusePrompt={() => handleRestoreState(msg)}
                         onReuseImage={handleReuseImage}
                         onApplyToShot={handleApplyToShot}
+                        onApplyVideoToShot={handleApplyVideoToShot}
                         onImageClick={(url, idx, m: any) => {
                             if (m.gridData) {
                                 setGridResult({
@@ -594,6 +768,10 @@ export default function ChatPanel() {
                 setGridSize={setGridSize}
                 manualReferenceUrls={manualReferenceUrls}
                 onRemoveReferenceUrl={(index) => setManualReferenceUrls(prev => prev.filter((_, i) => i !== index))}
+                soraAspectRatio={soraAspectRatio}
+                setSoraAspectRatio={setSoraAspectRatio}
+                soraDuration={soraDuration}
+                setSoraDuration={setSoraDuration}
             />
 
             {gridResult && (
@@ -607,7 +785,12 @@ export default function ChatPanel() {
                     gridCols={gridResult.gridCols}
                     onAssign={(assignments) => {
                         Object.entries(assignments).forEach(([shotId, imageUrl]) => {
-                            updateShot(shotId, { referenceImage: imageUrl, fullGridUrl: gridResult.fullImage, status: 'done' });
+                            updateShot(shotId, {
+                                referenceImage: imageUrl,
+                                fullGridUrl: gridResult.fullImage,
+                                gridImages: gridResult.slices,
+                                status: 'done'
+                            });
                         });
                         clearGridResult();
                     }}
@@ -632,7 +815,12 @@ export default function ChatPanel() {
                     onSelectSlice={(sliceIndex) => {
                         const url = sliceSelectorData.gridData!.slices[sliceIndex];
                         if (sliceSelectorData.shotId) {
-                            updateShot(sliceSelectorData.shotId, { referenceImage: url, fullGridUrl: sliceSelectorData.gridData!.fullImage, status: 'done' });
+                            updateShot(sliceSelectorData.shotId, {
+                                referenceImage: url,
+                                fullGridUrl: sliceSelectorData.gridData!.fullImage,
+                                gridImages: sliceSelectorData.gridData!.slices,
+                                status: 'done'
+                            });
                             toast.success(`已选择切片 #${sliceIndex + 1}`);
                         }
                         setSliceSelectorData(null);

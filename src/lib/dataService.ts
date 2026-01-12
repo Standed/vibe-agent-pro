@@ -30,6 +30,7 @@ interface DataBackend {
   deleteScene(sceneId: string): Promise<void>;
   saveShot(sceneId: string, shot: Shot): Promise<void>;
   deleteShot(shotId: string): Promise<void>;
+  getShot(shotId: string): Promise<Shot | undefined>;
   saveCharacter(projectId: string | null, character: Character): Promise<void>;
   deleteCharacter(characterId: string): Promise<void>;
   saveAudioAsset(projectId: string, audio: AudioAsset): Promise<void>;
@@ -204,6 +205,14 @@ class SupabaseBackend implements DataBackend {
     console.log('[SupabaseBackend] 💾 保存项目 (通过统一 API):', project.id, project.metadata.title);
 
     try {
+      const safeLocations = (project.locations || []).map((location) => ({
+        id: location.id,
+        name: location.name,
+        type: location.type,
+        description: location.description,
+        referenceImages: (location.referenceImages || []).filter((url) => !url.startsWith('data:')),
+      }));
+
       // 保存项目基本信息
       await this.callSupabaseAPI({
         table: 'projects',
@@ -221,6 +230,7 @@ class SupabaseBackend implements DataBackend {
             script: project.script || '',
             chatHistory: project.chatHistory || [],
             timeline: project.timeline || [],
+            locations: safeLocations,
           },
           scene_count: project.scenes?.length || 0,
           shot_count: project.shots?.length || 0,
@@ -396,6 +406,19 @@ class SupabaseBackend implements DataBackend {
         audioAssetsPromise,
       ]);
 
+      const rawLocations = Array.isArray(project.metadata?.locations)
+        ? project.metadata.locations
+        : [];
+      const locations = rawLocations
+        .filter((loc: any) => loc && typeof loc === 'object')
+        .map((loc: any) => ({
+          id: loc.id || crypto.randomUUID(),
+          name: loc.name || '未命名地点',
+          type: loc.type === 'interior' || loc.type === 'exterior' ? loc.type : 'exterior',
+          description: loc.description || '',
+          referenceImages: Array.isArray(loc.referenceImages) ? loc.referenceImages.filter((url: any) => typeof url === 'string') : [],
+        }));
+
       return {
         id: project.id,
         seriesId: project.series_id || undefined,
@@ -459,7 +482,7 @@ class SupabaseBackend implements DataBackend {
           url: a.file_url,
           duration: a.duration || 0,
         })),
-        locations: [],
+        locations,
       };
     } catch (err) {
       console.error('[SupabaseBackend] ❌ loadProject 失败:', err);
@@ -577,6 +600,45 @@ class SupabaseBackend implements DataBackend {
       operation: 'delete',
       filters: { eq: { id: shotId } },
     });
+  }
+
+  async getShot(shotId: string): Promise<Shot | undefined> {
+    try {
+      const shots = await this.callSupabaseAPI({
+        table: 'shots',
+        operation: 'select',
+        filters: { eq: { id: shotId } },
+        select: 'id, scene_id, order_index, shot_size, camera_movement, duration, description, dialogue, narration, reference_image, video_clip, grid_images, generation_history, status, metadata',
+        single: true,
+      });
+
+      const shot = Array.isArray(shots) ? shots[0] : shots;
+      if (!shot) return undefined;
+
+      return {
+        id: shot.id,
+        sceneId: shot.scene_id,
+        order: shot.order_index,
+        shotSize: shot.shot_size || 'medium',
+        cameraMovement: shot.camera_movement || 'static',
+        duration: shot.duration || 3,
+        description: shot.description || '',
+        dialogue: shot.dialogue || undefined,
+        narration: shot.narration || undefined,
+        referenceImage: shot.reference_image || undefined,
+        videoClip: shot.video_clip || undefined,
+        gridImages: shot.grid_images || [],
+        generationHistory: shot.generation_history || [],
+        status: shot.status || 'draft',
+        mainCharacters: shot.metadata?.mainCharacters || [],
+        mainScenes: shot.metadata?.mainScenes || [],
+        generationConfig: shot.metadata?.generationConfig || undefined,
+        error: shot.metadata?.error || undefined,
+      };
+    } catch (err) {
+      console.error('[SupabaseBackend] ❌ getShot failed:', err);
+      return undefined;
+    }
   }
 
   async saveCharacter(projectId: string | null, character: Character): Promise<void> {
@@ -763,7 +825,8 @@ class SupabaseBackend implements DataBackend {
   async saveSoraTask(task: SoraTask): Promise<void> {
     const serverClient = this.getServerSupabase();
     const client = serverClient || (supabase as any);
-    const normalizedStatus = task.status === 'generating' ? 'processing' : task.status;
+    // Normalize status to match database constraint (pending, processing, completed, failed)
+    const normalizedStatus = (task.status === 'generating' || task.status === 'in_progress') ? 'processing' : task.status;
     const { error } = await client
       .from('sora_tasks')
       .upsert({
@@ -1085,6 +1148,11 @@ export class UnifiedDataService {
   async deleteShot(shotId: string): Promise<void> {
     await this.ensureInitialized();
     return this.backend!.deleteShot(shotId);
+  }
+
+  async getShot(shotId: string, userId?: string): Promise<Shot | undefined> {
+    await this.ensureInitialized(userId);
+    return this.backend!.getShot(shotId);
   }
 
   async saveCharacter(projectId: string | null, character: Character): Promise<void> {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { authenticateRequest } from '@/lib/auth-middleware';
+import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
 
 export const maxDuration = 60;
 
@@ -12,6 +12,10 @@ export async function POST(req: NextRequest) {
   const authResult = await authenticateRequest(req);
   if ('error' in authResult) {
     return authResult.error;
+  }
+  const whitelistCheck = checkWhitelist(authResult.user);
+  if ('error' in whitelistCheck) {
+    return whitelistCheck.error;
   }
 
   try {

@@ -25,6 +25,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { dataService } from '@/lib/dataService';
 import type { SoraTask, Shot } from '@/types/project';
 import { toast } from 'sonner';
+import LeftSidebarNew from './LeftSidebarNew';
 
 interface TimelineViewProps {
     onClose: () => void;
@@ -41,7 +42,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [currentShotIndex, setCurrentShotIndex] = useState(0);
-    const [showRightPanel, setShowRightPanel] = useState(false); // 默认折叠右侧面板
+    const [showRightPanel, setShowRightPanel] = useState(true); // 默认展开右侧面板
     const [showQueuePanel, setShowQueuePanel] = useState(false);
     const queueOpenRef = useRef(false);
     const TIMELINE_SLOT_WIDTH = 80;
@@ -404,13 +405,39 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     }, []);
 
     const syncedTaskIdsRef = useRef(new Set<string>());
+    const notifiedTaskIdsRef = useRef(new Set<string>());
 
     useEffect(() => {
         if (!project?.id) return;
         const tasks = Array.from(soraTasks.values());
         const updates: Promise<any>[] = [];
+
         tasks.forEach((task) => {
             if (task.status !== 'completed') return;
+
+            // 检查是否需要通知（针对多镜头任务）
+            if (task.shotIds && task.shotIds.length > 1 && !notifiedTaskIdsRef.current.has(task.id)) {
+                notifiedTaskIdsRef.current.add(task.id);
+                // 只有当任务是最近完成的（比如1分钟内创建的，或者简单点直接提示）
+                // 为了避免页面刷新时弹出大量提示，可以检查任务更新时间是否在最近
+                const isRecent = new Date(task.updatedAt).getTime() > Date.now() - 60000;
+                if (isRecent) {
+                    const shotLabels = task.shotIds
+                        .map(id => shotIndexById.get(id))
+                        .filter(idx => idx !== undefined)
+                        .map(idx => idx! + 1)
+                        .sort((a, b) => a - b);
+
+                    if (shotLabels.length > 0) {
+                        const rangeStr = `${shotLabels[0]}-${shotLabels[shotLabels.length - 1]}`;
+                        toast.success(`Sora视频已生成 (镜头 ${rangeStr})`, {
+                            description: "新视频覆盖了指定镜头范围。如与旧视频重叠，请手动确认效果。",
+                            duration: 5000,
+                        });
+                    }
+                }
+            }
+
             const videoUrl = task.r2Url || task.kaponaiUrl;
             if (!videoUrl) return;
 
@@ -423,7 +450,11 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                 const shot = shotsById.get(shotId);
                 if (!shot?.sceneId) return;
                 if (shot.videoClip === videoUrl) return;
+
+                // 检查是否已经有视频，且不是来自同一个任务
+                // 如果是单镜头任务，且分镜已有视频，则跳过（防止覆盖用户手动绑定的）
                 if (shot.videoClip) return;
+
                 if (syncedTaskIdsRef.current.has(`${task.id}:${shotId}`)) return;
 
                 syncedTaskIdsRef.current.add(`${task.id}:${shotId}`);
@@ -443,7 +474,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         if (updates.length > 0) {
             Promise.allSettled(updates).catch(() => { });
         }
-    }, [soraTasks, shotsById, project?.id, updateShot]);
+    }, [soraTasks, shotsById, project?.id, updateShot, shotIndexById]);
 
     const applyStatusUpdate = async (task: SoraTask, data: any, notify: boolean) => {
         const remoteStatus = data.status;
@@ -464,14 +495,40 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
 
             if (isTransition && videoUrl) {
                 if (task.shotId && task.sceneId) {
+                    // Fetch current shot to get existing generation_history
+                    const currentShotData = await dataService.getShot(task.shotId);
+                    const existingHistory = currentShotData?.generationHistory || [];
+
+                    // Check if this video is already in history
+                    const alreadyExists = existingHistory.some(h => h.result === videoUrl);
+
+                    const newHistory = alreadyExists ? existingHistory : [
+                        {
+                            id: `sora_${task.id}_${Date.now()}`,
+                            type: 'video' as const,
+                            timestamp: new Date().toISOString(),
+                            result: videoUrl,
+                            prompt: typeof task.prompt === 'string' ? task.prompt : 'Sora Video Generation',
+                            parameters: {
+                                model: 'sora',
+                                taskId: task.id,
+                            },
+                            status: 'success' as const
+                        },
+                        ...existingHistory
+                    ];
+
                     await dataService.saveShot(task.sceneId, {
                         id: task.shotId,
                         status: 'done',
                         videoClip: videoUrl,
+                        generationHistory: newHistory,
                     } as any);
+                    console.log('[TimelineView] Saved shot with generationHistory:', task.shotId, 'length:', newHistory.length, 'type:', newHistory[0]?.type);
                     updateShot(task.shotId, {
                         status: 'done',
                         videoClip: videoUrl,
+                        generationHistory: newHistory,
                     } as any);
                 }
 
@@ -922,6 +979,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                 return '排队中';
             case 'processing':
             case 'generating':
+            case 'in_progress':
                 return '生成中';
             case 'completed':
                 return '已完成';
@@ -938,6 +996,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                 return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-300';
             case 'processing':
             case 'generating':
+            case 'in_progress':
                 return 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300';
             case 'completed':
                 return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300';
@@ -981,6 +1040,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
 
     return (
         <div className="fixed inset-0 z-50 bg-light-bg dark:bg-cine-black flex overflow-hidden">
+            <LeftSidebarNew activeView="timeline" />
             {/* Left: Video Player Area */}
             <div className="flex-1 flex flex-col min-w-0 relative">
                 {/* Top Bar */}
@@ -1011,13 +1071,6 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                         >
                             <RefreshCw size={14} />
                             <span>刷新状态</span>
-                        </button>
-                        <button
-                            onClick={onClose}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-light-accent/10 dark:bg-cine-accent/10 hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 rounded text-sm text-light-text dark:text-white transition-colors"
-                        >
-                            <Grid3X3 size={14} />
-                            <span>故事板视图</span>
                         </button>
                     </div>
                 </div>
@@ -1482,15 +1535,15 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                     {/* Collapse Button */}
                     <button
                         onClick={() => setShowRightPanel(false)}
-                        className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 p-1.5 bg-white dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-full text-light-text dark:text-white transition-colors shadow-lg border border-light-border dark:border-cine-border"
+                        className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-8 h-8 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 rounded-full text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all shadow-xl border border-black/5 dark:border-white/10 flex items-center justify-center group"
                         title="收起面板"
                     >
-                        <ChevronRight size={16} />
+                        <ChevronRight size={18} className="transition-transform group-hover:translate-x-0.5" />
                     </button>
 
-                    {/* Mode Toggle */}
-                    <div className="p-4 pb-2 flex-shrink-0">
-                        <div className="flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
+                    {/* Mode Toggle & Header */}
+                    <div className="p-4 pb-2 flex-shrink-0 flex items-center gap-3">
+                        <div className="flex-1 flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
                             <button
                                 onClick={() => setControlMode('agent')}
                                 className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${controlMode === 'agent'

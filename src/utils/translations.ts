@@ -15,7 +15,13 @@ export const SHOT_SIZE_TRANSLATIONS: Record<ShotSize, string> = {
     'Point of View Shot': '主观镜头',
     'Bird\'s Eye View': '鸟瞰镜头',
     'Dutch Angle': '荷兰角',
-    'Establishing Shot': '建立镜头'
+    'Establishing Shot': '建立镜头',
+    'Cowboy Shot': '牛仔镜头',
+    'Eye Level Shot': '平视镜头',
+    'Worm\'s Eye View': '虫眼视角',
+    'Ground Level Shot': '地面镜头',
+    'Aerial Shot': '航拍镜头',
+    'Macro Shot': '微距镜头'
 };
 
 export const CAMERA_MOVEMENT_TRANSLATIONS: Record<CameraMovement, string> = {
@@ -40,7 +46,14 @@ export const CAMERA_MOVEMENT_TRANSLATIONS: Record<CameraMovement, string> = {
     'Pedestal Down': '升降下',
     'Handheld': '手持',
     'Arc': '环绕',
-    'Crane': '摇臂'
+    'Crane': '摇臂',
+    'Tracking Shot': '跟拍',
+    'Steadicam': '斯坦尼康',
+    'Rack Focus': '焦点转换',
+    'Whip Pan': '甩镜头',
+    'Push In': '推进',
+    'Pull Out': '拉远',
+    'Vertigo Effect': '希区柯克变焦'
 };
 
 export function translateShotSize(size: ShotSize): string {

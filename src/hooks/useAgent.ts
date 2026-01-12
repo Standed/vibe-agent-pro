@@ -48,7 +48,11 @@ export interface UseAgentResult {
   } | null;
 }
 
-export function useAgent(): UseAgentResult {
+export interface UseAgentOptions {
+  chatChannel?: string;
+}
+
+export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
   const {
     project,
     currentSceneId,
@@ -63,6 +67,7 @@ export function useAgent(): UseAgentResult {
   } = useProjectStore();
 
   const { isAuthenticated, user, loading } = useAuth();
+  const chatChannel = options.chatChannel;
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
@@ -197,15 +202,34 @@ export function useAgent(): UseAgentResult {
         throw new Error('USER_CANCELLED');
       }
 
+      // 智能重复检测：检测分镜生成类请求
+      let enhancedMessage = message;
+      const hasExistingContent = (project.scenes?.length || 0) > 0 || (project.shots?.length || 0) > 0;
+      const isStoryboardRequest = /生成.*分镜|创建.*镜头|写.*脚本|拆分.*分镜|分析.*剧本/i.test(message);
+
+      if (hasExistingContent && isStoryboardRequest) {
+        const sessionHistory = session.messages || [];
+        const hasSimilarRecentRequest = sessionHistory.slice(-5).some(
+          (m: { role: string; content: string }) =>
+            m.role === 'user' && /生成.*分镜|创建.*镜头|写.*脚本/.test(m.content)
+        );
+
+        if (hasSimilarRecentRequest) {
+          enhancedMessage = `${message}\n\n【系统提示】当前项目已有 ${project.scenes?.length || 0} 个场景、${project.shots?.length || 0} 个镜头。请基于现有内容进行编辑或补充，避免生成重复内容。`;
+          console.log('[useAgent] 检测到重复分镜请求，已附加上下文提示');
+        }
+      }
+
       // Step 3: Add user message to session
       const userMessage: AgentMessage = {
         role: 'user',
-        content: message,
+        content: enhancedMessage,
       };
       await sessionManager.addMessage(userMessage);
 
       // ⭐ 保存用户消息到云端数据库（chat_messages表）
       if (user && project) {
+        const metadata = chatChannel ? { channel: chatChannel } : undefined;
         void dataService.saveChatMessage({
           id: generateMessageId(),
           userId: user.id,
@@ -213,6 +237,7 @@ export function useAgent(): UseAgentResult {
           scope: 'project',
           role: 'user',
           content: message,
+          metadata,
           timestamp: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -668,6 +693,10 @@ export function useAgent(): UseAgentResult {
       await sessionManager.addMessage(assistantMessage);
 
       if (user && project) {
+        const metadata = {
+          ...(chatChannel ? { channel: chatChannel } : {}),
+          thinkingSteps: thinkingSteps, // Persist thinking steps for UI expansion
+        };
         void dataService.saveChatMessage({
           id: generateMessageId(),
           userId: user.id,
@@ -675,9 +704,7 @@ export function useAgent(): UseAgentResult {
           scope: 'project',
           role: 'assistant',
           content: finalSummary,
-          metadata: {
-            thinkingSteps: thinkingSteps, // Persist thinking steps for UI expansion
-          },
+          metadata,
           timestamp: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -724,6 +751,7 @@ export function useAgent(): UseAgentResult {
     lastMessageHash,
     user,
     isAuthenticated,
+    chatChannel,
   ]);
 
   // Clear session
