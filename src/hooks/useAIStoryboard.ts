@@ -177,10 +177,10 @@ export const useAIStoryboard = () => {
                     const firstPass = applyCharacterDesigns(
                         characterCandidates,
                         characterDesigns,
-                        project.characters,
+                        activeProject?.characters || [],
                         updateCharacter,
                         addCharacter,
-                        project.metadata.artStyle
+                        activeProject?.metadata.artStyle
                     );
 
                     // Second pass for missing
@@ -197,10 +197,10 @@ export const useAIStoryboard = () => {
                             applyCharacterDesigns(
                                 firstPass.missing,
                                 retryDesigns,
-                                project.characters,
+                                activeProject?.characters || [],
                                 updateCharacter,
                                 addCharacter,
-                                project.metadata.artStyle
+                                activeProject?.metadata.artStyle
                             );
                         } catch (e) {
                             console.error('Retry failed', e);
