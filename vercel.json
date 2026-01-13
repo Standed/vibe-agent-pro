@@ -3,7 +3,7 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "regions": ["hkg1"],
+  "regions": ["iad1"],
   "env": {
     "NEXT_PUBLIC_APP_NAME": "Video Agent Pro"
   },
@@ -16,7 +16,7 @@
   "functions": {
     "src/app/api/**/*.ts": {
       "maxDuration": 60,
-      "memory": 3008
+      "memory": 2048
     },
     "src/app/api/gemini-grid/route.ts": {
       "maxDuration": 120
@@ -42,7 +42,7 @@
   "crons": [
     {
       "path": "/api/cron/check-sora-status",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
