@@ -3,7 +3,7 @@
  * Uses Gemini for better tool calling capabilities
  */
 
-import { AGENT_TOOLS, ToolCall, formatToolsForPrompt } from './agentToolDefinitions';
+import { AGENT_TOOLS, ToolCall, formatToolsForPrompt, ToolDefinition } from './agentToolDefinitions';
 import { calculateCredits } from '@/config/credits';
 
 const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3-flash-preview'; // Agent推理模型
@@ -199,6 +199,16 @@ const sanitizeToolResult = (tool: string, result: any): any => {
           shotCount: scene.shotCount,
           shots: sanitizeShots(scene.shots),
         })),
+        locations: (result.locations || []).map((loc: any) => ({
+          id: loc.id,
+          name: loc.name,
+          description: truncateString(loc.description || ''),
+        })),
+        characters: (result.characters || []).map((char: any) => ({
+          id: char.id,
+          name: char.name,
+          description: truncateString(char.description || ''),
+        })),
       };
     case 'getSceneDetails':
       return {
@@ -369,8 +379,8 @@ export function estimateCredits(toolCalls: ToolCall[], userRole: 'user' | 'admin
  * Generate AI agent system instruction (complete detailed version)
  * Uses Gemini's system_instruction parameter - content doesn't count toward quota
  */
-function generateSystemInstruction(): string {
-  const toolDefinitions = formatToolsForPrompt(AGENT_TOOLS);
+function generateSystemInstruction(tools: ToolDefinition[] = AGENT_TOOLS): string {
+  const toolDefinitions = formatToolsForPrompt(tools);
 
   return `# Video Agent - AI 影视创作助手
 
@@ -382,8 +392,14 @@ function generateSystemInstruction(): string {
    - 不要猜测场景ID、镜头ID等信息
    - 需要操作特定场景时，先用 searchScenes 查询获得准确的 sceneId
    - 需要了解项目全貌时，先用 getProjectContext 获取完整上下文
+   - **创建场景前必查**：在调用 createScene 前，必须先检查是否已存在同名或相似场景。如果存在，请使用 updateScene 或 addShots，严禁重复创建。
 
-2. **分步执行复杂任务**
+2. **回复规范（关键）**
+   - \`message\` 字段必须是**自然语言**（中文），用于告诉用户你正在做什么或已经做了什么。
+   - **严禁**在 \`message\` 中输出原始 JSON、工具参数对象或数组。
+   - **严禁**直接通过 \`message\` 返回工具的执行结果（如分镜列表），你应该总结这些结果（如"已为您添加了3个分镜"）。
+
+3. **分步执行复杂任务**
    - 不要一次性调用所有工具
    - 先执行查询类工具（如 searchScenes、getProjectContext）
    - 再根据查询结果执行操作类工具（如 createScene、addShots）
@@ -654,19 +670,21 @@ function generateContextPrompt(context: AgentContext): string {
 }
 
 /**
- * Process user command using Gemini 3 Pro with function calling
+ * Send message to AI Agent
  */
-export async function processUserCommand(
-  userMessage: string,
-  chatHistory: AgentMessage[],
-  context: AgentContext = {},
-  signal?: AbortSignal
+export async function sendMessage(
+  messages: AgentMessage[],
+  context: AgentContext,
+  onStream?: (chunk: string) => void,
+  signal?: AbortSignal,
+  tools: ToolDefinition[] = AGENT_TOOLS
 ): Promise<AgentAction> {
-  const systemInstruction = generateSystemInstruction();
-  const contextPrompt = generateContextPrompt(context);
+  const systemInstruction = generateSystemInstruction(tools);
 
-  // Build user message with minimal context
-  const fullUserMessage = `${contextPrompt}\n\n${userMessage}`;
+  const fullUserMessage = messages
+    .filter(m => m.role === 'user')
+    .map(m => m.content)
+    .join('\n');
 
   // Convert chat history to Gemini format
   const contents = [
@@ -677,8 +695,8 @@ export async function processUserCommand(
   ];
 
   // Convert tools to Gemini function declaration format
-  const tools = [{
-    function_declarations: AGENT_TOOLS.map(tool => ({
+  const geminiTools = [{
+    function_declarations: tools.map(tool => ({
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters
@@ -690,9 +708,9 @@ export async function processUserCommand(
       {
         model: GEMINI_MODEL,
         payload: {
-          system_instruction: { parts: [{ text: systemInstruction }] },  // ✅ Use system_instruction
+          system_instruction: { parts: [{ text: systemInstruction }] },
           contents,
-          tools,
+          tools: geminiTools,
           generationConfig: {
             temperature: 0.3, // Agent推理需要精确性，使用较低的temperature
             maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -731,9 +749,20 @@ export async function processUserCommand(
 
     // Try to parse as JSON action
     try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const action = JSON.parse(jsonMatch[0]) as AgentAction;
+      // 1. Try to extract from markdown code blocks first (most reliable)
+      const jsonBlockMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      let jsonString = jsonBlockMatch ? jsonBlockMatch[1] : null;
+
+      // 2. If no code block, try to find the first valid JSON object
+      if (!jsonString) {
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          jsonString = jsonMatch[0];
+        }
+      }
+
+      if (jsonString) {
+        const action = JSON.parse(jsonString) as AgentAction;
         // If type is tool_use, ensure requiresToolExecution is set
         if (action.type === 'tool_use' && action.toolCalls && action.toolCalls.length > 0) {
           action.requiresToolExecution = true;
@@ -742,6 +771,7 @@ export async function processUserCommand(
         return action;
       }
     } catch (e) {
+      console.warn('Failed to parse JSON from Agent response:', e);
       // Not JSON, treat as plain text
     }
 
@@ -771,9 +801,10 @@ export async function continueWithToolResults(
   chatHistory: AgentMessage[],
   context: AgentContext = {},
   pendingScenes: string[] = [], // 跨轮次跟踪未添加分镜的场景
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  tools: ToolDefinition[] = AGENT_TOOLS
 ): Promise<AgentAction> {
-  const systemInstruction = generateSystemInstruction();
+  const systemInstruction = generateSystemInstruction(tools);
   const contextPrompt = generateContextPrompt(context);
 
   const lastUserMessage = [...chatHistory].reverse().find(msg => msg.role === 'user');
@@ -820,8 +851,8 @@ export async function continueWithToolResults(
   ];
 
   // Include tools so Gemini can make additional function calls
-  const tools = [{
-    function_declarations: AGENT_TOOLS.map(tool => ({
+  const geminiTools = [{
+    function_declarations: tools.map(tool => ({
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters
@@ -835,7 +866,7 @@ export async function continueWithToolResults(
         payload: {
           system_instruction: { parts: [{ text: systemInstruction }] },
           contents,
-          tools,
+          tools: geminiTools,
           generationConfig: {
             temperature: 0.3, // Agent推理需要精确性，使用较低的temperature
             maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -874,9 +905,20 @@ export async function continueWithToolResults(
 
     // Try to parse as JSON action
     try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const action = JSON.parse(jsonMatch[0]) as AgentAction;
+      // 1. Try to extract from markdown code blocks first (most reliable)
+      const jsonBlockMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      let jsonString = jsonBlockMatch ? jsonBlockMatch[1] : null;
+
+      // 2. If no code block, try to find the first valid JSON object
+      if (!jsonString) {
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          jsonString = jsonMatch[0];
+        }
+      }
+
+      if (jsonString) {
+        const action = JSON.parse(jsonString) as AgentAction;
         // If type is tool_use, ensure requiresToolExecution is set
         if (action.type === 'tool_use' && action.toolCalls && action.toolCalls.length > 0) {
           action.requiresToolExecution = true;
@@ -885,6 +927,7 @@ export async function continueWithToolResults(
         return action;
       }
     } catch (e) {
+      console.warn('Failed to parse JSON from Agent continuation:', e);
       // Not JSON
     }
 

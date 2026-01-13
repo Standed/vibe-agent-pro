@@ -224,8 +224,35 @@ export default function PlanningView({
 
         // 其他意图（增删改查、对话等），使用统一的 Agent 服务
         setInputText('');
+
+        // 立即添加用户消息到本地状态（乐观更新）
+        const userMessage: ChatMessage = {
+            id: generateMessageId(),
+            userId: user?.id || '',
+            projectId: project.id,
+            scope: 'project',
+            role: 'user',
+            content: userContent,
+            metadata: { channel: 'planning' },
+            timestamp: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        };
+        setMessages((prev) => [...prev, userMessage]);
+
         try {
+            // 保存用户消息
+            await dataService.saveChatMessage(userMessage);
+
+            // 发送给 Agent
             await sendAgentMessage(userContent);
+
+            // 重新加载聊天历史以获取 Agent 回复
+            const history = await dataService.getChatMessages({
+                projectId: project.id,
+                scope: 'project',
+            });
+            setMessages(filterPlanningMessages(history));
         } catch (error) {
             console.error('[PlanningView] Agent 处理错误:', error);
             // useAgent 内部已处理错误提示，这里无需额外 toast
@@ -332,9 +359,9 @@ export default function PlanningView({
                     messages={messages}
                     inputText={inputText}
                     setInputText={setInputText}
-                    isProcessing={isSubmitting}
+                    isProcessing={isSubmitting || isAgentProcessing}
                     isGenerating={isGenerating}
-                    thinkingSteps={[]}
+                    thinkingSteps={thinkingSteps}
                     handleSendMessage={handleSendMessage}
                     currentStep={currentStep}
                     messagesEndRef={messagesEndRef}

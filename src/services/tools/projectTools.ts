@@ -46,7 +46,17 @@ export class ProjectTools {
                 sceneCount: this.project.scenes.length,
                 shotCount: this.project.shots.length,
                 aspectRatio: this.project.settings.aspectRatio,
-                scenes: scenes
+                scenes: scenes,
+                locations: this.project.locations.map(loc => ({
+                    id: loc.id,
+                    name: loc.name,
+                    description: loc.description
+                })),
+                characters: this.project.characters.map(char => ({
+                    id: char.id,
+                    name: char.name,
+                    description: char.description
+                }))
             })
         };
     }

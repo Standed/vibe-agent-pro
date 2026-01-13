@@ -89,11 +89,20 @@ export const useAIStoryboard = () => {
             const analysis = await apiCall('analyzeScript', { script });
             updateStep(1, 'completed');
 
+            // Determine effective art style: Project setting > AI Analysis > Default
+            let effectiveArtStyle = activeProject?.metadata.artStyle;
+            if (!effectiveArtStyle && analysis.artStyle) {
+                effectiveArtStyle = analysis.artStyle;
+                // Update project metadata with detected style
+                useProjectStore.getState().updateProjectMetadata({ artStyle: effectiveArtStyle });
+                toast.success(`已自动识别画风: ${effectiveArtStyle}`);
+            }
+
             // 2. Generate shots
             updateStep(2, 'running');
             const generatedShots = await apiCall('generateShots', {
                 script,
-                artStyle: activeProject?.metadata.artStyle
+                artStyle: effectiveArtStyle
             });
             updateStep(2, 'completed', `已生成 ${generatedShots.length} 个镜头`);
 
@@ -104,27 +113,52 @@ export const useAIStoryboard = () => {
 
             // 4. Auto-create missing Location assets (before adding scenes)
             const existingLocationNames = new Set((activeProject?.locations || []).map(l => l.name));
-            const uniqueLocations = new Set(sceneGroups.map((g: any) => g.location));
-            const artStyle = activeProject?.metadata?.artStyle || '';
-            uniqueLocations.forEach((locationName: string) => {
-                if (!existingLocationNames.has(locationName)) {
-                    // 根据场景名称和项目风格生成场景描述
-                    const locationType = locationName.includes('室内') || locationName.includes('内部') ? 'interior' as const : 'exterior' as const;
-                    const typeLabel = locationType === 'interior' ? '室内场景' : '室外场景';
-                    const description = artStyle
-                        ? `${artStyle}风格的${typeLabel}。${locationName}，需要体现故事氛围和视觉风格。`
-                        : `${typeLabel}。${locationName}，需要体现故事氛围。`;
-                    const newLocation = {
-                        id: crypto.randomUUID(),
-                        name: locationName,
-                        type: locationType,
-                        description,
-                        referenceImages: []
-                    };
-                    addLocation(newLocation);
-                    console.log(`[useAIStoryboard] Auto-created Location: ${locationName}`);
+            const uniqueLocations = Array.from(new Set(sceneGroups.map((g: any) => g.location)));
+            const newLocationNames = uniqueLocations.filter(name => !existingLocationNames.has(name));
+
+            if (newLocationNames.length > 0) {
+                updateStep(3, 'running', `正在为 ${newLocationNames.length} 个场景生成 AI 描述...`);
+                try {
+                    const locationDescriptions = await apiCall('generateLocationDescriptions', {
+                        script,
+                        locationNames: newLocationNames,
+                        artStyle: effectiveArtStyle
+                    });
+
+                    newLocationNames.forEach((locationName) => {
+                        const locationType = locationName.includes('室内') || locationName.includes('内部') ? 'interior' as const : 'exterior' as const;
+                        // Use AI description if available, fallback to template
+                        const aiDescription = locationDescriptions[locationName];
+                        const description = aiDescription || (effectiveArtStyle
+                            ? `${effectiveArtStyle}风格的${locationType === 'interior' ? '室内' : '室外'}场景。${locationName}`
+                            : `${locationType === 'interior' ? '室内' : '室外'}场景。${locationName}`);
+
+                        const newLocation = {
+                            id: crypto.randomUUID(),
+                            name: locationName,
+                            type: locationType,
+                            description,
+                            referenceImages: []
+                        };
+                        addLocation(newLocation);
+                        console.log(`[useAIStoryboard] Auto-created Location: ${locationName}`);
+                    });
+                } catch (e) {
+                    console.error('Failed to generate location descriptions', e);
+                    // Fallback to simple creation on error
+                    newLocationNames.forEach((locationName) => {
+                        const locationType = locationName.includes('室内') || locationName.includes('内部') ? 'interior' as const : 'exterior' as const;
+                        const newLocation = {
+                            id: crypto.randomUUID(),
+                            name: locationName,
+                            type: locationType,
+                            description: `${locationName} (AI 描述生成失败)`,
+                            referenceImages: []
+                        };
+                        addLocation(newLocation);
+                    });
                 }
-            });
+            }
 
             // 5. Add scenes/shots
             updateStep(4, 'running');
@@ -173,7 +207,7 @@ export const useAIStoryboard = () => {
                     const characterDesigns = await apiCall('generateCharacterDesigns', {
                         script,
                         characterNames: characterCandidates,
-                        artStyle: activeProject?.metadata.artStyle,
+                        artStyle: effectiveArtStyle,
                         projectSummary: `${activeProject?.metadata.title || ''} ${activeProject?.metadata.description || ''}`.trim(),
                         shots: generatedShots,
                         // Pass existing characters' descriptions as context to avoid conflicts
@@ -187,7 +221,7 @@ export const useAIStoryboard = () => {
                         activeProject?.characters || [],
                         updateCharacter,
                         addCharacter,
-                        activeProject?.metadata.artStyle
+                        effectiveArtStyle
                     );
 
                     // Second pass for missing
@@ -197,7 +231,7 @@ export const useAIStoryboard = () => {
                             const retryDesigns = await apiCall('generateCharacterDesigns', {
                                 script,
                                 characterNames: firstPass.missing,
-                                artStyle: activeProject?.metadata.artStyle,
+                                artStyle: effectiveArtStyle,
                                 projectSummary: `${activeProject?.metadata.title || ''} ${activeProject?.metadata.description || ''}`.trim(),
                                 shots: generatedShots,
                             });
@@ -207,7 +241,7 @@ export const useAIStoryboard = () => {
                                 activeProject?.characters || [],
                                 updateCharacter,
                                 addCharacter,
-                                activeProject?.metadata.artStyle
+                                effectiveArtStyle
                             );
                         } catch (e) {
                             console.error('Retry failed', e);
@@ -225,6 +259,8 @@ export const useAIStoryboard = () => {
             setCurrentStep(null); // 清除进度状态
 
             // ⭐ 分镜生成完成后自动展开左侧边栏
+            // ⭐ 分镜生成完成后自动展开左侧边栏
+            const { leftSidebarCollapsed, toggleLeftSidebar } = useProjectStore.getState();
             if (leftSidebarCollapsed) {
                 toggleLeftSidebar();
             }

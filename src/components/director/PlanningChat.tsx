@@ -61,7 +61,7 @@ export default function PlanningChat({
                                     { icon: <FileText size={16} />, text: '帮我完善剧本', prompt: '请根据我目前的创意，帮我完善一下剧本，增加一些戏剧冲突和细节描写，并更新到项目中。' },
                                     { icon: <Users size={16} />, text: '设计主要角色', prompt: '请根据剧本内容，为我设计 3 个性格鲜明的主要角色，包含外貌和性格描述，并添加到项目中。' },
                                     { icon: <MapPin size={16} />, text: '构思关键场景', prompt: '这个故事需要哪些关键场景？请帮我列出并描述它们的视觉风格，并添加到项目中。' },
-                                    { icon: <MessageSquare size={16} />, text: '分析故事节奏', prompt: '请分析一下我目前剧本的节奏，并给出改进建议。' },
+                                    { icon: <Wand2 size={16} />, text: '生成场景概念图', prompt: '请为当前的所有场景生成一张概念设计图（使用 seedream 模式），让我预览一下视觉风格。' },
                                 ].map((item, i) => (
                                     <button
                                         key={i}
@@ -84,8 +84,15 @@ export default function PlanningChat({
                     ))}
 
                     {/* Thinking Process */}
-                    {isProcessing && thinkingSteps.length > 0 && (
-                        <ThinkingProcess steps={thinkingSteps} isProcessing={isProcessing} />
+                    {(isProcessing || thinkingSteps.length > 0) && !isGenerating && (
+                        <div className="flex gap-3 justify-start">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-black dark:bg-white/10 flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10">
+                                <Wand2 size={16} className="text-white" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <ThinkingProcess steps={thinkingSteps} isProcessing={isProcessing} />
+                            </div>
+                        </div>
                     )}
 
                     {/* AI Storyboard Progress */}

@@ -45,6 +45,17 @@ export class SceneTools {
     createScene(name: string, description: string): ToolResult {
         if (!this.storeCallbacks?.addScene) return { tool: 'createScene', result: null, error: 'Store callback missing' };
 
+        // Check for duplicates
+        const existingScene = this.project?.scenes.find(s => s.name.trim().toLowerCase() === name.trim().toLowerCase());
+        if (existingScene) {
+            return {
+                tool: 'createScene',
+                result: { sceneId: existingScene.id, name: existingScene.name, order: existingScene.order, message: 'Scene already exists' },
+                success: true,
+                message: `Scene "${name}" already exists. Using existing scene.`
+            };
+        }
+
         const newScene: Scene = {
             id: generateId(),
             name,

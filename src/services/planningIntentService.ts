@@ -62,7 +62,17 @@ export function detectPlanningIntent(
 ): IntentResult {
     const text = userMessage.toLowerCase();
 
-    // 1. 检查删除意图（优先级最高，需要确认）
+    // 1. 首次消息或没有内容时，视为创作意图（优先级最高）
+    // 在空项目中，任何输入都应被视为剧本/创意，即使包含"删除"等关键词（可能是剧本内容）
+    if (context.isFirstMessage || (!context.hasScript && !context.hasScenes)) {
+        return {
+            intent: 'create',
+            confidence: 'high',
+            targetType: 'script',
+        };
+    }
+
+    // 2. 检查删除意图（需要确认）
     if (INTENT_KEYWORDS.delete.some(kw => text.includes(kw))) {
         return {
             intent: 'delete',
@@ -72,7 +82,7 @@ export function detectPlanningIntent(
         };
     }
 
-    // 2. 检查修改意图
+    // 3. 检查修改意图
     if (INTENT_KEYWORDS.modify.some(kw => text.includes(kw))) {
         return {
             intent: 'modify',
@@ -81,7 +91,7 @@ export function detectPlanningIntent(
         };
     }
 
-    // 3. 检查查询意图
+    // 4. 检查查询意图
     if (INTENT_KEYWORDS.query.some(kw => text.includes(kw))) {
         return {
             intent: 'query',
@@ -90,21 +100,12 @@ export function detectPlanningIntent(
         };
     }
 
-    // 4. 检查继续意图
+    // 5. 检查继续意图
     if (INTENT_KEYWORDS.continue.some(kw => text.includes(kw))) {
         return {
             intent: 'continue',
             confidence: 'medium',
             targetType: 'general',
-        };
-    }
-
-    // 5. 首次消息或没有内容时，视为创作意图
-    if (context.isFirstMessage || (!context.hasScript && !context.hasScenes)) {
-        return {
-            intent: 'create',
-            confidence: 'high',
-            targetType: 'script',
         };
     }
 

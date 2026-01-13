@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
         if ('error' in whitelistCheck) return whitelistCheck.error;
 
         const { action, ...args } = await req.json();
-        if (!action || !['analyzeScript', 'generateShots', 'generateCharacterDesigns'].includes(action)) {
+        if (!action || !['analyzeScript', 'generateShots', 'generateCharacterDesigns', 'generateLocationDescriptions'].includes(action)) {
             return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
         }
 
@@ -48,6 +48,14 @@ export async function POST(req: NextRequest) {
                     projectSummary: args.projectSummary,
                     shots: args.shots
                 });
+                break;
+
+            case 'generateLocationDescriptions':
+                result = await service.generateLocationDescriptions(
+                    args.script,
+                    args.locationNames,
+                    args.artStyle
+                );
                 break;
         }
 
