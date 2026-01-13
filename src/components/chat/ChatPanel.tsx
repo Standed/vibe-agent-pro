@@ -593,11 +593,18 @@ export default function ChatPanel() {
         toast.success("已应用到当前分镜");
     };
 
-    const handleApplyVideoToShot = async (videoUrl: string) => {
+    const handleApplyVideoToShot = async (message: ChatPanelMessage) => {
+        const videoUrl = message.videoUrl || message.metadata?.videoUrl;
+        const taskId = message.metadata?.taskId;
         if (!selectedShotId) {
             toast.error("请先选择一个分镜");
             return;
         }
+        if (!videoUrl) {
+            toast.error("无效的视频链接");
+            return;
+        }
+
         try {
             // 从数据库获取最新的 Shot 数据，确保不丢失历史记录
             const latestShot = await dataService.getShot(selectedShotId);
@@ -607,25 +614,32 @@ export default function ChatPanel() {
                 selectedShot?.sceneId ||
                 currentSceneId ||
                 project?.scenes?.[0]?.id;
+
             if (!sceneId) {
                 toast.error("未找到场景信息");
                 return;
             }
 
-            const newHistoryItem = {
-                id: `sora_pro_${Date.now()}`,
-                type: 'video' as const,
-                timestamp: new Date(),
-                result: videoUrl,
-                prompt: 'Sora Pro Mode Generation',
-                parameters: {
-                    model: 'sora-video',
-                    source: 'pro-chat'
-                },
-                status: 'success' as const
-            };
+            // 检查历史记录去重
+            const alreadyExists = currentHistory.some((h: any) => h.result === videoUrl);
 
-            const updatedHistory = [newHistoryItem, ...currentHistory];
+            let updatedHistory = currentHistory;
+            if (!alreadyExists) {
+                const newHistoryItem = {
+                    id: `sora_pro_${Date.now()}`,
+                    type: 'video' as const,
+                    timestamp: new Date(),
+                    result: videoUrl,
+                    prompt: message.metadata?.prompt || 'Sora Pro Mode Generation',
+                    parameters: {
+                        model: 'sora-video',
+                        source: 'pro-chat',
+                        taskId: taskId
+                    },
+                    status: 'success' as const
+                };
+                updatedHistory = [newHistoryItem, ...currentHistory];
+            }
 
             // 1. 立即更新前端状态 (Optimistic Update)
             updateShot(selectedShotId, {
@@ -636,15 +650,25 @@ export default function ChatPanel() {
             toast.success("视频已应用到当前分镜");
 
             // 2. 后台异步保存到数据库 (不阻塞 UI)
-            dataService.saveShot(sceneId, {
+            const saveShotPromise = dataService.saveShot(sceneId, {
                 id: selectedShotId,
                 videoClip: videoUrl,
                 status: 'done',
                 generationHistory: updatedHistory
-            } as any).catch(err => {
-                console.error('Background save failed:', err);
-                toast.error("保存到数据库失败，请刷新重试");
-            });
+            } as any);
+
+            // 3. 如果有 taskId，绑定任务到分镜
+            if (taskId) {
+                dataService.getSoraTasks(project?.id || '').then(async (tasks) => {
+                    const task = tasks.find(t => t.id === taskId);
+                    if (task) {
+                        const updatedTask = { ...task, shotId: selectedShotId, updatedAt: new Date() };
+                        await dataService.saveSoraTask(updatedTask);
+                    }
+                }).catch(err => console.error('Failed to bind task:', err));
+            }
+
+            await saveShotPromise;
 
         } catch (e) {
             console.error('Apply video to shot error:', e);
@@ -705,7 +729,7 @@ export default function ChatPanel() {
                         onReusePrompt={() => handleRestoreState(msg)}
                         onReuseImage={handleReuseImage}
                         onApplyToShot={handleApplyToShot}
-                        onApplyVideoToShot={handleApplyVideoToShot}
+                        onApplyVideoToShot={handleApplyVideoToShot as any}
                         onImageClick={(url, idx, m: any) => {
                             if (m.gridData) {
                                 setGridResult({

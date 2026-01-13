@@ -21,20 +21,20 @@ import {
 } from 'lucide-react';
 import AgentPanel from '../agent/AgentPanel';
 import ChatPanel from '@/components/chat/ChatPanel';
-import { useAuth } from '@/components/auth/AuthProvider';
-import { dataService } from '@/lib/dataService';
 import type { SoraTask, Shot } from '@/types/project';
-import { toast } from 'sonner';
 import LeftSidebarNew from './LeftSidebarNew';
+
+import { useSoraTaskManager } from '@/hooks/useSoraTaskManager';
 
 interface TimelineViewProps {
     onClose: () => void;
 }
 
 export default function TimelineView({ onClose }: TimelineViewProps) {
-    const { project, selectShot, selectedShotId, controlMode, setControlMode, currentSceneId, updateShot } = useProjectStore();
+    const { project, selectShot, selectedShotId, controlMode, setControlMode, currentSceneId } = useProjectStore();
 
     const videoRef = useRef<HTMLVideoElement>(null);
+    const progressBarRef = useRef<HTMLDivElement>(null);
     const pendingSeekRef = useRef<number | null>(null);
     const previousVideoUrlRef = useRef<string | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -42,6 +42,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [currentShotIndex, setCurrentShotIndex] = useState(0);
+    const [isScrubbing, setIsScrubbing] = useState(false);
     const [showRightPanel, setShowRightPanel] = useState(true); // 默认展开右侧面板
     const [showQueuePanel, setShowQueuePanel] = useState(false);
     const queueOpenRef = useRef(false);
@@ -59,8 +60,24 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     }, [allShots]);
 
     // Subscribe to Sora task updates
-    const { user } = useAuth(); // Get user for chat message
-    const [soraTasks, setSoraTasks] = useState<Map<string, SoraTask>>(new Map());
+    // Subscribe to Sora task updates
+
+    // 使用统一的 Sora 任务管理 Hook
+    // 使用统一的 Sora 任务管理 Hook
+    const {
+        soraTaskList,
+        taskCounts: soraTaskCounts,
+        refreshTask,
+        refreshAllTasks,
+        bindTaskToShot
+    } = useSoraTaskManager({
+        enablePolling: true,
+        pollingInterval: 5000,
+        autoSyncToShots: true
+    });
+
+
+
     const shotsById = useMemo(
         () => new Map((project?.shots || []).map((shot) => [shot.id, shot])),
         [project?.shots]
@@ -73,33 +90,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         () => new Map((project?.characters || []).map((character) => [character.id, character])),
         [project?.characters]
     );
-    const soraTaskList = useMemo(() => {
-        const tasks = Array.from(soraTasks.values());
-        const statusRank = (task: SoraTask) => {
-            if (task.status === 'processing' || task.status === 'generating') return 0;
-            if (task.status === 'queued') return 1;
-            if (task.status === 'completed') return 2;
-            if (task.status === 'failed') return 3;
-            return 4;
-        };
-        return tasks.sort((a, b) => {
-            const rankDiff = statusRank(a) - statusRank(b);
-            if (rankDiff !== 0) return rankDiff;
-            const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
-            const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
-            return bTime - aTime;
-        });
-    }, [soraTasks]);
-    const soraTaskCounts = useMemo(() => {
-        const counts = { queued: 0, processing: 0, completed: 0, failed: 0 };
-        soraTaskList.forEach((task) => {
-            if (task.status === 'queued') counts.queued += 1;
-            else if (task.status === 'processing' || task.status === 'generating') counts.processing += 1;
-            else if (task.status === 'completed') counts.completed += 1;
-            else if (task.status === 'failed') counts.failed += 1;
-        });
-        return counts;
-    }, [soraTaskList]);
+
     const activeQueueCount = soraTaskCounts.queued + soraTaskCounts.processing;
 
     const buildFallbackRanges = useCallback((shots: Shot[]) => {
@@ -142,14 +133,17 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
 
             const startIndex = Math.min(...indices);
             const endIndex = Math.max(...indices);
-            const shots = task.shotIds.map((id) => shotsById.get(id)).filter(Boolean) as Shot[];
+            const sortedShotIds = [...task.shotIds].sort((a, b) => {
+                return (shotIndexById.get(a) ?? 0) - (shotIndexById.get(b) ?? 0);
+            });
+            const shots = sortedShotIds.map((id) => shotsById.get(id)).filter(Boolean) as Shot[];
             const ranges = task.shotRanges?.length ? task.shotRanges : buildFallbackRanges(shots);
             const rangesByShotId = new Map(ranges.map((range) => [range.shotId, range]));
 
             groups.push({
                 taskId: task.id,
                 videoUrl,
-                shotIds: task.shotIds,
+                shotIds: sortedShotIds,
                 shots,
                 shotRanges: ranges,
                 rangesByShotId,
@@ -164,16 +158,22 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     const groupByShotId = useMemo(() => {
         const map = new Map<string, (typeof soraVideoGroups)[number]>();
         soraVideoGroups.forEach((group) => {
-            group.shotIds.forEach((shotId) => map.set(shotId, group));
+            group.shotIds.forEach((shotId) => {
+                // Only set if not already present (prioritize newer tasks if soraVideoGroups is ordered New->Old)
+                if (!map.has(shotId)) {
+                    map.set(shotId, group);
+                }
+            });
         });
         return map;
     }, [soraVideoGroups]);
 
-    // Find current shot
-    const currentShot = allShots[currentShotIndex];
+    // Find current shot with bounds check
+    const safeShotIndex = Math.min(currentShotIndex, Math.max(0, allShots.length - 1));
+    const currentShot = allShots[safeShotIndex];
     const currentGroup = currentShot ? groupByShotId.get(currentShot.id) : undefined;
     const currentVideoUrl = currentGroup?.videoUrl || currentShot?.videoClip || '';
-    const currentShotRange = currentGroup?.rangesByShotId.get(currentShot.id);
+    const currentShotRange = currentShot ? currentGroup?.rangesByShotId.get(currentShot.id) : undefined;
     const hasVideo = !!currentVideoUrl;
     const activeSceneId = currentSceneId || currentShot?.sceneId || project?.scenes?.[0]?.id;
     const sceneOutputTasks = useMemo(() => {
@@ -258,6 +258,28 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         }
     }, [selectedShotId, allShots]);
 
+    // Bounds check for currentShotIndex
+    useEffect(() => {
+        if (allShots.length > 0 && currentShotIndex >= allShots.length) {
+            setCurrentShotIndex(allShots.length - 1);
+        }
+    }, [allShots.length, currentShotIndex]);
+
+    // Sync video playback state
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        if (isPlaying) {
+            video.play().catch((e) => {
+                console.warn('Video play failed:', e);
+                setIsPlaying(false);
+            });
+        } else {
+            video.pause();
+        }
+    }, [isPlaying]);
+
     // Reset video state when source changes
     useEffect(() => {
         const video = videoRef.current;
@@ -289,9 +311,30 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     // Handle video time update
     const handleTimeUpdate = useCallback(() => {
         if (videoRef.current) {
-            setCurrentTime(videoRef.current.currentTime);
+            const time = videoRef.current.currentTime;
+            setCurrentTime(time);
+
+            // Auto-switch shot for multi-shot videos
+            if (currentGroup && currentShotRange && isPlaying) {
+                // Check if we moved to the next shot in the group
+                if (time >= currentShotRange.end - 0.1) { // 0.1s tolerance
+                    const nextShotId = currentGroup.shotIds.find(id => {
+                        const range = currentGroup.rangesByShotId.get(id);
+                        return range && time >= range.start && time < range.end;
+                    });
+
+                    if (nextShotId && nextShotId !== currentShot?.id) {
+                        const nextIndex = allShots.findIndex(s => s.id === nextShotId);
+                        if (nextIndex !== -1) {
+                            console.log('Auto-switching to shot:', nextIndex);
+                            setCurrentShotIndex(nextIndex);
+                            selectShot(nextShotId);
+                        }
+                    }
+                }
+            }
         }
-    }, []);
+    }, [currentGroup, currentShotRange, isPlaying, allShots, currentShot?.id, selectShot]);
 
     // Handle video loaded
     const handleLoadedMetadata = useCallback(() => {
@@ -447,521 +490,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         return 'history';
     }, [shotsById]);
 
-    const syncedTaskIdsRef = useRef(new Set<string>());
-    const notifiedTaskIdsRef = useRef(new Set<string>());
 
-    useEffect(() => {
-        if (!project?.id) return;
-        const tasks = Array.from(soraTasks.values());
-        const updates: Promise<any>[] = [];
-
-        tasks.forEach((task) => {
-            if (task.status !== 'completed') return;
-
-            // 检查是否需要通知（针对多镜头任务）
-            if (task.shotIds && task.shotIds.length > 1 && !notifiedTaskIdsRef.current.has(task.id)) {
-                notifiedTaskIdsRef.current.add(task.id);
-                // 只有当任务是最近完成的（比如1分钟内创建的，或者简单点直接提示）
-                // 为了避免页面刷新时弹出大量提示，可以检查任务更新时间是否在最近
-                const isRecent = new Date(task.updatedAt).getTime() > Date.now() - 60000;
-                if (isRecent) {
-                    const shotLabels = task.shotIds
-                        .map(id => shotIndexById.get(id))
-                        .filter(idx => idx !== undefined)
-                        .map(idx => idx! + 1)
-                        .sort((a, b) => a - b);
-
-                    if (shotLabels.length > 0) {
-                        const rangeStr = `${shotLabels[0]}-${shotLabels[shotLabels.length - 1]}`;
-                        toast.success(`Sora视频已生成 (镜头 ${rangeStr})`);
-                    }
-                }
-            }
-
-            const videoUrl = task.r2Url || task.kaponaiUrl;
-            if (!videoUrl) return;
-
-            if (task.shotIds && task.shotIds.length > 1) return;
-
-            const targetShotIds = task.shotId ? [task.shotId] : (task.shotIds || []);
-            if (targetShotIds.length === 0) return;
-
-            targetShotIds.forEach((shotId) => {
-                const shot = shotsById.get(shotId);
-                if (!shot?.sceneId) return;
-                if (shot.videoClip === videoUrl) return;
-
-                // 检查是否已经有视频，且不是来自同一个任务
-                // 如果是单镜头任务，且分镜已有视频，则跳过（防止覆盖用户手动绑定的）
-                if (shot.videoClip) return;
-
-                if (syncedTaskIdsRef.current.has(`${task.id}:${shotId}`)) return;
-
-                syncedTaskIdsRef.current.add(`${task.id}:${shotId}`);
-                updateShot(shot.id, {
-                    status: 'done',
-                    videoClip: videoUrl,
-                } as any);
-                updates.push(
-                    dataService.saveShot(shot.sceneId, {
-                        id: shot.id,
-                        status: 'done',
-                        videoClip: videoUrl,
-                    } as any)
-                );
-            });
-        });
-        if (updates.length > 0) {
-            Promise.allSettled(updates).catch(() => { });
-        }
-    }, [soraTasks, shotsById, project?.id, updateShot, shotIndexById]);
-
-    const applyStatusUpdate = async (task: SoraTask, data: any, notify: boolean) => {
-        const remoteStatus = data.status;
-        const videoUrl = data.videoUrl || data.r2Url || data.kaponaiUrl;
-
-        if (remoteStatus === 'completed') {
-            const isTransition = task.status !== 'completed';
-            const updatedTask: SoraTask = {
-                ...task,
-                status: 'completed',
-                progress: 100,
-                kaponaiUrl: data.kaponaiUrl || task.kaponaiUrl || videoUrl,
-                r2Url: data.r2Url || task.r2Url,
-                updatedAt: new Date(),
-            };
-            setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
-            await dataService.saveSoraTask(updatedTask);
-
-            if (isTransition && videoUrl) {
-                if (task.shotId && task.sceneId) {
-                    // Fetch current shot to get existing generation_history
-                    const currentShotData = await dataService.getShot(task.shotId);
-                    const existingHistory = currentShotData?.generationHistory || [];
-
-                    // Check if this video is already in history
-                    const alreadyExists = existingHistory.some(h => h.result === videoUrl);
-
-                    const newHistory = alreadyExists ? existingHistory : [
-                        {
-                            id: `sora_${task.id}_${Date.now()}`,
-                            type: 'video' as const,
-                            timestamp: new Date().toISOString(),
-                            result: videoUrl,
-                            prompt: typeof task.prompt === 'string' ? task.prompt : 'Sora Video Generation',
-                            parameters: {
-                                model: 'sora',
-                                taskId: task.id,
-                            },
-                            status: 'success' as const
-                        },
-                        ...existingHistory
-                    ];
-
-                    await dataService.saveShot(task.sceneId, {
-                        id: task.shotId,
-                        status: 'done',
-                        videoClip: videoUrl,
-                        generationHistory: newHistory,
-                    } as any);
-                    console.log('[TimelineView] Saved shot with generationHistory:', task.shotId, 'length:', newHistory.length, 'type:', newHistory[0]?.type);
-                    updateShot(task.shotId, {
-                        status: 'done',
-                        videoClip: videoUrl,
-                        generationHistory: newHistory,
-                    } as any);
-                }
-
-                if (user && project?.id) {
-                    await dataService.saveChatMessage({
-                        id: crypto.randomUUID(),
-                        userId: user.id,
-                        projectId: project.id,
-                        sceneId: task.sceneId,
-                        shotId: task.shotId,
-                        scope: 'shot',
-                        role: 'assistant',
-                        content: '视频生成成功！',
-                        timestamp: new Date(),
-                        createdAt: new Date(),
-                        updatedAt: new Date(),
-                        metadata: {
-                            type: 'video_result',
-                            videoUrl: videoUrl,
-                            taskId: task.id,
-                        }
-                    });
-                }
-
-                if (notify) {
-                    toast.success('视频生成成功！');
-                }
-            } else if (notify) {
-                toast.success('状态已更新');
-            }
-            return;
-        }
-
-        if (remoteStatus === 'failed') {
-            const isTransition = task.status !== 'failed';
-            const errorMsg = data.error || 'Unknown error';
-            const updatedTask: SoraTask = {
-                ...task,
-                status: 'failed',
-                errorMessage: errorMsg,
-                updatedAt: new Date(),
-            };
-            setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
-            await dataService.saveSoraTask(updatedTask);
-            if (notify) {
-                toast.error(`视频生成失败: ${errorMsg}`);
-            }
-            return;
-        }
-
-        const nextStatus = remoteStatus === 'generating' ? 'processing' : remoteStatus;
-        const nextProgress = typeof data.progress === 'number' ? data.progress : task.progress;
-        if (nextStatus !== task.status || nextProgress !== task.progress) {
-            const updatedTask: SoraTask = {
-                ...task,
-                status: nextStatus,
-                progress: nextProgress,
-                updatedAt: new Date(),
-            };
-            setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
-            await dataService.saveSoraTask(updatedTask);
-        }
-
-        if (notify) {
-            toast.info(`已刷新状态：${nextStatus}${typeof nextProgress === 'number' ? ` (${nextProgress}%)` : ''}`);
-        }
-    };
-
-    const refreshTask = async (task: SoraTask, notify: boolean, silentError: boolean = false) => {
-        try {
-            const res = await fetch(`/api/sora/status?taskId=${task.id}`);
-            if (!res.ok) {
-                const text = await res.text();
-                if (!silentError) {
-                    toast.error(`刷新失败: ${text || res.status}`);
-                }
-                return;
-            }
-            const data = await res.json();
-            await applyStatusUpdate(task, data, notify);
-        } catch (error) {
-            console.error('Error refreshing sora task:', error);
-            if (!silentError) {
-                toast.error('刷新失败，请稍后重试');
-            }
-        }
-    };
-
-    const refreshSelectedTask = async () => {
-        const targetShotId = selectedShotId || currentShot?.id;
-        if (!targetShotId) {
-            toast.info('请先选择一个镜头');
-            return;
-        }
-
-        let task =
-            soraTasks.get(targetShotId) ||
-            Array.from(soraTasks.values()).find((t) => t.shotId === targetShotId);
-
-        if (!task) {
-            const shot = shotsById.get(targetShotId);
-            const sceneTaskIds = shot?.sceneId
-                ? scenesById.get(shot.sceneId)?.soraGeneration?.tasks || []
-                : [];
-            if (sceneTaskIds.length > 0) {
-                task = Array.from(soraTasks.values()).find((t) => sceneTaskIds.includes(t.id));
-            }
-            if (!task && shot?.sceneId) {
-                task = Array.from(soraTasks.values()).find(
-                    (t) => t.sceneId === shot.sceneId && (!t.type || t.type === 'shot_generation')
-                );
-            }
-        }
-
-        if (!task) {
-            const backfilled = await backfillMissingTasks();
-            if (backfilled > 0 && project?.id) {
-                const tasks = await loadSoraTasks();
-                const taskMap = new Map<string, SoraTask>();
-                tasks.forEach((t) => taskMap.set(t.shotId || t.id, t));
-                setSoraTasks(taskMap);
-
-                task =
-                    taskMap.get(targetShotId) ||
-                    Array.from(taskMap.values()).find((t) => t.shotId === targetShotId);
-            }
-        }
-
-        if (!task) {
-            toast.info('该镜头没有可刷新任务');
-            return;
-        }
-
-        await refreshTask(task, true);
-    };
-
-    const backfillMissingTasks = useCallback(async () => {
-        if (!project?.id || !user?.id) return 0;
-
-        const knownTaskIds = new Set(Array.from(soraTasks.values()).map((task) => task.id));
-        const candidates: Array<{ id: string; sceneId?: string; type?: 'shot_generation' | 'character_reference' }> = [];
-
-        (project.scenes || []).forEach((scene) => {
-            const taskIds = scene.soraGeneration?.tasks || [];
-            taskIds.forEach((taskId) => {
-                if (!taskId || knownTaskIds.has(taskId)) return;
-                candidates.push({
-                    id: taskId,
-                    sceneId: scene.id,
-                    type: 'shot_generation',
-                });
-            });
-        });
-
-        if (candidates.length === 0) return 0;
-
-        try {
-            const res = await fetch('/api/sora/tasks/backfill', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    projectId: project.id,
-                    userId: user.id,
-                    tasks: candidates,
-                }),
-            });
-            if (!res.ok) {
-                const text = await res.text();
-                console.error('Backfill sora tasks failed:', text);
-                return 0;
-            }
-            return candidates.length;
-        } catch (error) {
-            console.error('Backfill sora tasks failed:', error);
-            return 0;
-        }
-    }, [project?.id, project?.scenes, soraTasks, user?.id]);
-
-    const mapTaskRow = useCallback((row: any): SoraTask => ({
-        id: row.id,
-        userId: row.user_id,
-        projectId: row.project_id,
-        sceneId: row.scene_id || undefined,
-        shotId: row.shot_id || undefined,
-        shotIds: row.shot_ids || undefined,
-        shotRanges: row.shot_ranges || undefined,
-        characterId: row.character_id || undefined,
-        type: row.type || undefined,
-        status: row.status,
-        progress: row.progress ?? 0,
-        model: row.model || 'sora-2',
-        prompt: row.prompt || '',
-        targetDuration: row.target_duration || 0,
-        targetSize: row.target_size || '',
-        kaponaiUrl: row.kaponai_url || undefined,
-        r2Url: row.r2_url || undefined,
-        pointCost: row.point_cost || 0,
-        errorMessage: row.error_message || undefined,
-        createdAt: new Date(row.created_at),
-        updatedAt: new Date(row.updated_at),
-    }), []);
-
-    const loadSoraTasks = useCallback(async (): Promise<SoraTask[]> => {
-        if (!project?.id) return [];
-
-        try {
-            const res = await fetch('/api/sora/tasks/list', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    projectId: project.id,
-                }),
-            });
-            if (res.ok) {
-                const data = await res.json();
-                return (data.tasks || []).map((row: any) => mapTaskRow(row));
-            }
-        } catch (error) {
-            console.error('Load sora tasks from api failed:', error);
-        }
-
-        return dataService.getSoraTasks(project.id);
-    }, [project?.id, mapTaskRow]);
-
-    const refreshAllTasks = async () => {
-        if (!project?.id) return;
-
-        await backfillMissingTasks();
-
-        let latestTasks: SoraTask[] = [];
-        try {
-            latestTasks = await loadSoraTasks();
-            const taskMap = new Map<string, SoraTask>();
-            latestTasks.forEach((t) => taskMap.set(t.shotId || t.id, t));
-            setSoraTasks(taskMap);
-        } catch (error) {
-            console.error('Error reloading sora tasks:', error);
-            latestTasks = soraTaskList;
-        }
-
-        const pendingTasks = latestTasks.filter((task) =>
-            task.status === 'queued' ||
-            task.status === 'processing' ||
-            task.status === 'generating' ||
-            (task.status === 'completed' && !task.kaponaiUrl && !task.r2Url)
-        );
-        if (pendingTasks.length === 0) {
-            return;
-        }
-
-        try {
-            const res = await fetch('/api/sora/status/batch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    taskIds: pendingTasks.map((task) => task.id),
-                }),
-            });
-            if (!res.ok) {
-                return;
-            }
-            const data = await res.json();
-            const resultMap = new Map<string, any>();
-            (data.results || []).forEach((item: any) => {
-                if (item?.id) resultMap.set(item.id, item);
-            });
-            for (const task of pendingTasks) {
-                const payload = resultMap.get(task.id);
-                if (payload) {
-                    await applyStatusUpdate(task, payload, false);
-                }
-            }
-        } catch (error) {
-            console.error('Batch refresh failed:', error);
-        }
-    };
-
-    const bindTaskToShot = async (task: SoraTask, targetShotId?: string) => {
-        const shotId = targetShotId || selectedShotId || currentShot?.id;
-        if (!shotId) {
-            toast.info('请先选择一个镜头');
-            return;
-        }
-
-        const shot = shotsById.get(shotId);
-        if (!shot?.sceneId) {
-            toast.error('未找到目标镜头');
-            return;
-        }
-
-        const videoUrl = task.r2Url || task.kaponaiUrl;
-        if (!videoUrl) {
-            toast.info('该任务暂时没有可用视频');
-            return;
-        }
-
-        try {
-            await dataService.saveShot(shot.sceneId, {
-                id: shot.id,
-                status: 'done',
-                videoClip: videoUrl,
-            } as any);
-
-            updateShot(shot.id, {
-                status: 'done',
-                videoClip: videoUrl,
-            } as any);
-
-            const updatedTask: SoraTask = {
-                ...task,
-                shotId: shot.id,
-                updatedAt: new Date(),
-            };
-
-            setSoraTasks((prev) => {
-                const next = new Map(prev);
-                const oldKey = task.shotId || task.id;
-                next.delete(oldKey);
-                next.set(shot.id, updatedTask);
-                return next;
-            });
-
-            await dataService.saveSoraTask(updatedTask);
-            toast.success('已绑定到镜头');
-        } catch (error) {
-            console.error('Error binding sora task to shot:', error);
-            toast.error('绑定失败，请稍后重试');
-        }
-    };
-
-    useEffect(() => {
-        if (!project?.id) return;
-
-        // Load existing tasks
-        loadSoraTasks().then((tasks) => {
-            const taskMap = new Map<string, SoraTask>();
-            tasks.forEach((t) => taskMap.set(t.shotId || t.id, t));
-            setSoraTasks(taskMap);
-        });
-
-        // Subscribe to realtime updates
-        const unsubscribe = dataService.subscribeToSoraTasks(project.id, (task) => {
-            setSoraTasks((prev) => {
-                const newMap = new Map(prev);
-                newMap.set(task.shotId || task.id, task);
-                return newMap;
-            });
-        });
-
-        return () => unsubscribe();
-    }, [project?.id, loadSoraTasks]);
-
-    useEffect(() => {
-        if (!showQueuePanel) {
-            queueOpenRef.current = false;
-            return;
-        }
-        if (queueOpenRef.current) return;
-        queueOpenRef.current = true;
-        backfillMissingTasks().then(() => {
-            if (!project?.id) return;
-            loadSoraTasks().then((tasks) => {
-                const taskMap = new Map<string, SoraTask>();
-                tasks.forEach((t) => taskMap.set(t.shotId || t.id, t));
-                setSoraTasks(taskMap);
-            });
-        });
-    }, [showQueuePanel, project?.id, backfillMissingTasks, loadSoraTasks]);
-
-    // Polling for Sora task status
-    useEffect(() => {
-        const pollInterval = setInterval(async () => {
-            const processingTasks = Array.from(soraTasks.values()).filter(
-                (t) => t.status === 'processing' || t.status === 'queued' || t.status === 'generating'
-            );
-
-            if (processingTasks.length === 0) return;
-
-            for (const task of processingTasks) {
-                try {
-                    const res = await fetch(`/api/sora/status?taskId=${task.id}`);
-                    if (!res.ok) continue;
-
-                    const data = await res.json();
-                    await applyStatusUpdate(task, data, false);
-                } catch (error) {
-                    console.error('Error polling sora task:', error);
-                }
-            }
-        }, 5000);
-
-        return () => clearInterval(pollInterval);
-    }, [soraTasks, project?.id, user]);
     // Play/Pause toggle
     const togglePlay = useCallback(() => {
         if (!hasVideo) return;
@@ -1047,16 +576,60 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         }
     };
 
-    // Progress bar click
-    const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const seekToClientX = useCallback((clientX: number) => {
         if (!videoRef.current || !hasVideo) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const percent = x / rect.width;
-        const newTime = percent * duration;
+        const bar = progressBarRef.current;
+        if (!bar) return;
+        const rect = bar.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        const percent = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1);
+        const videoDuration = duration || videoRef.current.duration || 0;
+        if (!videoDuration) return;
+        const newTime = percent * videoDuration;
         videoRef.current.currentTime = newTime;
         setCurrentTime(newTime);
-    };
+
+        // Manual seek shot switching
+        if (currentGroup) {
+            const targetShotId = currentGroup.shotIds.find((id) => {
+                const range = currentGroup.rangesByShotId.get(id);
+                return range && newTime >= range.start && newTime < range.end;
+            });
+
+            if (targetShotId && targetShotId !== currentShot?.id) {
+                const nextIndex = shotIndexById.get(targetShotId);
+                if (typeof nextIndex === 'number') {
+                    setCurrentShotIndex(nextIndex);
+                    selectShot(targetShotId);
+                }
+            }
+        }
+    }, [currentGroup, currentShot?.id, duration, hasVideo, selectShot, shotIndexById]);
+
+    // Progress bar click
+    const handleProgressClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+        seekToClientX(e.clientX);
+    }, [seekToClientX]);
+
+    const handleProgressPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+        if (!hasVideo) return;
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        setIsScrubbing(true);
+        seekToClientX(e.clientX);
+    }, [hasVideo, seekToClientX]);
+
+    const handleProgressPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+        if (!isScrubbing) return;
+        seekToClientX(e.clientX);
+    }, [isScrubbing, seekToClientX]);
+
+    const handleProgressPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+        if (!isScrubbing) return;
+        if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+            e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+        setIsScrubbing(false);
+    }, [isScrubbing]);
 
     const timelineItems = useMemo(() => {
         const items: Array<
@@ -1185,14 +758,14 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                                                     {/* 右侧：操作按钮 */}
                                                     <div className="flex items-center gap-1 flex-shrink-0">
                                                         <button
-                                                            onClick={() => refreshTask(task, false, true)}
+                                                            onClick={() => refreshTask(task.id)}
                                                             className="text-[10px] px-1.5 py-0.5 rounded text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-border/50 dark:hover:bg-cine-border/50 transition-colors"
                                                         >
                                                             刷新
                                                         </button>
                                                         {videoUrl && canBindToCurrentShot(task) && (
                                                             <button
-                                                                onClick={() => bindTaskToShot(task)}
+                                                                onClick={() => bindTaskToShot(task, currentShot?.id || '')}
                                                                 className="text-[10px] px-1.5 py-0.5 rounded text-light-accent dark:text-cine-accent hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
                                                             >
                                                                 绑定
@@ -1250,8 +823,8 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                                                 <div
                                                     key={task.id}
                                                     className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${applicationStatus === 'history'
-                                                            ? 'border-light-border/40 dark:border-cine-border/40 opacity-60 hover:opacity-100'
-                                                            : 'border-light-border/60 dark:border-cine-border/60 hover:bg-light-surface/50 dark:hover:bg-cine-surface/50'
+                                                        ? 'border-light-border/40 dark:border-cine-border/40 opacity-60 hover:opacity-100'
+                                                        : 'border-light-border/60 dark:border-cine-border/60 hover:bg-light-surface/50 dark:hover:bg-cine-surface/50'
                                                         }`}
                                                 >
                                                     {/* 左侧：镜头范围标识 */}
@@ -1289,14 +862,14 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                                                     {/* 右侧：操作按钮 */}
                                                     <div className="flex items-center gap-1 flex-shrink-0">
                                                         <button
-                                                            onClick={() => refreshTask(task, false, true)}
+                                                            onClick={() => refreshTask(task.id)}
                                                             className="text-[10px] px-1.5 py-0.5 rounded text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-border/50 dark:hover:bg-cine-border/50 transition-colors"
                                                         >
                                                             刷新
                                                         </button>
                                                         {videoUrl && canBindToCurrentShot(task) && (
                                                             <button
-                                                                onClick={() => bindTaskToShot(task)}
+                                                                onClick={() => bindTaskToShot(task, currentShot?.id || '')}
                                                                 className="text-[10px] px-1.5 py-0.5 rounded text-light-accent dark:text-cine-accent hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
                                                             >
                                                                 绑定
@@ -1388,7 +961,12 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                 {/* Progress Bar */}
                 <div
                     className="h-2 flex-shrink-0 bg-gray-200 dark:bg-zinc-800 cursor-pointer relative"
+                    ref={progressBarRef}
                     onClick={handleProgressClick}
+                    onPointerDown={handleProgressPointerDown}
+                    onPointerMove={handleProgressPointerMove}
+                    onPointerUp={handleProgressPointerUp}
+                    onPointerCancel={handleProgressPointerUp}
                 >
                     <div
                         className="absolute left-0 top-0 h-full bg-light-accent dark:bg-emerald-500 transition-all"

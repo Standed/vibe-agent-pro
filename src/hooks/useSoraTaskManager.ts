@@ -64,7 +64,6 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
     // 用于防止重复同步
     const syncedTaskIdsRef = useRef(new Set<string>());
     const notifiedTaskIdsRef = useRef(new Set<string>());
-    const abortControllerRef = useRef<AbortController | null>(null);
 
     // 辅助索引：shotId -> taskIds
     const tasksByShotId = useMemo(() => {
@@ -91,12 +90,24 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
             if (task.status === 'failed') return 3;
             return 4;
         };
+        const taskTimestamp = (task: SoraTask) => {
+            const updatedAt = task.updatedAt instanceof Date
+                ? task.updatedAt.getTime()
+                : task.updatedAt
+                    ? new Date(task.updatedAt).getTime()
+                    : NaN;
+            if (Number.isFinite(updatedAt) && updatedAt > 0) return updatedAt;
+            const createdAt = task.createdAt instanceof Date
+                ? task.createdAt.getTime()
+                : task.createdAt
+                    ? new Date(task.createdAt).getTime()
+                    : 0;
+            return createdAt;
+        };
         return tasks.sort((a, b) => {
             const rankDiff = statusRank(a) - statusRank(b);
             if (rankDiff !== 0) return rankDiff;
-            const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
-            const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
-            return bTime - aTime;
+            return taskTimestamp(b) - taskTimestamp(a);
         });
     }, [soraTasks]);
 
@@ -155,68 +166,9 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
             setSoraTasks((prev) => new Map(prev).set(task.id, updatedTask));
             await dataService.saveSoraTask(updatedTask);
 
-            if (isTransition && videoUrl && autoSyncToShots) {
-                // 同步到分镜
-                if (task.shotId && task.sceneId) {
-                    const currentShotData = await dataService.getShot(task.shotId);
-                    const existingHistory = currentShotData?.generationHistory || [];
-                    const alreadyExists = existingHistory.some((h: any) => h.result === videoUrl);
-
-                    const newHistory = alreadyExists ? existingHistory : [
-                        {
-                            id: `sora_${task.id}_${Date.now()}`,
-                            type: 'video' as const,
-                            timestamp: new Date().toISOString(),
-                            result: videoUrl,
-                            prompt: typeof task.prompt === 'string' ? task.prompt : 'Sora Video Generation',
-                            parameters: { model: 'sora', taskId: task.id },
-                            status: 'success' as const
-                        },
-                        ...existingHistory
-                    ];
-
-                    await dataService.saveShot(task.sceneId, {
-                        id: task.shotId,
-                        status: 'done',
-                        videoClip: videoUrl,
-                        generationHistory: newHistory,
-                    } as any);
-
-                    updateShot(task.shotId, {
-                        status: 'done',
-                        videoClip: videoUrl,
-                        generationHistory: newHistory,
-                    } as any);
-                }
-
-                // 保存聊天消息（检查 user 是否就绪）
-                if (user && project?.id) {
-                    const scope = task.shotId ? 'shot' : task.sceneId ? 'scene' : 'project';
-                    await dataService.saveChatMessage({
-                        id: crypto.randomUUID(),
-                        userId: user.id,
-                        projectId: project.id,
-                        sceneId: task.sceneId,
-                        shotId: task.shotId,
-                        scope,
-                        role: 'assistant',
-                        content: '视频生成成功！',
-                        timestamp: new Date(),
-                        createdAt: new Date(),
-                        updatedAt: new Date(),
-                        metadata: {
-                            type: 'video_result',
-                            videoUrl: videoUrl,
-                            taskId: task.id,
-                        }
-                    });
-                }
-
-                if (notify) {
-                    toast.success('视频生成成功！');
-                }
-            } else if (notify) {
-                toast.success('状态已更新');
+            // 状态更新后，useEffect 会自动处理分镜同步（如果启用了 autoSyncToShots）
+            if (notify) {
+                toast.success('视频生成成功！');
             }
             return;
         }
@@ -462,6 +414,8 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
         return () => clearInterval(pollInterval);
     }, [enablePolling, pollingInterval, project?.id, soraTaskList, applyStatusUpdate]);
 
+    const mountTimeRef = useRef(Date.now());
+
     // 自动同步完成的任务到分镜（Agent 模式：总是覆盖 + 写入历史）
     useEffect(() => {
         if (!project?.id || !autoSyncToShots) return;
@@ -513,6 +467,15 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
 
                 // 如果已经是当前视频，跳过
                 if (shot.videoClip === videoUrl) continue;
+
+                // 关键修复：防止旧任务在重载时覆盖用户手动选择的视频
+                // 只有当任务是在当前会话中完成的（比组件挂载时间晚），或者分镜当前没有视频时，才自动覆盖
+                const isNewTask = new Date(task.updatedAt).getTime() > mountTimeRef.current;
+                if (shot.videoClip && !isNewTask) {
+                    // 标记为已同步，避免重复检查
+                    syncedTaskIdsRef.current.add(syncKey);
+                    continue;
+                }
 
                 syncedTaskIdsRef.current.add(syncKey);
 
