@@ -428,12 +428,9 @@ export const useProjectStore = create<ProjectStore>()(
     selectShot: (id) =>
       set((state) => {
         const shot = state.project?.shots.find((s) => s.id === id);
-        const scene = state.project?.scenes.find((scene) =>
-          scene.shotIds.includes(id)
-        );
         return {
           selectedShotId: id,
-          currentSceneId: scene?.id || null,
+          currentSceneId: shot?.sceneId || null,
         };
       }),
 

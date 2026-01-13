@@ -404,6 +404,49 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         return !task.type || task.type === 'shot_generation';
     }, []);
 
+    /**
+     * 计算任务的"应用状态"：对比任务视频 URL 与分镜当前 videoClip
+     * - 'full': 任务视频是所有覆盖分镜的当前版本
+     * - 'partial': 任务视频是部分覆盖分镜的当前版本
+     * - 'history': 任务视频不是任何覆盖分镜的当前版本
+     * - 'pending': 任务未完成或无视频
+     */
+    type TaskApplicationStatus = 'full' | 'partial' | 'history' | 'pending';
+    const getTaskApplicationStatus = useCallback((task: SoraTask): TaskApplicationStatus => {
+        // 未完成或无视频的任务
+        const videoUrl = task.r2Url || task.kaponaiUrl;
+        if (task.status !== 'completed' || !videoUrl) {
+            return 'pending';
+        }
+
+        // 获取任务覆盖的分镜 ID
+        const shotIds = task.shotIds?.length ? task.shotIds : (task.shotId ? [task.shotId] : []);
+        if (shotIds.length === 0) {
+            // 无关联分镜的任务（如角色参考视频）
+            return task.type === 'character_reference' ? 'full' : 'history';
+        }
+
+        // 统计匹配情况
+        let matchCount = 0;
+        let totalValidShots = 0;
+        for (const shotId of shotIds) {
+            const shot = shotsById.get(shotId);
+            if (!shot) continue;
+            totalValidShots++;
+            // 对比视频 URL（归一化处理）
+            const shotVideoClip = shot.videoClip?.split('?')[0]?.split('#')[0] || '';
+            const taskVideoUrl = videoUrl.split('?')[0]?.split('#')[0] || '';
+            if (shotVideoClip === taskVideoUrl) {
+                matchCount++;
+            }
+        }
+
+        if (totalValidShots === 0) return 'history';
+        if (matchCount === totalValidShots) return 'full';
+        if (matchCount > 0) return 'partial';
+        return 'history';
+    }, [shotsById]);
+
     const syncedTaskIdsRef = useRef(new Set<string>());
     const notifiedTaskIdsRef = useRef(new Set<string>());
 
@@ -430,10 +473,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
 
                     if (shotLabels.length > 0) {
                         const rangeStr = `${shotLabels[0]}-${shotLabels[shotLabels.length - 1]}`;
-                        toast.success(`Sora视频已生成 (镜头 ${rangeStr})`, {
-                            description: "新视频覆盖了指定镜头范围。如与旧视频重叠，请手动确认效果。",
-                            duration: 5000,
-                        });
+                        toast.success(`Sora视频已生成 (镜头 ${rangeStr})`);
                     }
                 }
             }
@@ -1191,10 +1231,28 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                                             const isCharacterTask = task.type === 'character_reference';
                                             const character = isCharacterTask ? charactersById.get(task.characterId || '') : null;
 
+                                            // 计算应用状态
+                                            const applicationStatus = getTaskApplicationStatus(task);
+                                            const getApplicationBadge = () => {
+                                                switch (applicationStatus) {
+                                                    case 'full':
+                                                        return <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/20 text-green-600 dark:text-green-400">✓ 应用中</span>;
+                                                    case 'partial':
+                                                        return <span className="text-[9px] px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">⚡ 部分</span>;
+                                                    case 'history':
+                                                        return <span className="text-[9px] px-1 py-0.5 rounded bg-gray-500/20 text-gray-500 dark:text-gray-400">○ 历史</span>;
+                                                    default:
+                                                        return null;
+                                                }
+                                            };
+
                                             return (
                                                 <div
                                                     key={task.id}
-                                                    className="flex items-center gap-2 rounded-lg border border-light-border/60 dark:border-cine-border/60 px-2.5 py-1.5 hover:bg-light-surface/50 dark:hover:bg-cine-surface/50 transition-colors"
+                                                    className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${applicationStatus === 'history'
+                                                            ? 'border-light-border/40 dark:border-cine-border/40 opacity-60 hover:opacity-100'
+                                                            : 'border-light-border/60 dark:border-cine-border/60 hover:bg-light-surface/50 dark:hover:bg-cine-surface/50'
+                                                        }`}
                                                 >
                                                     {/* 左侧：镜头范围标识 */}
                                                     <div className="w-14 flex-shrink-0 text-[10px] font-mono text-light-text-muted dark:text-cine-text-muted truncate">
@@ -1205,6 +1263,9 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                                                     <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${getStatusClass(task.status)}`}>
                                                         {getStatusLabel(task.status)}
                                                     </span>
+
+                                                    {/* 应用状态徽章 */}
+                                                    {getApplicationBadge()}
 
                                                     {/* 中间：任务信息 */}
                                                     <div className="flex-1 min-w-0 flex items-center gap-2">

@@ -48,31 +48,60 @@ export class SoraOrchestrator {
     }
 
     /**
-     * 核心功能：为指定分镜生成视频 (仅处理传入的 shotIds)
+     * 核心功能：为指定分镜生成视频 (支持跨场景并行处理)
      */
     async generateShotsVideo(project: Project, sceneId: string, shotIds: string[], userId: string): Promise<string[]> {
         await this.dataService.initialize(userId);
-
-        const scene = project.scenes.find(s => s.id === sceneId);
-        if (!scene) throw new Error(`Scene ${sceneId} not found`);
 
         const uniqueIds = Array.from(new Set((shotIds || []).filter(Boolean)));
         if (uniqueIds.length === 0) {
             throw new Error('shotIds is required');
         }
 
-        const sceneShots = project.shots.filter(s => s.sceneId === sceneId);
-        const shotMap = new Map(sceneShots.map(shot => [shot.id, shot]));
-        const missing = uniqueIds.filter(id => !shotMap.has(id));
+        // 构建 shot 查找表
+        const allShotsMap = new Map(project.shots.map(shot => [shot.id, shot]));
+        const missing = uniqueIds.filter(id => !allShotsMap.has(id));
         if (missing.length > 0) {
-            throw new Error(`Shots not found in scene ${sceneId}: ${missing.join(', ')}`);
+            throw new Error(`Shots not found: ${missing.join(', ')}`);
         }
 
-        const shots = uniqueIds
-            .map(id => shotMap.get(id)!)
-            .sort((a, b) => a.order - b.order);
+        // 按场景分组
+        const shotsByScene = new Map<string, Shot[]>();
+        for (const shotId of uniqueIds) {
+            const shot = allShotsMap.get(shotId)!;
+            const sId = shot.sceneId;
+            if (!shotsByScene.has(sId)) {
+                shotsByScene.set(sId, []);
+            }
+            shotsByScene.get(sId)!.push(shot);
+        }
 
-        return await this.generateVideoForShots(project, scene, shots, userId, { appendToScene: true });
+        // 对每个场景组排序
+        shotsByScene.forEach((shots) => {
+            shots.sort((a, b) => a.order - b.order);
+        });
+
+        console.log(`[SoraOrchestrator] generateShotsVideo: ${uniqueIds.length} shots across ${shotsByScene.size} scene(s)`);
+
+        // 并行处理每个场景
+        const scenePromises: Promise<string[]>[] = [];
+
+        for (const [sId, shots] of shotsByScene) {
+            const scene = project.scenes.find(s => s.id === sId);
+            if (!scene) {
+                console.warn(`[SoraOrchestrator] Scene ${sId} not found, skipping ${shots.length} shots`);
+                continue;
+            }
+
+            // 每个场景独立生成（并行）
+            scenePromises.push(
+                this.generateVideoForShots(project, scene, shots, userId, { appendToScene: true })
+            );
+        }
+
+        // 并行执行所有场景的视频生成
+        const results = await Promise.all(scenePromises);
+        return results.flat();
     }
 
     private async generateVideoForShots(
@@ -90,12 +119,9 @@ export class SoraOrchestrator {
         const chunks = this.splitShotsIntoChunks(shots);
         console.log(`[SoraOrchestrator] Splitting scene ${scene.name} into ${chunks.length} task(s).`);
 
-        const taskIds: string[] = [];
 
-        // 3. 串行/并行生成视频任务
-        for (let i = 0; i < chunks.length; i++) {
-            const chunkShots = chunks[i];
-
+        // 3. 并行提交所有视频任务（改自串行，提升提交速度）
+        const taskPromises = chunks.map(async (chunkShots, i) => {
             // 构建剧本
             const script = {
                 "character_setting": this.buildCharacterSettings(involvedCharacters),
@@ -118,7 +144,7 @@ export class SoraOrchestrator {
             // 智能分辨率
             const targetSize = this.determineResolution(project.settings.aspectRatio);
 
-            console.log(`[SoraOrchestrator] Generating Task ${i + 1}/${chunks.length}: ${requestSeconds}s (Raw: ${rawDuration.toFixed(1)}), ${targetSize}`);
+            console.log(`[SoraOrchestrator] Submitting Task ${i + 1}/${chunks.length}: ${requestSeconds}s (Raw: ${rawDuration.toFixed(1)}), ${targetSize}`);
 
             // 选择参考图：优先级 分镜图 > 场景地点图
             let referenceImageForSora: string | undefined;
@@ -137,6 +163,7 @@ export class SoraOrchestrator {
                 }
             }
 
+            // 提交任务到 Kaponai（耗时操作，并行执行提升效率）
             const task = await this.kaponai.createVideo({
                 model: 'sora-2', // User requested cost saving
                 prompt: script,
@@ -145,8 +172,7 @@ export class SoraOrchestrator {
                 input_reference: referenceImageForSora ? [referenceImageForSora] : undefined
             });
 
-            taskIds.push(task.id);
-
+            // 构建并保存任务记录
             const soraTask: SoraTask = {
                 id: task.id,
                 userId,
@@ -179,7 +205,12 @@ export class SoraOrchestrator {
             };
 
             await this.dataService.saveSoraTask(soraTask);
-        }
+            return task.id;
+        });
+
+        // 并行等待所有任务提交完成
+        const taskIds = await Promise.all(taskPromises);
+        console.log(`[SoraOrchestrator] All ${taskIds.length} tasks submitted in parallel`);
 
         // 4. 持久化存储
         if (!scene.soraGeneration) {

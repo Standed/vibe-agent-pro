@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { dataService } from '@/lib/dataService';
+import { useSoraTaskManager } from '@/hooks/useSoraTaskManager';
 import type { SoraTask } from '@/types/project';
 import {
   ChevronDown,
@@ -18,293 +18,18 @@ import {
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
-import { useAuth } from '@/components/auth/AuthProvider';
-import { toast } from 'sonner';
 
 export default function Timeline() {
-  const { timelineMode, setTimelineMode, project, selectShot, updateShot } = useProjectStore();
+  const { timelineMode, setTimelineMode, project, selectShot } = useProjectStore();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [soraTasks, setSoraTasks] = useState<Map<string, SoraTask>>(new Map());
-  const syncedTaskIdsRef = useRef(new Set<string>());
 
-  const applyStatusUpdate = async (task: SoraTask, data: any, notify: boolean) => {
-    const remoteStatus = data.status;
-    const videoUrl = data.videoUrl || data.r2Url || data.kaponaiUrl;
-
-    if (remoteStatus === 'completed') {
-      const isTransition = task.status !== 'completed';
-      const updatedTask: SoraTask = {
-        ...task,
-        status: 'completed',
-        progress: 100,
-        kaponaiUrl: data.kaponaiUrl || task.kaponaiUrl || videoUrl,
-        r2Url: data.r2Url || task.r2Url,
-        updatedAt: new Date(),
-      };
-      setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
-      await dataService.saveSoraTask(updatedTask);
-
-      if (isTransition && videoUrl) {
-        if (task.shotId && task.sceneId) {
-          await dataService.saveShot(task.sceneId, {
-            id: task.shotId,
-            status: 'done',
-            videoClip: videoUrl,
-          } as any);
-          updateShot(task.shotId, {
-            status: 'done',
-            videoClip: videoUrl,
-          } as any);
-        }
-
-        if (user && project?.id) {
-          await dataService.saveChatMessage({
-            id: crypto.randomUUID(),
-            userId: user.id,
-            projectId: project.id,
-            sceneId: task.sceneId,
-            shotId: task.shotId,
-            scope: 'shot',
-            role: 'assistant',
-            content: '视频生成成功！',
-            timestamp: new Date(),
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            metadata: {
-              type: 'video_result',
-              videoUrl: videoUrl,
-              taskId: task.id,
-            }
-          });
-        }
-
-        if (notify) {
-          toast.success('视频生成成功！');
-        }
-      } else if (notify) {
-        toast.success('状态已更新');
-      }
-      return;
-    }
-
-    if (remoteStatus === 'failed') {
-      const isTransition = task.status !== 'failed';
-      const errorMsg = data.error || 'Unknown error';
-      const updatedTask: SoraTask = {
-        ...task,
-        status: 'failed',
-        errorMessage: errorMsg,
-        updatedAt: new Date(),
-      };
-      setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
-      await dataService.saveSoraTask(updatedTask);
-      if (notify) {
-        toast.error(`视频生成失败: ${errorMsg}`);
-      }
-      return;
-    }
-
-    const nextStatus = remoteStatus === 'generating' ? 'processing' : remoteStatus;
-    const nextProgress = typeof data.progress === 'number' ? data.progress : task.progress;
-    if (nextStatus !== task.status || nextProgress !== task.progress) {
-      const updatedTask: SoraTask = {
-        ...task,
-        status: nextStatus,
-        progress: nextProgress,
-        updatedAt: new Date(),
-      };
-      setSoraTasks((prev) => new Map(prev).set(task.shotId || task.id, updatedTask));
-      await dataService.saveSoraTask(updatedTask);
-    }
-
-    if (notify) {
-      toast.info(`已刷新状态：${nextStatus}${typeof nextProgress === 'number' ? ` (${nextProgress}%)` : ''}`);
-    }
-  };
-
-  const refreshSelectedTask = async () => {
-    const currentShotId = useProjectStore.getState().selectedShotId;
-    if (!currentShotId) {
-      toast.info('请先选择一个镜头');
-      return;
-    }
-
-    let task =
-      soraTasks.get(currentShotId) ||
-      Array.from(soraTasks.values()).find((t) => t.shotId === currentShotId);
-
-    if (!task) {
-      const shot = project?.shots.find((s) => s.id === currentShotId);
-      const sceneTaskIds = shot
-        ? project?.scenes.find((s) => s.id === shot.sceneId)?.soraGeneration?.tasks || []
-        : [];
-      if (sceneTaskIds.length > 0) {
-        task = Array.from(soraTasks.values()).find((t) => sceneTaskIds.includes(t.id));
-      }
-      if (!task && shot?.sceneId) {
-        task = Array.from(soraTasks.values()).find(
-          (t) => t.sceneId === shot.sceneId && (!t.type || t.type === 'shot_generation')
-        );
-      }
-    }
-
-    if (!task) {
-      toast.info('该镜头没有可刷新任务');
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/sora/status?taskId=${task.id}`);
-      if (!res.ok) {
-        const text = await res.text();
-        toast.error(`刷新失败: ${text || res.status}`);
-        return;
-      }
-      const data = await res.json();
-      await applyStatusUpdate(task, data, true);
-    } catch (error) {
-      console.error('Error refreshing sora task:', error);
-      toast.error('刷新失败，请稍后重试');
-    }
-  };
-
-  const refreshAllTasks = async () => {
-    if (!project?.id) return;
-
-    let latestTasks: SoraTask[] = [];
-    try {
-      latestTasks = await dataService.getSoraTasks(project.id);
-      const taskMap = new Map<string, SoraTask>();
-      latestTasks.forEach((t) => taskMap.set(t.shotId || t.id, t));
-      setSoraTasks(taskMap);
-    } catch (error) {
-      console.error('Error reloading sora tasks:', error);
-      latestTasks = Array.from(soraTasks.values());
-    }
-
-    const pendingTasks = latestTasks.filter((task) =>
-      task.status === 'queued' ||
-      task.status === 'processing' ||
-      task.status === 'generating' ||
-      (task.status === 'completed' && !task.kaponaiUrl && !task.r2Url)
-    );
-    if (pendingTasks.length === 0) {
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/sora/status/batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskIds: pendingTasks.map((task) => task.id),
-        }),
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      const resultMap = new Map<string, any>();
-      (data.results || []).forEach((item: any) => {
-        if (item?.id) resultMap.set(item.id, item);
-      });
-      for (const task of pendingTasks) {
-        const payload = resultMap.get(task.id);
-        if (payload) {
-          await applyStatusUpdate(task, payload, false);
-        }
-      }
-    } catch (error) {
-      console.error('Batch refresh failed:', error);
-    }
-  };
-
-  // Subscribe to Sora task updates
-  const { user } = useAuth(); // Get user for chat message
-
-  useEffect(() => {
-    if (!project?.id) return;
-
-    // Load existing tasks
-    dataService.getSoraTasks(project.id).then((tasks) => {
-      const taskMap = new Map<string, SoraTask>();
-      tasks.forEach((t) => taskMap.set(t.shotId || t.id, t));
-      setSoraTasks(taskMap);
-    });
-
-    // Subscribe to realtime updates
-    const unsubscribe = dataService.subscribeToSoraTasks(project.id, (task) => {
-      setSoraTasks((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(task.shotId || task.id, task);
-        return newMap;
-      });
-    });
-
-    return () => unsubscribe();
-  }, [project?.id]);
-
-  useEffect(() => {
-    if (!project?.id) return;
-    const tasks = Array.from(soraTasks.values());
-    const updates: Promise<any>[] = [];
-    tasks.forEach((task) => {
-      if (task.status !== 'completed') return;
-      const videoUrl = task.r2Url || task.kaponaiUrl;
-      if (!videoUrl) return;
-
-      const targetShotIds = task.shotId ? [task.shotId] : (task.shotIds || []);
-      if (targetShotIds.length === 0) return;
-
-      targetShotIds.forEach((shotId) => {
-        const shot = project?.shots.find((s) => s.id === shotId);
-        if (!shot?.sceneId) return;
-        if (shot.videoClip === videoUrl) return;
-        if (shot.videoClip) return;
-        if (syncedTaskIdsRef.current.has(`${task.id}:${shotId}`)) return;
-
-        syncedTaskIdsRef.current.add(`${task.id}:${shotId}`);
-        updateShot(shot.id, {
-          status: 'done',
-          videoClip: videoUrl,
-        } as any);
-        updates.push(
-          dataService.saveShot(shot.sceneId, {
-            id: shot.id,
-            status: 'done',
-            videoClip: videoUrl,
-          } as any)
-        );
-      });
-    });
-    if (updates.length > 0) {
-      Promise.allSettled(updates).catch(() => {});
-    }
-  }, [soraTasks, project?.id, project?.shots, updateShot]);
-
-  // Polling for Sora task status
-  useEffect(() => {
-    const pollInterval = setInterval(async () => {
-          const processingTasks = Array.from(soraTasks.values()).filter(
-            (t) => t.status === 'processing' || t.status === 'queued' || t.status === 'generating'
-          );
-
-      if (processingTasks.length === 0) return;
-
-      for (const task of processingTasks) {
-        try {
-          const res = await fetch(`/api/sora/status?taskId=${task.id}`);
-          if (!res.ok) continue;
-
-          const data = await res.json();
-          await applyStatusUpdate(task, data, false);
-        } catch (error) {
-          console.error('Error polling sora task:', error);
-        }
-      }
-    }, 5000);
-
-    return () => clearInterval(pollInterval);
-  }, [soraTasks, project?.id, user]);
+  // 使用统一的 Sora 任务管理 Hook
+  const {
+    soraTasks,
+    getTasksForShot,
+    refreshAllTasks,
+  } = useSoraTaskManager({ enablePolling: true, pollingInterval: 5000 });
 
   const toggleTimeline = () => {
     if (timelineMode === 'collapsed') {
@@ -322,27 +47,33 @@ export default function Timeline() {
   };
 
   // Get all shots sorted by scene order and shot order
-  const allShots = project?.shots
-    .slice()
-    .sort((a, b) => (a.globalOrder || 0) - (b.globalOrder || 0)) || [];
+  const allShots = useMemo(() => {
+    return project?.shots
+      .slice()
+      .sort((a, b) => (a.globalOrder || 0) - (b.globalOrder || 0)) || [];
+  }, [project?.shots]);
 
   // Calculate cumulative start times for each shot
-  const shotsWithTiming = allShots.map((shot, index) => {
-    const startTime = allShots
-      .slice(0, index)
-      .reduce((sum, s) => sum + (s.duration || 3), 0);
-    return {
-      shot,
-      startTime,
-      duration: shot.duration || 3,
-    };
-  });
+  const shotsWithTiming = useMemo(() => {
+    return allShots.map((shot, index) => {
+      const startTime = allShots
+        .slice(0, index)
+        .reduce((sum, s) => sum + (s.duration || 3), 0);
+      return {
+        shot,
+        startTime,
+        duration: shot.duration || 3,
+      };
+    });
+  }, [allShots]);
 
   // Calculate total duration from all shots
-  const totalDuration = shotsWithTiming.reduce(
-    (max, item) => Math.max(max, item.startTime + item.duration),
-    0
-  ) || 60;
+  const totalDuration = useMemo(() => {
+    return shotsWithTiming.reduce(
+      (max, item) => Math.max(max, item.startTime + item.duration),
+      0
+    ) || 60;
+  }, [shotsWithTiming]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -351,13 +82,20 @@ export default function Timeline() {
   };
 
   // Generate time markers every 5 seconds
-  const timeMarkers = [];
-  for (let i = 0; i <= totalDuration; i += 5) {
-    timeMarkers.push(i);
-  }
+  const timeMarkers = useMemo(() => {
+    const markers = [];
+    for (let i = 0; i <= totalDuration; i += 5) {
+      markers.push(i);
+    }
+    return markers;
+  }, [totalDuration]);
 
-  // Helper to get task status for a shot
-  const getTaskForShot = (shotId: string) => soraTasks.get(shotId);
+  // Helper to get task status for a shot (使用新的 hook 方法)
+  const getTaskForShot = useCallback((shotId: string): SoraTask | undefined => {
+    const tasks = getTasksForShot(shotId);
+    // 返回第一个任务（通常是最相关的）
+    return tasks[0];
+  }, [getTasksForShot]);
 
   // Render status indicator
   const renderStatusIndicator = (task: SoraTask | undefined) => {

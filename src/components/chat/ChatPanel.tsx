@@ -598,16 +598,19 @@ export default function ChatPanel() {
             toast.error("请先选择一个分镜");
             return;
         }
-        // 使用currentSceneId
-        const sceneId = currentSceneId || project?.scenes?.[0]?.id;
-        if (!sceneId) {
-            toast.error("未找到场景信息");
-            return;
-        }
         try {
             // 从数据库获取最新的 Shot 数据，确保不丢失历史记录
             const latestShot = await dataService.getShot(selectedShotId);
             const currentHistory = latestShot?.generationHistory || [];
+            const sceneId =
+                latestShot?.sceneId ||
+                selectedShot?.sceneId ||
+                currentSceneId ||
+                project?.scenes?.[0]?.id;
+            if (!sceneId) {
+                toast.error("未找到场景信息");
+                return;
+            }
 
             const newHistoryItem = {
                 id: `sora_pro_${Date.now()}`,

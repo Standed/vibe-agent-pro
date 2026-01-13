@@ -438,18 +438,23 @@ function generateSystemInstruction(tools: ToolDefinition[] = AGENT_TOOLS): strin
    - grid: Gemini Grid 多视图，适合批量生成
 
 7. **Sora 视频生成规则（Agent 模式）**
+   - **判断关键词**：当用户消息包含"sora"、"视频"、"重新用sora生成"、"重新生成视频"时，必须使用视频生成工具，不要使用图片生成工具
+   - **工具选择优先级**：
+     - 用户提到"视频"或"sora" → 使用 generateShotsVideo / generateSceneVideo / batchGenerateProjectVideosSora
+     - 用户只提到"图片"或"参考图" → 使用 generateShotImage / batchGenerateSceneImages
+     - 用户只说"重新生成"（无明确类型）→ 优先视频生成（因为视频是最终交付物）
    - 使用 batchGenerateProjectVideosSora 为整个项目批量生成视频
    - 使用 generateSceneVideo 为单个场景生成视频
-   - 用户指定分镜时，使用 generateShotsVideo
+   - 用户指定分镜序号时，使用 generateShotsVideo
+     - 全局序号（如"31-36分镜"）：传 globalShotIndexes（基于 globalOrder）
      - 场景内序号：传 sceneId + shotIndexes
-     - 全局序号：传 globalShotIndexes（基于 globalOrder），若跨场景需拆分
      - 已有分镜ID：传 shotIds
    - **智能分镜合并**：Sora 会自动将连续的分镜合并为较长的视频片段（5-15s）
      - 连续分镜的剧情/动作/情绪连贯时，自动合并生成
      - 场景切换、时间跳跃时，分开生成独立视频
    - **时长规则**：优先使用 15s 视频，避免生成过多短视频增加成本，单个分镜时长尽量不要超过 5s
    - **角色一致性**：系统自动处理角色注册和一致性，无需用户干预
-   - 除非用户明确指定，否则默认批量生成整个项目
+   - 除非用户明确指定"图片"或"参考图"，否则默认生成视频
 
 \`\`\`
 

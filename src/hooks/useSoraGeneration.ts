@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { replaceSoraCharacterCodes } from '@/utils/soraCharacterReplace';
 import { Project, ChatPanelMessage } from '@/types/project';
@@ -17,6 +17,18 @@ interface UseSoraGenerationProps {
     setManualReferenceUrls: (urls: string[]) => void;
 }
 
+interface UseSoraGenerationReturn {
+    generateSoraVideo: (
+        userMessageContent: string,
+        uploadedUrls: string[],
+        manualReferenceUrls: string[],
+        currentShotId?: string,
+        currentSceneIdCaptured?: string
+    ) => Promise<void>;
+    /** 取消当前轮询 */
+    cancelPolling: () => void;
+}
+
 export function useSoraGeneration({
     project,
     user,
@@ -28,7 +40,26 @@ export function useSoraGeneration({
     setInputText,
     setUploadedImages,
     setManualReferenceUrls
-}: UseSoraGenerationProps) {
+}: UseSoraGenerationProps): UseSoraGenerationReturn {
+    // AbortController 用于取消轮询
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    // 组件卸载时自动取消轮询
+    useEffect(() => {
+        return () => {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+                abortControllerRef.current = null;
+            }
+        };
+    }, []);
+
+    const cancelPolling = useCallback(() => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+    }, []);
 
     const generateSoraVideo = useCallback(async (
         userMessageContent: string,
@@ -77,7 +108,7 @@ export function useSoraGeneration({
 
             const taskId = result.taskId;
 
-            // 任务已提交，显示初始消息 (移除 Task ID 显示)
+            // 任务已提交，显示初始消息
             const assistantMsgId = generateMessageId();
             const assistantMessage: ChatPanelMessage = {
                 id: assistantMsgId,
@@ -98,16 +129,36 @@ export function useSoraGeneration({
             setManualReferenceUrls([]);
             setIsGenerating(false);
 
-            // 启动后台轮询任务状态
+            // 启动后台轮询任务状态（带 AbortController）
             if (taskId) {
-                const pollTask = async () => {
-                    // 策略优化：先等待120秒，然后每10秒轮询一次，最长15分钟
-                    await new Promise(r => setTimeout(r, 120000));
+                // 取消之前的轮询
+                if (abortControllerRef.current) {
+                    abortControllerRef.current.abort();
+                }
+                const abortController = new AbortController();
+                abortControllerRef.current = abortController;
 
-                    const maxAttempts = 90; // (15*60 - 120) / 10 ≈ 78
+                const pollTask = async () => {
+                    // 优化：首次等待 30 秒（而非 120 秒），更快响应完成状态
+                    await new Promise((resolve, reject) => {
+                        const timeout = setTimeout(resolve, 30000);
+                        abortController.signal.addEventListener('abort', () => {
+                            clearTimeout(timeout);
+                            reject(new DOMException('Aborted', 'AbortError'));
+                        });
+                    });
+
+                    const maxAttempts = 90;
                     for (let i = 0; i < maxAttempts; i++) {
+                        if (abortController.signal.aborted) {
+                            console.log('[useSoraGeneration] Polling aborted');
+                            return;
+                        }
+
                         try {
-                            const statusRes = await fetch(`/api/sora/status?taskId=${taskId}`);
+                            const statusRes = await fetch(`/api/sora/status?taskId=${taskId}`, {
+                                signal: abortController.signal,
+                            });
                             if (!statusRes.ok) {
                                 await new Promise(r => setTimeout(r, 10000));
                                 continue;
@@ -125,6 +176,7 @@ export function useSoraGeneration({
                                         : m
                                 ));
                                 toast.success('Sora 视频生成完成！');
+                                abortControllerRef.current = null;
                                 return;
                             } else if (statusData.status === 'failed') {
                                 setMessages(prev => prev.map(m =>
@@ -133,6 +185,7 @@ export function useSoraGeneration({
                                         : m
                                 ));
                                 toast.error('Sora 视频生成失败');
+                                abortControllerRef.current = null;
                                 return;
                             } else {
                                 const progress = statusData.progress || 0;
@@ -142,13 +195,32 @@ export function useSoraGeneration({
                                         : m
                                 ));
                             }
-                        } catch (e) {
+                        } catch (e: any) {
+                            if (e.name === 'AbortError') {
+                                console.log('[useSoraGeneration] Polling aborted');
+                                return;
+                            }
                             console.warn('Sora status poll error:', e);
                         }
-                        await new Promise(r => setTimeout(r, 10000));
+
+                        await new Promise((resolve, reject) => {
+                            const timeout = setTimeout(resolve, 10000);
+                            abortController.signal.addEventListener('abort', () => {
+                                clearTimeout(timeout);
+                                reject(new DOMException('Aborted', 'AbortError'));
+                            });
+                        }).catch(() => { });
                     }
+
+                    // 轮询超时，清理 ref
+                    abortControllerRef.current = null;
                 };
-                pollTask();
+
+                pollTask().catch((e) => {
+                    if (e.name !== 'AbortError') {
+                        console.error('[useSoraGeneration] Poll task error:', e);
+                    }
+                });
             }
         } catch (soraError: any) {
             const errorMsgId = generateMessageId();
@@ -165,7 +237,8 @@ export function useSoraGeneration({
             toast.error(`Sora 生成失败: ${soraError.message}`);
             setIsGenerating(false);
         }
-    }, [project, user, selectedModel, soraAspectRatio, soraDuration, setMessages, setIsGenerating, setInputText, setUploadedImages, setManualReferenceUrls]);
+    }, [project, selectedModel, soraAspectRatio, soraDuration, setMessages, setIsGenerating, setInputText, setUploadedImages, setManualReferenceUrls]);
 
-    return { generateSoraVideo };
+    return { generateSoraVideo, cancelPolling };
 }
+

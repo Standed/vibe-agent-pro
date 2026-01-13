@@ -568,6 +568,50 @@ export class GenerationTools {
         if (!this.project) return { tool: 'generateShotsVideo', result: null, success: false, error: 'Project not found' };
 
         let finalShotIds = shotIds || [];
+        let finalSceneId = sceneId;
+
+        // 按 globalOrder 排序的所有 shots
+        const allShotsSorted = [...this.project.shots].sort((a, b) => (a.globalOrder || a.order || 0) - (b.globalOrder || b.order || 0));
+
+        // 优先级 1：globalShotIndexes（全局序号，从 1 开始）
+        if (globalShotIndexes && globalShotIndexes.length > 0) {
+            finalShotIds = globalShotIndexes
+                .map(idx => allShotsSorted[idx - 1]) // 转换为 0-indexed
+                .filter((s): s is typeof allShotsSorted[0] => !!s)
+                .map(s => s.id);
+
+            // 从第一个 shot 提取 sceneId（如果未指定）
+            if (!finalSceneId && finalShotIds.length > 0) {
+                const firstShot = this.project.shots.find(s => s.id === finalShotIds[0]);
+                finalSceneId = firstShot?.sceneId || '';
+            }
+        }
+        // 优先级 2：shotIndexes（场景内序号，需要 sceneId）
+        else if (shotIndexes && shotIndexes.length > 0 && finalSceneId) {
+            const sceneShots = this.project.shots
+                .filter(s => s.sceneId === finalSceneId)
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+            finalShotIds = shotIndexes
+                .map(idx => sceneShots[idx - 1]) // 转换为 0-indexed
+                .filter((s): s is typeof sceneShots[0] => !!s)
+                .map(s => s.id);
+        }
+
+        if (finalShotIds.length === 0) {
+            return {
+                tool: 'generateShotsVideo',
+                result: null,
+                success: false,
+                error: '未找到对应的分镜，请检查分镜序号是否正确。'
+            };
+        }
+
+        // 确保 sceneId 有值
+        if (!finalSceneId) {
+            const firstShot = this.project.shots.find(s => s.id === finalShotIds[0]);
+            finalSceneId = firstShot?.sceneId || '';
+        }
 
         try {
             const response = await fetch('/api/agent/tools/execute', {
@@ -575,12 +619,17 @@ export class GenerationTools {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tool: 'generateShotsVideo',
-                    args: { sceneId, shotIds: finalShotIds },
+                    args: { sceneId: finalSceneId, shotIds: finalShotIds },
                     project: this.project,
                     userId: this.userId
                 })
             });
             const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || '服务器执行失败');
+            }
+
             return { tool: 'generateShotsVideo', result: data.result, success: true };
         } catch (e: any) {
             return { tool: 'generateShotsVideo', result: null, success: false, error: e.message };
