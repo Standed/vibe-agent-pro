@@ -8,8 +8,8 @@
  * - 支持并行调用多个 Gemini API
  */
 
-import { ToolCall, StoreCallbacks } from './agentTools';
-import { AgentToolExecutor, ToolResult } from './agentTools';
+import { ToolCall } from './agentToolDefinitions';
+import { AgentToolExecutor, ToolResult, StoreCallbacks } from './agentTools';
 import { Project } from '@/types/project';
 
 export interface ExecutionPlan {
@@ -48,6 +48,26 @@ export function analyzeToolDependencies(toolCalls: ToolCall[]): ExecutionPlan {
     'updateShot',
     'batchGenerateSceneImages',
     'generateShotVideo',
+    'generateShotImage',
+    'generateSceneVideo',
+    'generateShotsVideo',
+    'batchGenerateProjectVideosSora',
+    'generateCharacterThreeView',
+    'addCharacter',
+    'updateCharacter',
+    'deleteCharacter',
+    'updateScene',
+    'deleteScene',
+    'deleteShot',
+    'batchGenerateProjectImages',
+    'addLocation',
+    'updateLocation',
+    'deleteLocation',
+    'deleteScenes',
+    'deleteShots',
+    'deleteCharacters',
+    'deleteLocations',
+    'generateLocationImages'
   ]);
 
   // First pass: separate read-only from write operations
@@ -107,6 +127,12 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   'batchGenerateProjectImages': '批量生成项目图片 (Grid)',
 };
 
+const dummyStoreCallbacks: StoreCallbacks = {
+  addGenerationHistory: () => { },
+  addGridHistory: () => { },
+  updateShot: () => { },
+};
+
 /**
  * Execute tools in parallel with progress tracking
  */
@@ -135,7 +161,7 @@ export async function executeToolsInParallel(
     });
   };
 
-  const executor = new AgentToolExecutor(project, storeCallbacks, userId);
+  const executor = new AgentToolExecutor(project, userId || 'anonymous', storeCallbacks || dummyStoreCallbacks);
 
   // Phase 1: Execute independent tools in parallel
   if (independent.length > 0) {
@@ -143,7 +169,7 @@ export async function executeToolsInParallel(
 
     const independentPromises = independent.map(async (tool) => {
       try {
-        const result = await executor.execute(tool);
+        const result = await executor.execute(tool.name, tool.arguments);
         completed++;
         updateProgress(`已完成: ${getToolName(tool.name)}`);
         return result;
@@ -171,7 +197,7 @@ export async function executeToolsInParallel(
 
     for (const tool of group) {
       try {
-        const result = await executor.execute(tool);
+        const result = await executor.execute(tool.name, tool.arguments);
         completed++;
         allResults.push(result);
         updateProgress(`已完成: ${getToolName(tool.name)}`);
@@ -222,9 +248,9 @@ export class ParallelExecutor {
 
     if (toolCalls.length === 1) {
       // Single tool, execute directly
-      const executor = new AgentToolExecutor(this.project, this.storeCallbacks, this.userId);
+      const executor = new AgentToolExecutor(this.project, this.userId || 'anonymous', this.storeCallbacks || dummyStoreCallbacks);
       try {
-        const result = await executor.execute(toolCalls[0]);
+        const result = await executor.execute(toolCalls[0].name, toolCalls[0].arguments);
         return [result];
       } catch (error: any) {
         return [{

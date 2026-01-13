@@ -58,35 +58,35 @@ const artStyleOptions = [
   {
     value: 'realistic',
     label: '真实写实',
-    prompt: '照片级真实写实风格，高质量渲染，自然光影，photo realistic, cinematic lighting',
+    prompt: '真实写实风格',
     description: '照片级真实感',
     color: 'from-gray-400 to-gray-600',
   },
   {
     value: 'cyberpunk',
     label: '赛博朋克',
-    prompt: '赛博朋克风格，霓虹灯光，科技感，cyberpunk, neon lights, futuristic city',
+    prompt: '赛博朋克风格',
     description: '霓虹、科技感',
     color: 'from-purple-500 to-blue-500',
   },
   {
     value: 'anime',
     label: '日系动漫',
-    prompt: '日系动漫风格，细腻线条，鲜艳色彩，anime style, Japanese animation, vibrant colors',
+    prompt: '日本2D动漫风格',
     description: '动漫风格',
     color: 'from-pink-400 to-rose-400',
   },
   {
     value: 'chinese_ink',
     label: '国风水墨',
-    prompt: '中国传统水墨画风格，古典意境，留白艺术，Chinese ink painting, traditional art style',
+    prompt: '中国水墨画风格',
     description: '中国传统风格',
     color: 'from-slate-400 to-slate-600',
   },
   {
     value: '3d_cartoon',
     label: '3D 卡通',
-    prompt: '皮克斯3D卡通风格，圆润建模，明亮色彩，Pixar style, 3D cartoon, bright colors',
+    prompt: '3D皮克斯卡通风格',
     description: '皮克斯风格',
     color: 'from-orange-400 to-red-400',
   },
@@ -232,15 +232,15 @@ export default function NewProjectDialog({
                   onClick={() => handleArtStyleSelect(option)}
                   disabled={isCreating}
                   className={`p-3 rounded-xl border transition-all duration-200 text-left disabled:opacity-50 disabled:cursor-not-allowed group ${selectedArtStyleType === option.value
-                      ? 'bg-light-accent/10 dark:bg-cine-accent/10 border-light-accent dark:border-cine-accent'
-                      : 'glass-card border-transparent hover:border-light-accent/30 dark:hover:border-cine-accent/30'
+                    ? 'bg-light-accent/10 dark:bg-cine-accent/10 border-light-accent dark:border-cine-accent'
+                    : 'glass-card border-transparent hover:border-light-accent/30 dark:hover:border-cine-accent/30'
                     }`}
                 >
                   <div className="flex flex-col items-center text-center gap-1">
                     <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${option.color} opacity-80`} />
                     <span className={`text-sm font-medium ${selectedArtStyleType === option.value
-                        ? 'text-light-accent dark:text-cine-accent'
-                        : 'text-light-text dark:text-white'
+                      ? 'text-light-accent dark:text-cine-accent'
+                      : 'text-light-text dark:text-white'
                       }`}>
                       {option.label}
                     </span>

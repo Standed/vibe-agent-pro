@@ -357,8 +357,17 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
         // 准备 Store 回调
         const storeCallbacks: StoreCallbacks = {
           addScene,
+          updateScene: useProjectStore.getState().updateScene,
+          deleteScene: useProjectStore.getState().deleteScene,
           addShot,
           updateShot,
+          deleteShot: useProjectStore.getState().deleteShot,
+          addCharacter: useProjectStore.getState().addCharacter,
+          updateCharacter: useProjectStore.getState().updateCharacter,
+          deleteCharacter: useProjectStore.getState().deleteCharacter,
+          addLocation: useProjectStore.getState().addLocation,
+          updateLocation: useProjectStore.getState().updateLocation,
+          deleteLocation: useProjectStore.getState().deleteLocation,
           addGenerationHistory,
           addGridHistory,
           renumberScenesAndShots,

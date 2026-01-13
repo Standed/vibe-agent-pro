@@ -67,7 +67,8 @@ export default function LeftSidebarNew({
     isSaving,
     deleteCharacter,
     deleteLocation,
-    updateLocation
+    updateLocation,
+    updateProjectMetadata
   } = useProjectStore();
 
   const [activeTab, setActiveTab] = useState<Tab>('storyboard');
@@ -89,6 +90,9 @@ export default function LeftSidebarNew({
   const [shotInsertIndex, setShotInsertIndex] = useState<number | null>(null);
   const [charactersCollapsed, setCharactersCollapsed] = useState(false);
   const [locationsCollapsed, setLocationsCollapsed] = useState(false);
+  // 项目名称编辑状态
+  const [isEditingProjectTitle, setIsEditingProjectTitle] = useState(false);
+  const [editingProjectTitle, setEditingProjectTitle] = useState('');
   const [shotForm, setShotForm] = useState<{
     description: string;
     narration: string;
@@ -418,9 +422,45 @@ export default function LeftSidebarNew({
             {/* Header */}
             <div className="p-6 border-b border-black/5 dark:border-white/5 flex items-center justify-between">
               <div className="flex-1 min-w-0">
-                <h2 className="text-sm font-black text-zinc-900 dark:text-white truncate tracking-tight uppercase">
-                  {project?.metadata.title || '未命名项目'}
-                </h2>
+                {isEditingProjectTitle ? (
+                  <input
+                    type="text"
+                    value={editingProjectTitle}
+                    onChange={(e) => setEditingProjectTitle(e.target.value)}
+                    onBlur={() => {
+                      const trimmed = editingProjectTitle.trim();
+                      if (!trimmed) {
+                        toast.error('项目名称不能为空');
+                        setEditingProjectTitle(project?.metadata.title || '');
+                      } else if (trimmed !== project?.metadata.title) {
+                        updateProjectMetadata({ title: trimmed });
+                        toast.success('项目名称已更新');
+                      }
+                      setIsEditingProjectTitle(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      } else if (e.key === 'Escape') {
+                        setEditingProjectTitle(project?.metadata.title || '');
+                        setIsEditingProjectTitle(false);
+                      }
+                    }}
+                    autoFocus
+                    className="text-sm font-black text-zinc-900 dark:text-white tracking-tight uppercase bg-transparent border-b-2 border-light-accent dark:border-cine-accent outline-none w-full"
+                  />
+                ) : (
+                  <h2
+                    onClick={() => {
+                      setEditingProjectTitle(project?.metadata.title || '');
+                      setIsEditingProjectTitle(true);
+                    }}
+                    className="text-sm font-black text-zinc-900 dark:text-white truncate tracking-tight uppercase cursor-pointer hover:text-light-accent dark:hover:text-cine-accent transition-colors"
+                    title="点击编辑项目名称"
+                  >
+                    {project?.metadata.title || '未命名项目'}
+                  </h2>
+                )}
                 <div className="flex items-center gap-2 mt-1">
                   {isSaving && (
                     <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-light-accent/10 dark:bg-cine-accent/10">

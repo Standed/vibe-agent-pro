@@ -22,6 +22,7 @@ export interface ToolResult {
     result: any;
     error?: string;
     success?: boolean;
+    message?: string;
 }
 
 export const AGENT_TOOLS: ToolDefinition[] = [
@@ -432,6 +433,128 @@ export const AGENT_TOOLS: ToolDefinition[] = [
             required: []
         }
     }
+    ,
+    {
+        name: 'deleteScenes',
+        description: '删除指定的场景。可以通过场景ID列表、场景编号列表、或删除重复场景。',
+        parameters: {
+            type: 'object',
+            properties: {
+                sceneIds: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '要删除的场景ID列表',
+                },
+                sceneIndexes: {
+                    type: 'array',
+                    items: { type: 'number' },
+                    description: '要删除的场景编号列表（从1开始）',
+                },
+                deleteDuplicates: {
+                    type: 'boolean',
+                    description: '是否删除重复的场景',
+                },
+            },
+            required: []
+        },
+    },
+    {
+        name: 'deleteShots',
+        description: '删除指定的镜头。可以通过镜头ID列表、镜头编号列表、或删除重复镜头。',
+        parameters: {
+            type: 'object',
+            properties: {
+                shotIds: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '要删除的镜头ID列表',
+                },
+                shotIndexes: {
+                    type: 'array',
+                    items: { type: 'number' },
+                    description: '要删除的镜头编号列表（从1开始）',
+                },
+                deleteDuplicates: {
+                    type: 'boolean',
+                    description: '是否删除重复的镜头',
+                },
+            },
+            required: []
+        },
+    },
+    {
+        name: 'deleteCharacters',
+        description: '删除指定的角色',
+        parameters: {
+            type: 'object',
+            properties: {
+                characterIds: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '要删除的角色ID列表',
+                },
+                characterNames: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '要删除的角色名称列表',
+                },
+            },
+            required: []
+        },
+    },
+    {
+        name: 'deleteLocations',
+        description: '删除指定的地点',
+        parameters: {
+            type: 'object',
+            properties: {
+                locationIds: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '要删除的地点ID列表',
+                },
+                locationNames: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '要删除的地点名称列表',
+                },
+            },
+            required: []
+        },
+    },
+    {
+        name: 'addLocation',
+        description: '添加新地点',
+        parameters: {
+            type: 'object',
+            properties: {
+                name: { type: 'string', description: '地点名称' },
+                description: { type: 'string', description: '地点描述' },
+                appearance: { type: 'string', description: '地点外观/视觉特征' }
+            },
+            required: ['name', 'description']
+        }
+    },
+    {
+        name: 'updateLocation',
+        description: '更新地点信息',
+        parameters: {
+            type: 'object',
+            properties: {
+                locationId: { type: 'string', description: '地点ID' },
+                updates: {
+                    type: 'object',
+                    description: '要更新的字段',
+                    properties: {
+                        name: { type: 'string' },
+                        description: { type: 'string' },
+                        appearance: { type: 'string' }
+                    }
+                }
+            },
+            required: ['locationId', 'updates']
+        }
+    },
 ];
 
 export function formatToolsForPrompt(tools: ToolDefinition[]): string {
