@@ -40,6 +40,14 @@ export function analyzeToolDependencies(toolCalls: ToolCall[]): ExecutionPlan {
     'getShotDetails',
   ]);
 
+  // Tools that can run in parallel if targeting different resources
+  // (e.g., different shots, different scenes)
+  const parallelizableByTarget = new Set([
+    'generateShotsVideo',    // 不同分镜范围可并行
+    'generateSceneVideo',    // 不同场景可并行
+    'generateShotImage',     // 不同镜头可并行
+  ]);
+
   // Tools that modify state (need to be serial)
   const writeTools = new Set([
     'createScene',
@@ -48,9 +56,6 @@ export function analyzeToolDependencies(toolCalls: ToolCall[]): ExecutionPlan {
     'updateShot',
     'batchGenerateSceneImages',
     'generateShotVideo',
-    'generateShotImage',
-    'generateSceneVideo',
-    'generateShotsVideo',
     'batchGenerateProjectVideosSora',
     'generateCharacterThreeView',
     'addCharacter',
@@ -70,13 +75,17 @@ export function analyzeToolDependencies(toolCalls: ToolCall[]): ExecutionPlan {
     'generateLocationImages'
   ]);
 
-  // First pass: separate read-only from write operations
+  // First pass: categorize tools
   const readOps: ToolCall[] = [];
+  const parallelOps: ToolCall[] = [];
   const writeOps: ToolCall[] = [];
 
   for (const tool of toolCalls) {
     if (readOnlyTools.has(tool.name)) {
       readOps.push(tool);
+    } else if (parallelizableByTarget.has(tool.name)) {
+      // 这些工具可以并行执行（针对不同目标）
+      parallelOps.push(tool);
     } else {
       writeOps.push(tool);
     }
@@ -84,6 +93,10 @@ export function analyzeToolDependencies(toolCalls: ToolCall[]): ExecutionPlan {
 
   // All read operations can be executed in parallel
   independent.push(...readOps);
+
+  // Parallelizable operations (video/image generation for different targets)
+  // 这些可以并行执行，因为它们操作不同的分镜/场景
+  independent.push(...parallelOps);
 
   // Write operations need to be serialized
   if (writeOps.length > 0) {

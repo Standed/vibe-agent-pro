@@ -120,6 +120,8 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
     const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
     const pollingCountRef = useRef(0);
     const pollingStoppedRef = useRef(false);
+    const pollingStartTimeRef = useRef<number>(0);
+    const pollingTaskIdRef = useRef<string | null>(null);
     const lastWrittenSoraUsernameRef = useRef(initialCharacter?.soraIdentity?.username || '');
     const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
 
@@ -215,20 +217,33 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
     const startPolling = useCallback((taskId: string) => {
         stopPolling();
         setIsSoraProcessing(true);
-        pollingCountRef.current = 0;
         pollingStoppedRef.current = false;
+
+        // Initialize or preserve start time
+        if (pollingTaskIdRef.current !== taskId) {
+            pollingStartTimeRef.current = Date.now();
+            pollingTaskIdRef.current = taskId;
+        }
 
         void pollTaskStatus(taskId);
 
         pollingTimerRef.current = setInterval(async () => {
-            pollingCountRef.current += 1;
-            if (pollingCountRef.current > MAX_POLL_ATTEMPTS) {
+            // 5 minutes timeout (300,000 ms)
+            const TIMEOUT_MS = 300000;
+            if (Date.now() - pollingStartTimeRef.current > TIMEOUT_MS) {
                 stopPolling();
                 if (!pollingStoppedRef.current) {
                     pollingStoppedRef.current = true;
-                    toast.info('已暂停自动刷新，可点击"刷新状态"手动更新');
+                    toast.error('任务处理超时，请点击"刷新状态"手动查询结果');
                 }
                 setIsSoraProcessing(false);
+                // Keep the taskId so user can refresh manually, but reset status to allow interaction if needed
+                // But 'none' might hide the status. Let's keep it 'generating' or 'registering' but stop spinner?
+                // The UI uses isSoraProcessing for spinner.
+                // If we set soraStatus to 'none', it resets UI.
+                // Let's set it to 'none' as requested to allow "manual click refresh".
+                // But wait, manual refresh button is always there.
+                // If we set 'none', the big button comes back.
                 setSoraStatus('none');
                 return;
             }
