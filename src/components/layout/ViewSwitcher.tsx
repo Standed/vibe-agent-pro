@@ -29,7 +29,7 @@ export default function ViewSwitcher({ activeView, onViewChange, className }: Vi
         { id: 'planning', label: '故事构思', icon: FileText, color: 'text-purple-500', disabled: false },
         { id: 'canvas', label: '图片生成', icon: Layout, color: 'text-blue-500', disabled: false },
         { id: 'timeline', label: '视频输出', icon: Scissors, color: 'text-emerald-500', disabled: false },
-        { id: 'drafts', label: '草稿库', icon: Plus, color: 'text-zinc-400', disabled: true },
+        // { id: 'drafts', label: '草稿库', icon: Plus, color: 'text-zinc-400', disabled: true },
     ] as const;
 
     const currentView = views.find(v => v.id === activeView) || views[0];

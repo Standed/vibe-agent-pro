@@ -6,7 +6,7 @@ import { GenerationResult } from './GenerationResult';
 import { AspectRatio } from '@/types/project';
 import { User, Sparkles, Maximize2, RefreshCw, Grid3x3 } from 'lucide-react';
 
-interface ChatMessage {
+export interface ChatMessage {
     id: string;
     role: 'user' | 'assistant';
     content: string;
@@ -34,7 +34,7 @@ interface ChatBubbleProps {
     onReusePrompt?: (prompt: string) => void;
     onReuseImage?: (url: string) => void;
     onApplyToShot?: (url: string) => void;
-    onApplyVideoToShot?: (url: string) => void;  // 应用视频到分镜
+    onApplyVideoToShot?: (message: ChatMessage) => void;  // 应用视频到分镜
 }
 
 export function ChatBubble({
@@ -112,7 +112,7 @@ export function ChatBubble({
                                 <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 via-black/30 to-transparent opacity-0 group-hover/video:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
                                     {onApplyVideoToShot && (
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); onApplyVideoToShot(message.videoUrl!); }}
+                                            onClick={(e) => { e.stopPropagation(); onApplyVideoToShot(message); }}
                                             className="px-2 py-1 rounded-full bg-white/20 hover:bg-white/40 text-white text-xs backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm flex items-center gap-1"
                                             title="应用到当前分镜"
                                         >
