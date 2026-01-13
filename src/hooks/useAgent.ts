@@ -10,7 +10,8 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { processUserCommand, continueWithToolResults, AgentMessage } from '@/services/agentService';
+import { sendMessage as sendAgentMessage, continueWithToolResults, AgentMessage } from '@/services/agentService';
+import { AGENT_TOOLS, ToolDefinition } from '@/services/agentToolDefinitions';
 import { buildEnhancedContext } from '@/services/contextBuilder';
 import { ParallelExecutor, ExecutionProgress } from '@/services/parallelExecutor';
 import { SessionManager } from '@/services/sessionManager';
@@ -32,6 +33,12 @@ const generateMessageId = () => {
     return v.toString(16);
   });
 };
+
+// Tools allowed in Planning Mode (Story Conception)
+// Exclude image and video generation tools to prevent premature asset creation
+const PLANNING_MODE_TOOLS = AGENT_TOOLS.filter(tool =>
+  !['generateShotImage', 'batchGenerateSceneImages', 'batchGenerateProjectImages', 'generateSceneVideo', 'batchGenerateProjectVideosSora', 'generateShotsVideo'].includes(tool.name)
+);
 
 export interface UseAgentResult {
   isProcessing: boolean;
@@ -274,8 +281,16 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
         const maxRetries = 2;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
           try {
-            // @ts-ignore - 我们稍后会更新 processUserCommand 的签名
-            return await processUserCommand(message, chatHistory, enhancedContext, abortControllerRef.current?.signal);
+            // Determine active tools based on channel
+            const activeTools = chatChannel === 'planning' ? PLANNING_MODE_TOOLS : AGENT_TOOLS;
+
+            return await sendAgentMessage(
+              chatHistory,
+              enhancedContext,
+              undefined,
+              abortControllerRef.current?.signal,
+              activeTools
+            );
           } catch (err: any) {
             lastError = err;
             const msg = `${err?.message || ''}`.toLowerCase();
@@ -514,7 +529,8 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
             chatHistory,
             updatedContext,
             pendingScenes, // 传递待处理的场景列表
-            continueController.signal // 传递 signal
+            continueController.signal, // 传递 signal
+            chatChannel === 'planning' ? PLANNING_MODE_TOOLS : AGENT_TOOLS // Pass filtered tools
           );
 
         const timeoutPromise = new Promise((_, reject) =>

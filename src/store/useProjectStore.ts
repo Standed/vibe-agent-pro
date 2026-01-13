@@ -150,7 +150,11 @@ export const useProjectStore = create<ProjectStore>()(
       set(() => {
         normalizeSceneOrder(project);
         recalcShotOrders(project);
-        return { project };
+        return {
+          project,
+          leftSidebarCollapsed: true, // Reset sidebar state on load
+          rightSidebarCollapsed: false
+        };
       }),
 
     setGenerationRequest: (request) => set({ generationRequest: request }),
@@ -242,6 +246,8 @@ export const useProjectStore = create<ProjectStore>()(
             defaultShotDuration: 5,
           },
         },
+        leftSidebarCollapsed: true, // Reset sidebar state for new project
+        rightSidebarCollapsed: false,
       });
     },
 

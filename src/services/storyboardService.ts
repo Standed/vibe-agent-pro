@@ -134,6 +134,37 @@ export class StoryboardService {
   }
 
   /**
+   * Generate location descriptions
+   */
+  async generateLocationDescriptions(script: string, locationNames: string[], artStyle?: string): Promise<Record<string, string>> {
+    const prompt = `
+        Analyze the script and generate atmospheric visual descriptions for the following locations.
+        These descriptions will be used to generate concept art.
+        
+        Script:
+        ${script.substring(0, 5000)}
+        
+        Locations to describe: ${locationNames.join(', ')}
+        Art Style: ${artStyle || 'Cinematic'}
+        
+        Requirements:
+        1. Output MUST be in Simplified Chinese (简体中文).
+        2. Descriptions should focus on visual details, lighting, atmosphere, and mood.
+        3. Keep each description under 100 words.
+        4. Return a JSON object where the key is the exact location name provided, and the value is the description.
+        
+        Example Output:
+        {
+            "Old Factory": "A rusty, abandoned industrial space. Shafts of dusty light pierce through broken high windows. Cyberpunk atmosphere with neon graffiti on the walls.",
+            "Coffee Shop": "Warm and cozy interior with wooden furniture and soft yellow lighting. Steam rises from cups, creating a relaxed mood."
+        }
+        `;
+
+    const response = await generateContent(MODEL_NAME, prompt);
+    return this.extractJSON(response);
+  }
+
+  /**
    * Generates a strict SoraScript JSON object from a simple idea.
    */
   async generateScript(simpleConcept: string): Promise<SoraScript> {

@@ -36,7 +36,7 @@ export default function PlanningHeader({
                     </div>
                 </Link>
                 <div>
-                    <div className="font-black text-zinc-900 dark:text-white tracking-tight">策划模式</div>
+                    <div className="font-black text-zinc-900 dark:text-white tracking-tight">故事构思</div>
                     <div className="flex items-center gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Online & Ready</span>

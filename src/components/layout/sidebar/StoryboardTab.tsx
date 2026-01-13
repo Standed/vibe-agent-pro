@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Edit2, ChevronRight, ChevronDown, Trash2, Film } from 'lucide-react';
+import { Plus, Edit2, ChevronRight, ChevronDown, Trash2, Film, MapPin } from 'lucide-react';
 import { Scene, Shot } from '@/types/project';
 import ShotListItem from '@/components/shot/ShotListItem';
 import { formatShotLabel } from '@/utils/shotOrder';
@@ -94,9 +94,9 @@ export const StoryboardTab: React.FC<StoryboardTabProps> = ({
                             <div className="flex items-center justify-between p-3 hover:bg-light-border/50 dark:hover:bg-cine-panel/50 transition-colors">
                                 <button
                                     onClick={() => toggleSceneCollapse(scene.id)}
-                                    className="flex items-center gap-2 flex-1 text-left"
+                                    className="flex items-center gap-2 flex-1 text-left min-w-0"
                                 >
-                                    <div className="flex items-center gap-2 flex-1">
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
                                         {isCollapsed ? (
                                             <ChevronRight size={16} className="text-light-text-muted dark:text-cine-text-muted flex-shrink-0" />
                                         ) : (
@@ -117,18 +117,24 @@ export const StoryboardTab: React.FC<StoryboardTabProps> = ({
                                                         }
                                                     }}
                                                     onClick={(e) => e.stopPropagation()}
-                                                    className="w-full text-sm font-bold glass-input rounded px-2 py-1"
+                                                    className="w-full text-sm font-bold glass-input rounded px-2 py-1 min-w-0"
                                                     autoFocus
                                                 />
                                             ) : (
-                                                <>
-                                                    <div className="text-sm font-bold text-light-text dark:text-white truncate">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <div className="text-sm font-bold text-light-text dark:text-white truncate" title={scene.name}>
                                                         {scene.name}
                                                     </div>
-                                                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                                                        {sceneShots.length} 个镜头
+                                                    <div className="flex items-center gap-2 text-xs text-light-text-muted dark:text-cine-text-muted">
+                                                        <span>{sceneShots.length} 个镜头</span>
+                                                        {scene.location && (
+                                                            <span className="flex items-center gap-0.5 text-light-accent dark:text-cine-accent truncate">
+                                                                <MapPin size={10} />
+                                                                <span className="truncate">{scene.location}</span>
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                </>
+                                                </div>
                                             )}
                                         </div>
                                     </div>
@@ -162,17 +168,28 @@ export const StoryboardTab: React.FC<StoryboardTabProps> = ({
                                         </>
                                     ) : (
                                         <>
-                                            {/* Edit Scene Name Button */}
+                                            {/* Rename Scene Button */}
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    // handleStartEditScene(scene.id, scene.name);
+                                                    handleStartEditScene(scene.id, scene.name);
+                                                }}
+                                                className="p-1.5 hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 rounded transition-colors flex-shrink-0"
+                                                title="重命名场景"
+                                            >
+                                                <Edit2 size={14} className="text-light-text-muted dark:text-cine-text-muted" />
+                                            </button>
+
+                                            {/* Edit Location/Details Button */}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
                                                     handleEditSceneDetails(scene.id);
                                                 }}
                                                 className="p-1.5 hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 rounded transition-colors flex-shrink-0"
-                                                title="编辑场景详情"
+                                                title="编辑场景地点与详情"
                                             >
-                                                <Edit2 size={14} className="text-light-text-muted dark:text-cine-text-muted" />
+                                                <MapPin size={14} className="text-light-text-muted dark:text-cine-text-muted" />
                                             </button>
 
                                             {/* Delete Scene Button */}
@@ -257,14 +274,16 @@ export const StoryboardTab: React.FC<StoryboardTabProps> = ({
                     );
                 })}
 
-                {scenes.length === 0 && (
-                    <div className="text-center py-12 text-light-text-muted dark:text-cine-text-muted">
-                        <Film size={48} className="mx-auto mb-3 opacity-30" />
-                        <p className="text-sm">还没有分镜</p>
-                        <p className="text-xs mt-1">使用 AI 自动分镜后，这里会出现镜头</p>
-                    </div>
-                )}
-            </div>
-        </div>
+                {
+                    scenes.length === 0 && (
+                        <div className="text-center py-12 text-light-text-muted dark:text-cine-text-muted">
+                            <Film size={48} className="mx-auto mb-3 opacity-30" />
+                            <p className="text-sm">还没有分镜</p>
+                            <p className="text-xs mt-1">使用 AI 自动分镜后，这里会出现镜头</p>
+                        </div>
+                    )
+                }
+            </div >
+        </div >
     );
 };
