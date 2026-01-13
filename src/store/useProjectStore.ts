@@ -88,7 +88,7 @@ interface ProjectStore {
   // Character Actions
   addCharacter: (character: Character, options?: { keepOpen?: boolean }) => void;
   updateCharacter: (id: string, updates: Partial<Character>) => void;
-  deleteCharacter: (id: string) => void;
+  deleteCharacter: (id: string) => Promise<void>;
 
   // Location Actions
   addLocation: (location: Location) => void;
@@ -134,7 +134,7 @@ export const useProjectStore = create<ProjectStore>()(
     canvasPosition: { x: 0, y: 0 },
     timelineMode: 'default',
     controlMode: 'agent',
-    leftSidebarCollapsed: false,
+    leftSidebarCollapsed: true,
     rightSidebarCollapsed: false,
     gridResult: null,
     isSaving: false,
@@ -519,14 +519,23 @@ export const useProjectStore = create<ProjectStore>()(
       get().debouncedSaveProject();
     },
 
-    deleteCharacter: (id) => {
+    deleteCharacter: async (id) => {
+      // 先从数据库中删除（立即执行，不等防抖）
+      try {
+        await dataService.deleteCharacter(id);
+        // console.log('[Store] 角色已从数据库删除:', id);
+      } catch (error) {
+        // console.error('[Store] 删除角色失败:', error);
+        // 即使数据库删除失败，也继续更新本地状态
+      }
+
+      // 更新本地状态
       set((state) => {
         if (!state.project) return;
         state.project.characters = state.project.characters.filter(
           (c) => c.id !== id
         );
       });
-      get().debouncedSaveProject();
     },
 
     // Location Actions

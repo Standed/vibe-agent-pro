@@ -62,16 +62,20 @@
       "Bash(vercel:*)",
       "Bash(tee:*)",
       "Bash(git pull:*)",
+      "Bash(git merge feature/ui-redesign-v7 --no-ff -m \"$(cat <<''EOF''\nMerge feature/ui-redesign-v7 into main\n\n合并UI重构v7版本到主分支，包含以下更新：\n\n🎨 **UI/UX改进**：\n- 新建项目对话框（项目名称、概要、画风、画面比例选择）\n- 全局画面比例设置（16:9, 9:16, 1:1, 4:3, 21:9）\n- 新版左侧栏（剧本/分镜脚本/资源三标签页）\n- 分镜详情面板（oiioii风格，大图预览+编辑+历史）\n\n🔧 **功能增强**：\n- Pro模式视频历史记录管理\n- Sora视频生成和应用到分镜\n- 角色一致性支持\n- 聊天历史云端迁移（Supabase独立表）\n\n🐛 **Bug修复**：\n- 修复Sora视频应用时可能丢失历史记录的问题\n- 优化数据保存逻辑（Optimistic Update）\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git stash:*)",
+      "Bash(git reset:*)",
+      "Bash(vercel whoami:*)",
       "Bash(git checkout:*)",
-      "Bash(rm:*)",
-      "Bash(kill:*)",
-      "Bash(cmd.exe //c \"taskkill /F /PID 8332\")",
-      "Bash(cmd.exe:*)",
-      "Bash(npm run dev)",
-      "Bash(cmd /c \"taskkill /F /PID 17804\")",
-      "WebSearch",
-      "Bash(node --version:*)",
-      "mcp__web-search-prime__webSearchPrime"
+      "Bash(vercel --prod:*)",
+      "Bash(VERCEL_USER_AGENT=\"vercel-cli\" vercel:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run watch:*)",
+      "Bash(cd E:\\\\N8N\\\\devProject\\\\vibe-agent-pro && npm run build:*)",
+      "Bash(gh api:*)",
+      "Bash(xargs gh run watch:*)",
+      "Bash(gh secret:*)"
     ]
   }
 }

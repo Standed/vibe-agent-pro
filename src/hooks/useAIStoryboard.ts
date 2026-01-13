@@ -45,7 +45,7 @@ function groupShotsIntoScenes(shots: any[]): any[] {
 }
 
 export const useAIStoryboard = () => {
-    const { project, addScene, addShot, updateCharacter, addCharacter, addLocation } = useProjectStore();
+    const { project, addScene, addShot, updateCharacter, addCharacter, addLocation, leftSidebarCollapsed, toggleLeftSidebar } = useProjectStore();
     const { user } = useAuth();
     const [isGenerating, setIsGenerating] = useState(false);
     const [currentStep, setCurrentStep] = useState<StoryboardStep | null>(null);
@@ -105,13 +105,20 @@ export const useAIStoryboard = () => {
             // 4. Auto-create missing Location assets (before adding scenes)
             const existingLocationNames = new Set((activeProject?.locations || []).map(l => l.name));
             const uniqueLocations = new Set(sceneGroups.map((g: any) => g.location));
+            const artStyle = activeProject?.metadata?.artStyle || '';
             uniqueLocations.forEach((locationName: string) => {
                 if (!existingLocationNames.has(locationName)) {
+                    // 根据场景名称和项目风格生成场景描述
+                    const locationType = locationName.includes('室内') || locationName.includes('内部') ? 'interior' as const : 'exterior' as const;
+                    const typeLabel = locationType === 'interior' ? '室内场景' : '室外场景';
+                    const description = artStyle
+                        ? `${artStyle}风格的${typeLabel}。${locationName}，需要体现故事氛围和视觉风格。`
+                        : `${typeLabel}。${locationName}，需要体现故事氛围。`;
                     const newLocation = {
                         id: crypto.randomUUID(),
                         name: locationName,
-                        type: locationName.includes('室内') || locationName.includes('内部') ? 'interior' as const : 'exterior' as const,
-                        description: '',
+                        type: locationType,
+                        description,
                         referenceImages: []
                     };
                     addLocation(newLocation);
@@ -214,8 +221,13 @@ export const useAIStoryboard = () => {
             }
             updateStep(5, 'completed');
 
-            toast.success('✨ AI 分镜生成完成！');
+            toast.success('AI 分镜生成完成！');
             setCurrentStep(null); // 清除进度状态
+
+            // ⭐ 分镜生成完成后自动展开左侧边栏
+            if (leftSidebarCollapsed) {
+                toggleLeftSidebar();
+            }
 
             // ⭐ 保存一条总结消息到聊天历史，记录策划过程
             if (project) {
@@ -225,7 +237,7 @@ export const useAIStoryboard = () => {
                     projectId: project.id,
                     scope: 'project',
                     role: 'assistant',
-                    content: `✨ **AI 导演已完成策划！**\n\n我已根据剧本为您生成了：\n- **${sceneGroups.length}** 个场景\n- **${generatedShots.length}** 个镜头\n- **${characterCandidates.length}** 个角色形象设计\n\n您现在可以在左侧面板查看并编辑这些内容。`,
+                    content: `**AI 导演已完成策划！**\n\n我已根据剧本为您生成了：\n- **${sceneGroups.length}** 个场景\n- **${generatedShots.length}** 个镜头\n- **${characterCandidates.length}** 个角色形象设计\n\n您现在可以在左侧面板查看并编辑这些内容。`,
                     metadata: { channel: 'planning' },
                     timestamp: new Date(),
                     createdAt: new Date(),
