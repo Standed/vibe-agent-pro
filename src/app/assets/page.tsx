@@ -38,7 +38,7 @@ export default function AssetsPage() {
         }
     };
 
-    const handleAddCharacter = async (char: Character, options?: { keepOpen?: boolean }) => {
+    const handleAddCharacter = async (char: Character, options?: { keepOpen?: boolean; immediateSave?: boolean }) => {
         if (!user) return;
         try {
             // Ensure project_id is null for global characters
@@ -57,7 +57,7 @@ export default function AssetsPage() {
         }
     };
 
-    const handleUpdateCharacter = async (updatedChar: Character, options?: { keepOpen?: boolean }) => {
+    const handleUpdateCharacter = async (updatedChar: Character, options?: { keepOpen?: boolean; immediateSave?: boolean }) => {
         if (!user) return;
         try {
             const globalChar: Character = {

@@ -118,6 +118,9 @@ export default function PlanningView({
     // 记录是否是首次消息
     const isFirstMessageRef = useRef(true);
 
+    // 🔒 防止自动分镜重复触发的标记（方案 A：内存标记）
+    const autoStoryboardExecutedRef = useRef(false);
+
     // AI Storyboard hook
     const { isGenerating, currentStep, handleAIStoryboard } = useAIStoryboard();
 
@@ -154,10 +157,14 @@ export default function PlanningView({
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    // 自动触发 AI 分镜生成：当项目有剧本但没有场景/镜头时
+    // 🔒 自动触发 AI 分镜生成：当项目有剧本但没有场景/镜头时
+    // 添加 autoStoryboardExecutedRef 防止重复触发
     useEffect(() => {
         if (!project || !project.id || project.id !== (params?.id as string)) return;
         if (isGenerating || isSubmitting) return;
+
+        // ✅ 防止重复执行：如果本次会话已执行过，跳过
+        if (autoStoryboardExecutedRef.current) return;
 
         const hasScenes = project.scenes && project.scenes.length > 0;
         const hasShots = project.shots && project.shots.length > 0;
@@ -166,11 +173,15 @@ export default function PlanningView({
         const shouldAutoGenerate = hasScript && !hasScenes && !hasShots;
 
         if (shouldAutoGenerate) {
+            // ✅ 立即标记为已执行，防止 useEffect 再次触发
+            autoStoryboardExecutedRef.current = true;
+
             const timer = setTimeout(() => {
                 const latestProject = useProjectStore.getState().project;
                 if (latestProject?.id === project.id &&
                     latestProject.script?.trim() &&
                     (!latestProject.scenes || latestProject.scenes.length === 0)) {
+                    console.log('[PlanningView] 🚀 自动触发 AI 分镜生成');
                     handleAIStoryboard();
                 }
             }, 2000);

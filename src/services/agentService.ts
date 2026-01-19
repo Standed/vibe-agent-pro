@@ -5,6 +5,7 @@
 
 import { AGENT_TOOLS, ToolCall, formatToolsForPrompt, ToolDefinition } from './agentToolDefinitions';
 import { calculateCredits } from '@/config/credits';
+import { authenticatedFetch } from '@/lib/api-client';
 
 const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3-flash-preview'; // Agent推理模型
 
@@ -45,7 +46,7 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, {
       ...options,
       signal: controller.signal
     });

@@ -394,6 +394,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 });
 ```
 
+### 服务端刷新（中间件）
+
+`src/middleware.ts` 会在请求进入应用层前检查 `supabase-session` 中的 Access Token，当接近过期时用 Refresh Token 刷新并回写 Cookie，同时注入 `Authorization` Header，避免 API 请求因过期而 401。
+
 ### 手动刷新
 
 ```typescript
@@ -483,6 +487,7 @@ CREATE TABLE credit_transactions (
 
 **解决**:
 - 确保 `autoRefreshToken: true`
+- 确认 `src/middleware.ts` 刷新逻辑可访问 Supabase（环境变量齐全）
 - 手动调用 `supabase.auth.refreshSession()`
 
 ### 3. Profile 自动创建失败

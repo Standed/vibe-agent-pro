@@ -22,6 +22,20 @@ import { recalcShotOrders, normalizeSceneOrder } from '@/utils/shotOrder';
 let saveDebounceTimer: NodeJS.Timeout | null = null;
 const SAVE_DEBOUNCE_DELAY = 800; // 800ms 延迟，平衡用户体验和性能
 
+const isValidUuid = (value?: string) =>
+  !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+const generateUuid = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 interface ProjectStore {
   // 状态
   project: Project | null;
@@ -86,8 +100,8 @@ interface ProjectStore {
   refreshShot: (shotId: string) => Promise<void>;
 
   // Character Actions
-  addCharacter: (character: Character, options?: { keepOpen?: boolean }) => void;
-  updateCharacter: (id: string, updates: Partial<Character>) => void;
+  addCharacter: (character: Character, options?: { keepOpen?: boolean; immediateSave?: boolean }) => Promise<void> | void;
+  updateCharacter: (id: string, updates: Partial<Character>, options?: { immediateSave?: boolean }) => Promise<void> | void;
   deleteCharacter: (id: string) => Promise<void>;
 
   // Location Actions
@@ -490,11 +504,14 @@ export const useProjectStore = create<ProjectStore>()(
     },
 
     // Character Actions
-    addCharacter: (character, _options) => {
+    addCharacter: async (character, options) => {
+      const projectId = get().project?.id;
+      let characterToSave: Character | null = null;
       set((state) => {
         const project = state.project;
         if (!project) return;
         const incomingName = character.name.trim();
+        const normalizedId = isValidUuid(character.id) ? character.id : generateUuid();
         const existing = project.characters.find(
           (c) => c.name.trim().toLowerCase() === incomingName.toLowerCase()
         );
@@ -505,21 +522,51 @@ export const useProjectStore = create<ProjectStore>()(
           existing.referenceImages = existing.referenceImages?.length
             ? existing.referenceImages
             : character.referenceImages || [];
+          if (!isValidUuid(existing.id)) {
+            existing.id = normalizedId;
+          }
+          characterToSave = { ...existing };
         } else {
-          project.characters.push({ ...character, name: incomingName });
+          const newCharacter = { ...character, id: normalizedId, name: incomingName };
+          project.characters.push(newCharacter);
+          characterToSave = { ...newCharacter };
         }
       });
-      get().debouncedSaveProject();
+      if (options?.immediateSave && projectId && characterToSave) {
+        try {
+          await dataService.saveCharacter(projectId, characterToSave);
+        } catch (error) {
+          console.error('[Store] 角色保存失败:', error);
+          throw error;
+        }
+      } else {
+        get().debouncedSaveProject();
+      }
     },
 
-    updateCharacter: (id, updates) => {
+    updateCharacter: async (id, updates, options) => {
+      const projectId = get().project?.id;
+      let characterToSave: Character | null = null;
       set((state) => {
         const character = state.project?.characters.find((c) => c.id === id);
         if (character) {
           Object.assign(character, updates);
+          if (!isValidUuid(character.id)) {
+            character.id = generateUuid();
+          }
+          characterToSave = { ...character };
         }
       });
-      get().debouncedSaveProject();
+      if (options?.immediateSave && projectId && characterToSave) {
+        try {
+          await dataService.saveCharacter(projectId, characterToSave);
+        } catch (error) {
+          console.error('[Store] 角色更新失败:', error);
+          throw error;
+        }
+      } else {
+        get().debouncedSaveProject();
+      }
     },
 
     deleteCharacter: async (id) => {

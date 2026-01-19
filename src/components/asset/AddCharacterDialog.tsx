@@ -20,6 +20,7 @@ import { CharacterImageManager } from './CharacterImageManager';
 
 type SaveOptions = {
   keepOpen?: boolean;
+  immediateSave?: boolean;
 };
 
 interface AddCharacterDialogProps {
@@ -31,6 +32,20 @@ interface AddCharacterDialogProps {
 
 export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initialCharacter }: AddCharacterDialogProps) {
   const { user } = useAuth();
+
+  const isValidUuid = (value?: string) =>
+    !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+  const generateUuid = () => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  };
 
   // ===== 通用角色信息状态 =====
   const [name, setName] = useState(initialCharacter?.name || '');
@@ -391,8 +406,10 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     const finalSoraIdentity = getSoraIdentityForSave();
     const normalizedSoraUsername = soraUsername.trim();
 
+    const candidateId = savedCharacterId || initialCharacter?.id;
+    const characterId = isValidUuid(candidateId) ? candidateId! : generateUuid();
     const character: Character = {
-      id: savedCharacterId || initialCharacter?.id || `character_${Date.now()}`,
+      id: characterId,
       name: name.trim(),
       description: description.trim(),
       appearance: appearance.trim(),
@@ -403,7 +420,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     };
 
     try {
-      await onAdd(character, { keepOpen: !options.closeAfter });
+      await onAdd(character, { keepOpen: !options.closeAfter, immediateSave: true });
       setSavedCharacterId(character.id);
 
       const shouldWriteback =
