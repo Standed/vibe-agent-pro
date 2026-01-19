@@ -379,6 +379,11 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
     useEffect(() => {
         if (!project?.id) return;
 
+        // 关键修复 P4：切换项目时先清空旧任务，确保不显示其他项目的历史
+        setSoraTasks(new Map());
+        syncedTaskIdsRef.current.clear();
+        notifiedTaskIdsRef.current.clear();
+
         loadTasks();
 
         const unsubscribe = dataService.subscribeToSoraTasks(project.id, (task) => {

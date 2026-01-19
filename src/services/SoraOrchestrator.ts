@@ -470,28 +470,29 @@ export class SoraOrchestrator {
     }
 
     /**
-     * 辅助：构建 Kaponai 要求的详细 character_setting
+     * 辅助：构建 Kaponai 要求的 character_setting
+     * 注意：只传递 @username 作为 key，不传递 appearance 描述
+     * Sora 已通过角色参考视频识别角色，额外描述会导致与参考视频不一致
      */
     private buildCharacterSettings(characters: Character[]): Record<string, any> {
         const settings: Record<string, any> = {};
         characters.forEach(char => {
             if (char.soraIdentity?.username) {
                 const key = this.promptService.formatSoraCode(char.soraIdentity.username);
-
-                // 直接使用 @username 作为唯一的 Key，移除冗余的 name 字段
-                settings[key] = {
-                    "appearance": char.description || char.appearance
-                };
+                // 只保留 @username 作为 key，不传递 appearance
+                settings[key] = {};
             }
         });
         return settings;
     }
 
     /**
-     * 辅助：将项目 Shot 转换为 Kaponai Sora Shot (匹配新 JSON 模板)
+     * 辅助：将项目 Shot 转换为 Kaponai Sora Shot
+     * 提示词格式：景别：@username 动作描述
+     * 不传递 duration，让 Sora 根据内容自动分配时长
      */
     private convertShotToSoraShot(shot: Shot, characters: Character[], scene: Scene, artStyle: string = "cinematic"): any {
-        // 1. 生成注入了 @编号 的叙事文本（已包含用户要求的中文质量指令）
+        // 1. 生成注入了 @username 的叙事文本
         const injectedNarrative = this.promptService.generateVideoPrompt(shot, characters, artStyle, scene);
 
         // 2. 识别主角色 ID
@@ -501,9 +502,13 @@ export class SoraOrchestrator {
             actorId = this.promptService.formatSoraCode(primaryChar.soraIdentity.username);
         }
 
-        // 3. 显式注入分镜景别
-        const shotSizePrefix = shot.shotSize ? `Shot Type: ${shot.shotSize}. ` : "";
-        const finalAction = `${shotSizePrefix}${injectedNarrative}`;
+        // 3. 注入中文景别前缀（用户要求保留景别信息）
+        // 格式：景别：描述，如 "中景：@角色A 从阴影中浮现"
+        // 检查描述是否已包含景别，避免重复
+        let finalAction = injectedNarrative;
+        if (shot.shotSize && !injectedNarrative.startsWith(shot.shotSize)) {
+            finalAction = `${shot.shotSize}：${injectedNarrative}`;
+        }
 
         return {
             "action": finalAction,
@@ -512,10 +517,11 @@ export class SoraOrchestrator {
                 "role": actorId,
                 "text": shot.dialogue || ""
             },
-            "duration": Math.min(shot.duration || 5, 10),
+            // 移除 duration 字段，让 Sora 根据内容自动分配时长
+            // Shot.duration 仍保留用于 Agent 分组和后期扩展
             "location": scene.location || "Unknown",
-            "style_tags": `${artStyle}`,
-            "time": "Day"
+            "style_tags": `${artStyle}`
+            // 移除 time: "Day"，如需要应从场景数据动态获取
         };
     }
 
