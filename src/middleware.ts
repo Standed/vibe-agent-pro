@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+import { createClient } from '@supabase/supabase-js';
+import { isTokenExpired } from '@/lib/supabase/cookie-utils';
+
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const path = req.nextUrl.pathname;
@@ -22,35 +25,72 @@ export async function middleware(req: NextRequest) {
   );
 
   // 检查是否有 Supabase 认证 cookie
-  // Supabase 的 storage key 格式通常是 sb-<project-ref>-auth-token
-  const allCookies = req.cookies.getAll();
+  const cookie = req.cookies.get('supabase-session');
+  let hasAuthCookie = !!cookie;
 
-  // 调试：打印所有 cookies
-  if (allCookies.length > 0) {
-    console.log('[Middleware] Cookies found:', allCookies.map(c => c.name).join(', '));
+  // 如果有 cookie，检查是否过期并尝试刷新
+  if (cookie) {
+    try {
+      const cookieValue = decodeURIComponent(cookie.value);
+      const session = JSON.parse(cookieValue);
+
+      // 检查 Token 是否过期
+      if (session?.access_token && isTokenExpired(session.access_token)) {
+        console.log('[Middleware] Token expired, attempting refresh...');
+
+        // 创建临时客户端用于刷新
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          {
+            auth: {
+              persistSession: false,
+              autoRefreshToken: false,
+              detectSessionInUrl: false,
+            },
+          }
+        );
+
+        // 尝试刷新 Session
+        const { data, error } = await supabase.auth.refreshSession({
+          refresh_token: session.refresh_token,
+        });
+
+        if (data.session && !error) {
+          console.log('[Middleware] Token refreshed successfully');
+          // 更新 Response Cookie (7天有效)
+          const newSession = {
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          };
+
+          res.cookies.set('supabase-session', encodeURIComponent(JSON.stringify(newSession)), {
+            maxAge: 60 * 60 * 24 * 7,
+            path: '/',
+            sameSite: 'lax',
+          });
+        } else {
+          console.warn('[Middleware] Refresh failed:', error?.message);
+          hasAuthCookie = false;
+          // 刷新失败，清除无效 Cookie
+          res.cookies.delete('supabase-session');
+        }
+      }
+    } catch (err) {
+      console.error('[Middleware] Cookie processing error:', err);
+      hasAuthCookie = false;
+    }
   }
 
-  // 检查是否有认证相关的 cookie
-  // 我们使用 supabase-session 作为认证 cookie（定义在 src/lib/supabase/auth.ts）
-  const hasAuthCookie = allCookies.some(cookie => {
-    return cookie.name === 'supabase-session';
-  });
+  console.log('[Middleware] Has auth cookie (valid/refreshed):', hasAuthCookie, 'Path:', path);
 
-  console.log('[Middleware] Has auth cookie:', hasAuthCookie, 'Path:', path);
-
-  // 如果不是公开路径且没有登录，且不是 API 路径（API 路径应返回 401 而非重定向到 HTML 登录页）
+  // 如果不是公开路径且没有登录，且不是 API 路径
   if (!isPublicPath && !hasAuthCookie && !path.startsWith('/api/')) {
     const redirectUrl = new URL('/auth/login', req.url);
     // 保存原始 URL，登录后可以跳转回来
     redirectUrl.searchParams.set('redirect', path);
     return NextResponse.redirect(redirectUrl);
   }
-
-  // 注释掉：不再阻止已有cookie的用户访问登录页
-  // 因为cookie可能已过期，AuthProvider会处理实际的登录状态
-  // if (hasAuthCookie && (path === '/auth/login' || path === '/auth/register')) {
-  //   return NextResponse.redirect(new URL('/', req.url));
-  // }
 
   return res;
 }

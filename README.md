@@ -94,7 +94,8 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 - **Three-tier Role System** - admin (free) / vip (80% off) / user (standard price)
 - **Credits Management** - All AI operations consume credits
 - **Auto Profile Creation** - Profile auto-created on first login
-- **Session Persistence** - Cookie-based session with auto-refresh
+- **Session Persistence** - Cookie-based session with auto-refresh (client + middleware)
+- **Server-side Refresh** - Middleware refreshes expired access tokens and injects `Authorization` for API routes
 
 ### 🆕 Request Cancellation (AbortController)
 - **Cancel AI Requests** - Stop ongoing AI operations anytime

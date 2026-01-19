@@ -1,4 +1,5 @@
 import { Project, Scene, Shot, Character, SoraTask } from '@/types/project';
+import { translateShotSize } from '@/utils/translations';
 import { KaponaiService } from './KaponaiService';
 import { SoraPromptService } from './SoraPromptService';
 import { UnifiedDataService } from '@/lib/dataService';
@@ -122,12 +123,9 @@ export class SoraOrchestrator {
 
         // 3. 并行提交所有视频任务（改自串行，提升提交速度）
         const taskPromises = chunks.map(async (chunkShots, i) => {
-            // 构建剧本
-            const script = {
-                "character_setting": this.buildCharacterSettings(involvedCharacters),
-                "shots": chunkShots.map(shot => this.convertShotToSoraShot(shot, involvedCharacters, scene, project.metadata.artStyle)),
-                "global_prompt": this.promptService.getGlobalPromptSuffix()
-            };
+            // ✅ 构建简洁的纯文本提示词（用户期望的格式）
+            const artStyle = project.metadata.artStyle || 'cinematic';
+            const promptText = this.buildSimplifiedPrompt(chunkShots, involvedCharacters, scene, artStyle);
 
             // 时长计算
             const chunkDuration = chunkShots.reduce((sum, s) => sum + (s.duration || 5), 0);
@@ -166,7 +164,7 @@ export class SoraOrchestrator {
             // 提交任务到 Kaponai（耗时操作，并行执行提升效率）
             const task = await this.kaponai.createVideo({
                 model: 'sora-2', // User requested cost saving
-                prompt: script,
+                prompt: promptText,  // ✅ 使用简化的纯文本提示词
                 seconds: requestSeconds,
                 size: targetSize,
                 input_reference: referenceImageForSora ? [referenceImageForSora] : undefined
@@ -193,7 +191,7 @@ export class SoraOrchestrator {
                 status: task.status as any || 'queued',
                 progress: task.progress ?? 0,
                 model: task.model || 'sora-2',
-                prompt: JSON.stringify(script),
+                prompt: promptText,  // ✅ 保存简化的提示词文本
                 targetDuration: requestSeconds,
                 targetSize: targetSize,
                 kaponaiUrl: task.video_url,
@@ -471,16 +469,19 @@ export class SoraOrchestrator {
 
     /**
      * 辅助：构建 Kaponai 要求的 character_setting
-     * 注意：只传递 @username 作为 key，不传递 appearance 描述
-     * Sora 已通过角色参考视频识别角色，额外描述会导致与参考视频不一致
+     * ✅ 加入用户修改的角色描述（用于补充/修正 Sora 的角色识别，如"不戴眼镜"）
      */
     private buildCharacterSettings(characters: Character[]): Record<string, any> {
         const settings: Record<string, any> = {};
         characters.forEach(char => {
             if (char.soraIdentity?.username) {
                 const key = this.promptService.formatSoraCode(char.soraIdentity.username);
-                // 只保留 @username 作为 key，不传递 appearance
-                settings[key] = {};
+                // ✅ 加入用户最新的角色描述（appearance 用于视觉特征修正）
+                const characterDesc: Record<string, string> = {};
+                if (char.appearance?.trim()) {
+                    characterDesc.appearance = char.appearance.trim();
+                }
+                settings[key] = characterDesc;
             }
         });
         return settings;
@@ -518,13 +519,93 @@ export class SoraOrchestrator {
                 "text": shot.dialogue || ""
             },
             // 移除 duration 字段，让 Sora 根据内容自动分配时长
-            // Shot.duration 仍保留用于 Agent 分组和后期扩展
-            "location": scene.location || "Unknown",
-            "style_tags": `${artStyle}`
-            // 移除 time: "Day"，如需要应从场景数据动态获取
+            "location": scene.location || "Unknown"
+            // ✅ 移除 style_tags，已统一放入 global_prompt
         };
     }
 
+    /**
+     * ✅ 构建简化的纯文本提示词（用户期望的格式）
+     * 格式：
+     * 【角色设定】（仅在有 appearance 时，放在最前面）
+     * @角色码：外观描述
+     * 【分镜描述】
+     * 画面1：景别，@角色 描述。台词：内容
+     * 【全局要求】
+     * 画风，其他设置...
+     */
+    private buildSimplifiedPrompt(shots: Shot[], characters: Character[], scene: Scene, artStyle: string): string {
+        const lines: string[] = [];
+
+        // 1. 角色设定（放在最前面，仅在有 appearance 时）
+        const characterSettings: string[] = [];
+        characters.forEach(char => {
+            if (char.soraIdentity?.username && char.appearance?.trim()) {
+                const code = this.promptService.formatSoraCode(char.soraIdentity.username);
+                characterSettings.push(`${code}：${char.appearance.trim()}`);
+            }
+        });
+
+        if (characterSettings.length > 0) {
+            lines.push('【角色设定】');
+            lines.push(...characterSettings);
+            lines.push('');
+        }
+
+        // 2. 场景信息（地点和描述）
+        const hasLocation = scene.location?.trim();
+        const hasSceneDesc = scene.description?.trim();
+        if (hasLocation || hasSceneDesc) {
+            lines.push('【场景信息】');
+            if (hasLocation) {
+                lines.push(`地点：${scene.location}`);
+            }
+            if (hasSceneDesc) {
+                lines.push(`描述：${scene.description}`);
+            }
+            lines.push('');
+        }
+
+        // 3. 分镜描述
+        lines.push('【分镜描述】');
+        shots.forEach((shot, index) => {
+            // 生成注入了 @username 的叙事文本
+            const narrative = this.promptService.generateVideoPrompt(shot, characters, artStyle, scene);
+
+            // 构建分镜行：画面N：景别，描述。台词：内容（不含镜头运动）
+            const parts: string[] = [];
+
+            // 景别（使用全局翻译方法）
+            if (shot.shotSize) {
+                const chineseShotSize = translateShotSize(shot.shotSize);
+                parts.push(chineseShotSize);
+            }
+
+            // 描述（已包含 @username）
+            parts.push(narrative);
+
+            // 拼接
+            let shotLine = `画面${index + 1}：${parts.join('，')}`;
+
+            // 台词（在末尾）
+            if (shot.dialogue?.trim()) {
+                shotLine += `。台词：${shot.dialogue.trim()}`;
+            }
+
+            lines.push(shotLine);
+        });
+
+        // 3. 全局要求
+        lines.push('');
+        lines.push('【全局要求】');
+        lines.push(`${artStyle}，${this.promptService.getGlobalPromptSuffix()}`);
+
+        return lines.join('\n');
+    }
+
+    /**
+     * 将英文镜头景别转为中文
+     */
     private normalizeName(name?: string): string {
         return (name || '').trim();
     }
@@ -671,26 +752,67 @@ export class SoraOrchestrator {
 
         if (onProgress) onProgress({ total: targetScenes.length, current: 0, status: 'running', message: 'Starting...' });
 
-        const results: any[] = [];
-        let completed = 0;
+        // --- Optimization Step 1: Global Character Pre-registration ---
+        // 提前注册所有涉及的角色，避免并行执行时的竞争条件 (Race Condition)
+        try {
+            const allTargetShots = project.shots.filter(s => targetScenes.some(ts => ts.id === s.sceneId));
+            const allInvolvedCharacters = this.identifyCharactersInScene(project, allTargetShots);
 
-        for (const scene of targetScenes) {
-            try {
+            if (allInvolvedCharacters.length > 0) {
                 if (onProgress) onProgress({
                     total: targetScenes.length,
-                    current: completed + 1,
+                    current: 0,
                     status: 'running',
-                    message: `Processing ${scene.name}...`
+                    message: `正在预注册 ${allInvolvedCharacters.length} 位角色...`
+                });
+                console.log(`[SoraOrchestrator] Pre-registering ${allInvolvedCharacters.length} characters for batch job...`);
+                await this.ensureCharactersRegistered(project.id, allInvolvedCharacters, userId);
+            }
+        } catch (e: any) {
+            console.error('[SoraOrchestrator] Character pre-registration failed:', e);
+            return {
+                success: false,
+                status: 'error',
+                code: 'character_registration_failed',
+                message: `角色注册失败: ${e.message}`,
+                suggestion: '请检查角色参考图或网络连接。'
+            };
+        }
+
+        // --- Optimization Step 2: Parallel Scene Processing ---
+        // 使用 Promise.all 并行提交场景任务，显著减少总耗时
+        let completedCount = 0;
+
+        const scenePromises = targetScenes.map(async (scene) => {
+            try {
+                // Note: generateSceneVideo 内部已经处理了分镜的拆分和并行提交
+                const taskIds = await this.generateSceneVideo(project, scene.id, userId);
+
+                completedCount++;
+                if (onProgress) onProgress({
+                    total: targetScenes.length,
+                    current: completedCount,
+                    status: 'running',
+                    message: `已提交场景: ${scene.name} (${completedCount}/${targetScenes.length})`
                 });
 
-                const taskIds = await this.generateSceneVideo(project, scene.id, userId);
-                results.push({ sceneId: scene.id, name: scene.name, tasks: taskIds, status: 'submitted' });
+                return { sceneId: scene.id, name: scene.name, tasks: taskIds, status: 'submitted' };
             } catch (e: any) {
+                completedCount++;
                 console.error(`[Orchestrator] Scene ${scene.name} failed:`, e);
-                results.push({ sceneId: scene.id, name: scene.name, error: e.message, status: 'failed' });
+
+                if (onProgress) onProgress({
+                    total: targetScenes.length,
+                    current: completedCount,
+                    status: 'running',
+                    message: `场景失败: ${scene.name} (${completedCount}/${targetScenes.length})`
+                });
+
+                return { sceneId: scene.id, name: scene.name, error: e.message, status: 'failed' };
             }
-            completed++;
-        }
+        });
+
+        const results = await Promise.all(scenePromises);
 
         const failedCount = results.filter(r => r.status === 'failed').length;
         const status = failedCount > 0 ? 'error' : 'idle';
@@ -698,7 +820,7 @@ export class SoraOrchestrator {
             ? `已完成，但有 ${failedCount} 个场景提交失败。请查看控制台日志。`
             : '所有视频任务提交成功。';
 
-        if (onProgress) onProgress({ total: targetScenes.length, current: completed, status, message });
+        if (onProgress) onProgress({ total: targetScenes.length, current: completedCount, status, message });
 
         const submittedCount = results.filter(r => r.status === 'submitted').length;
 
@@ -722,7 +844,5 @@ export class SoraOrchestrator {
             failed: failedCount,
             details: results
         };
-
-
     }
 }

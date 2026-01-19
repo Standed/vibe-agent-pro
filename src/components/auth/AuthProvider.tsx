@@ -42,20 +42,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       let finalProfile: any = data;
 
-      // 如果数据库中没有 profile，但我们有用户信息，可以先构造一个临时 profile
+      // 如果数据库中没有 profile，但我们有用户信息，尝试自动创建或等待后端创建
       if (!data || error) {
-        console.warn('[AuthProvider] 无法获取用户 Profile，使用临时 Profile (Fail Open)');
-        const userRole = userEmail ? (ADMIN_EMAILS.map(e => e.toLowerCase()).includes(userEmail.toLowerCase()) ? 'admin' : 'user') : 'user';
-        finalProfile = {
-          id: userId,
-          email: userEmail || '',
-          role: userRole,
-          credits: INITIAL_CREDITS[userRole as keyof typeof INITIAL_CREDITS],
-          is_whitelisted: false, // ✅ 默认为 false，需管理员激活
-          is_active: true,
-          full_name: 'User',
-          avatar_url: null
-        };
+        console.warn('[AuthProvider] 无法获取用户 Profile:', error);
+        // ❌ 移除：不再伪造 Profile，避免显示错误的积分
+        // 应该让 UI 显示加载状态或错误，或者等待后端中间件自动创建完成
+        setProfile(null);
       } else {
         // 数据库有数据，但确保积分字段不为 null
         finalProfile = {
@@ -64,43 +56,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ? data.credits
             : INITIAL_CREDITS[data.role as keyof typeof INITIAL_CREDITS] || 0
         };
-      }
 
-      // 兜底逻辑：如果邮箱在硬编码的管理员列表中，前端先行提权
-      if (userEmail && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(userEmail.toLowerCase())) {
-        finalProfile.role = 'admin';
-        finalProfile.is_whitelisted = true;
-      }
+        // 兜底逻辑：如果邮箱在硬编码的管理员列表中，前端先行提权
+        if (userEmail && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(userEmail.toLowerCase())) {
+          finalProfile.role = 'admin';
+          finalProfile.is_whitelisted = true;
+        }
 
-      // 如果没有头像，生成默认头像
-      if (!finalProfile.avatar_url && userEmail) {
-        const defaultAvatar = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userEmail)}&backgroundColor=000000,ffffff&textColor=ffffff,000000`;
-        finalProfile.avatar_url = defaultAvatar;
+        // 如果没有头像，生成默认头像
+        if (!finalProfile.avatar_url && userEmail) {
+          const defaultAvatar = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userEmail)}&backgroundColor=000000,ffffff&textColor=ffffff,000000`;
+          finalProfile.avatar_url = defaultAvatar;
 
-        // 异步更新数据库（仅当数据库已有记录时）
-        // 异步更新数据库（仅当数据库已有记录时）
-        if (data) {
-          // 不使用 .catch() 以避免 TypeError，如果 update 返回 Promise 则忽略错误
-          const updatePromise = (supabase as any).from('profiles').update({ avatar_url: defaultAvatar }).eq('id', userId);
-          if (updatePromise && typeof updatePromise.then === 'function') {
-            updatePromise.then(null, () => { });
+          // 异步更新数据库（仅当数据库已有记录时）
+          if (data) {
+            // 不使用 .catch() 以避免 TypeError，如果 update 返回 Promise 则忽略错误
+            const updatePromise = (supabase as any).from('profiles').update({ avatar_url: defaultAvatar }).eq('id', userId);
+            if (updatePromise && typeof updatePromise.then === 'function') {
+              updatePromise.then(null, () => { });
+            }
           }
         }
-      }
 
-      setProfile(finalProfile);
+        setProfile(finalProfile);
+      }
     } catch (err) {
       console.error('[AuthProvider] fetchProfile 异常:', err);
-      // 发生异常也至少设置一个基础状态，防止页面卡死，并默认给予白名单权限（Fail Open）
-      const userRole = userEmail ? (ADMIN_EMAILS.map(e => e.toLowerCase()).includes(userEmail.toLowerCase()) ? 'admin' : 'user') : 'user';
-      setProfile({
-        id: userId,
-        email: userEmail || '',
-        role: userRole,
-        credits: INITIAL_CREDITS[userRole as keyof typeof INITIAL_CREDITS],
-        is_whitelisted: false,
-        is_active: true
-      } as any);
+      setProfile(null);
     }
   };
 

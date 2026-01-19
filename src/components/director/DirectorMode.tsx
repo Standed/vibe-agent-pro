@@ -448,8 +448,8 @@ export default function DirectorMode({ isOpen, onClose }: DirectorModeProps) {
                 <AddCharacterDialog
                     onClose={() => setEditingCharacterId(null)}
                     initialCharacter={editingCharacter}
-                    onAdd={(char, options) => {
-                        updateCharacter(char.id, char);
+                    onAdd={async (char, options) => {
+                        await updateCharacter(char.id, char, options);
                         if (!options?.keepOpen) setEditingCharacterId(null);
                     }}
                     mode="edit"

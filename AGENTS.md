@@ -91,6 +91,8 @@ if ('error' in authResult) return authResult.error;
 // 自动执行：JWT 验证 → Profile 创建 → 白名单检查 → 频率限制
 ```
 
+- `src/middleware.ts` 会在访问层进行最佳努力的 Session 刷新：当 Access Token 接近过期时，使用 Refresh Token 刷新并回写 `supabase-session` Cookie，同时注入 `Authorization` Header 供 API 路由校验。
+
 ### 角色系统
 
 | 角色 | 说明 | 积分策略 |
