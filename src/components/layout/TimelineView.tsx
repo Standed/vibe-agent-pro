@@ -45,6 +45,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     const [isScrubbing, setIsScrubbing] = useState(false);
     const [showRightPanel, setShowRightPanel] = useState(true); // 默认展开右侧面板
     const [showQueuePanel, setShowQueuePanel] = useState(false);
+    const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null); // P6: 视频预览弹窗
     const queueOpenRef = useRef(false);
     const TIMELINE_SLOT_WIDTH = 80;
     const TIMELINE_SLOT_GAP = 8;
@@ -652,400 +653,417 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     }, [allShots, groupByShotId, soraVideoGroups]);
 
     return (
-        <div className="fixed inset-0 z-50 bg-light-bg dark:bg-cine-black flex overflow-hidden">
-            <LeftSidebarNew activeView="timeline" />
-            {/* Left: Video Player Area */}
-            <div className="flex-1 flex flex-col min-w-0 relative">
-                {/* Top Bar */}
-                <div className="h-12 flex-shrink-0 bg-white dark:bg-cine-panel flex items-center justify-between px-4 border-b border-light-border dark:border-cine-border">
-                    <div className="text-light-text dark:text-white font-bold text-sm">
-                        时间轴预览
-                    </div>
-                    <div className="text-light-text-muted dark:text-cine-text-muted text-sm">
-                        分镜 {currentShotIndex + 1} / {allShots.length}
-                        {!hasVideo && <span className="ml-2 text-yellow-600 dark:text-yellow-500">(无视频)</span>}
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setShowQueuePanel((prev) => !prev)}
-                            className="relative flex items-center gap-2 px-3 py-1.5 bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded text-sm text-light-text dark:text-white transition-colors"
-                        >
-                            <List size={14} />
-                            <span>任务队列</span>
-                            {activeQueueCount > 0 && (
-                                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
-                                    {activeQueueCount}
-                                </span>
-                            )}
-                        </button>
-                        <button
-                            onClick={refreshAllTasks}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded text-sm text-light-text dark:text-white transition-colors"
-                        >
-                            <RefreshCw size={14} />
-                            <span>刷新状态</span>
-                        </button>
-                    </div>
-                </div>
-
-                {showQueuePanel && (
-                    <div className="absolute right-4 top-14 w-[360px] max-h-[70vh] bg-white dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl shadow-lg z-30 overflow-hidden">
-                        <div className="flex items-center justify-between px-3 py-2 border-b border-light-border dark:border-cine-border">
-                            <div className="text-sm font-semibold text-light-text dark:text-white">Sora 任务队列</div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={refreshAllTasks}
-                                    className="text-xs px-2 py-1 rounded border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border transition-colors"
-                                >
-                                    刷新
-                                </button>
-                                <button
-                                    onClick={() => setShowQueuePanel(false)}
-                                    className="text-xs px-2 py-1 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-text dark:text-white hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
-                                >
-                                    收起
-                                </button>
-                            </div>
+        <>
+            <div className="fixed inset-0 z-50 bg-light-bg dark:bg-cine-black flex overflow-hidden">
+                <LeftSidebarNew activeView="timeline" />
+                {/* Left: Video Player Area */}
+                <div className="flex-1 flex flex-col min-w-0 relative">
+                    {/* Top Bar */}
+                    <div className="h-12 flex-shrink-0 bg-white dark:bg-cine-panel flex items-center justify-between px-4 border-b border-light-border dark:border-cine-border">
+                        <div className="text-light-text dark:text-white font-bold text-sm">
+                            时间轴预览
                         </div>
-                        <div className="px-3 py-2 text-[11px] text-light-text-muted dark:text-cine-text-muted border-b border-light-border dark:border-cine-border">
-                            排队 {soraTaskCounts.queued} · 进行中 {soraTaskCounts.processing} · 完成 {soraTaskCounts.completed} · 失败 {soraTaskCounts.failed}
+                        <div className="text-light-text-muted dark:text-cine-text-muted text-sm">
+                            分镜 {currentShotIndex + 1} / {allShots.length}
+                            {!hasVideo && <span className="ml-2 text-yellow-600 dark:text-yellow-500">(无视频)</span>}
                         </div>
-                        <div className="p-3 space-y-4 overflow-y-auto max-h-[calc(70vh-96px)]">
-                            <div>
-                                <div className="text-xs font-semibold text-light-text dark:text-white mb-2">
-                                    当前场景
-                                </div>
-                                {sceneOutputTasks.length === 0 ? (
-                                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                                        当前场景暂无输出
-                                    </div>
-                                ) : (
-                                    <div className="space-y-1">
-                                        {sceneOutputTasks.map((task) => {
-                                            const videoUrl = task.r2Url || task.kaponaiUrl;
-                                            const coverage = getTaskShotCoverage(task);
-                                            const durationHint = task.targetDuration ? `${task.targetDuration}s` : '';
-
-                                            return (
-                                                <div
-                                                    key={task.id}
-                                                    className="flex items-center gap-2 rounded-lg border border-light-border/60 dark:border-cine-border/60 px-2.5 py-1.5 hover:bg-light-surface/50 dark:hover:bg-cine-surface/50 transition-colors"
-                                                >
-                                                    {/* 左侧：镜头范围标识 */}
-                                                    <div className="w-14 flex-shrink-0 text-[10px] font-mono text-light-text-muted dark:text-cine-text-muted truncate">
-                                                        {coverage || '—'}
-                                                    </div>
-
-                                                    {/* 状态标签 */}
-                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${getStatusClass(task.status)}`}>
-                                                        {getStatusLabel(task.status)}
-                                                    </span>
-
-                                                    {/* 中间：任务信息 */}
-                                                    <div className="flex-1 min-w-0 flex items-center gap-2">
-                                                        {durationHint && (
-                                                            <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted">
-                                                                {durationHint}
-                                                            </span>
-                                                        )}
-                                                        {typeof task.progress === 'number' && task.status !== 'completed' && (
-                                                            <span className="text-[10px] text-blue-500 dark:text-blue-400 font-medium">
-                                                                {task.progress}%
-                                                            </span>
-                                                        )}
-                                                    </div>
-
-                                                    {/* 右侧：操作按钮 */}
-                                                    <div className="flex items-center gap-1 flex-shrink-0">
-                                                        <button
-                                                            onClick={() => refreshTask(task.id)}
-                                                            className="text-[10px] px-1.5 py-0.5 rounded text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-border/50 dark:hover:bg-cine-border/50 transition-colors"
-                                                        >
-                                                            刷新
-                                                        </button>
-                                                        {videoUrl && canBindToCurrentShot(task) && (
-                                                            <button
-                                                                onClick={() => bindTaskToShot(task, currentShot?.id || '')}
-                                                                className="text-[10px] px-1.5 py-0.5 rounded text-light-accent dark:text-cine-accent hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
-                                                            >
-                                                                绑定
-                                                            </button>
-                                                        )}
-                                                        {videoUrl && (
-                                                            <button
-                                                                onClick={() => window.open(videoUrl, '_blank', 'noopener,noreferrer')}
-                                                                className="text-[10px] px-1.5 py-0.5 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-accent dark:text-cine-accent hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
-                                                            >
-                                                                打开
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setShowQueuePanel((prev) => !prev)}
+                                className="relative flex items-center gap-2 px-3 py-1.5 bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded text-sm text-light-text dark:text-white transition-colors"
+                            >
+                                <List size={14} />
+                                <span>任务队列</span>
+                                {activeQueueCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
+                                        {activeQueueCount}
+                                    </span>
                                 )}
-                            </div>
-
-                            <div>
-                                <div className="text-xs font-semibold text-light-text dark:text-white mb-2">
-                                    全部任务 ({soraTaskList.length})
-                                </div>
-                                {soraTaskList.length === 0 ? (
-                                    <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
-                                        暂无任务
-                                    </div>
-                                ) : (
-                                    <div className="space-y-1">
-                                        {soraTaskList.map((task) => {
-                                            const videoUrl = task.r2Url || task.kaponaiUrl;
-                                            const coverage = getTaskShotCoverage(task);
-                                            const durationHint = task.targetDuration ? `${task.targetDuration}s` : '';
-                                            const isCharacterTask = task.type === 'character_reference';
-                                            const character = isCharacterTask ? charactersById.get(task.characterId || '') : null;
-
-                                            // 计算应用状态
-                                            const applicationStatus = getTaskApplicationStatus(task);
-                                            const getApplicationBadge = () => {
-                                                switch (applicationStatus) {
-                                                    case 'full':
-                                                        return <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/20 text-green-600 dark:text-green-400">✓ 应用中</span>;
-                                                    case 'partial':
-                                                        return <span className="text-[9px] px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">⚡ 部分</span>;
-                                                    case 'history':
-                                                        return <span className="text-[9px] px-1 py-0.5 rounded bg-gray-500/20 text-gray-500 dark:text-gray-400">○ 历史</span>;
-                                                    default:
-                                                        return null;
-                                                }
-                                            };
-
-                                            return (
-                                                <div
-                                                    key={task.id}
-                                                    className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${applicationStatus === 'history'
-                                                        ? 'border-light-border/40 dark:border-cine-border/40 opacity-60 hover:opacity-100'
-                                                        : 'border-light-border/60 dark:border-cine-border/60 hover:bg-light-surface/50 dark:hover:bg-cine-surface/50'
-                                                        }`}
-                                                >
-                                                    {/* 左侧：镜头范围标识 */}
-                                                    <div className="w-14 flex-shrink-0 text-[10px] font-mono text-light-text-muted dark:text-cine-text-muted truncate">
-                                                        {coverage || (isCharacterTask ? '角色' : '—')}
-                                                    </div>
-
-                                                    {/* 状态标签 */}
-                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${getStatusClass(task.status)}`}>
-                                                        {getStatusLabel(task.status)}
-                                                    </span>
-
-                                                    {/* 应用状态徽章 */}
-                                                    {getApplicationBadge()}
-
-                                                    {/* 中间：任务信息 */}
-                                                    <div className="flex-1 min-w-0 flex items-center gap-2">
-                                                        {isCharacterTask && character && (
-                                                            <span className="text-[11px] text-light-text dark:text-white truncate">
-                                                                {character.name}
-                                                            </span>
-                                                        )}
-                                                        {durationHint && (
-                                                            <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted">
-                                                                {durationHint}
-                                                            </span>
-                                                        )}
-                                                        {typeof task.progress === 'number' && task.status !== 'completed' && (
-                                                            <span className="text-[10px] text-blue-500 dark:text-blue-400 font-medium">
-                                                                {task.progress}%
-                                                            </span>
-                                                        )}
-                                                    </div>
-
-                                                    {/* 右侧：操作按钮 */}
-                                                    <div className="flex items-center gap-1 flex-shrink-0">
-                                                        <button
-                                                            onClick={() => refreshTask(task.id)}
-                                                            className="text-[10px] px-1.5 py-0.5 rounded text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-border/50 dark:hover:bg-cine-border/50 transition-colors"
-                                                        >
-                                                            刷新
-                                                        </button>
-                                                        {videoUrl && canBindToCurrentShot(task) && (
-                                                            <button
-                                                                onClick={() => bindTaskToShot(task, currentShot?.id || '')}
-                                                                className="text-[10px] px-1.5 py-0.5 rounded text-light-accent dark:text-cine-accent hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
-                                                            >
-                                                                绑定
-                                                            </button>
-                                                        )}
-                                                        {videoUrl && (
-                                                            <button
-                                                                onClick={() => window.open(videoUrl, '_blank', 'noopener,noreferrer')}
-                                                                className="text-[10px] px-1.5 py-0.5 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-accent dark:text-cine-accent hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
-                                                            >
-                                                                打开
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
+                            </button>
+                            <button
+                                onClick={refreshAllTasks}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-light-bg dark:bg-cine-panel hover:bg-light-border dark:hover:bg-cine-border border border-light-border dark:border-cine-border rounded text-sm text-light-text dark:text-white transition-colors"
+                            >
+                                <RefreshCw size={14} />
+                                <span>刷新状态</span>
+                            </button>
                         </div>
                     </div>
-                )}
 
-                {/* Video Preview Area */}
-                <div className="flex-1 min-h-0 flex items-center justify-center bg-gray-100 dark:bg-black relative">
-                    {hasVideo && currentVideoUrl ? (
-                        <video
-                            ref={videoRef}
-                            src={currentVideoUrl}
-                            className="max-w-full max-h-full object-contain"
-                            muted={isMuted}
-                            onTimeUpdate={handleTimeUpdate}
-                            onLoadedMetadata={handleLoadedMetadata}
-                            onCanPlay={(e) => {
-                                // Double check if it should be playing
-                                if (isPlaying) {
-                                    e.currentTarget.play().catch(() => { });
-                                }
-                            }}
-                            onEnded={handleEnded}
-                            onPlay={() => setIsPlaying(true)}
-                            onPause={(e) => {
-                                // Extremely important: Browser might fire pause when src changes
-                                // We only stop the app's 'isPlaying' state if it's a REAL manual pause.
-                                const video = e.currentTarget;
-                                if (!video.ended && video.readyState > 0) {
-                                    setIsPlaying(false);
-                                }
-                            }}
-                            playsInline
-                        />
-                    ) : currentShot?.referenceImage ? (
-                        <div className="text-center">
-                            <img
-                                src={currentShot.referenceImage}
-                                alt="Shot preview"
-                                className="max-w-full max-h-[50vh] object-contain mx-auto"
-                            />
-                            <div className="mt-4 flex items-center justify-center gap-2 text-yellow-600 dark:text-yellow-500">
-                                <ImageIcon size={16} />
-                                <span className="text-sm">此分镜暂无视频，显示参考图</span>
+                    {showQueuePanel && (
+                        <div className="absolute right-4 top-14 w-[360px] max-h-[70vh] bg-white dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl shadow-lg z-30 overflow-hidden">
+                            <div className="flex items-center justify-between px-3 py-2 border-b border-light-border dark:border-cine-border">
+                                <div className="text-sm font-semibold text-light-text dark:text-white">Sora 任务队列</div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={refreshAllTasks}
+                                        className="text-xs px-2 py-1 rounded border border-light-border dark:border-cine-border text-light-text dark:text-white hover:bg-light-border dark:hover:bg-cine-border transition-colors"
+                                    >
+                                        刷新
+                                    </button>
+                                    <button
+                                        onClick={() => setShowQueuePanel(false)}
+                                        className="text-xs px-2 py-1 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-text dark:text-white hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
+                                    >
+                                        收起
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    ) : (
-                        <div className="text-light-text-muted dark:text-cine-text-muted text-center">
-                            <Film size={48} className="mx-auto mb-2 opacity-50" />
-                            <p>暂无内容</p>
+                            <div className="px-3 py-2 text-[11px] text-light-text-muted dark:text-cine-text-muted border-b border-light-border dark:border-cine-border">
+                                排队 {soraTaskCounts.queued} · 进行中 {soraTaskCounts.processing} · 完成 {soraTaskCounts.completed} · 失败 {soraTaskCounts.failed}
+                            </div>
+                            <div className="p-3 space-y-4 overflow-y-auto max-h-[calc(70vh-96px)]">
+                                <div>
+                                    <div className="text-xs font-semibold text-light-text dark:text-white mb-2">
+                                        当前场景
+                                    </div>
+                                    {sceneOutputTasks.length === 0 ? (
+                                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                                            当前场景暂无输出
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-1">
+                                            {sceneOutputTasks.map((task) => {
+                                                const videoUrl = task.r2Url || task.kaponaiUrl;
+                                                const coverage = getTaskShotCoverage(task);
+                                                const durationHint = task.targetDuration ? `${task.targetDuration}s` : '';
+
+                                                return (
+                                                    <div
+                                                        key={task.id}
+                                                        className="flex items-center gap-2 rounded-lg border border-light-border/60 dark:border-cine-border/60 px-2.5 py-1.5 hover:bg-light-surface/50 dark:hover:bg-cine-surface/50 transition-colors"
+                                                    >
+                                                        {/* 左侧：镜头范围标识 */}
+                                                        <div className="w-14 flex-shrink-0 text-[10px] font-mono text-light-text-muted dark:text-cine-text-muted truncate">
+                                                            {coverage || '—'}
+                                                        </div>
+
+                                                        {/* 状态标签 */}
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${getStatusClass(task.status)}`}>
+                                                            {getStatusLabel(task.status)}
+                                                        </span>
+
+                                                        {/* 中间：任务信息 */}
+                                                        <div className="flex-1 min-w-0 flex items-center gap-2">
+                                                            {durationHint && (
+                                                                <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted">
+                                                                    {durationHint}
+                                                                </span>
+                                                            )}
+                                                            {typeof task.progress === 'number' && task.status !== 'completed' && (
+                                                                <span className="text-[10px] text-blue-500 dark:text-blue-400 font-medium">
+                                                                    {task.progress}%
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* 右侧：操作按钮 */}
+                                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                                            <button
+                                                                onClick={() => refreshTask(task.id)}
+                                                                className="text-[10px] px-1.5 py-0.5 rounded text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-border/50 dark:hover:bg-cine-border/50 transition-colors"
+                                                            >
+                                                                刷新
+                                                            </button>
+                                                            {videoUrl && canBindToCurrentShot(task) && (
+                                                                <button
+                                                                    onClick={() => bindTaskToShot(task, currentShot?.id || '')}
+                                                                    className="text-[10px] px-1.5 py-0.5 rounded text-light-accent dark:text-cine-accent hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
+                                                                >
+                                                                    绑定
+                                                                </button>
+                                                            )}
+                                                            {videoUrl && (
+                                                                <button
+                                                                    onClick={() => setPreviewVideoUrl(videoUrl)}
+                                                                    className="text-[10px] px-1.5 py-0.5 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-accent dark:text-cine-accent hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
+                                                                >
+                                                                    预览
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <div className="text-xs font-semibold text-light-text dark:text-white mb-2">
+                                        全部任务 ({soraTaskList.length})
+                                    </div>
+                                    {soraTaskList.length === 0 ? (
+                                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                                            暂无任务
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-1">
+                                            {soraTaskList.map((task) => {
+                                                const videoUrl = task.r2Url || task.kaponaiUrl;
+                                                const coverage = getTaskShotCoverage(task);
+                                                const durationHint = task.targetDuration ? `${task.targetDuration}s` : '';
+                                                const isCharacterTask = task.type === 'character_reference';
+                                                const character = isCharacterTask ? charactersById.get(task.characterId || '') : null;
+
+                                                // 计算应用状态
+                                                const applicationStatus = getTaskApplicationStatus(task);
+                                                const getApplicationBadge = () => {
+                                                    switch (applicationStatus) {
+                                                        case 'full':
+                                                            return <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/20 text-green-600 dark:text-green-400">✓ 应用中</span>;
+                                                        case 'partial':
+                                                            return <span className="text-[9px] px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">⚡ 部分</span>;
+                                                        case 'history':
+                                                            return <span className="text-[9px] px-1 py-0.5 rounded bg-gray-500/20 text-gray-500 dark:text-gray-400">○ 历史</span>;
+                                                        default:
+                                                            return null;
+                                                    }
+                                                };
+
+                                                return (
+                                                    <div
+                                                        key={task.id}
+                                                        className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${applicationStatus === 'history'
+                                                            ? 'border-light-border/40 dark:border-cine-border/40 opacity-60 hover:opacity-100'
+                                                            : 'border-light-border/60 dark:border-cine-border/60 hover:bg-light-surface/50 dark:hover:bg-cine-surface/50'
+                                                            }`}
+                                                    >
+                                                        {/* 左侧：镜头范围标识 */}
+                                                        <div className="w-14 flex-shrink-0 text-[10px] font-mono text-light-text-muted dark:text-cine-text-muted truncate">
+                                                            {coverage || (isCharacterTask ? '角色' : '—')}
+                                                        </div>
+
+                                                        {/* 状态标签 */}
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${getStatusClass(task.status)}`}>
+                                                            {getStatusLabel(task.status)}
+                                                        </span>
+
+                                                        {/* 应用状态徽章 */}
+                                                        {getApplicationBadge()}
+
+                                                        {/* 中间：任务信息 */}
+                                                        <div className="flex-1 min-w-0 flex items-center gap-2">
+                                                            {isCharacterTask && character && (
+                                                                <span className="text-[11px] text-light-text dark:text-white truncate">
+                                                                    {character.name}
+                                                                </span>
+                                                            )}
+                                                            {durationHint && (
+                                                                <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted">
+                                                                    {durationHint}
+                                                                </span>
+                                                            )}
+                                                            {typeof task.progress === 'number' && task.status !== 'completed' && (
+                                                                <span className="text-[10px] text-blue-500 dark:text-blue-400 font-medium">
+                                                                    {task.progress}%
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* 右侧：操作按钮 */}
+                                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                                            <button
+                                                                onClick={() => refreshTask(task.id)}
+                                                                className="text-[10px] px-1.5 py-0.5 rounded text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white hover:bg-light-border/50 dark:hover:bg-cine-border/50 transition-colors"
+                                                            >
+                                                                刷新
+                                                            </button>
+                                                            {videoUrl && canBindToCurrentShot(task) && (
+                                                                <button
+                                                                    onClick={() => bindTaskToShot(task, currentShot?.id || '')}
+                                                                    className="text-[10px] px-1.5 py-0.5 rounded text-light-accent dark:text-cine-accent hover:bg-light-accent/10 dark:hover:bg-cine-accent/10 transition-colors"
+                                                                >
+                                                                    绑定
+                                                                </button>
+                                                            )}
+                                                            {videoUrl && (
+                                                                <button
+                                                                    onClick={() => setPreviewVideoUrl(videoUrl)}
+                                                                    className="text-[10px] px-1.5 py-0.5 rounded bg-light-accent/10 dark:bg-cine-accent/10 text-light-accent dark:text-cine-accent hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 transition-colors"
+                                                                >
+                                                                    预览
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
 
-                    {/* Navigation Arrows */}
-                    <button
-                        onClick={prevShot}
-                        disabled={currentShotIndex === 0}
-                        className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-white/80 dark:bg-black/50 hover:bg-white dark:hover:bg-black/70 rounded-full text-light-text dark:text-white shadow-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                    >
-                        <ChevronLeft size={24} />
-                    </button>
-                    <button
-                        onClick={nextShot}
-                        disabled={currentShotIndex >= allShots.length - 1}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-white/80 dark:bg-black/50 hover:bg-white dark:hover:bg-black/70 rounded-full text-light-text dark:text-white shadow-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                    >
-                        <ChevronRight size={24} />
-                    </button>
-                </div>
+                    {/* Video Preview Area */}
+                    <div className="flex-1 min-h-0 flex items-center justify-center bg-gray-100 dark:bg-black relative">
+                        {hasVideo && currentVideoUrl ? (
+                            <video
+                                ref={videoRef}
+                                src={currentVideoUrl}
+                                className="max-w-full max-h-full object-contain"
+                                muted={isMuted}
+                                onTimeUpdate={handleTimeUpdate}
+                                onLoadedMetadata={handleLoadedMetadata}
+                                onCanPlay={(e) => {
+                                    // Double check if it should be playing
+                                    if (isPlaying) {
+                                        e.currentTarget.play().catch(() => { });
+                                    }
+                                }}
+                                onEnded={handleEnded}
+                                onPlay={() => setIsPlaying(true)}
+                                onPause={(e) => {
+                                    // Extremely important: Browser might fire pause when src changes
+                                    // We only stop the app's 'isPlaying' state if it's a REAL manual pause.
+                                    const video = e.currentTarget;
+                                    if (!video.ended && video.readyState > 0) {
+                                        setIsPlaying(false);
+                                    }
+                                }}
+                                playsInline
+                            />
+                        ) : currentShot?.referenceImage ? (
+                            <div className="text-center">
+                                <img
+                                    src={currentShot.referenceImage}
+                                    alt="Shot preview"
+                                    className="max-w-full max-h-[50vh] object-contain mx-auto"
+                                />
+                                <div className="mt-4 flex items-center justify-center gap-2 text-yellow-600 dark:text-yellow-500">
+                                    <ImageIcon size={16} />
+                                    <span className="text-sm">此分镜暂无视频，显示参考图</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-light-text-muted dark:text-cine-text-muted text-center">
+                                <Film size={48} className="mx-auto mb-2 opacity-50" />
+                                <p>暂无内容</p>
+                            </div>
+                        )}
 
-                {/* Progress Bar */}
-                <div
-                    className="h-2 flex-shrink-0 bg-gray-200 dark:bg-zinc-800 cursor-pointer relative"
-                    ref={progressBarRef}
-                    onClick={handleProgressClick}
-                    onPointerDown={handleProgressPointerDown}
-                    onPointerMove={handleProgressPointerMove}
-                    onPointerUp={handleProgressPointerUp}
-                    onPointerCancel={handleProgressPointerUp}
-                >
-                    <div
-                        className="absolute left-0 top-0 h-full bg-light-accent dark:bg-emerald-500 transition-all"
-                        style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
-                    />
-                    <div
-                        className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-light-accent dark:bg-white rounded-full shadow-lg"
-                        style={{ left: duration > 0 ? `calc(${(currentTime / duration) * 100}% - 6px)` : '0' }}
-                    />
-                </div>
-
-                {/* Playback Controls */}
-                <div className="h-14 flex-shrink-0 bg-white dark:bg-cine-panel flex items-center justify-center gap-6 border-t border-light-border dark:border-cine-border">
-                    <button
-                        onClick={prevShot}
-                        disabled={currentShotIndex === 0}
-                        className="p-2 text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-colors disabled:opacity-30"
-                    >
-                        <SkipBack size={20} />
-                    </button>
-                    <button
-                        onClick={togglePlay}
-                        disabled={!hasVideo}
-                        className={`p-3 rounded-full transition-all ${hasVideo
-                            ? 'bg-light-accent dark:bg-white text-white dark:text-black hover:scale-105'
-                            : 'bg-gray-300 dark:bg-zinc-700 text-gray-500 dark:text-zinc-500 cursor-not-allowed'
-                            }`}
-                    >
-                        {isPlaying ? <Pause size={24} /> : <Play size={24} fill="currentColor" />}
-                    </button>
-                    <button
-                        onClick={nextShot}
-                        disabled={currentShotIndex >= allShots.length - 1}
-                        className="p-2 text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-colors disabled:opacity-30"
-                    >
-                        <SkipForward size={20} />
-                    </button>
-
-                    <div className="w-px h-6 bg-light-border dark:bg-cine-border" />
-
-                    <button
-                        onClick={toggleMute}
-                        disabled={!hasVideo}
-                        className={`p-2 transition-colors ${hasVideo ? 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white' : 'text-gray-400 dark:text-zinc-600'}`}
-                    >
-                        {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                    </button>
-
-                    <div className="text-light-text-muted dark:text-cine-text-muted text-sm font-mono">
-                        {formatTime(currentTime)} / {formatTime(duration || (currentShot?.duration || 3))} · 总 {formatTime(totalDuration || 0)}
+                        {/* Navigation Arrows */}
+                        <button
+                            onClick={prevShot}
+                            disabled={currentShotIndex === 0}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-white/80 dark:bg-black/50 hover:bg-white dark:hover:bg-black/70 rounded-full text-light-text dark:text-white shadow-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        >
+                            <ChevronLeft size={24} />
+                        </button>
+                        <button
+                            onClick={nextShot}
+                            disabled={currentShotIndex >= allShots.length - 1}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-white/80 dark:bg-black/50 hover:bg-white dark:hover:bg-black/70 rounded-full text-light-text dark:text-white shadow-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        >
+                            <ChevronRight size={24} />
+                        </button>
                     </div>
-                </div>
 
-                {/* Timeline Strip */}
-                <div className="h-20 flex-shrink-0 bg-gray-50 dark:bg-cine-black border-t border-light-border dark:border-cine-border overflow-x-auto">
-                    <div className="flex gap-2 p-2 h-full">
-                        {timelineItems.map((item) => {
-                            if (item.type === 'shot') {
-                                const { shot, index } = item;
-                                const shotHasVideo = !!shot.videoClip;
-                                const isSelected = index === currentShotIndex;
+                    {/* Progress Bar */}
+                    <div
+                        className="h-2 flex-shrink-0 bg-gray-200 dark:bg-zinc-800 cursor-pointer relative"
+                        ref={progressBarRef}
+                        onClick={handleProgressClick}
+                        onPointerDown={handleProgressPointerDown}
+                        onPointerMove={handleProgressPointerMove}
+                        onPointerUp={handleProgressPointerUp}
+                        onPointerCancel={handleProgressPointerUp}
+                    >
+                        <div
+                            className="absolute left-0 top-0 h-full bg-light-accent dark:bg-emerald-500 transition-all"
+                            style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
+                        />
+                        <div
+                            className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-light-accent dark:bg-white rounded-full shadow-lg"
+                            style={{ left: duration > 0 ? `calc(${(currentTime / duration) * 100}% - 6px)` : '0' }}
+                        />
+                    </div>
 
-                                return (
-                                    <div
-                                        key={shot.id}
-                                        onClick={() => {
-                                            setCurrentShotIndex(index);
-                                            selectShot(shot.id);
-                                            setIsPlaying(false);
-                                        }}
-                                        className={`relative flex-shrink-0 w-20 h-full rounded-lg overflow-hidden cursor-pointer transition-all ${isSelected
-                                            ? 'ring-2 ring-light-accent dark:ring-white scale-105 z-10'
-                                            : shotHasVideo
-                                                ? 'ring-1 ring-emerald-500/50 hover:ring-emerald-500'
-                                                : 'ring-1 ring-light-border dark:ring-zinc-700 hover:ring-light-accent dark:hover:ring-zinc-500'
-                                            }`}
-                                    >
-                                        {shot.videoClip ? (
-                                            shot.referenceImage ? (
+                    {/* Playback Controls */}
+                    <div className="h-14 flex-shrink-0 bg-white dark:bg-cine-panel flex items-center justify-center gap-6 border-t border-light-border dark:border-cine-border">
+                        <button
+                            onClick={prevShot}
+                            disabled={currentShotIndex === 0}
+                            className="p-2 text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-colors disabled:opacity-30"
+                        >
+                            <SkipBack size={20} />
+                        </button>
+                        <button
+                            onClick={togglePlay}
+                            disabled={!hasVideo}
+                            className={`p-3 rounded-full transition-all ${hasVideo
+                                ? 'bg-light-accent dark:bg-white text-white dark:text-black hover:scale-105'
+                                : 'bg-gray-300 dark:bg-zinc-700 text-gray-500 dark:text-zinc-500 cursor-not-allowed'
+                                }`}
+                        >
+                            {isPlaying ? <Pause size={24} /> : <Play size={24} fill="currentColor" />}
+                        </button>
+                        <button
+                            onClick={nextShot}
+                            disabled={currentShotIndex >= allShots.length - 1}
+                            className="p-2 text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white transition-colors disabled:opacity-30"
+                        >
+                            <SkipForward size={20} />
+                        </button>
+
+                        <div className="w-px h-6 bg-light-border dark:bg-cine-border" />
+
+                        <button
+                            onClick={toggleMute}
+                            disabled={!hasVideo}
+                            className={`p-2 transition-colors ${hasVideo ? 'text-light-text-muted dark:text-cine-text-muted hover:text-light-text dark:hover:text-white' : 'text-gray-400 dark:text-zinc-600'}`}
+                        >
+                            {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                        </button>
+
+                        <div className="text-light-text-muted dark:text-cine-text-muted text-sm font-mono">
+                            {formatTime(currentTime)} / {formatTime(duration || (currentShot?.duration || 3))} · 总 {formatTime(totalDuration || 0)}
+                        </div>
+                    </div>
+
+                    {/* Timeline Strip */}
+                    <div className="h-20 flex-shrink-0 bg-gray-50 dark:bg-cine-black border-t border-light-border dark:border-cine-border overflow-x-auto">
+                        <div className="flex gap-2 p-2 h-full">
+                            {timelineItems.map((item) => {
+                                if (item.type === 'shot') {
+                                    const { shot, index } = item;
+                                    const shotHasVideo = !!shot.videoClip;
+                                    const isSelected = index === currentShotIndex;
+
+                                    return (
+                                        <div
+                                            key={shot.id}
+                                            onClick={() => {
+                                                setCurrentShotIndex(index);
+                                                selectShot(shot.id);
+                                                setIsPlaying(false);
+                                            }}
+                                            className={`relative flex-shrink-0 w-20 h-full rounded-lg overflow-hidden cursor-pointer transition-all ${isSelected
+                                                ? 'ring-2 ring-light-accent dark:ring-white scale-105 z-10'
+                                                : shotHasVideo
+                                                    ? 'ring-1 ring-emerald-500/50 hover:ring-emerald-500'
+                                                    : 'ring-1 ring-light-border dark:ring-zinc-700 hover:ring-light-accent dark:hover:ring-zinc-500'
+                                                }`}
+                                        >
+                                            {shot.videoClip ? (
+                                                shot.referenceImage ? (
+                                                    <img
+                                                        src={shot.referenceImage}
+                                                        alt=""
+                                                        loading="lazy"
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <video
+                                                        src={shot.videoClip}
+                                                        className="w-full h-full object-cover"
+                                                        muted
+                                                        preload="metadata"
+                                                        playsInline
+                                                    />
+                                                )
+                                            ) : shot.referenceImage ? (
                                                 <img
                                                     src={shot.referenceImage}
                                                     alt=""
@@ -1053,192 +1071,205 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                                                     className="w-full h-full object-cover"
                                                 />
                                             ) : (
-                                                <video
-                                                    src={shot.videoClip}
-                                                    className="w-full h-full object-cover"
-                                                    muted
-                                                    preload="metadata"
-                                                    playsInline
-                                                />
-                                            )
-                                        ) : shot.referenceImage ? (
+                                                <div className="w-full h-full bg-gray-200 dark:bg-zinc-800 flex items-center justify-center">
+                                                    <Film size={16} className="text-gray-400 dark:text-zinc-600" />
+                                                </div>
+                                            )}
+
+                                            {shotHasVideo && (
+                                                <div className="absolute top-1 left-1 flex items-center gap-0.5 bg-emerald-500/90 text-white text-[8px] px-1 py-0.5 rounded font-bold">
+                                                    <Film size={8} />
+                                                </div>
+                                            )}
+
+                                            <div className="absolute bottom-1 right-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-mono">
+                                                {(shot.duration || 3).toFixed(1)}s
+                                            </div>
+
+                                            <div className="absolute bottom-1 left-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-bold">
+                                                {index + 1}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                const { group } = item;
+                                const groupWidth = (group.shots.length * TIMELINE_SLOT_WIDTH) +
+                                    (Math.max(group.shots.length - 1, 0) * TIMELINE_SLOT_GAP);
+                                const isGroupSelected = currentGroup?.taskId === group.taskId;
+                                const groupPoster = group.shots.find((shot) => shot.referenceImage)?.referenceImage;
+
+                                return (
+                                    <div
+                                        key={group.taskId}
+                                        className={`relative flex-shrink-0 h-full rounded-lg overflow-hidden transition-all ${isGroupSelected
+                                            ? 'ring-2 ring-light-accent dark:ring-white'
+                                            : 'ring-1 ring-emerald-500/50'
+                                            }`}
+                                        style={{ width: groupWidth }}
+                                    >
+                                        {groupPoster ? (
                                             <img
-                                                src={shot.referenceImage}
+                                                src={groupPoster}
                                                 alt=""
                                                 loading="lazy"
-                                                className="w-full h-full object-cover"
+                                                className="absolute inset-0 w-full h-full object-cover"
+                                            />
+                                        ) : group.videoUrl ? (
+                                            <video
+                                                src={group.videoUrl}
+                                                className="absolute inset-0 w-full h-full object-cover"
+                                                muted
+                                                preload="metadata"
+                                                playsInline
                                             />
                                         ) : (
-                                            <div className="w-full h-full bg-gray-200 dark:bg-zinc-800 flex items-center justify-center">
+                                            <div className="absolute inset-0 bg-gray-200 dark:bg-zinc-800 flex items-center justify-center">
                                                 <Film size={16} className="text-gray-400 dark:text-zinc-600" />
                                             </div>
                                         )}
 
-                                        {shotHasVideo && (
-                                            <div className="absolute top-1 left-1 flex items-center gap-0.5 bg-emerald-500/90 text-white text-[8px] px-1 py-0.5 rounded font-bold">
-                                                <Film size={8} />
-                                            </div>
-                                        )}
-
-                                        <div className="absolute bottom-1 right-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-mono">
-                                            {(shot.duration || 3).toFixed(1)}s
+                                        <div className="absolute top-1 left-1 flex items-center gap-0.5 bg-emerald-500/90 text-white text-[8px] px-1 py-0.5 rounded font-bold z-10">
+                                            <Film size={8} />
+                                            Sora
                                         </div>
 
-                                        <div className="absolute bottom-1 left-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-bold">
-                                            {index + 1}
+                                        <div className="relative z-10 flex h-full" style={{ gap: `${TIMELINE_SLOT_GAP}px` }}>
+                                            {group.shots.map((shot) => {
+                                                const shotIndex = shotIndexById.get(shot.id) ?? 0;
+                                                const isShotSelected = shot.id === currentShot?.id;
+
+                                                return (
+                                                    <button
+                                                        key={shot.id}
+                                                        onClick={() => {
+                                                            setCurrentShotIndex(shotIndex);
+                                                            selectShot(shot.id);
+                                                            setIsPlaying(false);
+                                                        }}
+                                                        className={`relative h-full rounded-lg overflow-hidden transition-all ${isShotSelected
+                                                            ? 'ring-2 ring-light-accent dark:ring-white bg-black/40'
+                                                            : 'ring-1 ring-black/30 dark:ring-white/10 bg-black/20 hover:bg-black/30'
+                                                            }`}
+                                                        style={{ width: TIMELINE_SLOT_WIDTH }}
+                                                    >
+                                                        <div className="absolute bottom-1 right-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-mono">
+                                                            {(shot.duration || 3).toFixed(1)}s
+                                                        </div>
+                                                        <div className="absolute bottom-1 left-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-bold">
+                                                            {shotIndex + 1}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 );
-                            }
-
-                            const { group } = item;
-                            const groupWidth = (group.shots.length * TIMELINE_SLOT_WIDTH) +
-                                (Math.max(group.shots.length - 1, 0) * TIMELINE_SLOT_GAP);
-                            const isGroupSelected = currentGroup?.taskId === group.taskId;
-                            const groupPoster = group.shots.find((shot) => shot.referenceImage)?.referenceImage;
-
-                            return (
-                                <div
-                                    key={group.taskId}
-                                    className={`relative flex-shrink-0 h-full rounded-lg overflow-hidden transition-all ${isGroupSelected
-                                        ? 'ring-2 ring-light-accent dark:ring-white'
-                                        : 'ring-1 ring-emerald-500/50'
-                                        }`}
-                                    style={{ width: groupWidth }}
-                                >
-                                    {groupPoster ? (
-                                        <img
-                                            src={groupPoster}
-                                            alt=""
-                                            loading="lazy"
-                                            className="absolute inset-0 w-full h-full object-cover"
-                                        />
-                                    ) : group.videoUrl ? (
-                                        <video
-                                            src={group.videoUrl}
-                                            className="absolute inset-0 w-full h-full object-cover"
-                                            muted
-                                            preload="metadata"
-                                            playsInline
-                                        />
-                                    ) : (
-                                        <div className="absolute inset-0 bg-gray-200 dark:bg-zinc-800 flex items-center justify-center">
-                                            <Film size={16} className="text-gray-400 dark:text-zinc-600" />
-                                        </div>
-                                    )}
-
-                                    <div className="absolute top-1 left-1 flex items-center gap-0.5 bg-emerald-500/90 text-white text-[8px] px-1 py-0.5 rounded font-bold z-10">
-                                        <Film size={8} />
-                                        Sora
-                                    </div>
-
-                                    <div className="relative z-10 flex h-full" style={{ gap: `${TIMELINE_SLOT_GAP}px` }}>
-                                        {group.shots.map((shot) => {
-                                            const shotIndex = shotIndexById.get(shot.id) ?? 0;
-                                            const isShotSelected = shot.id === currentShot?.id;
-
-                                            return (
-                                                <button
-                                                    key={shot.id}
-                                                    onClick={() => {
-                                                        setCurrentShotIndex(shotIndex);
-                                                        selectShot(shot.id);
-                                                        setIsPlaying(false);
-                                                    }}
-                                                    className={`relative h-full rounded-lg overflow-hidden transition-all ${isShotSelected
-                                                        ? 'ring-2 ring-light-accent dark:ring-white bg-black/40'
-                                                        : 'ring-1 ring-black/30 dark:ring-white/10 bg-black/20 hover:bg-black/30'
-                                                        }`}
-                                                    style={{ width: TIMELINE_SLOT_WIDTH }}
-                                                >
-                                                    <div className="absolute bottom-1 right-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-mono">
-                                                        {(shot.duration || 3).toFixed(1)}s
-                                                    </div>
-                                                    <div className="absolute bottom-1 left-1 bg-black/80 text-white text-[9px] px-1 py-0.5 rounded font-bold">
-                                                        {shotIndex + 1}
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            );
-                        })}
+                            })}
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Right: Collapsible Agent/Pro Panel */}
-            {showRightPanel ? (
-                <div className="w-[420px] flex-shrink-0 border-l border-light-border dark:border-cine-border flex flex-col h-full bg-white dark:bg-cine-panel relative">
-                    {/* Collapse Button */}
-                    <button
-                        onClick={() => setShowRightPanel(false)}
-                        className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-8 h-8 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 rounded-full text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all shadow-xl border border-black/5 dark:border-white/10 flex items-center justify-center group"
-                        title="收起面板"
-                    >
-                        <ChevronRight size={18} className="transition-transform group-hover:translate-x-0.5" />
-                    </button>
+                {/* Right: Collapsible Agent/Pro Panel */}
+                {showRightPanel ? (
+                    <div className="w-[420px] flex-shrink-0 border-l border-light-border dark:border-cine-border flex flex-col h-full bg-white dark:bg-cine-panel relative">
+                        {/* Collapse Button */}
+                        <button
+                            onClick={() => setShowRightPanel(false)}
+                            className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-8 h-8 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 rounded-full text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all shadow-xl border border-black/5 dark:border-white/10 flex items-center justify-center group"
+                            title="收起面板"
+                        >
+                            <ChevronRight size={18} className="transition-transform group-hover:translate-x-0.5" />
+                        </button>
 
-                    {/* Mode Toggle & Header */}
-                    <div className="p-4 pb-2 flex-shrink-0 flex items-center gap-3">
-                        <div className="flex-1 flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
+                        {/* Mode Toggle & Header */}
+                        <div className="p-4 pb-2 flex-shrink-0 flex items-center gap-3">
+                            <div className="flex-1 flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
+                                <button
+                                    onClick={() => setControlMode('agent')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${controlMode === 'agent'
+                                        ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
+                                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
+                                        }`}
+                                >
+                                    <Bot size={16} />
+                                    <span>Agent</span>
+                                </button>
+                                <button
+                                    onClick={() => setControlMode('pro')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${controlMode === 'pro'
+                                        ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
+                                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
+                                        }`}
+                                >
+                                    <Sliders size={16} />
+                                    <span>Pro</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Panel Content */}
+                        <div className="flex-1 overflow-hidden">
+                            {controlMode === 'agent' ? <AgentPanel /> : <ChatPanel />}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="w-12 flex-shrink-0 border-l border-light-border dark:border-cine-border bg-white dark:bg-cine-panel flex flex-col items-center py-4 gap-3">
+                        <button
+                            onClick={() => setShowRightPanel(true)}
+                            className="p-2 bg-light-accent/10 dark:bg-cine-accent/10 hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 rounded-lg text-light-text dark:text-white transition-colors"
+                            title="展开 Agent 面板"
+                        >
+                            <ChevronLeft size={16} />
+                        </button>
+                        {/* Quick mode indicators */}
+                        <div className="flex flex-col gap-2 mt-2">
                             <button
-                                onClick={() => setControlMode('agent')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${controlMode === 'agent'
-                                    ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
-                                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
-                                    }`}
+                                onClick={() => { setShowRightPanel(true); setControlMode('agent'); }}
+                                className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${controlMode === 'agent' ? 'bg-light-accent/20 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent' : 'bg-light-accent/5 dark:bg-cine-accent/5 text-light-text-muted dark:text-cine-text-muted hover:bg-light-accent/10 dark:hover:bg-cine-accent/10'}`}
+                                title="Agent 模式"
                             >
                                 <Bot size={16} />
-                                <span>Agent</span>
                             </button>
                             <button
-                                onClick={() => setControlMode('pro')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${controlMode === 'pro'
-                                    ? 'bg-white dark:bg-white/10 text-black dark:text-white shadow-sm'
-                                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'
-                                    }`}
+                                onClick={() => { setShowRightPanel(true); setControlMode('pro'); }}
+                                className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${controlMode === 'pro' ? 'bg-light-accent/20 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent' : 'bg-light-accent/5 dark:bg-cine-accent/5 text-light-text-muted dark:text-cine-text-muted hover:bg-light-accent/10 dark:hover:bg-cine-accent/10'}`}
+                                title="Pro 模式"
                             >
                                 <Sliders size={16} />
-                                <span>Pro</span>
                             </button>
                         </div>
                     </div>
+                )}
+            </div>
 
-                    {/* Panel Content */}
-                    <div className="flex-1 overflow-hidden">
-                        {controlMode === 'agent' ? <AgentPanel /> : <ChatPanel />}
-                    </div>
-                </div>
-            ) : (
-                <div className="w-12 flex-shrink-0 border-l border-light-border dark:border-cine-border bg-white dark:bg-cine-panel flex flex-col items-center py-4 gap-3">
-                    <button
-                        onClick={() => setShowRightPanel(true)}
-                        className="p-2 bg-light-accent/10 dark:bg-cine-accent/10 hover:bg-light-accent/20 dark:hover:bg-cine-accent/20 rounded-lg text-light-text dark:text-white transition-colors"
-                        title="展开 Agent 面板"
+            {/* P6: 视频预览弹窗 */}
+            {
+                previewVideoUrl && (
+                    <div
+                        className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center"
+                        onClick={() => setPreviewVideoUrl(null)}
                     >
-                        <ChevronLeft size={16} />
-                    </button>
-                    {/* Quick mode indicators */}
-                    <div className="flex flex-col gap-2 mt-2">
-                        <button
-                            onClick={() => { setShowRightPanel(true); setControlMode('agent'); }}
-                            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${controlMode === 'agent' ? 'bg-light-accent/20 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent' : 'bg-light-accent/5 dark:bg-cine-accent/5 text-light-text-muted dark:text-cine-text-muted hover:bg-light-accent/10 dark:hover:bg-cine-accent/10'}`}
-                            title="Agent 模式"
+                        <div
+                            className="relative max-w-[90vw] max-h-[90vh]"
+                            onClick={(e) => e.stopPropagation()}
                         >
-                            <Bot size={16} />
-                        </button>
-                        <button
-                            onClick={() => { setShowRightPanel(true); setControlMode('pro'); }}
-                            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${controlMode === 'pro' ? 'bg-light-accent/20 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent' : 'bg-light-accent/5 dark:bg-cine-accent/5 text-light-text-muted dark:text-cine-text-muted hover:bg-light-accent/10 dark:hover:bg-cine-accent/10'}`}
-                            title="Pro 模式"
-                        >
-                            <Sliders size={16} />
-                        </button>
+                            <video
+                                src={previewVideoUrl}
+                                controls
+                                autoPlay
+                                className="max-w-full max-h-[80vh] rounded-lg"
+                            />
+                            <button
+                                onClick={() => setPreviewVideoUrl(null)}
+                                className="absolute -top-10 right-0 text-white hover:text-gray-300 text-sm flex items-center gap-1"
+                            >
+                                关闭 (ESC)
+                            </button>
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </>
     );
 }
