@@ -187,13 +187,14 @@ npm run dist             # Create distributable packages (dmg/nsis/AppImage)
 - **Framework**: Next.js 15.1.0 + App Router + Turbopack
 - **Frontend**: React 19 + TypeScript 5.8
 - **State**: Zustand (with Immer middleware)
-- **Database**: Supabase (PostgreSQL) + IndexedDB (Dexie) fallback
+- **Database**: Supabase (PostgreSQL) + Cloudflare R2 (媒体存储)
 - **Styling**: Tailwind CSS + CVA (class-variance-authority)
+
+> ⚠️ **注意**: 本项目**不支持游客模式**，必须登录后才能使用。所有数据存储在云端。
 
 **关键依赖**:
 - `@google/generative-ai` - Gemini API for Grid generation
 - `@supabase/supabase-js` - Supabase client
-- `dexie` + `dexie-react-hooks` - IndexedDB wrapper
 - `zustand` + `immer` - Global state management
 - `react-dnd` - Drag-and-drop for Timeline
 - `framer-motion` - Animations
@@ -240,7 +241,7 @@ User Action → Component → Store Action → dataService
                                       ↓
                               Supabase API Gateway
                                       ↓
-                          PostgreSQL (Cloud) / IndexedDB (Local)
+                          PostgreSQL (结构化数据) + Cloudflare R2 (媒体文件)
 ```
 
 **关键文件位置**:
@@ -287,23 +288,24 @@ const resp = await fetch('/api/supabase', { method: 'POST', body: ... });
 ### Important Design Patterns (重要设计模式)
 
 #### 1. Unified Data Layer (统一数据层)
-所有数据操作通过 `dataService` 进行,自动处理 Supabase/IndexedDB 切换:
+所有数据操作通过 `dataService` 进行，自动处理云端存储:
 
 ```typescript
 // src/lib/dataService.ts
 import { dataService } from '@/lib/dataService';
 
-// dataService 会自动判断用户是否登录
-// - 已登录: 使用 Supabase (云端持久化)
-// - 未登录: 使用 IndexedDB (本地持久化)
-
+// ⚠️ 必须登录后才能使用，所有数据存储在 Supabase 云端
 await dataService.saveProject(project);
 const project = await dataService.loadProject(id);
 ```
 
+**存储策略**:
+- ✅ 结构化数据 → Supabase PostgreSQL (用户、项目、场景、分镜等)
+- ✅ 媒体文件 → Cloudflare R2 (图片、视频、音频)
+- ❌ Supabase 不存储媒体文件本身，只存储 R2 URL 引用
+
 **不要直接调用**:
 - ❌ Supabase client 直接操作
-- ❌ Dexie 直接操作
 - ✅ 始终通过 `dataService`
 
 #### 2. Debounced Auto-Save (防抖自动保存)
@@ -867,9 +869,17 @@ Add to your PR template:
 ## 📋 项目概述
 
 **项目名称**: Video Agent Pro
-**版本**: v0.3.0
-**技术栈**: Next.js 15.5.6 + React 19 + TypeScript 5.8.2 + Zustand + Tailwind CSS
-**AI 服务**: Google Gemini 2.0 Flash + Volcano Engine (SeeDream, SeeDance, Doubao)
+**版本**: v3.0 (纯云端架构)
+**技术栈**: Next.js 15.1.0 + React 19 + TypeScript 5.8 + Zustand + Tailwind CSS
+**AI 服务**: 
+- Google Gemini 3 Flash (Agent 推理、Grid 生成)
+- Volcano Engine (SeeDream 图片、SeeDance 视频)
+- Sora 2 via Kaponai (专业视频生成、角色一致性)
+- 即梦 Jimeng (中文优化图像生成)
+
+**存储架构**: Supabase PostgreSQL + Cloudflare R2
+
+> ⚠️ 本项目**不支持游客模式**，必须登录后才能使用。
 
 ### 项目定位
 AI 驱动的视频分镜生成与编辑工具，提供 Agent 对话模式和 Pro 精细控制双模式工作流。
@@ -943,22 +953,26 @@ Project (项目)
 ## ✅ 已实现功能
 
 ### 核心功能
-- [x] 项目创建与管理（IndexedDB 持久化）
+- [x] 项目创建与管理（Supabase 云端持久化）
+- [x] **用户认证系统**（Supabase Auth，必须登录）
+- [x] **三级角色系统**（Admin 免费 / VIP 8折 / User 标准）
+- [x] **积分系统**（所有 AI 操作消耗积分）
 - [x] **新建项目对话框**（项目名称、概要、画风、画面比例选择）
 - [x] **全局画面比例设置**（16:9, 9:16, 1:1, 4:3, 21:9）
 - [x] AI 分镜生成（剧本 → 场景 + 镜头）
-- [x] 角色管理 + AI 三视图生成（1/3 面部特写 + 2/3 正侧背视图）
-- [x] 场景/位置管理 + 参考图上传
+- [x] 角色管理 + AI 三视图生成
+- [x] 地点管理 + 参考图生成（支持 Jimeng/Gemini）
 - [x] 音频资源上传（music/voice/sfx 分类）
 - [x] Grid 多视图生成（Gemini API，2x2/3x3）
 - [x] Grid 切片预览与手动分配（GridPreviewModal）
-- [x] 单图生成（SeeDream 4.0）
-- [x] 视频生成（SeeDance 1.0 Pro，图生视频）
-- [x] **场景选择器**（Pro 模式 Grid 生成前选择场景）
+- [x] 单图批量生成（SeeDream/Gemini/Jimeng）
+- [x] **Sora 视频生成**（角色一致性、智能场景拆分、并行提交）
+- [x] **Timeline 视频联动**（进度条拖拽自动切镜）
+- [x] **聊天历史云端存储**（三级 scope: project/scene/shot）
+- [x] **请求可取消**（AbortController 支持）
 - [x] 无限画布（缩放、平移、场景卡片）
-- [x] Timeline 时间轴界面（3种状态，视频/音频轨道）
-- [x] Agent 对话模式（Doubao Pro 流式输出）
-- [x] **分镜详情面板**（参考 oiioii 风格，大图预览 + 编辑 + 历史）
+- [x] Agent 对话模式（Gemini 3 推理 + Function Calling）
+- [x] **28 个 Agent 工具**（CRUD + 生成 + 批量操作）
 
 ### UI/UX
 - [x] Cinema Dark 主题（紫色强调色）+ Light 主题
@@ -1541,5 +1555,6 @@ types:
 
 ---
 
-**最后更新**: 2025-12-03
-**维护者**: Claude Code + 西羊石团队
+**最后更新**: 2026-01-19
+**版本**: v3.0 (纯云端架构 + 完整工具链)
+**维护者**: Claude Code + Gemini Code + 西羊石团队
