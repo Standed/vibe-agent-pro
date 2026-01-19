@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-0.6.0-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-3.0.0-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -19,7 +19,9 @@
 
 ## 🎬 Introduction
 
-Video Agent Pro is an AI-powered video storyboard generation and editing tool built with Next.js 15 and multiple AI models (Gemini + Volcano Engine). It provides both conversational AI and fine-grained control modes to help creators produce videos from script to final cut.
+Video Agent Pro is an AI-powered video storyboard generation and editing tool built with Next.js 15 and multiple AI models (Gemini + Volcano Engine + Sora). It provides both conversational AI (Agent Mode) and fine-grained control (Pro Mode) to help creators produce videos from script to final cut.
+
+> ⚠️ **Note**: This project requires user authentication. All data is stored in the cloud (Supabase + Cloudflare R2).
 
 ---
 
@@ -100,10 +102,12 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 - **Clean Resource Cleanup** - Proper cleanup of network requests
 
 ### 🆕 Cloud Storage & Sync
-- **Supabase Database** - PostgreSQL cloud storage for projects
+- **Supabase Database** - PostgreSQL cloud storage for all data
+- **Cloudflare R2** - Media file storage (images, videos, audio)
 - **Chat History Sync** - Three-level scope (project/scene/shot)
-- **IndexedDB Fallback** - Local storage for offline access
-- **Auto-sync** - Automatic data synchronization
+- **Auto-sync** - Automatic data synchronization across devices
+
+> ⚠️ Guest mode is not supported. Login is required to use all features.
 
 ---
 
@@ -220,15 +224,15 @@ Visit [http://localhost:3000](http://localhost:3000)
 - **Frontend**: React 19, TypeScript 5.8
 - **Styling**: Tailwind CSS 3.4 (Cinema Dark theme)
 - **State Management**: Zustand + Immer middleware
-- **Database**: Supabase (PostgreSQL) + Dexie.js (IndexedDB fallback)
+- **Database**: Supabase (PostgreSQL) - Cloud only, no local fallback
 - **Authentication**: Supabase Auth (Email/Password + OAuth)
-- **File Storage**: Cloudflare R2
+- **File Storage**: Cloudflare R2 (images, videos, audio)
 - **AI Models**:
-  - Google Gemini 2.0 Flash (Grid generation, text generation)
+  - Google Gemini 3 Flash (Agent reasoning, Grid generation)
   - Volcano Engine SeeDream 4.0 (Image generation)
   - Volcano Engine SeeDance 1.0 Pro (Video generation)
-  - Volcano Engine Doubao Pro (AI conversation)
-  - **Sora 2** via Kaponai API (Video generation with character consistency)
+  - **Sora 2** via Kaponai API (Professional video with character consistency)
+  - **Jimeng** (Chinese-optimized image generation)
 
 ---
 
@@ -237,32 +241,30 @@ Visit [http://localhost:3000](http://localhost:3000)
 ```
 src/
 ├── app/                              # Next.js App Router
-│   ├── layout.tsx                    # Root layout
-│   ├── page.tsx                      # Homepage
-│   ├── project/[id]/page.tsx         # Project editing page
-│   └── globals.css                   # Global styles
-├── components/                       # React components
-│   ├── layout/                       # Layout components
-│   │   ├── LeftSidebar.tsx           # Left sidebar (Script/Characters/Scenes/Audio)
-│   │   ├── RightPanel.tsx            # Right panel (Agent/Pro modes)
-│   │   ├── ProPanel.tsx              # Pro mode control panel
-│   │   ├── AgentPanel.tsx            # Agent conversation panel
-│   │   └── Timeline.tsx              # Timeline editor
-│   ├── canvas/                       # Canvas components
-│   │   └── InfiniteCanvas.tsx        # Infinite canvas
-│   └── grid/                         # Grid components
-│       └── GridPreviewModal.tsx      # Grid slice preview & assignment
-├── services/                         # AI services
-│   ├── geminiService.ts              # Gemini API integration
-│   ├── volcanoEngineService.ts       # Volcano Engine API
-│   ├── storyboardService.ts          # AI storyboard generation
-│   └── agentService.ts               # AI Agent conversation
+│   ├── api/                          # API Routes (22+ endpoints)
+│   ├── admin/                        # Admin dashboard
+│   ├── auth/                         # Authentication pages
+│   └── project/[id]/                 # Project editing page
+├── components/                       # React components (18 directories)
+│   ├── layout/                       # Layout (sidebars, panels, timeline)
+│   ├── canvas/                       # Infinite canvas
+│   ├── agent/                        # Agent components
+│   └── chat/                         # Chat interface
+├── services/                         # Business services (19+ files)
+│   ├── agentService.ts               # Agent core (Function Calling)
+│   ├── agentToolDefinitions.ts       # 28 Agent tools
+│   ├── geminiService.ts              # Gemini Grid generation
+│   ├── SoraOrchestrator.ts           # Sora video orchestration
+│   ├── KaponaiService.ts             # Sora API wrapper
+│   └── jimengService.ts              # Jimeng integration
+├── lib/                              # Core libraries
+│   ├── dataService.ts                # Unified data service (1269 lines)
+│   ├── storageService.ts             # R2 file upload
+│   └── auth-middleware.ts            # Authentication middleware
 ├── store/                            # Zustand state management
-│   └── useProjectStore.ts            # Project state
-├── types/                            # TypeScript type definitions
-│   └── project.ts                    # Project types
-└── lib/                              # Utility libraries
-    └── db.ts                         # IndexedDB database
+│   └── useProjectStore.ts            # Project state (674 lines)
+└── types/                            # TypeScript definitions
+    └── project.ts                    # Project types (512 lines)
 ```
 
 ---
@@ -347,15 +349,22 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 
 ## 📝 Changelog
 
+### v3.0.0 (2026-01-19)
+- ✅ **Pure Cloud Architecture** - Removed guest mode, all data stored in cloud
+- ✅ **28 Agent Tools** - Complete CRUD + generation + batch operations
+- ✅ **Jimeng Integration** - Chinese-optimized image generation
+- ✅ **Location Management** - Location reference image generation
+- ✅ **Planning Mode** - Separate tool set for story conception
+- ✅ **Timeline Video Sync** - Progress bar drag auto-switches shots
+- ✅ **Anti-Override Sync** - Smart sync prevents overwriting user selections
+
 ### v0.6.0 (2025-12-24)
 - ✅ **Sora Video Generation** - Full Sora 2 integration via Kaponai API
 - ✅ **SoraOrchestrator** - Automated pipeline for character registration and video generation
 - ✅ **Character Consistency** - @username-based character tracking across scenes
 - ✅ **Dynamic Aspect Ratio** - Auto-detect image ratio for optimal video output
 - ✅ **Smart Scene Splitting** - >15s scenes auto-split into chunks (Greedy Packing)
-- ✅ **Quality Control** - Mandated Chinese prompts for high-quality output
 - ✅ **R2 Persistence** - Automatic upload to Cloudflare R2 for video storage
-- ✅ **CharacterConsistencyService** - Async character reference video generation
 
 ### v0.4.0 (2025-12-17)
 - ✅ **User Authentication System** - Supabase Auth integration
@@ -363,26 +372,19 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Request Cancellation** - AbortController support for AI requests
 - ✅ **Cloud Storage** - Supabase PostgreSQL for projects and chat history
 - ✅ **Chat History Sync** - Three-level scope (project/scene/shot) cloud storage
-- ✅ **Auto Profile Creation** - Profile auto-created with role-based credits
-- ✅ **authenticatedFetch** - Unified API client with auto authentication
-- ✅ **API Gateway** - Centralized Supabase API route
 
 ### v0.2.0 (2025-01-03)
 - ✅ Character AI turnaround generation (1/3 face + 2/3 views)
 - ✅ GridPreviewModal component for slice preview & manual assignment
 - ✅ Pro mode Grid generation integrated with preview modal
 - ✅ Audio upload functionality (music/voice/sfx)
-- ✅ Enhanced character, scene, audio resource management UI
-- ✅ Optimized workflow: prepare assets → generate Grid → assign slices
 
 ### v0.1.0 (2025-01-03)
 - ✅ Canvas zoom and pan
 - ✅ Gemini API integration for Grid generation
-- ✅ Volcano Engine integration for video generation
 - ✅ AI Agent conversation system (streaming output)
 - ✅ AI storyboard generation (8-principle rules)
 - ✅ Timeline editor
-- ✅ Removed all mock responses, using real AI interactions
 
 ---
 
@@ -394,12 +396,7 @@ MIT License
 
 ## 👨‍💻 Authors
 
-Developed by **西羊石 Team**, assisted by Claude Code.
-
-Reference Projects:
-- **finalAgent** - UI/UX design
-- **directordeck** - Grid generation
-- **long_video_gen** - Video generation workflow
+Developed by **西羊石 Team**, assisted by Claude Code + Gemini Code.
 
 ---
 
