@@ -14,6 +14,8 @@ interface PlanningChatProps {
     isProcessing: boolean;
     isGenerating: boolean;
     currentStep: any;
+    isGeneratingAssets?: boolean;  // 资产生成中
+    assetGenerationStep?: any;  // 资产生成进度
     inputText: string;
     setInputText: (text: string) => void;
     handleSendMessage: (text?: string) => void;
@@ -27,12 +29,17 @@ export default function PlanningChat({
     isProcessing,
     isGenerating,
     currentStep,
+    isGeneratingAssets = false,
+    assetGenerationStep,
     inputText,
     setInputText,
     handleSendMessage,
     messagesEndRef,
     messagesTopRef
 }: PlanningChatProps) {
+    // 调试日志
+    console.log('[PlanningChat] 渲染状态:', { isGeneratingAssets, hasStep: !!assetGenerationStep });
+
     return (
         <div className="flex-1 flex flex-col relative bg-white dark:bg-[#0a0a0a] overflow-hidden">
             {/* Chat Messages Area */}
@@ -182,6 +189,92 @@ export default function PlanningChat({
                         </motion.div>
                     )}
 
+                    {/* Asset Generation Progress */}
+                    {isGeneratingAssets && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex gap-3 justify-start"
+                        >
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 dark:from-purple-400 dark:to-pink-400 flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10">
+                                <Sparkles size={16} className="text-white" />
+                            </div>
+                            <div className="flex-1 max-w-xl">
+                                {!assetGenerationStep ? (
+                                    /* 初始化状态 */
+                                    <div className="bg-white dark:bg-zinc-900/80 backdrop-blur-xl rounded-2xl p-6 border border-black/5 dark:border-white/10 shadow-2xl">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 rounded-xl bg-purple-500/10 dark:bg-purple-400/10">
+                                                <Loader2 size={18} className="text-purple-500 dark:text-purple-400 animate-spin" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-black text-zinc-900 dark:text-white tracking-tight">正在准备资产生成...</h3>
+                                                <p className="text-[10px] text-zinc-500 font-medium">分析分镜脚本中...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* 正常进度显示 */
+                                    <div className="bg-white dark:bg-zinc-900/80 backdrop-blur-xl rounded-2xl p-6 border border-black/5 dark:border-white/10 shadow-2xl">
+                                        <div className="flex items-center gap-3 mb-6">
+                                            <div className="p-2 rounded-xl bg-purple-500/10 dark:bg-purple-400/10">
+                                                <Users size={18} className="text-purple-500 dark:text-purple-400 animate-pulse" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-black text-zinc-900 dark:text-white tracking-tight">正在生成角色和场景资产</h3>
+                                                <p className="text-[10px] text-zinc-500 font-medium">基于导入的分镜脚本自动创建资产</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            {[1, 2, 3, 4].map((step) => {
+                                                const stepStatus = assetGenerationStep.step > step ? 'completed' : assetGenerationStep.step === step ? assetGenerationStep.status : 'pending';
+                                                const stepTitles = [
+                                                    '分析分镜结构',
+                                                    '生成场景资产',
+                                                    '提取角色信息',
+                                                    '设计角色形象'
+                                                ];
+
+                                                return (
+                                                    <div key={step} className="group">
+                                                        <div className="flex items-start gap-3">
+                                                            <div className={cn(
+                                                                "mt-0.5 transition-colors duration-300",
+                                                                stepStatus === 'completed' ? "text-emerald-500" :
+                                                                    stepStatus === 'running' ? "text-purple-500 dark:text-purple-400" : "text-zinc-300 dark:text-zinc-700"
+                                                            )}>
+                                                                {stepStatus === 'completed' ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                                                            </div>
+                                                            <div className="flex-1 space-y-1">
+                                                                <div className={cn(
+                                                                    "text-xs font-bold transition-colors duration-300",
+                                                                    stepStatus === 'completed' || stepStatus === 'running' ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-400"
+                                                                )}>
+                                                                    {stepTitles[step - 1]}
+                                                                </div>
+                                                                {stepStatus === 'running' && (
+                                                                    <motion.div
+                                                                        initial={{ opacity: 0, height: 0 }}
+                                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                                        className="text-xs text-zinc-500 flex items-center gap-2"
+                                                                    >
+                                                                        <Loader2 size={12} className="animate-spin" />
+                                                                        <span>{assetGenerationStep.description}</span>
+                                                                    </motion.div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    )}
+
                     <div ref={messagesEndRef} />
                 </div>
             </div>
@@ -199,17 +292,17 @@ export default function PlanningChat({
                                     handleSendMessage();
                                 }
                             }}
-                            disabled={isProcessing || isGenerating}
+                            disabled={isProcessing || isGenerating || isGeneratingAssets}
                             placeholder="描述你的创意，或者让 AI 帮你完善... (@ 引用资源)"
                             className="w-full p-6 pr-24 text-sm bg-zinc-50 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-3xl focus:outline-none focus:ring-2 focus:ring-light-accent/20 dark:focus:ring-cine-accent/20 transition-all resize-none min-h-[100px] max-h-[300px] custom-scrollbar disabled:opacity-50"
                         />
                         <div className="absolute right-4 bottom-4 flex items-center gap-2">
                             <button
                                 onClick={() => handleSendMessage()}
-                                disabled={!inputText.trim() || isProcessing || isGenerating}
+                                disabled={!inputText.trim() || isProcessing || isGenerating || isGeneratingAssets}
                                 className="w-10 h-10 rounded-2xl bg-zinc-900 dark:bg-white text-white dark:text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 shadow-lg shadow-black/10 dark:shadow-white/10"
                             >
-                                {isProcessing || isGenerating ? (
+                                {isProcessing || isGenerating || isGeneratingAssets ? (
                                     <Loader2 size={18} className="animate-spin" />
                                 ) : (
                                     <Send size={18} />
