@@ -209,14 +209,6 @@ export default function PlanningView({
 
         const projectId = project.id;
 
-        console.log('[PlanningView] 🔍 检测项目:', projectId, {
-            alreadyExecuted: assetGenerationExecutedMap.current.get(projectId),
-            scenes: project.scenes?.length || 0,
-            shots: project.shots?.length || 0,
-            characters: project.characters?.length || 0,
-            locations: project.locations?.length || 0
-        });
-
         // 如果这个项目已经执行过资产生成，跳过
         if (assetGenerationExecutedMap.current.get(projectId)) {
             return;
@@ -228,16 +220,12 @@ export default function PlanningView({
             project.shots?.length > 0 &&
             (!project.characters?.length || !project.locations?.length);
 
-        console.log('[PlanningView] 🧐 是否需要生成资产:', needsAssets);
-
         if (needsAssets) {
             // 标记为已执行
             assetGenerationExecutedMap.current.set(projectId, true);
-            console.log('[PlanningView] 🚀 触发资产生成');
 
             // ⭐ 延迟执行,让React先更新UI显示进度
             setTimeout(() => {
-                console.log('[PlanningView] 📊 开始执行资产生成');
                 generateAssetsForImportedStoryboard();
             }, 100);
         }
