@@ -57,7 +57,7 @@ graph TD
 
 ## 3. 核心流程
 
-### 3.1 角色注册流程
+### 3.1 角色注册流程 **[Updated v3.1]**
 
 ```
 1. 检查角色是否已有 @username
@@ -75,9 +75,16 @@ graph TD
    ↓
 6. 上传到 R2 持久化
    ↓
-7. 注册角色 (Kaponai createCharacter)
+7. 异步注册角色 (registerCharacterAsync)
+   - 立即返回 taskId
+   - 前端进入轮询状态 (<1s 响应)
+   - 后台执行 Kaponai createCharacter
    ↓
-8. 获取 @username → 保存到数据库
+8. 智能恢复 (Smart Recovery)
+   - 页面刷新/重开时自动检测后台任务
+   - 无缝恢复轮询状态
+   ↓
+9. 获取 @username → 保存到数据库
 ```
 
 ### 3.2 视频生成流程 (Agent模式) **[Updated v2.6]**

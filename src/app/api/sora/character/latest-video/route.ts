@@ -40,12 +40,23 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Character not found' }, { status: 404 });
     }
 
-    const { data: task, error: taskError } = await supabase
+    const checkActive = searchParams.get('checkActive') === 'true';
+
+    let query = supabase
       .from('sora_tasks')
       .select('id,status,kaponai_url,r2_url,updated_at,user_id')
       .eq('character_id', characterId)
-      .eq('type', 'character_reference')
-      .eq('status', 'completed')
+      .eq('type', 'character_reference');
+
+    if (checkActive) {
+      // If checking active, we want any recent task, prioritizing active ones or just latest
+      // Actually, we probably just want the latest one regardless of status if checkActive is true
+      // But to be safe, let's just remove the status filter if checkActive is true
+    } else {
+      query = query.eq('status', 'completed');
+    }
+
+    const { data: task, error: taskError } = await query
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();

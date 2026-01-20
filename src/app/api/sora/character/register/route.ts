@@ -97,13 +97,13 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: 'No reference video available for registration' }, { status: 400 });
             }
 
-            const result = await characterConsistencyService.registerCharacter(
+            const result = await characterConsistencyService.registerCharacterAsync(
                 character,
                 character.soraReferenceVideoUrl,
                 userId,
                 timestamps
             );
-            return NextResponse.json({ success: true, character: result });
+            return NextResponse.json({ success: true, ...result });
 
         } else if (mode === 'generate_and_register') {
             // Trigger generation

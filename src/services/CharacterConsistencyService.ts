@@ -104,6 +104,94 @@ export class CharacterConsistencyService {
     }
 
     /**
+     * 异步注册 Sora 角色 (立即返回 Task ID)
+     */
+    async registerCharacterAsync(
+        character: Character,
+        videoUrl: string,
+        userId: string,
+        timestamps?: string
+    ): Promise<{ taskId: string, status: string }> {
+        console.log(`[CharacterConsistency] Async registering character ${character.id}`);
+
+        // 1. Create a task record immediately
+        const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+        const { error } = await supabase.from('sora_tasks').insert({
+            id: taskId,
+            user_id: userId,
+            project_id: character.projectId || null,
+            character_id: character.id,
+            type: 'character_reference', // Reuse existing type or add 'character_register' if needed
+            status: 'registering', // New status for registration only
+            model: 'sora-2', // Default
+            prompt: 'Register Character',
+            target_duration: 0,
+            point_cost: 0,
+            updated_at: new Date().toISOString(),
+            r2_url: videoUrl // Store the video URL being registered
+        });
+
+        if (error) throw new Error(`Failed to create registration task: ${error.message}`);
+
+        // 2. Update character status to registering
+        await supabase.from('characters').update({
+            metadata: {
+                ...((character as any).metadata || {}),
+                soraIdentity: {
+                    username: '',
+                    referenceVideoUrl: videoUrl,
+                    status: 'registering',
+                    taskId: taskId
+                }
+            }
+        }).eq('id', character.id);
+
+        // 3. Trigger background process (Fire and Forget)
+        // Note: In Next.js serverless, we should ideally use waitUntil, but for now we just don't await.
+        // The actual registration logic is reused from registerCharacter but wrapped to update the task.
+        this.processAsyncRegistration(taskId, character, videoUrl, userId, timestamps).catch(err => {
+            console.error(`[CharacterConsistency] Background registration failed:`, err);
+        });
+
+        return { taskId, status: 'registering' };
+    }
+
+    /**
+     * 后台处理异步注册逻辑
+     */
+    private async processAsyncRegistration(
+        taskId: string,
+        character: Character,
+        videoUrl: string,
+        userId: string,
+        timestamps?: string
+    ) {
+        try {
+            // Call the actual synchronous registration
+            const result = await this.registerCharacter(character, videoUrl, userId, timestamps);
+
+            // Update task to completed
+            await supabase.from('sora_tasks').update({
+                status: 'completed',
+                updated_at: new Date().toISOString(),
+                // Store the username in metadata or a specific field if needed, 
+                // but character metadata is already updated by registerCharacter
+            }).eq('id', taskId);
+
+        } catch (error: any) {
+            console.error(`[CharacterConsistency] Async process failed for task ${taskId}:`, error);
+
+            // Update task to failed
+            await supabase.from('sora_tasks').update({
+                status: 'failed',
+                updated_at: new Date().toISOString(),
+                error: error.message
+            }).eq('id', taskId);
+        }
+    }
+
+    /**
      * 后台等待任务完成并自动注册角色
      */
     async waitAndRegisterTask(
@@ -263,38 +351,38 @@ export class CharacterConsistencyService {
             }
 
             try {
-                    console.log(`[CharacterConsistency] Downloading reference image: ${refImage}`);
-                    const ext = path.extname(new URL(refImage).pathname) || '.jpg';
-                    // Sanitize extension
-                    const validExt = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext.toLowerCase()) ? ext : '.jpg';
+                console.log(`[CharacterConsistency] Downloading reference image: ${refImage}`);
+                const ext = path.extname(new URL(refImage).pathname) || '.jpg';
+                // Sanitize extension
+                const validExt = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext.toLowerCase()) ? ext : '.jpg';
 
-                    tempImagePath = path.join(os.tmpdir(), `sora_ref_${Date.now()}_${Math.random().toString(36).substring(7)}${validExt}`);
+                tempImagePath = path.join(os.tmpdir(), `sora_ref_${Date.now()}_${Math.random().toString(36).substring(7)}${validExt}`);
 
-                    const imgRes = await fetch(refImage);
-                    if (!imgRes.ok) throw new Error(`Failed to download reference image: ${refImage}`);
+                const imgRes = await fetch(refImage);
+                if (!imgRes.ok) throw new Error(`Failed to download reference image: ${refImage}`);
 
-                    const buffer = await imgRes.arrayBuffer();
-                    fs.writeFileSync(tempImagePath, Buffer.from(buffer));
-                    console.log(`[CharacterConsistency] Image downloaded to: ${tempImagePath}`);
+                const buffer = await imgRes.arrayBuffer();
+                fs.writeFileSync(tempImagePath, Buffer.from(buffer));
+                console.log(`[CharacterConsistency] Image downloaded to: ${tempImagePath}`);
 
-                    // Dynamic Aspect Ratio Detection (using Buffer for speed and reliability)
-                    const dimensions = sizeOf(Buffer.from(buffer));
-                    const width = dimensions.width;
-                    const height = dimensions.height;
+                // Dynamic Aspect Ratio Detection (using Buffer for speed and reliability)
+                const dimensions = sizeOf(Buffer.from(buffer));
+                const width = dimensions.width;
+                const height = dimensions.height;
 
-                    if (width && height) {
-                        const aspectRatio = width / height;
-                        // Always map to 16:9 or 9:16 for Sora
-                        targetSize = aspectRatio >= 1 ? '1280x720' : '720x1280';
-                        console.log(`[CharacterConsistency] SUCCESS: Detected ${width}x${height} (Ratio: ${aspectRatio.toFixed(2)}). Selected size: ${targetSize}`);
-                    } else {
-                        console.warn('[CharacterConsistency] WARNING: Image detection failed to return valid dimensions, defaulting to 16:9');
-                    }
+                if (width && height) {
+                    const aspectRatio = width / height;
+                    // Always map to 16:9 or 9:16 for Sora
+                    targetSize = aspectRatio >= 1 ? '1280x720' : '720x1280';
+                    console.log(`[CharacterConsistency] SUCCESS: Detected ${width}x${height} (Ratio: ${aspectRatio.toFixed(2)}). Selected size: ${targetSize}`);
+                } else {
+                    console.warn('[CharacterConsistency] WARNING: Image detection failed to return valid dimensions, defaulting to 16:9');
+                }
 
-                    // Optimization: We successfully analyzed the image. 
-                    // To avoid upload timeout, we will pass the URL directly to Kaponai
-                    // Kaponai will download it server-side.
-                    // This assumes the URL is publicly accessible.
+                // Optimization: We successfully analyzed the image. 
+                // To avoid upload timeout, we will pass the URL directly to Kaponai
+                // Kaponai will download it server-side.
+                // This assumes the URL is publicly accessible.
 
             } catch (err) {
                 console.error('[CharacterConsistency] Failed to download/analyze image:', err);

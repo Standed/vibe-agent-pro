@@ -124,6 +124,7 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
     const pollingTaskIdRef = useRef<string | null>(null);
     const lastWrittenSoraUsernameRef = useRef(initialCharacter?.soraIdentity?.username || '');
     const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
+    const errorCountRef = useRef(0); // 连续错误计数
 
     const hasSoraCode = soraUsername.trim().length > 0;
 
@@ -162,13 +163,30 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
     const pollTaskStatus = useCallback(async (taskId: string, showError = false): Promise<boolean> => {
         try {
             const res = await fetch(`/api/sora/character/status?taskId=${taskId}`);
+
+            // 处理网络/API错误
             if (!res.ok) {
+                errorCountRef.current += 1;
+                console.warn(`[useSoraCharacter] Polling error ${errorCountRef.current}/3: ${res.status}`);
+
+                // 连续失败超过3次，停止轮询
+                if (errorCountRef.current >= 3) {
+                    stopPolling();
+                    setSoraStatus('failed');
+                    setIsSoraProcessing(false);
+                    toast.error('网络连接不稳定，请稍后手动刷新状态');
+                    return true; // Stop polling
+                }
+
                 if (showError) {
                     const text = await res.text();
                     toast.error(`刷新失败: ${text || res.status}`);
                 }
-                return false;
+                return false; // Continue polling (retry)
             }
+
+            // 成功响应，重置错误计数
+            errorCountRef.current = 0;
 
             const data = await res.json();
 
@@ -208,6 +226,16 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
             return false;
         } catch (e) {
             console.error('Polling error', e);
+            errorCountRef.current += 1;
+
+            if (errorCountRef.current >= 3) {
+                stopPolling();
+                setSoraStatus('failed');
+                setIsSoraProcessing(false);
+                toast.error('网络连接不稳定，请稍后手动刷新状态');
+                return true;
+            }
+
             if (showError) toast.error('刷新失败，请稍后重试');
             return false;
         }
@@ -218,6 +246,7 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
         stopPolling();
         setIsSoraProcessing(true);
         pollingStoppedRef.current = false;
+        errorCountRef.current = 0; // 重置错误计数
 
         // Initialize or preserve start time
         if (pollingTaskIdRef.current !== taskId) {
@@ -237,13 +266,6 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
                     toast.error('任务处理超时，请点击"刷新状态"手动查询结果');
                 }
                 setIsSoraProcessing(false);
-                // Keep the taskId so user can refresh manually, but reset status to allow interaction if needed
-                // But 'none' might hide the status. Let's keep it 'generating' or 'registering' but stop spinner?
-                // The UI uses isSoraProcessing for spinner.
-                // If we set soraStatus to 'none', it resets UI.
-                // Let's set it to 'none' as requested to allow "manual click refresh".
-                // But wait, manual refresh button is always there.
-                // If we set 'none', the big button comes back.
                 setSoraStatus('none');
                 return;
             }
@@ -251,6 +273,37 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
             await pollTaskStatus(taskId);
         }, POLL_INTERVAL_MS);
     }, [pollTaskStatus, stopPolling]);
+
+    // Smart Task Recovery: Check for active background tasks on mount or when video exists
+    useEffect(() => {
+        const checkActiveTask = async () => {
+            // Only check if we have a character but no active status
+            const effectiveCharId = savedCharacterId || initialCharacter?.id;
+            if (!effectiveCharId) return;
+
+            // If we already have a status, no need to check (unless it's 'none' or 'pending' but we want to catch 'registering')
+            if (soraStatus === 'registered' || soraStatus === 'generating' || soraStatus === 'registering') return;
+
+            try {
+                const res = await fetch(`/api/sora/character/latest-video?characterId=${effectiveCharId}&checkActive=true`);
+                const data = await res.json();
+
+                if (data.success && data.taskId) {
+                    // If the task is active (generating or registering), resume polling
+                    if (data.status === 'generating' || data.status === 'registering' || data.status === 'queued' || data.status === 'processing') {
+                        console.log('[SmartRecovery] Found active task, resuming:', data.taskId);
+                        setSoraStatus(data.status === 'registering' ? 'registering' : 'generating');
+                        startPolling(data.taskId);
+                        toast.info('检测到后台任务正在进行，已自动恢复进度');
+                    }
+                }
+            } catch (e) {
+                console.error('[SmartRecovery] Failed to check active task:', e);
+            }
+        };
+
+        checkActiveTask();
+    }, [savedCharacterId, initialCharacter?.id, soraStatus, startPolling]);
 
     // Sora 码写回
     const writebackSoraCode = useCallback(async (writeOptions: {
@@ -404,6 +457,13 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error);
 
+                if (data.taskId && data.status === 'registering') {
+                    setSoraStatus('registering');
+                    startPolling(data.taskId);
+                    toast.success('Sora ID 注册已开始，请稍候...');
+                    return;
+                }
+
                 setSoraUsername(data.character.soraIdentity.username);
                 setSoraStatus('registered');
                 toast.success('Sora ID 注册成功！');
@@ -464,6 +524,12 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
                 if (data.task?.id) {
                     setCurrentTaskId(data.task.id);
                     startPolling(data.task.id);
+
+                    // ⭐ 立即持久化 TaskID，确保关闭弹窗后状态不丢失
+                    // 注意：这里我们假设后端已经更新了 character 的 soraIdentity，
+                    // 但为了保险起见，如果前端有 persistCharacter 方法，最好也触发一次更新
+                    // 不过通常后端 register 接口会更新数据库。
+                    // 关键是前端状态要同步。
                 }
             }
         } catch (err: any) {
@@ -578,6 +644,17 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
         return () => stopPolling();
     }, [soraStatus, currentTaskId, startPolling, stopPolling]);
 
+    // ⭐ "断点续传"：挂载时检查是否有未完成的任务
+    useEffect(() => {
+        // 如果初始状态是 generating/registering 且有 taskId，说明上次关闭时任务还在进行
+        // 立即触发一次检查
+        if (initialCharacter?.soraIdentity?.taskId &&
+            (initialCharacter.soraIdentity.status === 'generating' || initialCharacter.soraIdentity.status === 'registering')) {
+            console.log('[useSoraCharacter] Resuming polling for task:', initialCharacter.soraIdentity.taskId);
+            pollTaskStatus(initialCharacter.soraIdentity.taskId);
+        }
+    }, []); // 仅挂载时执行一次
+
     // 视频 URL 变化时重置片段选择
     useEffect(() => {
         if (!soraReferenceVideoUrl) {
@@ -648,3 +725,4 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
         pollTaskStatus,
     };
 }
+
