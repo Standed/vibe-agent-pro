@@ -74,6 +74,7 @@ AI 驱动的视频分镜生成与编辑工具 | Next.js 15.1 + React 19 + TypeSc
 | **统一数据服务** | `src/lib/dataService.ts` | 所有数据 CRUD 操作统一入口 |
 | **存储服务** | `src/lib/storageService.ts` | R2 文件上传/管理 |
 | **认证中间件** | `src/lib/auth-middleware.ts` | JWT 验证、白名单检查、积分消耗 |
+| **资产生成 Hook** | `src/hooks/useAssetGeneration.ts` | 智能资产生成 (角色提取、场景分析) |
 
 ---
 

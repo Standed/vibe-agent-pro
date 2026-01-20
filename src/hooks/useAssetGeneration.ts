@@ -273,7 +273,14 @@ export const useAssetGeneration = () => {
             await generateLocationsFromShots(shots, script, artStyle);
 
             // 生成角色资产
-            await generateCharactersFromContext(script, shots, artStyle);
+            // ⭐ 检查是否已有角色,如果有则跳过,避免重复生成
+            if (project.characters && project.characters.length > 0) {
+                console.log('[useAssetGeneration] 项目已有角色,跳过生成');
+                updateStep(3, 'completed', `已有 ${project.characters.length} 个角色`);
+                updateStep(4, 'completed', '角色资产已存在');
+            } else {
+                await generateCharactersFromContext(script, shots, artStyle);
+            }
 
             toast.success('资产生成完成！');
 

@@ -368,6 +368,19 @@ fetch('/api/gemini-grid', {
 // src/app/api/gemini-grid/route.ts 会处理实际的外部 API 调用
 ```
 
+#### 5. Asset Generation Strategy (资产生成策略)
+为了提升用户体验，系统实现了两套互斥的资产生成逻辑：
+
+**A. AI Storyboard Flow (新项目/灵感)**
+- **触发条件**: 用户输入灵感或剧本 -> AI 生成分镜
+- **流程**: 剧本分析 -> 分镜生成 -> 场景组织 -> **资产生成 (包含在内)**
+- **互斥锁**: 设置 `autoStoryboardExecutedRef.current = true`，防止后续触发 B 流程
+
+**B. Imported Asset Flow (导入分镜)**
+- **触发条件**: 项目有场景/分镜，但缺少角色/地点资产 (e.g. 导入 CSV)
+- **流程**: 检测到 `needsAssets` -> 自动触发 `useAssetGeneration` -> 提取角色 -> 生成资产
+- **互斥检查**: 如果 `autoStoryboardExecutedRef` 为 true，则**不触发**，避免重复
+
 ---
 
 ## Philosophy (哲学理念)

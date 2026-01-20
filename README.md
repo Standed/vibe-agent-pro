@@ -359,6 +359,12 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Timeline Video Sync** - Progress bar drag auto-switches shots
 - ✅ **Anti-Override Sync** - Smart sync prevents overwriting user selections
 
+### v3.1.0 (2026-01-20)
+- ✅ **Smart Asset Generation** - Auto-detects missing assets for imported storyboards
+- ✅ **Inspiration Auto-Trigger** - Auto-starts AI storyboard from homepage inspiration
+- ✅ **Conflict Resolution** - Mutual exclusion between Auto-Gen and Asset-Gen flows
+- ✅ **UI Refinement** - Unified color theme (Zinc/Neutral) for progress indicators
+
 ### v0.6.0 (2025-12-24)
 - ✅ **Sora Video Generation** - Full Sora 2 integration via Kaponai API
 - ✅ **SoraOrchestrator** - Automated pipeline for character registration and video generation
