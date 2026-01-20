@@ -360,6 +360,7 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Anti-Override Sync** - Smart sync prevents overwriting user selections
 
 ### v3.1.0 (2026-01-20)
+- ✅ **Sora Registration Optimization** - Async registration (<1s response) + Smart Task Recovery
 - ✅ **Smart Asset Generation** - Auto-detects missing assets for imported storyboards
 - ✅ **Inspiration Auto-Trigger** - Auto-starts AI storyboard from homepage inspiration
 - ✅ **Conflict Resolution** - Mutual exclusion between Auto-Gen and Asset-Gen flows

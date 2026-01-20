@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import { CheckCircle2, Loader2, Pencil, Sparkles, Wand2, Video } from 'lucide-react';
 import { UseSoraCharacterReturn } from '@/hooks/useSoraCharacter';
 import { Character } from '@/types/project';
+import { toast } from 'sonner';
 
 interface SoraReferenceSectionProps {
     sora: UseSoraCharacterReturn;
@@ -25,6 +26,7 @@ export function SoraReferenceSection({ sora, persistCharacter }: SoraReferenceSe
         handleSoraRegister,
         handleManualRefresh,
         handleManualSoraCodeWriteback,
+        stopPolling,
     } = sora;
 
     return (
@@ -234,6 +236,26 @@ export function SoraReferenceSection({ sora, persistCharacter }: SoraReferenceSe
                                     </>
                                 )}
                             </button>
+
+                            {isSoraProcessing && (
+                                <div className="flex items-center justify-between px-1">
+                                    <p className="text-[10px] text-zinc-400">
+                                        您可以关闭此窗口，任务将在后台继续运行
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            stopPolling();
+                                            setIsSoraProcessing(false);
+                                            toast.info('已停止刷新任务状态');
+                                        }}
+                                        className="text-[10px] text-zinc-400 hover:text-red-400 transition-colors underline decoration-zinc-400/30 hover:decoration-red-400/30 underline-offset-2"
+                                    >
+                                        停止刷新
+                                    </button>
+                                </div>
+                            )}
+
                             <div className="mt-3 flex items-center justify-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
                                 <span className="text-[10px] text-zinc-500 dark:text-zinc-400">已有 Sora ID?</span>
                                 <input
