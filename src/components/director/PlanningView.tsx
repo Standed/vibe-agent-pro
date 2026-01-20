@@ -168,42 +168,16 @@ export default function PlanningView({
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    // 🔒 自动触发 AI 分镜生成：当项目有剧本但没有场景/镜头时
-    // 添加 autoStoryboardExecutedRef 防止重复触发
-    useEffect(() => {
-        if (!project || !project.id || project.id !== (params?.id as string)) return;
-        if (isGenerating || isSubmitting) return;
-
-        // ✅ 防止重复执行：如果本次会话已执行过，跳过
-        if (autoStoryboardExecutedRef.current) return;
-
-        const hasScenes = project.scenes && project.scenes.length > 0;
-        const hasShots = project.shots && project.shots.length > 0;
-        const hasScript = project.script && project.script.trim().length > 0;
-
-        const shouldAutoGenerate = hasScript && !hasScenes && !hasShots;
-
-        if (shouldAutoGenerate) {
-            // ✅ 立即标记为已执行，防止 useEffect 再次触发
-            autoStoryboardExecutedRef.current = true;
-
-            const timer = setTimeout(() => {
-                const latestProject = useProjectStore.getState().project;
-                if (latestProject?.id === project.id &&
-                    latestProject.script?.trim() &&
-                    (!latestProject.scenes || latestProject.scenes.length === 0)) {
-                    console.log('[PlanningView] 🚀 自动触发 AI 分镜生成');
-                    handleAIStoryboard();
-                }
-            }, 2000);
-            return () => clearTimeout(timer);
-        }
-    }, [project?.id, project?.script, project?.scenes?.length, isGenerating, isSubmitting, params?.id, handleAIStoryboard]);
 
     // 🔒 自动触发资产生成：当项目有scenes/shots但缺少资产时（从分镜导入的场景）
     // 方案B: 只监听项目ID变化，避免频繁触发
     useEffect(() => {
         if (!project?.id || project.id !== (params?.id as string)) {
+            return;
+        }
+
+        // ⭐ 防止冲突：如果已经触发了 AI 分镜生成（说明是新项目/灵感流程），则不触发资产生成
+        if (autoStoryboardExecutedRef.current) {
             return;
         }
 
@@ -313,9 +287,11 @@ export default function PlanningView({
     };
 
     // 分镜生成流程
-    // 分镜生成流程
     const proceedWithStoryboardGeneration = async (userContent: string) => {
         if (!project) return;
+
+        // ⭐ 标记为已执行 AI 分镜，防止资产生成逻辑重复触发
+        autoStoryboardExecutedRef.current = true;
 
         setInputText('');
         setIsSubmitting(true);
@@ -365,6 +341,37 @@ export default function PlanningView({
             }
         }
     };
+
+    // 🔒 自动触发 AI 分镜生成
+    // 1. 当项目有剧本但没有场景/镜头时
+    // 2. 当项目没有剧本但有描述（Inspiration）时
+    useEffect(() => {
+        if (!project || !project.id || project.id !== (params?.id as string)) return;
+        if (isGenerating || isSubmitting) return;
+        if (autoStoryboardExecutedRef.current) return;
+
+        const hasScenes = project.scenes && project.scenes.length > 0;
+        const hasShots = project.shots && project.shots.length > 0;
+        const hasScript = project.script && project.script.trim().length > 0;
+        const hasDescription = project.metadata?.description && project.metadata.description.trim().length > 0;
+
+        // Case A: 已有剧本 (Imported Script)
+        if (hasScript && !hasScenes && !hasShots) {
+            autoStoryboardExecutedRef.current = true;
+            console.log('[PlanningView] 🚀 自动触发 AI 分镜生成 (基于剧本)');
+            setTimeout(() => handleAIStoryboard(), 2000);
+            return;
+        }
+
+        // Case B: 无剧本但有描述 (Inspiration from Homepage)
+        if (!hasScript && hasDescription && !hasScenes && !hasShots) {
+            autoStoryboardExecutedRef.current = true;
+            console.log('[PlanningView] 🚀 自动触发 AI 分镜生成 (基于灵感描述)');
+            // 使用 proceedWithStoryboardGeneration 以便在聊天中显示内容并更新剧本
+            setTimeout(() => proceedWithStoryboardGeneration(project.metadata.description!), 1000);
+            return;
+        }
+    }, [project?.id, project?.script, project?.metadata?.description, project?.scenes?.length, isGenerating, isSubmitting, params?.id, handleAIStoryboard]);
 
     const handleDeleteCharacter = (id: string, name: string) => {
         if (isSubmitting || isGenerating) return;

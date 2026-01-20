@@ -38,7 +38,7 @@ export default function PlanningChat({
     messagesTopRef
 }: PlanningChatProps) {
     // 调试日志
-    console.log('[PlanningChat] 渲染状态:', { isGeneratingAssets, hasStep: !!assetGenerationStep });
+    // console.log('[PlanningChat] 渲染状态:', { isGeneratingAssets, hasStep: !!assetGenerationStep });
 
     return (
         <div className="flex-1 flex flex-col relative bg-white dark:bg-[#0a0a0a] overflow-hidden">
@@ -196,16 +196,16 @@ export default function PlanningChat({
                             animate={{ opacity: 1, y: 0 }}
                             className="flex gap-3 justify-start"
                         >
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 dark:from-purple-400 dark:to-pink-400 flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10">
-                                <Sparkles size={16} className="text-white" />
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10">
+                                <Sparkles size={16} className="text-zinc-900 dark:text-zinc-100" />
                             </div>
                             <div className="flex-1 max-w-xl">
                                 {!assetGenerationStep ? (
                                     /* 初始化状态 */
                                     <div className="bg-white dark:bg-zinc-900/80 backdrop-blur-xl rounded-2xl p-6 border border-black/5 dark:border-white/10 shadow-2xl">
                                         <div className="flex items-center gap-3">
-                                            <div className="p-2 rounded-xl bg-purple-500/10 dark:bg-purple-400/10">
-                                                <Loader2 size={18} className="text-purple-500 dark:text-purple-400 animate-spin" />
+                                            <div className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800">
+                                                <Loader2 size={18} className="text-zinc-900 dark:text-zinc-100 animate-spin" />
                                             </div>
                                             <div>
                                                 <h3 className="text-sm font-black text-zinc-900 dark:text-white tracking-tight">正在准备资产生成...</h3>
@@ -217,8 +217,8 @@ export default function PlanningChat({
                                     /* 正常进度显示 */
                                     <div className="bg-white dark:bg-zinc-900/80 backdrop-blur-xl rounded-2xl p-6 border border-black/5 dark:border-white/10 shadow-2xl">
                                         <div className="flex items-center gap-3 mb-6">
-                                            <div className="p-2 rounded-xl bg-purple-500/10 dark:bg-purple-400/10">
-                                                <Users size={18} className="text-purple-500 dark:text-purple-400 animate-pulse" />
+                                            <div className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800">
+                                                <Users size={18} className="text-zinc-900 dark:text-zinc-100 animate-pulse" />
                                             </div>
                                             <div>
                                                 <h3 className="text-sm font-black text-zinc-900 dark:text-white tracking-tight">正在生成角色和场景资产</h3>
@@ -242,7 +242,7 @@ export default function PlanningChat({
                                                             <div className={cn(
                                                                 "mt-0.5 transition-colors duration-300",
                                                                 stepStatus === 'completed' ? "text-emerald-500" :
-                                                                    stepStatus === 'running' ? "text-purple-500 dark:text-purple-400" : "text-zinc-300 dark:text-zinc-700"
+                                                                    stepStatus === 'running' ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-300 dark:text-zinc-700"
                                                             )}>
                                                                 {stepStatus === 'completed' ? <CheckCircle2 size={16} /> : <Circle size={16} />}
                                                             </div>
