@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { toast } from 'sonner';
 import { useAIStoryboard } from '@/hooks/useAIStoryboard';
+import { useAssetGeneration } from '@/hooks/useAssetGeneration';
 import { useAgent } from '@/hooks/useAgent';
 import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import AddLocationDialog from '@/components/asset/AddLocationDialog';
@@ -121,8 +122,18 @@ export default function PlanningView({
     // 🔒 防止自动分镜重复触发的标记（方案 A：内存标记）
     const autoStoryboardExecutedRef = useRef(false);
 
+    // 🔒 防止资产生成重复触发的标记（按项目ID存储）
+    const assetGenerationExecutedMap = useRef(new Map<string, boolean>());
+
     // AI Storyboard hook
     const { isGenerating, currentStep, handleAIStoryboard } = useAIStoryboard();
+
+    // Asset Generation hook
+    const {
+        isGenerating: isGeneratingAssets,
+        currentStep: assetGenerationStep,
+        generateAssetsForImportedStoryboard
+    } = useAssetGeneration();
 
     const filterPlanningMessages = useCallback(
         (history: ChatMessage[]) => history.filter((msg) => msg.metadata?.channel === 'planning'),
@@ -188,6 +199,49 @@ export default function PlanningView({
             return () => clearTimeout(timer);
         }
     }, [project?.id, project?.script, project?.scenes?.length, isGenerating, isSubmitting, params?.id, handleAIStoryboard]);
+
+    // 🔒 自动触发资产生成：当项目有scenes/shots但缺少资产时（从分镜导入的场景）
+    // 方案B: 只监听项目ID变化，避免频繁触发
+    useEffect(() => {
+        if (!project?.id || project.id !== (params?.id as string)) {
+            return;
+        }
+
+        const projectId = project.id;
+
+        console.log('[PlanningView] 🔍 检测项目:', projectId, {
+            alreadyExecuted: assetGenerationExecutedMap.current.get(projectId),
+            scenes: project.scenes?.length || 0,
+            shots: project.shots?.length || 0,
+            characters: project.characters?.length || 0,
+            locations: project.locations?.length || 0
+        });
+
+        // 如果这个项目已经执行过资产生成，跳过
+        if (assetGenerationExecutedMap.current.get(projectId)) {
+            return;
+        }
+
+        // 检查是否需要生成资产
+        const needsAssets =
+            project.scenes?.length > 0 &&
+            project.shots?.length > 0 &&
+            (!project.characters?.length || !project.locations?.length);
+
+        console.log('[PlanningView] 🧐 是否需要生成资产:', needsAssets);
+
+        if (needsAssets) {
+            // 标记为已执行
+            assetGenerationExecutedMap.current.set(projectId, true);
+            console.log('[PlanningView] 🚀 触发资产生成');
+
+            // ⭐ 延迟执行,让React先更新UI显示进度
+            setTimeout(() => {
+                console.log('[PlanningView] 📊 开始执行资产生成');
+                generateAssetsForImportedStoryboard();
+            }, 100);
+        }
+    }, [project?.id, params?.id, generateAssetsForImportedStoryboard]); // 只监听项目ID变化
 
     // 自动切换到分镜选项卡逻辑已移除，由 Sidebar 内部管理
     // const prevIsGenerating = useRef(isGenerating);
@@ -372,6 +426,8 @@ export default function PlanningView({
                     setInputText={setInputText}
                     isProcessing={isSubmitting || isAgentProcessing}
                     isGenerating={isGenerating}
+                    isGeneratingAssets={isGeneratingAssets}
+                    assetGenerationStep={assetGenerationStep}
                     thinkingSteps={thinkingSteps}
                     handleSendMessage={handleSendMessage}
                     currentStep={currentStep}
