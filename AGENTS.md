@@ -170,6 +170,16 @@ Agent 通过 Function Calling 调用以下工具操作项目（共 28 个工具�
 | `generateShotsVideo` | 生成指定分镜 Sora 视频 | `sceneId`, `shotIds[]`, `shotIndexes[]`, `globalShotIndexes[]` |
 | `batchGenerateProjectVideosSora` | 批量生成 Sora 视频 | `force` |
 
+### Sora 工具选择规则
+
+| 用户意图 | 正确工具 | 参数示例 |
+|----------|----------|----------|
+| "分镜14用sora重新生成" | `generateShotsVideo` | `globalShotIndexes: [14]` |
+| "20-23分镜重新生成" | `generateShotsVideo` | `globalShotIndexes: [20, 21, 22, 23]` |
+| "分镜14, 20-23, 33-35" | `generateShotsVideo` | `globalShotIndexes: [14, 20, 21, 22, 23, 33, 34, 35]` |
+| "整个项目重新生成" | `batchGenerateProjectVideosSora` | `force: true` |
+| "场景2用sora生成" | `generateSceneVideo` | `sceneId: "xxx"` |
+
 ---
 
 ## 🎥 Sora 视频生成架构
@@ -362,4 +372,5 @@ const results = await executor.execute(toolCalls);
 ---
 
 **最后更新**: 2026-01-21  
-**版本**: v3.1 (纯云端架构 + 完整工具链 + Sora 注册优化)
+**版本**: v3.2 (纯云端架构 + 完整工具链 + Sora 工具选择优化)
+

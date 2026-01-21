@@ -456,6 +456,26 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
      * - 'pending': 任务未完成或无视频
      */
     type TaskApplicationStatus = 'full' | 'partial' | 'history' | 'pending';
+
+    // 归一化 URL：移除查询参数、hash、协议，只保留路径核心
+    const normalizeVideoUrl = useCallback((url: string | undefined | null): string => {
+        if (!url) return '';
+        try {
+            // 移除协议、查询参数和 hash
+            const cleaned = url.split('?')[0].split('#')[0];
+            // 提取文件名部分（最后一个 / 之后的内容）
+            const parts = cleaned.split('/');
+            const filename = parts[parts.length - 1] || '';
+            // 如果是 Cloudflare R2 URL，提取关键路径
+            if (cleaned.includes('r2.cloudflarestorage.com') || cleaned.includes('.r2.dev')) {
+                return parts.slice(-3).join('/'); // 保留最后3段路径
+            }
+            return filename || cleaned;
+        } catch {
+            return url;
+        }
+    }, []);
+
     const getTaskApplicationStatus = useCallback((task: SoraTask): TaskApplicationStatus => {
         // 未完成或无视频的任务
         const videoUrl = task.r2Url || task.kaponaiUrl;
@@ -473,14 +493,15 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         // 统计匹配情况
         let matchCount = 0;
         let totalValidShots = 0;
+        const normalizedTaskUrl = normalizeVideoUrl(videoUrl);
+
         for (const shotId of shotIds) {
             const shot = shotsById.get(shotId);
             if (!shot) continue;
             totalValidShots++;
             // 对比视频 URL（归一化处理）
-            const shotVideoClip = shot.videoClip?.split('?')[0]?.split('#')[0] || '';
-            const taskVideoUrl = videoUrl.split('?')[0]?.split('#')[0] || '';
-            if (shotVideoClip === taskVideoUrl) {
+            const normalizedShotUrl = normalizeVideoUrl(shot.videoClip);
+            if (normalizedShotUrl && normalizedTaskUrl && normalizedShotUrl === normalizedTaskUrl) {
                 matchCount++;
             }
         }
@@ -489,7 +510,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         if (matchCount === totalValidShots) return 'full';
         if (matchCount > 0) return 'partial';
         return 'history';
-    }, [shotsById]);
+    }, [shotsById, normalizeVideoUrl]);
 
 
     // Play/Pause toggle

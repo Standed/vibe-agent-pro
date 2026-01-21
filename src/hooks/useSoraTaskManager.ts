@@ -230,19 +230,76 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
         }
     }, [soraTasks, applyStatusUpdate]);
 
-    // 刷新所有进行中的任务
+    // 刷新所有任务：先从 API 获取最新列表，再调用 Kaponai 更新进行中任务的状态
     const refreshAllTasks = useCallback(async () => {
         if (!project?.id) return;
 
-        const pendingTasks = soraTaskList.filter((task) =>
+        console.log('[useSoraTaskManager] refreshAllTasks called');
+
+        // 🔄 首先重新加载任务列表
+        let freshTasks: SoraTask[] = [];
+        try {
+            const listRes = await fetch('/api/sora/tasks/list', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: project.id }),
+            });
+
+            if (listRes.ok) {
+                const listData = await listRes.json();
+                freshTasks = (listData.tasks || []).map((row: any): SoraTask => ({
+                    id: row.id,
+                    userId: row.user_id,
+                    projectId: row.project_id,
+                    sceneId: row.scene_id || undefined,
+                    shotId: row.shot_id || undefined,
+                    shotIds: row.shot_ids || undefined,
+                    shotRanges: row.shot_ranges || undefined,
+                    characterId: row.character_id || undefined,
+                    type: row.type || undefined,
+                    status: row.status,
+                    progress: row.progress ?? 0,
+                    model: row.model || 'sora-2',
+                    prompt: row.prompt || '',
+                    targetDuration: row.target_duration || 0,
+                    targetSize: row.target_size || '',
+                    kaponaiUrl: row.kaponai_url || undefined,
+                    r2Url: row.r2_url || undefined,
+                    pointCost: row.point_cost || 0,
+                    errorMessage: row.error_message || undefined,
+                    createdAt: new Date(row.created_at),
+                    updatedAt: new Date(row.updated_at),
+                }));
+
+                console.log('[useSoraTaskManager] Loaded', freshTasks.length, 'tasks from API');
+
+                const taskMap = new Map<string, SoraTask>();
+                freshTasks.forEach((t: SoraTask) => taskMap.set(t.id, t));
+                setSoraTasks(taskMap);
+            } else {
+                console.error('[useSoraTaskManager] Failed to load task list:', await listRes.text());
+            }
+        } catch (error) {
+            console.error('[useSoraTaskManager] Refresh task list failed:', error);
+            return;
+        }
+
+        // 找出所有进行中的任务，需要调用 Kaponai 获取实时状态
+        const pendingTasks = freshTasks.filter((task) =>
             task.status === 'queued' ||
             task.status === 'processing' ||
             task.status === 'generating' ||
-            (task.status === 'completed' && !task.kaponaiUrl && !task.r2Url)
+            task.status === 'in_progress'
         );
 
-        if (pendingTasks.length === 0) return;
+        console.log('[useSoraTaskManager] Found', pendingTasks.length, 'pending tasks to refresh');
 
+        if (pendingTasks.length === 0) {
+            console.log('[useSoraTaskManager] No pending tasks, skipping batch status refresh');
+            return;
+        }
+
+        // 调用 batch status API 获取 Kaponai 实时状态
         try {
             const res = await fetch('/api/sora/status/batch', {
                 method: 'POST',
@@ -251,9 +308,15 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
                     taskIds: pendingTasks.map((task) => task.id),
                 }),
             });
-            if (!res.ok) return;
+
+            if (!res.ok) {
+                console.error('[useSoraTaskManager] Batch status API failed:', await res.text());
+                return;
+            }
 
             const data = await res.json();
+            console.log('[useSoraTaskManager] Batch status results:', data.results?.length);
+
             const resultMap = new Map<string, any>();
             (data.results || []).forEach((item: any) => {
                 if (item?.id) resultMap.set(item.id, item);
@@ -266,9 +329,9 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
                 }
             }
         } catch (error) {
-            console.error('Batch refresh failed:', error);
+            console.error('[useSoraTaskManager] Batch refresh failed:', error);
         }
-    }, [project?.id, soraTaskList, applyStatusUpdate]);
+    }, [project?.id, applyStatusUpdate]);
 
     // 绑定任务到分镜
     const bindTaskToShot = useCallback(async (task: SoraTask, shotId: string) => {
@@ -439,11 +502,11 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
                 : (task.shotId ? [task.shotId] : []);
             if (targetShotIds.length === 0) return;
 
-            // 多镜头任务通知
-            if (targetShotIds.length > 1 && !notifiedTaskIdsRef.current.has(task.id)) {
+            // 多镜头任务通知 - 优化：只对最近1分钟内完成的任务显示通知，避免刷新时重复通知
+            if (!notifiedTaskIdsRef.current.has(task.id)) {
                 notifiedTaskIdsRef.current.add(task.id);
-                const isRecent = new Date(task.updatedAt).getTime() > Date.now() - 60000;
-                if (isRecent) {
+                const isVeryRecent = new Date(task.updatedAt).getTime() > Date.now() - 30000; // 30秒内
+                if (isVeryRecent && targetShotIds.length > 0) {
                     const shotLabels = targetShotIds
                         .map((id) => {
                             const shot = project.shots.find((s) => s.id === id);
@@ -453,10 +516,13 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
                         .sort((a, b) => a - b);
 
                     if (shotLabels.length > 0) {
-                        const rangeStr = `${shotLabels[0]}-${shotLabels[shotLabels.length - 1]}`;
+                        const rangeStr = shotLabels.length === 1
+                            ? String(shotLabels[0])
+                            : `${shotLabels[0]}-${shotLabels[shotLabels.length - 1]}`;
+                        // 使用 toast.dismiss 防止重复通知
                         toast.success(`Sora视频已生成 (镜头 ${rangeStr})`, {
-                            description: '新视频已自动应用到所有涉及镜头，旧版本可在历史记录中恢复。',
-                            duration: 5000,
+                            id: `sora-complete-${task.id}`, // 防止重复
+                            duration: 4000,
                         });
                     }
                 }
