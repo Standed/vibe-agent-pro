@@ -76,6 +76,40 @@ export async function POST(req: NextRequest) {
         }
 
         if (mode === 'register_direct') {
+            // 🔒 防重复检查 1: 检查角色是否已经有 Sora 码
+            const existingUsername = character.soraIdentity?.username?.trim();
+            if (existingUsername) {
+                return NextResponse.json({
+                    success: true,
+                    character: character,
+                    status: 'already_registered',
+                    message: `角色已注册 Sora 码: ${existingUsername}`
+                });
+            }
+
+            // 🔒 防重复检查 2: 检查是否有正在进行的注册任务
+            if (character.id) {
+                const { data: inProgressTask } = await supabase
+                    .from('sora_tasks')
+                    .select('id,status,updated_at')
+                    .eq('character_id', character.id)
+                    .eq('type', 'character_reference')
+                    .in('status', ['queued', 'processing', 'generating', 'registering', 'in_progress'])
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (inProgressTask) {
+                    return NextResponse.json({
+                        success: true,
+                        taskId: inProgressTask.id,
+                        status: inProgressTask.status,
+                        message: '已有正在进行的注册任务，请等待完成'
+                    });
+                }
+            }
+
+            // 获取视频 URL（从 character 或 sora_tasks）
             if (!character.soraReferenceVideoUrl && character.id) {
                 const { data: latestTask } = await supabase
                     .from('sora_tasks')
@@ -97,15 +131,53 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: 'No reference video available for registration' }, { status: 400 });
             }
 
-            const result = await characterConsistencyService.registerCharacterAsync(
+            // 同步注册：直接调用 Kaponai createCharacter API，无需轮询
+            const result = await characterConsistencyService.registerCharacter(
                 character,
                 character.soraReferenceVideoUrl,
                 userId,
                 timestamps
             );
-            return NextResponse.json({ success: true, ...result });
+            return NextResponse.json({
+                success: true,
+                character: result,
+                status: 'registered'
+            });
 
         } else if (mode === 'generate_and_register') {
+            // 🔒 防重复检查 1: 检查角色是否已经有 Sora 码
+            const existingUsername = character.soraIdentity?.username?.trim();
+            if (existingUsername) {
+                return NextResponse.json({
+                    success: true,
+                    character: character,
+                    status: 'already_registered',
+                    message: `角色已注册 Sora 码: ${existingUsername}`
+                });
+            }
+
+            // 🔒 防重复检查 2: 检查是否有正在进行的生成/注册任务
+            if (character.id) {
+                const { data: inProgressTask } = await supabase
+                    .from('sora_tasks')
+                    .select('id,status,updated_at')
+                    .eq('character_id', character.id)
+                    .eq('type', 'character_reference')
+                    .in('status', ['queued', 'processing', 'generating', 'registering', 'in_progress'])
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (inProgressTask) {
+                    return NextResponse.json({
+                        success: true,
+                        taskId: inProgressTask.id,
+                        status: inProgressTask.status,
+                        message: '已有正在进行的任务，请等待完成'
+                    });
+                }
+            }
+
             // Trigger generation
             const prompt = body.prompt || `Character ${character.name}: ${character.description}, ${character.appearance} `;
             const requiredCredits = calculateCredits('VOLCANO_VIDEO', user.role);

@@ -453,6 +453,7 @@ export default function DirectorMode({ isOpen, onClose }: DirectorModeProps) {
                         if (!options?.keepOpen) setEditingCharacterId(null);
                     }}
                     mode="edit"
+                    projectId={project?.id}
                 />
             )}
 

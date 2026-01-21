@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
-import { KaponaiService } from '@/services/KaponaiService';
-import { uploadBufferToR2 } from '@/lib/cloudflare-r2';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
@@ -49,9 +47,8 @@ export async function GET(req: NextRequest) {
       .eq('type', 'character_reference');
 
     if (checkActive) {
-      // If checking active, we want any recent task, prioritizing active ones or just latest
-      // Actually, we probably just want the latest one regardless of status if checkActive is true
-      // But to be safe, let's just remove the status filter if checkActive is true
+      // 只查询真正活跃的任务（排除 completed 和 failed）
+      query = query.in('status', ['queued', 'processing', 'generating', 'registering', 'in_progress']);
     } else {
       query = query.eq('status', 'completed');
     }
@@ -62,6 +59,10 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (taskError || !task) {
+      // 如果是 checkActive 模式且没有活跃任务，返回空结果而不是错误
+      if (checkActive) {
+        return NextResponse.json({ success: false, reason: 'no_active_task' });
+      }
       return NextResponse.json({ success: false, reason: 'no_completed_task' });
     }
 
@@ -70,40 +71,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, reason: 'video_url_missing' });
     }
 
+    // 纯读取模式：不做任何副作用操作（R2 上传和角色注册应由其他 API 完成）
+    // 这确保 GET 请求是幂等且快速的
     const existingMetadata = character?.metadata || {};
     const existingIdentity = existingMetadata.soraIdentity || {};
-    let existingUsername = (existingIdentity.username || '').trim();
-
-    if (!existingUsername) {
-      try {
-        if (!task.r2_url && task.kaponai_url) {
-          const vidRes = await fetch(task.kaponai_url);
-          if (vidRes.ok) {
-            const buffer = Buffer.from(await vidRes.arrayBuffer());
-            const filename = `sora_ref_${characterId}_${Date.now()}.mp4`;
-            const key = `${task.user_id || user.id}/characters/${characterId}/${filename}`;
-            const r2Url = await uploadBufferToR2({
-              buffer,
-              key,
-              contentType: 'video/mp4'
-            });
-            videoUrl = r2Url;
-            await supabase.from('sora_tasks').update({ r2_url: r2Url }).eq('id', task.id);
-          }
-        }
-
-        if (videoUrl) {
-          const kaponaiService = new KaponaiService();
-          await kaponaiService.assertReachable();
-          const regResult = await kaponaiService.createCharacter({ url: videoUrl, timestamps: '1,3' });
-          if (regResult.username) {
-            existingUsername = regResult.username;
-          }
-        }
-      } catch (error) {
-        console.error('[LatestVideo] Auto register failed:', error);
-      }
-    }
+    const existingUsername = (existingIdentity.username || '').trim();
 
     const nextIdentity = {
       username: existingUsername,
