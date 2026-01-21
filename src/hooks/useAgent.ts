@@ -506,7 +506,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
         );
 
         // 给 continueWithToolResults 加超时保护，避免一直卡在总结前
-        const CONTINUE_TIMEOUT_MS = 45000;
+        const CONTINUE_TIMEOUT_MS = 90000;
         const continueController = new AbortController();
         const continuePromise =
           // @ts-ignore - 我们稍后会更新 continueWithToolResults 的签名

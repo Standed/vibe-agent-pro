@@ -359,6 +359,13 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Timeline Video Sync** - Progress bar drag auto-switches shots
 - ✅ **Anti-Override Sync** - Smart sync prevents overwriting user selections
 
+### v3.3.0 (2026-01-21)
+- ✅ **Sora Sync Performance Optimization** - Batch processing, only new tasks (within 30s) write to database
+- ✅ **Sora Video Always Overwrites** - Agent mode videos always overwrite existing shots
+- ✅ **URL Normalization Fix** - Unified filename comparison for task status matching
+- ✅ **Session Auto-Refresh** - Retrieve from Supabase when cookie missing, background refresh before expiry
+- ✅ **Agent Request Timeout Extended** - CONTINUE_TIMEOUT_MS increased from 45s to 90s
+
 ### v3.2.0 (2026-01-21)
 - ✅ **Sora Registration Sync Mode** - `register_direct` now returns in 1-3 seconds
 - ✅ **Latest-Video API Optimization** - Pure read-only, no more R2 upload delays

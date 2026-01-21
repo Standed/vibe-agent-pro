@@ -151,9 +151,42 @@ export async function authenticateRequest(
       .eq('id', user.id)
       .single();
 
-    // 🔧 如果 profile 不存在，自动创建一个（根据邮箱判断角色并分配对应积分）
+    // 🔧 如果 profile 不存在，使用更安全的重试逻辑
     if (profileError || !profile) {
-      console.log('[Auth Middleware] Profile 不存在，正在自动创建...', user.id);
+      console.log('[Auth Middleware] Profile 查询失败或不存在，进行重试确认...', user.id, profileError?.code);
+
+      // 重试查询一次（防止临时网络问题导致误判）
+      await new Promise(r => setTimeout(r, 300));
+      const { data: retryProfile, error: retryError } = await admin
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (retryProfile) {
+        // 重试成功，Profile 实际存在
+        console.log('[Auth Middleware] ✅ 重试查询成功，Profile 存在');
+        const userEmail = user.email || '';
+        const isAdminEmail = getUserRoleByEmail(userEmail) === 'admin';
+        const effectiveRole = isAdminEmail ? 'admin' : (retryProfile.role || 'user');
+        const initialCredits = getInitialCredits(effectiveRole as any);
+        const effectiveCredits = (retryProfile.credits !== null && retryProfile.credits !== undefined)
+          ? retryProfile.credits
+          : initialCredits;
+
+        return {
+          user: {
+            id: retryProfile.id,
+            email: retryProfile.email || userEmail,
+            role: effectiveRole as 'user' | 'admin' | 'vip',
+            credits: effectiveCredits,
+            isWhitelisted: !!retryProfile.is_whitelisted || effectiveRole === 'admin',
+          },
+        };
+      }
+
+      // 确认 Profile 确实不存在，开始创建
+      console.log('[Auth Middleware] Profile 确认不存在，正在自动创建...', user.id);
 
       // 根据邮箱判断用户角色
       const userEmail = user.email || '';
@@ -177,7 +210,32 @@ export async function authenticateRequest(
         .single();
 
       if (createError || !newProfile) {
-        console.error('[Auth Middleware] 创建 Profile 失败:', createError);
+        // 创建失败，可能是并发导致的冲突，再次尝试查询
+        console.warn('[Auth Middleware] 创建 Profile 失败，尝试再次查询...', createError?.code, createError?.message);
+
+        const { data: finalProfile } = await admin
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (finalProfile) {
+          // 并发创建成功，使用已存在的 Profile
+          console.log('[Auth Middleware] ✅ Profile 已被并发创建，使用现有数据');
+          const effectiveRole = getUserRoleByEmail(userEmail) === 'admin' ? 'admin' : (finalProfile.role || 'user');
+          return {
+            user: {
+              id: finalProfile.id,
+              email: finalProfile.email || userEmail,
+              role: effectiveRole as 'user' | 'admin' | 'vip',
+              credits: finalProfile.credits ?? initialCredits,
+              isWhitelisted: !!finalProfile.is_whitelisted || effectiveRole === 'admin',
+            },
+          };
+        }
+
+        // 真正的创建失败
+        console.error('[Auth Middleware] ❌ 创建 Profile 最终失败:', createError);
         return {
           error: NextResponse.json(
             { error: '用户信息初始化失败，请联系管理员' },

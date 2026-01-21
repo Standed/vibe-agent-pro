@@ -485,27 +485,36 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
     const mountTimeRef = useRef(Date.now());
 
     // 自动同步完成的任务到分镜（Agent 模式：总是覆盖 + 写入历史）
+    // 优化：批量处理，只对新任务写入数据库，避免进入页面时疯狂请求
     useEffect(() => {
         if (!project?.id || !autoSyncToShots) return;
 
         const tasks = Array.from(soraTasks.values());
 
-        tasks.forEach(async (task) => {
+        // 收集所有需要同步的更新
+        const pendingUpdates: Array<{
+            task: SoraTask;
+            shotId: string;
+            sceneId: string;
+            videoUrl: string;
+            isNewTask: boolean;
+        }> = [];
+
+        tasks.forEach((task) => {
             if (task.status !== 'completed') return;
 
             const videoUrl = task.r2Url || task.kaponaiUrl;
             if (!videoUrl) return;
 
-            // 获取所有涉及的分镜 ID
             const targetShotIds = task.shotIds?.length
                 ? task.shotIds
                 : (task.shotId ? [task.shotId] : []);
             if (targetShotIds.length === 0) return;
 
-            // 多镜头任务通知 - 优化：只对最近1分钟内完成的任务显示通知，避免刷新时重复通知
+            // 通知逻辑保持不变
             if (!notifiedTaskIdsRef.current.has(task.id)) {
                 notifiedTaskIdsRef.current.add(task.id);
-                const isVeryRecent = new Date(task.updatedAt).getTime() > Date.now() - 30000; // 30秒内
+                const isVeryRecent = new Date(task.updatedAt).getTime() > Date.now() - 30000;
                 if (isVeryRecent && targetShotIds.length > 0) {
                     const shotLabels = targetShotIds
                         .map((id) => {
@@ -519,79 +528,85 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
                         const rangeStr = shotLabels.length === 1
                             ? String(shotLabels[0])
                             : `${shotLabels[0]}-${shotLabels[shotLabels.length - 1]}`;
-                        // 使用 toast.dismiss 防止重复通知
                         toast.success(`Sora视频已生成 (镜头 ${rangeStr})`, {
-                            id: `sora-complete-${task.id}`, // 防止重复
+                            id: `sora-complete-${task.id}`,
                             duration: 4000,
                         });
                     }
                 }
             }
 
-            // 遍历所有涉及的分镜，同步视频并写入历史
+            // 收集需要同步的分镜
+            const isNewTask = new Date(task.updatedAt).getTime() > Date.now() - 30000; // 30秒内视为新任务
             for (const shotId of targetShotIds) {
                 const syncKey = `${task.id}:${shotId}`;
                 if (syncedTaskIdsRef.current.has(syncKey)) continue;
+                syncedTaskIdsRef.current.add(syncKey);
 
                 const shot = project.shots.find((s) => s.id === shotId);
                 if (!shot?.sceneId) continue;
-
-                // 如果已经是当前视频，跳过
                 if (shot.videoClip === videoUrl) continue;
 
-                // 关键修复：防止旧任务在重载时覆盖用户手动选择的视频
-                // 只有当任务是在当前会话中完成的（比组件挂载时间晚），或者分镜当前没有视频时，才自动覆盖
-                const isNewTask = new Date(task.updatedAt).getTime() > mountTimeRef.current;
-                if (shot.videoClip && !isNewTask) {
-                    // 标记为已同步，避免重复检查
-                    syncedTaskIdsRef.current.add(syncKey);
-                    continue;
-                }
-
-                syncedTaskIdsRef.current.add(syncKey);
-
-                // 获取当前历史记录，添加新视频到历史
-                try {
-                    const currentShotData = await dataService.getShot(shotId);
-                    const existingHistory = currentShotData?.generationHistory || [];
-                    const alreadyExists = existingHistory.some((h: any) => h.result === videoUrl);
-
-                    const newHistory = alreadyExists ? existingHistory : [
-                        {
-                            id: `sora_${task.id}_${Date.now()}_${shotId.slice(-4)}`,
-                            type: 'video' as const,
-                            timestamp: new Date().toISOString(),
-                            result: videoUrl,
-                            prompt: typeof task.prompt === 'string' ? task.prompt : 'Sora Video Generation',
-                            parameters: {
-                                model: 'sora',
-                                taskId: task.id,
-                                shotIds: targetShotIds.length > 1 ? targetShotIds : undefined,
-                            },
-                            status: 'success' as const
-                        },
-                        ...existingHistory
-                    ];
-
-                    // 总是覆盖 videoClip（用户可从历史恢复旧版本）
-                    await dataService.saveShot(shot.sceneId, {
-                        id: shot.id,
-                        status: 'done',
-                        videoClip: videoUrl,
-                        generationHistory: newHistory,
-                    } as any);
-
-                    updateShot(shot.id, {
-                        status: 'done',
-                        videoClip: videoUrl,
-                        generationHistory: newHistory,
-                    } as any);
-                } catch (error) {
-                    console.error(`[useSoraTaskManager] Failed to sync shot ${shotId}:`, error);
-                }
+                pendingUpdates.push({
+                    task,
+                    shotId,
+                    sceneId: shot.sceneId,
+                    videoUrl,
+                    isNewTask,
+                });
             }
         });
-    }, [soraTasks, project?.id, project?.shots, updateShot, autoSyncToShots]);
+
+        // 如果没有待更新的，直接返回
+        if (pendingUpdates.length === 0) return;
+
+        // 批量更新内存状态（立即生效，无需等待数据库）
+        pendingUpdates.forEach(({ shotId, videoUrl }) => {
+            updateShot(shotId, {
+                status: 'done',
+                videoClip: videoUrl,
+            } as any);
+        });
+
+        // 只对新任务（30秒内）写入数据库，避免进入页面时大量请求
+        const newTaskUpdates = pendingUpdates.filter((u) => u.isNewTask);
+        if (newTaskUpdates.length > 0) {
+            console.log(`[useSoraTaskManager] 批量写入 ${newTaskUpdates.length} 个分镜到数据库`);
+            // 串行写入避免并发问题
+            (async () => {
+                for (const { task, shotId, sceneId, videoUrl } of newTaskUpdates) {
+                    try {
+                        const currentShotData = await dataService.getShot(shotId);
+                        const existingHistory = currentShotData?.generationHistory || [];
+                        const alreadyExists = existingHistory.some((h: any) => h.result === videoUrl);
+
+                        const newHistory = alreadyExists ? existingHistory : [
+                            {
+                                id: `sora_${task.id}_${Date.now()}_${shotId.slice(-4)}`,
+                                type: 'video' as const,
+                                timestamp: new Date().toISOString(),
+                                result: videoUrl,
+                                prompt: typeof task.prompt === 'string' ? task.prompt : 'Sora Video Generation',
+                                parameters: { model: 'sora', taskId: task.id },
+                                status: 'success' as const
+                            },
+                            ...existingHistory
+                        ];
+
+                        await dataService.saveShot(sceneId, {
+                            id: shotId,
+                            status: 'done',
+                            videoClip: videoUrl,
+                            generationHistory: newHistory,
+                        } as any);
+                    } catch (error) {
+                        console.error(`[useSoraTaskManager] Failed to save shot ${shotId}:`, error);
+                    }
+                }
+            })();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [soraTasks, project?.id, updateShot, autoSyncToShots]);
 
     return {
         soraTasks,

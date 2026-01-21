@@ -63,7 +63,7 @@ AI 驱动的视频分镜生成与编辑工具 | Next.js 15.1 + React 19 + TypeSc
 | **Gemini 服务** | `src/services/geminiService.ts` | Grid 多视图生成、图片分析 |
 | **火山引擎服务** | `src/services/volcanoEngineService.ts` | SeeDream 图片、SeeDance 视频 |
 | **Sora 编排器** | `src/services/SoraOrchestrator.ts` | Sora 视频生成全流程编排 (支持并行提交) |
-| **Sora 任务管理** | `src/hooks/useSoraTaskManager.ts` | 统一任务管理 (智能排序、防覆盖同步) |
+| **Sora 任务管理** | `src/hooks/useSoraTaskManager.ts` | 统一任务管理 (批量同步、智能排序、总是覆盖) |
 | **Kaponai 服务** | `src/services/KaponaiService.ts` | Sora API 底层封装 |
 | **角色一致性** | `src/services/CharacterConsistencyService.ts` | 角色注册与参考视频生成 |
 | **Sora Prompt** | `src/services/SoraPromptService.ts` | Sora 专用提示词生成 |
@@ -198,7 +198,8 @@ Agent 通过 Function Calling 调用以下工具操作项目（共 28 个工具�
 | **精简 JSON 协议** | `@username` 作为角色唯一 Key，废弃冗余中文名 |
 | **智能拆分** | >15s 场景自动拆分为多段任务 (Greedy Packing) |
 | **并行任务提交** | 跨场景/多镜头任务使用 `Promise.all` 并行提交 |
-| **智能自动同步** | 任务完成后自动同步到分镜，具备**防覆盖机制** |
+| **智能自动同步** | 任务完成后批量同步到分镜，**Sora 视频总是覆盖** |
+| **批量处理优化** | 只对 30s 内的新任务写数据库，避免页面加载时疯狂请求 |
 | **Timeline 联动** | 进度条拖拽支持自动切镜，播放状态严格同步 |
 | **多镜头任务映射** | `sora_tasks.shot_ids` 记录覆盖分镜，支持单任务对应多镜头 |
 
@@ -372,5 +373,5 @@ const results = await executor.execute(toolCalls);
 ---
 
 **最后更新**: 2026-01-21  
-**版本**: v3.2 (纯云端架构 + 完整工具链 + Sora 工具选择优化)
+**版本**: v3.3 (纯云端架构 + 完整工具链 + Sora 同步性能优化)
 
