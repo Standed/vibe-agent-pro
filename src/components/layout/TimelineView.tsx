@@ -457,22 +457,19 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
      */
     type TaskApplicationStatus = 'full' | 'partial' | 'history' | 'pending';
 
-    // 归一化 URL：移除查询参数、hash、协议，只保留路径核心
+    // 归一化 URL：统一提取纯文件名进行比较
     const normalizeVideoUrl = useCallback((url: string | undefined | null): string => {
         if (!url) return '';
         try {
             // 移除协议、查询参数和 hash
             const cleaned = url.split('?')[0].split('#')[0];
-            // 提取文件名部分（最后一个 / 之后的内容）
+            // 提取纯文件名（最后一个 / 之后的内容）
             const parts = cleaned.split('/');
             const filename = parts[parts.length - 1] || '';
-            // 如果是 Cloudflare R2 URL，提取关键路径
-            if (cleaned.includes('r2.cloudflarestorage.com') || cleaned.includes('.r2.dev')) {
-                return parts.slice(-3).join('/'); // 保留最后3段路径
-            }
-            return filename || cleaned;
+            // 返回纯文件名，不保留路径（避免 R2 URL 和普通 URL 路径不一致的问题）
+            return filename;
         } catch {
-            return url;
+            return '';
         }
     }, []);
 
@@ -495,16 +492,47 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         let totalValidShots = 0;
         const normalizedTaskUrl = normalizeVideoUrl(videoUrl);
 
+        // 调试日志
+        const debugInfo: any[] = [];
+
         for (const shotId of shotIds) {
             const shot = shotsById.get(shotId);
             if (!shot) continue;
             totalValidShots++;
             // 对比视频 URL（归一化处理）
             const normalizedShotUrl = normalizeVideoUrl(shot.videoClip);
-            if (normalizedShotUrl && normalizedTaskUrl && normalizedShotUrl === normalizedTaskUrl) {
+            const isMatch = normalizedShotUrl && normalizedTaskUrl && normalizedShotUrl === normalizedTaskUrl;
+            if (isMatch) {
                 matchCount++;
             }
+            debugInfo.push({
+                shotId,
+                shotVideoClip: shot.videoClip?.slice(-60),
+                normalizedShotUrl,
+                isMatch
+            });
         }
+
+        const result = totalValidShots === 0 ? 'history'
+            : matchCount === totalValidShots ? 'full'
+                : matchCount > 0 ? 'partial'
+                    : 'history';
+
+        // 调试日志已注释
+        // if (result === 'history' && totalValidShots > 0) {
+        //     console.log('[Status Debug] Task shows history but has valid shots:', {
+        //         taskId: task.id.slice(-8),
+        //         taskVideoUrl: videoUrl?.slice(-60),
+        //         normalizedTaskUrl,
+        //         matchCount,
+        //         totalValidShots,
+        //         shots: debugInfo.map(s => ({
+        //             ...s,
+        //             normalizedShotUrl: s.normalizedShotUrl,
+        //             match: s.isMatch ? '✅' : '❌'
+        //         }))
+        //     });
+        // }
 
         if (totalValidShots === 0) return 'history';
         if (matchCount === totalValidShots) return 'full';

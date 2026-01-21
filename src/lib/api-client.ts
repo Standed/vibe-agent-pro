@@ -1,10 +1,28 @@
-import { readSessionCookie, isTokenExpired } from './supabase/cookie-utils';
+import { readSessionCookie, isTokenExpired, setSessionCookie, parseJWT } from './supabase/cookie-utils';
+
+/**
+ * 后台刷新 session（不阻塞主流程）
+ */
+async function refreshSessionInBackground(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const { supabase } = await import('./supabase/client');
+    const { data: { session }, error } = await supabase.auth.refreshSession();
+    if (session && !error) {
+      setSessionCookie(session.access_token, session.refresh_token);
+      console.log('[authenticatedFetch] ✅ 后台刷新 session 成功');
+    }
+  } catch (e) {
+    console.warn('[authenticatedFetch] 后台刷新 session 失败:', e);
+  }
+}
 
 /**
  * 发送认证的 API 请求
  * 自动添加 Authorization header
  *
  * 🔧 修复：直接从 cookie 读取 session，避免 supabase.auth.getSession() 挂起
+ * 🔧 增强：Cookie 不存在时尝试从 Supabase 获取；Token 即将过期时后台刷新
  */
 export async function authenticatedFetch(
   url: string,
@@ -48,9 +66,23 @@ export async function authenticatedFetch(
     }
   }
 
-  const sessionTokens = readSessionCookie(cookieString);
+  let sessionTokens = readSessionCookie(cookieString);
 
-  // console.log('[authenticatedFetch] Cookie session:', sessionTokens ? '存在' : '不存在');
+  // 🔧 增强：如果 cookie 中没有 session，尝试从 Supabase 获取并写入 cookie
+  if (!sessionTokens?.access_token && typeof window !== 'undefined') {
+    console.log('[authenticatedFetch] Cookie 中无 session，尝试从 Supabase 获取...');
+    try {
+      const { supabase } = await import('./supabase/client');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setSessionCookie(session.access_token, session.refresh_token);
+        sessionTokens = { access_token: session.access_token, refresh_token: session.refresh_token };
+        console.log('[authenticatedFetch] ✅ 从 Supabase 获取 session 成功并写入 cookie');
+      }
+    } catch (e) {
+      console.warn('[authenticatedFetch] 从 Supabase 获取 session 失败:', e);
+    }
+  }
 
   if (!sessionTokens?.access_token) {
     console.error('[authenticatedFetch] ❌ Session 不存在，抛出错误');
@@ -61,6 +93,14 @@ export async function authenticatedFetch(
   if (isTokenExpired(sessionTokens.access_token)) {
     console.error('[authenticatedFetch] ❌ Token 已过期');
     throw new Error('登录已过期，请重新登录');
+  }
+
+  // 🔧 增强：检查 token 是否即将过期（5 分钟内），后台刷新
+  const payload = parseJWT(sessionTokens.access_token);
+  const now = Math.floor(Date.now() / 1000);
+  if (payload?.exp && payload.exp - now < 300) {
+    console.log('[authenticatedFetch] Token 即将过期，触发后台刷新...');
+    refreshSessionInBackground(); // 不 await，后台执行
   }
 
   // console.log('[authenticatedFetch] ✅ Session 有效，准备发送请求...');
