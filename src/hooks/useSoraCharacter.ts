@@ -13,6 +13,7 @@ export interface UseSoraCharacterOptions {
     appearance?: string;
     referenceImages?: string[];
     userId?: string;
+    projectId?: string;
     /**
      * 当需要先持久化角色时调用此函数
      * 返回持久化后的角色，失败返回 null
@@ -274,23 +275,32 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
         }, POLL_INTERVAL_MS);
     }, [pollTaskStatus, stopPolling]);
 
-    // Smart Task Recovery: Check for active background tasks on mount or when video exists
+    // Smart Task Recovery: Check for active background tasks on mount ONLY
+    // 使用 useRef 防止重复检查
+    const smartRecoveryDoneRef = useRef(false);
+
     useEffect(() => {
+        // 只在组件挂载时检查一次，避免无限循环
+        if (smartRecoveryDoneRef.current) return;
+
         const checkActiveTask = async () => {
-            // Only check if we have a character but no active status
             const effectiveCharId = savedCharacterId || initialCharacter?.id;
             if (!effectiveCharId) return;
 
-            // If we already have a status, no need to check (unless it's 'none' or 'pending' but we want to catch 'registering')
-            if (soraStatus === 'registered' || soraStatus === 'generating' || soraStatus === 'registering') return;
+            // 如果已经有确定的状态，不需要恢复
+            if (soraStatus === 'registered' || soraStatus === 'generating' || soraStatus === 'registering' || soraStatus === 'failed') {
+                smartRecoveryDoneRef.current = true;
+                return;
+            }
 
             try {
                 const res = await fetch(`/api/sora/character/latest-video?characterId=${effectiveCharId}&checkActive=true`);
                 const data = await res.json();
 
-                if (data.success && data.taskId) {
-                    // If the task is active (generating or registering), resume polling
-                    if (data.status === 'generating' || data.status === 'registering' || data.status === 'queued' || data.status === 'processing') {
+                // 只有真正活跃的任务才恢复轮询
+                if (data.success && data.taskId && data.status) {
+                    const activeStatuses = ['generating', 'registering', 'queued', 'processing'];
+                    if (activeStatuses.includes(data.status)) {
                         console.log('[SmartRecovery] Found active task, resuming:', data.taskId);
                         setSoraStatus(data.status === 'registering' ? 'registering' : 'generating');
                         startPolling(data.taskId);
@@ -299,11 +309,13 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
                 }
             } catch (e) {
                 console.error('[SmartRecovery] Failed to check active task:', e);
+            } finally {
+                smartRecoveryDoneRef.current = true;
             }
         };
 
         checkActiveTask();
-    }, [savedCharacterId, initialCharacter?.id, soraStatus, startPolling]);
+    }, [savedCharacterId, initialCharacter?.id]); // 移除 soraStatus 和 startPolling 依赖，避免循环
 
     // Sora 码写回
     const writebackSoraCode = useCallback(async (writeOptions: {
@@ -438,7 +450,9 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
             try {
                 const res = await fetch('/api/sora/character/register', {
                     method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        characterId: effectiveCharacterId,
                         character: {
                             id: effectiveCharacterId,
                             name,
@@ -451,24 +465,37 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
                         timestamps,
                         mode: 'register_direct',
                         userId: userId,
-                        projectId: initialCharacter?.projectId
+                        projectId: options.projectId || initialCharacter?.projectId
                     })
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error);
 
-                if (data.taskId && data.status === 'registering') {
-                    setSoraStatus('registering');
+                // 处理不同的响应状态
+                if (data.status === 'registered' && data.character?.soraIdentity?.username) {
+                    setSoraUsername(data.character.soraIdentity.username);
+                    setSoraReferenceVideoUrl(data.character.soraIdentity.referenceVideoUrl || soraReferenceVideoUrl);
+                    setSoraStatus('registered');
+                    toast.success('Sora ID 注册成功！');
+                } else if (data.status === 'already_registered') {
+                    // 已经注册过，直接使用现有的 username
+                    const existingUsername = data.character?.soraIdentity?.username;
+                    if (existingUsername) {
+                        setSoraUsername(existingUsername);
+                        setSoraStatus('registered');
+                    }
+                    toast.info(data.message || '角色已注册 Sora 码');
+                } else if (data.taskId && ['queued', 'processing', 'generating', 'registering', 'in_progress'].includes(data.status)) {
+                    // 有正在进行的任务，恢复轮询
+                    setSoraStatus(data.status === 'registering' ? 'registering' : 'generating');
                     startPolling(data.taskId);
-                    toast.success('Sora ID 注册已开始，请稍候...');
-                    return;
+                    toast.info(data.message || '检测到正在进行的任务');
+                } else {
+                    throw new Error('注册未返回有效的 Sora 角色码');
                 }
-
-                setSoraUsername(data.character.soraIdentity.username);
-                setSoraStatus('registered');
-                toast.success('Sora ID 注册成功！');
             } catch (e: any) {
                 toast.error(e.message);
+                setSoraStatus('failed');
             } finally {
                 setIsSoraProcessing(false);
             }
@@ -505,7 +532,8 @@ export function useSoraCharacter(options: UseSoraCharacterOptions): UseSoraChara
                         referenceImages: referenceImages.length ? referenceImages : [],
                         soraReferenceVideoUrl
                     },
-                    projectId: initialCharacter?.projectId,
+                    projectId: options.projectId || initialCharacter?.projectId,
+                    userId: userId,
                     mode
                 })
             });

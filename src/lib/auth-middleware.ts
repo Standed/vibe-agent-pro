@@ -101,12 +101,41 @@ export async function authenticateRequest(
 
     // 验证 token
     const admin = getSupabaseAdmin();
+    let user: any = null;
+
     const {
-      data: { user },
+      data: { user: validatedUser },
       error: authError,
     } = await admin.auth.getUser(token);
 
-    if (authError || !user) {
+    user = validatedUser;
+
+    // 如果 access_token 验证失败，尝试使用 refresh_token 刷新
+    if ((authError || !user) && request.headers.get('cookie')) {
+      try {
+        const cookieHeader = request.headers.get('cookie') || '';
+        const sessionCookieMatch = cookieHeader.match(/supabase-session=([^;]+)/);
+        if (sessionCookieMatch) {
+          const sessionData = JSON.parse(decodeURIComponent(sessionCookieMatch[1]));
+          if (sessionData.refresh_token) {
+            console.log('[Auth Middleware] Access token 无效，尝试使用 refresh_token 刷新...');
+            const { data: refreshData, error: refreshError } = await admin.auth.refreshSession({
+              refresh_token: sessionData.refresh_token
+            });
+
+            if (!refreshError && refreshData?.user) {
+              user = refreshData.user;
+              console.log('[Auth Middleware] ✅ Session 刷新成功，用户:', user.email);
+              // 注意：新的 session tokens 需要由前端更新 cookie
+            }
+          }
+        }
+      } catch (refreshErr) {
+        console.warn('[Auth Middleware] 刷新 session 失败:', refreshErr);
+      }
+    }
+
+    if (!user) {
       return {
         error: NextResponse.json(
           { error: '认证失败，请重新登录' },

@@ -359,6 +359,12 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Timeline Video Sync** - Progress bar drag auto-switches shots
 - ✅ **Anti-Override Sync** - Smart sync prevents overwriting user selections
 
+### v3.2.0 (2026-01-21)
+- ✅ **Sora Registration Sync Mode** - `register_direct` now returns in 1-3 seconds
+- ✅ **Latest-Video API Optimization** - Pure read-only, no more R2 upload delays
+- ✅ **Auth Middleware Refresh Token** - Auto-refresh expired access tokens
+- ✅ **SmartRecovery Fix** - Prevents infinite polling loop on page refresh
+
 ### v3.1.0 (2026-01-20)
 - ✅ **Sora Registration Optimization** - Async registration (<1s response) + Smart Task Recovery
 - ✅ **Smart Asset Generation** - Auto-detects missing assets for imported storyboards

@@ -28,9 +28,10 @@ interface AddCharacterDialogProps {
   onClose: () => void;
   mode?: 'add' | 'edit';
   initialCharacter?: Character | null;
+  projectId?: string;
 }
 
-export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initialCharacter }: AddCharacterDialogProps) {
+export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initialCharacter, projectId }: AddCharacterDialogProps) {
   const { user } = useAuth();
 
   const isValidUuid = (value?: string) =>
@@ -78,6 +79,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     appearance,
     referenceImages,
     userId: user?.id,
+    projectId: projectId || initialCharacter?.projectId || undefined,
     persistCharacter: async () => {
       // 提供一个简化的持久化函数供 hook 使用
       const result = await persistCharacter({ closeAfter: false, showToast: false });

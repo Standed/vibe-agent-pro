@@ -613,12 +613,14 @@ export default function LeftSidebarNew({
         <AddCharacterDialog
           onAdd={addCharacter}
           onClose={() => setShowAddCharacterDialog(false)}
+          projectId={project?.id}
         />
       )}
       {editingCharacter && (
         <AddCharacterDialog
           mode="edit"
           initialCharacter={editingCharacter}
+          projectId={project?.id}
           onAdd={async (updated, options) => {
             await updateCharacter(editingCharacter.id, updated, options);
           }}
