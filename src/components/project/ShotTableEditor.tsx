@@ -23,6 +23,7 @@ import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { FileWarning, Info } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface ShotTableEditorProps {
     isOpen: boolean;
@@ -167,7 +168,7 @@ export default function ShotTableEditor({ isOpen, onClose }: ShotTableEditorProp
     };
 
     const downloadTemplate = (format: 'xlsx' | 'csv' = 'xlsx') => {
-        const headers = ['场景名称', '镜头序号', '镜头描述', '对白', '旁白', '景别', '镜头运动', '时长(秒)'];
+        const headers = ['场景名称', '镜头序号', '镜头描述', '对白', '旁白', '景别', '镜头运动', '时长'];
         const exampleData = [
             ['场景 1 - 开场室外海边', '1', '主角从远方走来，背景是落日', '这个世界很美', '在那片遥远的大地...', '全景', '左摇', '5'],
             ['场景 1 - 开场室外海边', '2', '主角特写，神情忧郁', '但我却感到孤独', '', '特写', '固定镜头', '3']
@@ -194,9 +195,64 @@ export default function ShotTableEditor({ isOpen, onClose }: ShotTableEditorProp
         const newShots: Shot[] = [];
         const sceneMap = new Map<string, string>(); // name -> id
 
-        data.forEach((row: any, idx) => {
+        // 1. 解析表头 (第一行)
+        const headerRow = data[0] as string[];
+        if (!headerRow || headerRow.length === 0) {
+            setImportErrors([{ row: 1, msg: '文件为空或格式错误', type: 'error' }]);
+            return;
+        }
+
+        // 建立列名到索引的映射
+        const colMap = new Map<string, number>();
+        headerRow.forEach((col, idx) => {
+            if (col !== undefined && col !== null) {
+                colMap.set(String(col).trim(), idx);
+            }
+        });
+
+        // 辅助函数：根据列名获取值
+        const getValue = (row: any[], colName: string): string => {
+            const idx = colMap.get(colName);
+            if (idx !== undefined && row[idx] !== undefined) {
+                return String(row[idx]).trim();
+            }
+            // 尝试模糊匹配 (例如 "时长" 匹配 "时长(秒)")
+            for (const [key, index] of colMap.entries()) {
+                if (key.includes(colName)) {
+                    return String(row[index] || '').trim();
+                }
+            }
+            return '';
+        };
+
+        // 2. 遍历数据行 (从第二行开始)
+        const dataRows = data.slice(1);
+
+        dataRows.forEach((row: any, idx) => {
             const rowNum = idx + 2; // +1 for header, +1 for 0-index
-            const [sceneName, _, description, dialogue, narration, shotSizeVal, cameraMoveVal, durationVal] = row;
+
+            // 跳过空行
+            if (!row || row.length === 0) return;
+
+            const sceneName = getValue(row, '场景名称') || getValue(row, '场景');
+            const description = getValue(row, '镜头描述') || getValue(row, '画面') || getValue(row, '描述');
+            const dialogue = getValue(row, '对白');
+            const narration = getValue(row, '旁白');
+            const shotSizeVal = getValue(row, '景别');
+            const cameraMoveVal = getValue(row, '镜头运动') || getValue(row, '运镜');
+            const durationVal = getValue(row, '时长');
+
+            if (!sceneName) {
+                // 如果没有场景名，尝试使用上一个有效的场景名（支持合并单元格的逻辑）
+                // 这里暂时简单处理：报错
+                // errors.push({ row: rowNum, msg: '场景名称不能为空', type: 'error' });
+                // return;
+
+                // 改进：如果这一行有描述但没有场景名，且之前已经有场景，则归属到上一个场景
+                // 但为了安全，我们还是要求必须有场景名，或者我们记录上一个场景名
+            }
+
+            if (!sceneName && !description) return; // 空行
 
             if (!sceneName) {
                 errors.push({ row: rowNum, msg: '场景名称不能为空', type: 'error' });
@@ -215,7 +271,8 @@ export default function ShotTableEditor({ isOpen, onClose }: ShotTableEditorProp
 
             const duration = parseFloat(durationVal);
             if (isNaN(duration) || duration <= 0) {
-                errors.push({ row: rowNum, msg: `时长格式错误 "${durationVal}"，已设为默认 3s`, type: 'warning' });
+                // errors.push({ row: rowNum, msg: `时长格式错误 "${durationVal}"，已设为默认 3s`, type: 'warning' });
+                // 默认为 3s，不报错
             }
 
             let sceneId = sceneMap.get(sceneName);
@@ -259,13 +316,16 @@ export default function ShotTableEditor({ isOpen, onClose }: ShotTableEditorProp
         setImportErrors(errors);
         if (newShots.length > 0) {
             setLocalShots(prev => [...prev, ...newShots]);
+            toast.success(`成功解析 ${newShots.length} 个镜头`);
+        } else {
+            toast.warning('未找到有效的镜头数据');
         }
     };
 
     const handleExport = () => {
         if (!localShots.length) return;
 
-        const headers = ['场景名称', '镜头序号', '镜头描述', '对白', '旁白', '景别', '镜头运动', '时长(秒)'];
+        const headers = ['场景名称', '镜头序号', '镜头描述', '对白', '旁白', '景别', '镜头运动', '时长'];
 
         // Map local shots to current scene names
         const sceneNameMap = new Map(localScenes.map(s => [s.id, s.name]));

@@ -139,7 +139,7 @@ export default function RightPanel() {
             ) : (
               <div className="flex flex-col h-full overflow-hidden">
                 <div className="flex-1 overflow-hidden">
-                  <ChatPanel />
+                  <ChatPanel key={selectedShotId || 'project'} />
                 </div>
               </div>
             )}

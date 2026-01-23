@@ -4,7 +4,7 @@ import MentionInput from '@/components/input/MentionInput';
 import { JimengOptions, JimengModel, JimengResolution } from '@/components/jimeng/JimengOptions';
 import { cn } from '@/lib/utils';
 import { getCommandSuggestions, SLASH_COMMANDS, type SlashCommand } from '@/utils/slashCommands';
-import { GenerationModel } from '@/types/project';
+import { GenerationModel, Character, Location } from '@/types/project';
 
 interface ChatInputProps {
     inputText: string;
@@ -17,6 +17,7 @@ interface ChatInputProps {
     onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onRemoveImage: (index: number) => void;
     onMention: (query: string) => Promise<any[]>;
+    onAssetSelected?: (type: 'character' | 'location', item: Character | Location) => void;
     // Jimeng specific
     jimengModel: JimengModel;
     setJimengModel: (model: JimengModel) => void;
@@ -56,7 +57,8 @@ export function ChatInput({
     soraAspectRatio = '16:9',
     setSoraAspectRatio,
     soraDuration = 10,
-    setSoraDuration
+    setSoraDuration,
+    onAssetSelected
 }: ChatInputProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [commandSuggestions, setCommandSuggestions] = useState<SlashCommand[]>([]);
@@ -311,7 +313,7 @@ export function ChatInput({
                     <MentionInput
                         value={inputText}
                         onChange={setInputText}
-                        onMention={onMention}
+                        onMention={onAssetSelected || (() => { })}
                         onEnterSend={onSend}
                         placeholder="输入提示词... (@ 引用资源)"
                         disabled={isGenerating}

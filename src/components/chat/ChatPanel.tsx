@@ -17,7 +17,7 @@ import { useJimengGeneration } from '@/hooks/useJimengGeneration';
 import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
 import { ChatBubble } from './ChatBubble';
 import { ChatInput } from './ChatInput';
-import { Sparkles, Bug, Loader2 } from 'lucide-react';
+import { Sparkles, Bug, Loader2, X } from 'lucide-react';
 import { compressImage, compressFileToBase64 } from '@/utils/imageCompression';
 import { replaceSoraCharacterCodes } from '@/utils/soraCharacterReplace';
 import { useSoraGeneration } from '@/hooks/useSoraGeneration';
@@ -27,6 +27,14 @@ import { generateMessageId } from '@/lib/utils';
 
 // Types
 
+
+// Types
+type ActiveReference = {
+    url: string;
+    source: 'shot_ref' | 'auto_detect' | 'manual_upload' | 'history_ref';
+    label?: string;
+    entityName?: string;
+};
 
 export default function ChatPanel() {
     const {
@@ -53,10 +61,77 @@ export default function ChatPanel() {
     const [uploadedImages, setUploadedImages] = useState<File[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
     const [manualReferenceUrls, setManualReferenceUrls] = useState<string[]>([]);
+
+    // New: Active References State
+    const [activeReferences, setActiveReferences] = useState<ActiveReference[]>([]);
+    const [ignoredUrls, setIgnoredUrls] = useState<Set<string>>(new Set());
+
     const [mentionedAssets, setMentionedAssets] = useState<{
         characters: Character[];
         locations: Location[];
     }>({ characters: [], locations: [] });
+
+    // Auto-detect references
+    useEffect(() => {
+        if (!project) return;
+
+        const newRefs: ActiveReference[] = [];
+        const seenUrls = new Set<string>();
+        const selectedShot = project.shots.find(s => s.id === selectedShotId);
+
+        // 1. Shot Reference - REMOVED per user request
+        // if (selectedShot?.referenceImage && !ignoredUrls.has(selectedShot.referenceImage)) { ... }
+
+        // 2. Auto Detect from Prompt
+        // 2. Auto Detect from Prompt
+        // Don't use shotDesc for auto-detect to avoid implicit refs from description
+        const { referenceImageMap } = enrichPromptWithAssets(inputText, project, undefined);
+
+        let newText = inputText;
+        let textChanged = false;
+
+        referenceImageMap.forEach(ref => {
+            if (!seenUrls.has(ref.imageUrl) && !ignoredUrls.has(ref.imageUrl)) {
+                newRefs.push({
+                    url: ref.imageUrl,
+                    source: 'auto_detect',
+                    label: `${ref.type === 'character' ? '角色' : '场景'}: ${ref.name}`,
+                    entityName: ref.name
+                });
+                seenUrls.add(ref.imageUrl);
+
+                // Auto-format text to include @
+                const escapedName = ref.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(`(?<!@)${escapedName}`, 'g');
+                if (regex.test(newText)) {
+                    newText = newText.replace(regex, `@${ref.name}`);
+                    textChanged = true;
+                }
+            }
+        });
+
+        if (textChanged) {
+            setInputText(newText);
+        }
+
+        // 3. Manual History Refs
+        manualReferenceUrls.forEach(url => {
+            if (!seenUrls.has(url) && !ignoredUrls.has(url)) {
+                newRefs.push({
+                    url,
+                    source: 'history_ref',
+                    label: '历史引用'
+                });
+                seenUrls.add(url);
+            }
+        });
+
+        setActiveReferences(prev => {
+            if (JSON.stringify(prev) === JSON.stringify(newRefs)) return prev;
+            return newRefs;
+        });
+
+    }, [inputText, selectedShotId, project, manualReferenceUrls, ignoredUrls]);
 
     // Grid specific
     const [gridSize, setGridSize] = useState<'2x2' | '3x3'>('2x2');
@@ -199,7 +274,7 @@ export default function ChatPanel() {
                             const msg: ChatPanelMessage = {
                                 id: h.id,
                                 role: 'assistant',
-                                content: isGrid ? 'Agent Generated Grid' : 'Agent Generated Image',
+                                content: promptText ? `已生成: ${promptText}` : (isGrid ? 'Agent Generated Grid' : 'Agent Generated Image'),
                                 timestamp: new Date(h.timestamp),
                                 images: [h.result],
                                 model: (isGrid ? 'gemini-grid' : params.model) as GenerationModel,
@@ -284,13 +359,26 @@ export default function ChatPanel() {
 
         setMessages(prev => {
             // Filter out duplicates by checking taskId or videoUrl
-            const newVideoMessages = videoMessages.filter(vm =>
-                !prev.some(m =>
+            const newVideoMessages = videoMessages.filter(vm => {
+                const msg = vm as unknown as ChatPanelMessage;
+                // Scope Check
+                let isRelevant = false;
+                if (selectedShotId) {
+                    isRelevant = msg.shotId === selectedShotId;
+                } else if (currentSceneId) {
+                    isRelevant = msg.sceneId === currentSceneId;
+                } else {
+                    isRelevant = !msg.shotId && !msg.sceneId;
+                }
+                if (!isRelevant) return false;
+
+                // Duplicate Check
+                return !prev.some(m =>
                     m.id === vm.id ||
                     m.metadata?.taskId === vm.metadata.taskId ||
                     m.videoUrl === vm.videoUrl
-                )
-            ) as ChatPanelMessage[];
+                );
+            }) as ChatPanelMessage[];
 
             if (newVideoMessages.length === 0) return prev;
 
@@ -300,6 +388,52 @@ export default function ChatPanel() {
             return merged;
         });
     }, [videoMessages]);
+
+    // ⭐ Realtime Subscription for Chat Messages
+    useEffect(() => {
+        if (!project?.id) return;
+
+        const unsubscribe = dataService.subscribeToChatMessages(project.id, (msg) => {
+            // Check if the new message matches current filter scope
+            let isRelevant = false;
+
+            if (selectedShotId) {
+                isRelevant = msg.scope === 'shot' && msg.shotId === selectedShotId;
+            } else if (currentSceneId) {
+                isRelevant = msg.scope === 'scene' && msg.sceneId === currentSceneId;
+            } else {
+                isRelevant = msg.scope === 'project';
+            }
+
+            if (isRelevant) {
+                const newMessage: ChatPanelMessage = {
+                    id: msg.id,
+                    role: msg.role as 'user' | 'assistant',
+                    content: msg.content,
+                    timestamp: new Date(msg.createdAt),
+                    images: msg.metadata?.images,
+                    referenceImages: msg.metadata?.referenceImages,
+                    model: msg.metadata?.model as GenerationModel | undefined,
+                    shotId: msg.shotId,
+                    sceneId: msg.sceneId,
+                    gridData: msg.metadata?.gridData,
+                    videoUrl: msg.metadata?.videoUrl,
+                    metadata: msg.metadata
+                };
+
+                setMessages(prev => {
+                    if (prev.some(m => m.id === newMessage.id)) return prev;
+                    const next = [...prev, newMessage];
+                    next.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                    return next;
+                });
+            }
+        });
+
+        return () => {
+            unsubscribe();
+        };
+    }, [project?.id, selectedShotId, currentSceneId]);
 
     // Handle Generation Request from other components (e.g. Storyboard)
     useEffect(() => {
@@ -402,6 +536,34 @@ export default function ChatPanel() {
         return [...chars, ...locs];
     };
 
+    const handleAssetSelected = (type: 'character' | 'location', item: Character | Location) => {
+        const refs = item.referenceImages || [];
+        if (refs.length === 0) return;
+
+        // Remove from ignoredUrls (allow re-adding)
+        setIgnoredUrls(prev => {
+            const next = new Set(prev);
+            refs.forEach(url => next.delete(url));
+            return next;
+        });
+
+        // Add to activeReferences immediately
+        setActiveReferences(prev => {
+            const newRefs = [...prev];
+            refs.forEach(url => {
+                if (!newRefs.some(r => r.url === url)) {
+                    newRefs.push({
+                        url,
+                        source: 'auto_detect',
+                        label: `${type === 'character' ? '角色' : '场景'}: ${item.name}`,
+                        entityName: item.name
+                    });
+                }
+            });
+            return newRefs;
+        });
+    };
+
     const handleSend = async () => {
         if ((!inputText.trim() && uploadedImages.length === 0) || isGenerating || !user || !project) return;
 
@@ -472,8 +634,13 @@ export default function ChatPanel() {
             } else if (selectedModel === 'jimeng') {
                 await jimengGeneration.generateImage(userMessage.content, currentShotId, currentSceneIdCaptured, contextKey, uploadedUrls);
             } else {
-                const { enrichedPrompt, referenceImageUrls } = enrichPromptWithAssets(userMessage.content, project, undefined);
-                const allRefUrls = [...referenceImageUrls, ...manualReferenceUrls, ...uploadedUrls];
+                const selectedShot = project.shots.find(s => s.id === selectedShotId);
+                const { enrichedPrompt } = enrichPromptWithAssets(userMessage.content, project, selectedShot?.description);
+
+                // Use activeReferences + newly uploaded images
+                const activeRefUrls = activeReferences.map(r => r.url);
+                const allRefUrls = [...activeRefUrls, ...uploadedUrls];
+
                 const referenceImagesData = await urlsToReferenceImages(allRefUrls);
 
                 let resultImages: string[] = [];
@@ -776,10 +943,48 @@ export default function ChatPanel() {
                 <div ref={messagesEndRef} />
             </div>
 
+            {/* Active References UI */}
+            {activeReferences.length > 0 && (
+                <div className="px-4 py-2 border-t border-white/5 flex gap-2 overflow-x-auto custom-scrollbar">
+                    {activeReferences.map((ref) => (
+                        <div key={ref.url} className="relative group flex-shrink-0 w-16 h-16" title={ref.label}>
+                            <img
+                                src={ref.url}
+                                alt={ref.label}
+                                className={`w-full h-full object-cover rounded-lg border ${ref.source === 'manual_upload' ? 'border-green-500/50' :
+                                    'border-white/10'
+                                    }`}
+                            />
+                            <button
+                                onClick={() => {
+                                    setIgnoredUrls(prev => {
+                                        const next = new Set(prev);
+                                        next.add(ref.url);
+                                        return next;
+                                    });
+                                    if (ref.entityName) {
+                                        const mentionText = `@${ref.entityName}`;
+                                        if (inputText.includes(mentionText)) {
+                                            const newText = inputText.replaceAll(mentionText, '').replace(/\s{2,}/g, ' ').trim();
+                                            setInputText(newText);
+                                        }
+                                    }
+                                }}
+                                className="absolute -top-1 -right-1 bg-black/50 hover:bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="移除此参考图"
+                            >
+                                <X size={12} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+
             <ChatInput
                 inputText={inputText}
                 setInputText={setInputText}
                 onSend={handleSend}
+                onAssetSelected={handleAssetSelected}
                 isGenerating={isGenerating}
                 selectedModel={selectedModel}
                 setSelectedModel={setSelectedModel}

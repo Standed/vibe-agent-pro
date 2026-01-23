@@ -32,6 +32,7 @@ import ShotTableEditor from '../project/ShotTableEditor';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { storageService } from '@/lib/storageService';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 type Tab = 'storyboard' | 'assets';
 
@@ -93,6 +94,22 @@ export default function LeftSidebarNew({
   // 项目名称编辑状态
   const [isEditingProjectTitle, setIsEditingProjectTitle] = useState(false);
   const [editingProjectTitle, setEditingProjectTitle] = useState('');
+
+  // Confirm Dialog State
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    variant: 'default' | 'destructive';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    variant: 'default',
+    onConfirm: () => { },
+  });
+
   const [shotForm, setShotForm] = useState<{
     description: string;
     narration: string;
@@ -108,6 +125,7 @@ export default function LeftSidebarNew({
     cameraMovement: '',
     duration: 3,
   });
+
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const { isGenerating, handleAIStoryboard } = useAIStoryboard();
@@ -287,17 +305,31 @@ export default function LeftSidebarNew({
   };
 
   const handleDeleteShot = (shotId: string, shotOrder: number, sceneName: string) => {
-    if (confirm(`确定要删除镜头 #${shotOrder} 吗？`)) {
-      deleteShot(shotId);
-      toast.success('镜头已删除');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: '删除镜头',
+      description: `确定要删除镜头 #${shotOrder} 吗？此操作无法撤销。`,
+      variant: 'destructive',
+      onConfirm: () => {
+        deleteShot(shotId);
+        toast.success('镜头已删除');
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      },
+    });
   };
 
   const handleDeleteScene = (sceneId: string, sceneName: string) => {
-    if (confirm(`确定要删除场景 "${sceneName}" 吗？`)) {
-      deleteScene(sceneId);
-      toast.success('场景已删除');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: '删除场景',
+      description: `确定要删除场景 "${sceneName}" 及其包含的所有镜头吗？此操作无法撤销。`,
+      variant: 'destructive',
+      onConfirm: () => {
+        deleteScene(sceneId);
+        toast.success('场景已删除');
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      },
+    });
   };
 
   const handleAddScene = () => {
@@ -659,6 +691,16 @@ export default function LeftSidebarNew({
           }}
         />
       )}
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        variant={confirmDialog.variant}
+        confirmText="确认删除"
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

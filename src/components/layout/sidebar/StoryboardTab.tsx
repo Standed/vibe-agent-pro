@@ -195,6 +195,7 @@ export const StoryboardTab: React.FC<StoryboardTabProps> = ({
                                             {/* Delete Scene Button */}
                                             <button
                                                 onClick={(e) => {
+                                                    e.preventDefault();
                                                     e.stopPropagation();
                                                     handleDeleteScene(scene.id, scene.name);
                                                 }}

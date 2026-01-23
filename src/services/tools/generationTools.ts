@@ -16,6 +16,12 @@ const IMAGE_CONCURRENCY = parseConcurrency(
     3
 );
 
+// 场景级并发度：控制同时处理多少个场景（用于 batchGenerateProjectImages）
+const SCENE_CONCURRENCY = parseConcurrency(
+    process.env.AGENT_SCENE_CONCURRENCY || process.env.NEXT_PUBLIC_AGENT_SCENE_CONCURRENCY,
+    2
+);
+
 async function runWithConcurrency<T>(
     items: T[],
     concurrency: number,
@@ -507,23 +513,28 @@ export class GenerationTools {
             this.storeCallbacks.setGenerationProgress({ total: scenes.length, current: 0, status: 'running', message: 'Starting project generation...' });
         }
 
-        let totalSuccess = 0;
-        let totalFailed = 0;
-        let totalShots = 0;
+        // 使用原子计数器处理并发统计
+        const stats = { totalSuccess: 0, totalFailed: 0, totalShots: 0, completed: 0 };
 
-        for (let i = 0; i < scenes.length; i++) {
-            const scene = scenes[i];
+        // 场景级并行处理（使用 SCENE_CONCURRENCY 控制并发度）
+        await runWithConcurrency(scenes, SCENE_CONCURRENCY, async (scene, i) => {
             if (this.storeCallbacks?.setGenerationProgress) {
-                this.storeCallbacks.setGenerationProgress({ current: i + 1, message: `Processing scene ${i + 1}/${scenes.length}: ${scene.name}` });
+                this.storeCallbacks.setGenerationProgress({
+                    current: stats.completed + 1,
+                    message: `Processing scene ${i + 1}/${scenes.length}: ${scene.name || `Scene ${i + 1}`}`
+                });
             }
 
             const result = await this.batchGenerateSceneImages(scene.id, mode, gridSize, prompt, force);
+
+            // 原子更新统计
             if (result.success && result.result) {
-                totalSuccess += result.result.successCount || 0;
-                totalFailed += result.result.failedCount || 0;
-                totalShots += result.result.totalShots || 0;
+                stats.totalSuccess += result.result.successCount || 0;
+                stats.totalFailed += result.result.failedCount || 0;
+                stats.totalShots += result.result.totalShots || 0;
             }
-        }
+            stats.completed++;
+        });
 
         if (this.storeCallbacks?.setGenerationProgress) {
             this.storeCallbacks.setGenerationProgress({ status: 'idle', message: 'Project generation complete' });
@@ -531,7 +542,7 @@ export class GenerationTools {
 
         return {
             tool: 'batchGenerateProjectImages',
-            result: { totalShots, successCount: totalSuccess, failedCount: totalFailed },
+            result: { totalShots: stats.totalShots, successCount: stats.totalSuccess, failedCount: stats.totalFailed },
             success: true
         };
     }
