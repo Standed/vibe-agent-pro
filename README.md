@@ -359,6 +359,13 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Timeline Video Sync** - Progress bar drag auto-switches shots
 - ✅ **Anti-Override Sync** - Smart sync prevents overwriting user selections
 
+### v3.4.0 (2026-01-23)
+- ✅ **Pro Mode WYSIWYG References** - "What You See Is What You Get" reference image logic
+- ✅ **Bidirectional Mention Linking** - Delete image -> Delete @text, Delete @text -> Delete image
+- ✅ **Auto-Formatting** - Typing character name automatically converts to @mention
+- ✅ **Implicit Ref Disconnection** - Shot description no longer implicitly adds reference images
+- ✅ **Mention UI Overhaul** - Beautiful, theme-consistent mention dropdown with icons
+
 ### v3.3.0 (2026-01-21)
 - ✅ **Sora Sync Performance Optimization** - Batch processing, only new tasks (within 30s) write to database
 - ✅ **Sora Video Always Overwrites** - Agent mode videos always overwrite existing shots
