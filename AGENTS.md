@@ -67,19 +67,6 @@ AI 驱动的视频分镜生成与编辑工具 | Next.js 15.1 + React 19 + TypeSc
 | **Kaponai 服务** | `src/services/KaponaiService.ts` | Sora API 底层封装 |
 | **角色一致性** | `src/services/CharacterConsistencyService.ts` | 角色注册与参考视频生成 |
 | **Sora Prompt** | `src/services/SoraPromptService.ts` | Sora 专用提示词生成 |
-| **分镜板服务** | `src/services/StoryboardService.ts` | 剧本解析与分镜生成 |
-| **即梦服务** | `src/services/jimengService.ts` | 即梦 API 集成 |
-| **并行执行器** | `src/services/parallelExecutor.ts` | 工具并行执行，进度追踪 |
-| **上下文构建** | `src/services/contextBuilder.ts` | 增强上下文预注入 |
-| **统一数据服务** | `src/lib/dataService.ts` | 所有数据 CRUD 操作统一入口 |
-| **存储服务** | `src/lib/storageService.ts` | R2 文件上传/管理 |
-| **认证中间件** | `src/lib/auth-middleware.ts` | JWT 验证、白名单检查、积分消耗 |
-| **资产生成 Hook** | `src/hooks/useAssetGeneration.ts` | 智能资产生成 (角色提取、场景分析) |
-
----
-
-## 🔐 认证与授权
-
 > ⚠️ **重要**: 本项目**不支持游客模式**，所有功能必须登录后使用。
 
 ### 认证流程
@@ -385,6 +372,10 @@ const results = await executor.execute(toolCalls);
 - **上传流程**: 下载 → 申请 Token → 上传 → 提交确认
 - **Blend 模式**: 存在参考图时必须使用 `blend` 模式
 - **签名算法**: AWS Signature Version 4 (Service: `imagex`, Region: `cn-north-1`)
+- **纯净模式 (Pure Prompt)**: 
+    - 当用户在 Pro 模式下编辑图片（图生图）时，系统会自动检测意图。
+    - 如果是简单的编辑指令（如“换个背景”），系统会跳过自动提示词增强，直接使用用户指令。
+    - 此时会禁用角色/场景上下文注入，避免 AI 过度联想。
 
 ---
 

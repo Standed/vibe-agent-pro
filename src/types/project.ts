@@ -149,16 +149,23 @@ export interface GridGenerationResult {
   gridCols: number;
   prompt: string;
   aspectRatio: AspectRatio;
-  gridSize: '2x2' | '3x3';
-}
-
-export interface ProjectMetadata {
-  title: string;
+  id: string;
+  name: string;
   description: string;
-  artStyle: string;
-  created: Date;
-  modified: Date;
-  planningHistory?: any[]; // 策划阶段的聊天历史
+  appearance: string;
+  referenceImages: string[];
+  // Sora 专属参考视频（用户可选上传，跳过图生视频步骤）
+  soraReferenceVideoUrl?: string;
+  // Sora 专属身份信息 (可选，保持向后兼容)
+  soraIdentity?: {
+    username: string;          // e.g., "@fmraejvq"
+    referenceVideoUrl: string; // 10s 参考视频 URL
+    status: 'pending' | 'generating' | 'registering' | 'registered' | 'failed';
+    taskId?: string;           // 生成参考视频的任务 ID
+  };
+  // 角色归属
+  userId?: string;   // 拥有者 ID (用于全局角色)
+  projectId?: string | null; // 所属项目 ID (可空，空表示全局角色)
 }
 
 export interface Character {

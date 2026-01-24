@@ -12,6 +12,9 @@ interface PlanningHeaderProps {
     onAiAssistantClick: () => void;
     onHistoryClick: () => void;
     onClose?: () => void;
+    // 保留这两个 props 以兼容 PlanningView 的调用
+    onSwitchToCanvas?: () => void;
+    onSwitchToTimeline?: () => void;
 }
 
 export default function PlanningHeader({
@@ -52,7 +55,6 @@ export default function PlanningHeader({
                     <Wand2 size={16} />
                     <span>AI 助手</span>
                 </button>
-                {/* 历史记录按钮保留，但可以触发聊天中的历史视图 */}
                 <button
                     onClick={onHistoryClick}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 dark:bg-white/5 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-white/10 transition-all"
