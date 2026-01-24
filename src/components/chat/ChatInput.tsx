@@ -152,8 +152,8 @@ export function ChatInput({
                 </div>
             )}
 
-            {/* Uploaded Images & Reference URLs Preview */}
-            {(uploadedImages.length > 0 || manualReferenceUrls.length > 0) && (
+            {/* Uploaded Images Preview */}
+            {uploadedImages.length > 0 && (
                 <div className="mb-3 flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-2">
                     {/* Uploaded Files */}
                     {uploadedImages.map((file, idx) => (
@@ -169,24 +169,6 @@ export function ChatInput({
                             >
                                 <X size={12} />
                             </button>
-                        </div>
-                    ))}
-                    {/* Reference URLs */}
-                    {manualReferenceUrls.map((url, idx) => (
-                        <div key={`url-${idx}`} className="relative group">
-                            <img
-                                src={url}
-                                alt={`Ref ${idx + 1}`}
-                                className="h-16 w-16 rounded-lg border border-black/5 dark:border-white/10 object-cover"
-                            />
-                            {onRemoveReferenceUrl && (
-                                <button
-                                    onClick={() => onRemoveReferenceUrl(idx)}
-                                    className="absolute -top-2 -right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm scale-75"
-                                >
-                                    <X size={12} />
-                                </button>
-                            )}
                         </div>
                     ))}
                 </div>

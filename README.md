@@ -359,6 +359,12 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Timeline Video Sync** - Progress bar drag auto-switches shots
 - ✅ **Anti-Override Sync** - Smart sync prevents overwriting user selections
 
+### v3.5.0 (2026-01-24)
+- ✅ **Smart Image Compression** - Dynamic compression strategy (2.5K high quality for single image, 3.8MB budget for multi-image)
+- ✅ **Jimeng Multi-Image Fix** - Fixed issue where only the first reference image was used in Jimeng generation
+- ✅ **Pure Prompt Mode** - Removed hardcoded prompt templates for Gemini generation to support pure editing instructions
+- ✅ **Smart Context Enrichment** - Auto-detects editing intent (via base image reference) to skip verbose character/location descriptions
+
 ### v3.4.0 (2026-01-23)
 - ✅ **Pro Mode WYSIWYG References** - "What You See Is What You Get" reference image logic
 - ✅ **Bidirectional Mention Linking** - Delete image -> Delete @text, Delete @text -> Delete image

@@ -360,18 +360,10 @@ export const generateSingleImage = async (
   aspectRatio: AspectRatio,
   referenceImages: ReferenceImageData[] = []
 ): Promise<string> => {
-  const enhancedPrompt = `Create a single high-quality cinematic image based on the following description:
-
-${prompt}
-
-Style Constraints:
-- No text, captions, or UI elements
-- No watermarks
-- Single cohesive image (NOT a collage or grid)`;
-
+  // 直接使用传入的 prompt，避免系统预设的模板干扰用户的编辑意图
   try {
     const data = await postJson<{ url: string }>('/api/gemini-image', {
-      prompt: enhancedPrompt,
+      prompt,
       referenceImages,
       aspectRatio
     });
@@ -438,7 +430,7 @@ export const analyzeAsset = async (
 export const enhancePrompt = async (rawPrompt: string): Promise<string> => {
   try {
     const data = await postJson<{ result: string }>('/api/gemini-text', {
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       prompt: `You are a film director's assistant. Rewrite the following scene description into a detailed, cinematic image generation prompt. Focus on lighting, camera angle, texture, and mood. Keep it under 100 words. \n\nInput: "${rawPrompt}"`
     });
     return data.result || rawPrompt;
@@ -486,53 +478,73 @@ Do NOT write full sentences. Do NOT describe the subject again if the user alrea
   }
 };
 
-const MAX_REF_IMAGE_DIMENSION = 2048; // 恢复为 2048px 以保证质量
-const OPTIMIZED_JPEG_QUALITY = 0.9;   // 恢复为 0.9 质量
+const MAX_REF_IMAGE_DIMENSION = 2560; // 恢复为 2.5K 分辨率以支持高质量编辑
+const OPTIMIZED_JPEG_QUALITY = 0.9;  // 恢复较高质量
 
 /**
  * Downscale and compress a data URL to reduce payload size
+ * 动态压缩以适应目标大小
  */
-const optimizeDataUrl = (dataUrl: string, mimeHint?: string): Promise<ReferenceImageData> => {
+const optimizeDataUrl = (
+  dataUrl: string,
+  mimeHint?: string,
+  maxSizeBytes: number = 3.5 * 1024 * 1024 // 默认限制 3.5MB
+): Promise<ReferenceImageData> => {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const { width, height } = img;
-      const maxDim = Math.max(width, height);
-      const targetMime = mimeHint && mimeHint.startsWith('image/') ? mimeHint : 'image/jpeg';
-
-      if (maxDim <= MAX_REF_IMAGE_DIMENSION) {
-        const [, data] = dataUrl.split(',');
-        resolve({
-          mimeType: targetMime,
-          data: data || '',
-        });
-        return;
-      }
-
-      const scale = MAX_REF_IMAGE_DIMENSION / maxDim;
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(width * scale);
-      canvas.height = Math.round(height * scale);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('无法获取画布上下文'));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const optimized = canvas.toDataURL('image/jpeg', OPTIMIZED_JPEG_QUALITY);
-
-      // 如果压缩后仍然超过 1.5MB，进一步降低质量和尺寸，防止单张图占用过多载荷
-      if (optimized.length > 1.5 * 1024 * 1024) {
-        console.warn('[geminiService] 图片仍然过大 (>1.5MB)，进行二次压缩以平衡质量与体积...');
-        resolve(optimizeDataUrl(optimized, targetMime));
-        return;
-      }
-
-      const [, data] = optimized.split(',');
+    // 如果原始数据已经小于限制，直接返回
+    if (dataUrl.length <= maxSizeBytes) {
+      const [, data] = dataUrl.split(',');
       resolve({
-        mimeType: 'image/jpeg',
+        mimeType: mimeHint && mimeHint.startsWith('image/') ? mimeHint : 'image/jpeg',
         data: data || '',
       });
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      let quality = OPTIMIZED_JPEG_QUALITY;
+
+      // 初始缩放：如果超过最大尺寸，先缩放到最大尺寸
+      const maxDim = Math.max(width, height);
+      if (maxDim > MAX_REF_IMAGE_DIMENSION) {
+        const scale = MAX_REF_IMAGE_DIMENSION / maxDim;
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+
+      const compress = (w: number, h: number, q: number): void => {
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('无法获取画布上下文'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        const optimized = canvas.toDataURL('image/jpeg', q);
+
+        // 如果压缩后仍然超过限制，继续递归压缩
+        if (optimized.length > maxSizeBytes) {
+          // 策略：优先降低质量，如果质量已经很低(0.5)，则降低尺寸
+          if (q > 0.5) {
+            compress(w, h, q - 0.1);
+          } else {
+            // 每次尺寸缩小 20%
+            compress(Math.round(w * 0.8), Math.round(h * 0.8), q);
+          }
+        } else {
+          const [, data] = optimized.split(',');
+          resolve({
+            mimeType: 'image/jpeg',
+            data: data || '',
+          });
+        }
+      };
+
+      compress(width, height, quality);
     };
     img.onerror = () => reject(new Error('参考图加载失败'));
     img.src = dataUrl;
@@ -550,25 +562,26 @@ export const fileToBase64 = async (file: File): Promise<string> => {
     reader.onerror = (error) => reject(error);
   });
 
-  const optimized = await optimizeDataUrl(dataUrl, file.type);
+  // 单文件上传通常用于编辑，给予较大预算 (3.5MB)
+  const optimized = await optimizeDataUrl(dataUrl, file.type, 3.5 * 1024 * 1024);
   return optimized.data;
 };
 
 /**
  * Convert image URL (data URL or HTTP URL) to ReferenceImageData
  */
-export const urlToReferenceImageData = async (imageUrl: string): Promise<ReferenceImageData> => {
+export const urlToReferenceImageData = async (imageUrl: string, maxSizeBytes?: number): Promise<ReferenceImageData> => {
   // 如果是 data URL，直接提取
   if (imageUrl.startsWith('data:')) {
     const matches = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
     if (matches) {
-      const optimized = await optimizeDataUrl(imageUrl, matches[1]);
+      const optimized = await optimizeDataUrl(imageUrl, matches[1], maxSizeBytes);
       return optimized;
     }
     throw new Error('无效的 data URL 格式');
   }
 
-  // 如果是 HTTP(S) URL，需要下载并转换（先尝试前端，失败则走后端代理，避免 CORS）
+  // 如果是 HTTP(S) URL，需要下载并转换
   const fetchAndConvert = async (url: string): Promise<ReferenceImageData> => {
     const response = await fetch(url);
     const blob = await response.blob();
@@ -581,32 +594,53 @@ export const urlToReferenceImageData = async (imageUrl: string): Promise<Referen
       reader.readAsDataURL(blob);
     });
 
-    return await optimizeDataUrl(dataUrl, mimeType);
+    return await optimizeDataUrl(dataUrl, mimeType, maxSizeBytes);
   };
 
   try {
     return await fetchAndConvert(imageUrl);
   } catch (error) {
     console.warn('Front-end fetch failed, fallback to proxy:', imageUrl, error);
-    const proxyResp = await fetch(`/api/fetch-image?url=${encodeURIComponent(imageUrl)}`);
-    if (!proxyResp.ok) {
-      const text = await proxyResp.text();
-      throw new Error(text || `无法获取参考图: ${imageUrl}`);
+    const proxyUrl = `/api/fetch-image?url=${encodeURIComponent(imageUrl)}`;
+    try {
+      const proxyResp = await fetch(proxyUrl);
+      if (!proxyResp.ok) {
+        const text = await proxyResp.text();
+        throw new Error(text || `无法获取参考图: ${imageUrl}`);
+      }
+      const blob = await proxyResp.blob();
+      const mimeType = blob.type || 'image/png';
+
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      return await optimizeDataUrl(dataUrl, mimeType, maxSizeBytes);
+    } catch (proxyError) {
+      console.error('Proxy fetch also failed:', proxyError);
+      throw proxyError;
     }
-    const data = await proxyResp.json();
-    return {
-      mimeType: data.mimeType || 'image/png',
-      data: data.data,
-    };
   }
 };
 
 /**
  * Convert multiple image URLs to ReferenceImageData array
+ * 智能分配预算：总大小控制在 3.8MB 以内
  */
 export const urlsToReferenceImages = async (imageUrls: string[]): Promise<ReferenceImageData[]> => {
+  if (imageUrls.length === 0) return [];
+
+  // Vercel 限制 4.5MB，留 0.7MB 给 prompt 和其他开销，总预算 3.8MB
+  const TOTAL_BUDGET = 3.8 * 1024 * 1024;
+  const perImageBudget = Math.floor(TOTAL_BUDGET / imageUrls.length);
+
+  // console.log(`[geminiService] 处理 ${imageUrls.length} 张图片，每张预算: ${(perImageBudget / 1024 / 1024).toFixed(2)}MB`);
+
   const results = await Promise.all(
-    imageUrls.map(url => urlToReferenceImageData(url).catch(err => {
+    imageUrls.map(url => urlToReferenceImageData(url, perImageBudget).catch(err => {
       console.warn(`跳过无效参考图: ${url}`, err);
       return null;
     }))

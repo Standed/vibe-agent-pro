@@ -507,13 +507,11 @@ class JimengApiClient {
                         }
                     },
                     "ability_list": ability_list,
-                    "prompt_placeholder_info_list": [
-                        {
-                            "type": "",
-                            "id": uuidv4(),
-                            "ability_index": 0
-                        }
-                    ],
+                    "prompt_placeholder_info_list": ability_list.map((_, index) => ({
+                        "type": "",
+                        "id": uuidv4(),
+                        "ability_index": index
+                    })),
                     "postedit_param": {
                         "type": "",
                         "id": uuidv4(),
