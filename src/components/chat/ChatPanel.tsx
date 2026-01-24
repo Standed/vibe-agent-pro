@@ -641,7 +641,16 @@ export default function ChatPanel() {
                     currentSceneIdCaptured || undefined
                 );
             } else if (selectedModel === 'jimeng') {
-                await jimengGeneration.generateImage(userMessage.content, currentShotId, currentSceneIdCaptured, contextKey, allRefUrls);
+                const hasBaseImage = activeReferences.some(r => r.source === 'manual_upload' || r.source === 'history_ref') || uploadedImages.length > 0;
+                await jimengGeneration.generateImage(
+                    userMessage.content,
+                    currentShotId,
+                    currentSceneIdCaptured,
+                    contextKey,
+                    allRefUrls,
+                    false,
+                    { onlyExtractRefs: hasBaseImage }
+                );
             } else {
                 const selectedShot = project.shots.find(s => s.id === selectedShotId);
 

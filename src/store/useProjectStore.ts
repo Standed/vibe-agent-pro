@@ -147,7 +147,7 @@ export const useProjectStore = create<ProjectStore>()(
     canvasZoom: 1,
     canvasPosition: { x: 0, y: 0 },
     timelineMode: 'default',
-    controlMode: 'agent',
+    controlMode: 'pro',
     leftSidebarCollapsed: true,
     rightSidebarCollapsed: false,
     gridResult: null,

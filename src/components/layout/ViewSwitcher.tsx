@@ -21,9 +21,17 @@ interface ViewSwitcherProps {
     className?: string;
 }
 
+import { createPortal } from 'react-dom';
+
 export default function ViewSwitcher({ activeView, onViewChange, className }: ViewSwitcherProps) {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+        return () => setMounted(false);
+    }, []);
 
     const views = [
         { id: 'planning', label: '故事构思', icon: FileText, color: 'text-purple-500', disabled: false },
@@ -45,7 +53,9 @@ export default function ViewSwitcher({ activeView, onViewChange, className }: Vi
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    return (
+    if (!mounted) return null;
+
+    return createPortal(
         <div className={cn("fixed top-6 left-6 z-[110] pointer-events-auto", className)} ref={containerRef}>
             <div className="relative">
                 {/* Main Button */}
@@ -122,6 +132,7 @@ export default function ViewSwitcher({ activeView, onViewChange, className }: Vi
                     )}
                 </AnimatePresence>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

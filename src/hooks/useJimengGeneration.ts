@@ -68,7 +68,8 @@ export function useJimengGeneration({
         capturedSceneId: string | null,
         capturedContextKey: string,
         extraImageUrls: string[] = [],
-        autoSelect: boolean = false
+        autoSelect: boolean = false,
+        options?: { onlyExtractRefs?: boolean }
     ) => {
         const sessionid = localStorage.getItem('jimeng_session_id');
         if (!sessionid) {
@@ -83,7 +84,7 @@ export function useJimengGeneration({
             return;
         }
 
-        const { enrichedPrompt: promptForModel, referenceImageUrls, usedCharacters, usedLocations } = enrichPromptWithAssets(prompt, project, undefined);
+        const { enrichedPrompt: promptForModel, referenceImageUrls, usedCharacters, usedLocations } = enrichPromptWithAssets(prompt, project, undefined, options);
         const projectAspectRatio = project?.settings.aspectRatio || AspectRatio.WIDE;
 
         // 收集所有参考图
