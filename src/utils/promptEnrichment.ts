@@ -11,10 +11,15 @@ import type { Character, Location, Project } from '@/types/project';
  * Now includes reference image markers like "(第一个参考图)", "(第二个参考图)" to map
  * character/location names to their reference images
  */
+export interface EnrichmentOptions {
+  onlyExtractRefs?: boolean;
+}
+
 export function enrichPromptWithAssets(
   basePrompt: string,
   project: Project | null,
-  shotDescription?: string
+  shotDescription?: string,
+  options?: EnrichmentOptions
 ): {
   enrichedPrompt: string;
   usedCharacters: Character[];
@@ -108,6 +113,18 @@ export function enrichPromptWithAssets(
   // Build enriched prompt with reference image markers
   let enrichedPrompt = basePrompt;
   let concisePrompt = basePrompt;
+
+  if (options?.onlyExtractRefs) {
+    return {
+      enrichedPrompt: basePrompt,
+      usedCharacters,
+      usedLocations,
+      referenceImageUrls,
+      referenceImageMap,
+      concisePrompt: basePrompt,
+      missingAssets,
+    };
+  }
 
   // Add character context with reference image markers
   if (usedCharacters.length > 0) {

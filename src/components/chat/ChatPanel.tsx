@@ -571,26 +571,33 @@ export default function ChatPanel() {
         const currentSceneIdCaptured = currentSceneId || (selectedShot ? selectedShot.sceneId : null);
         const contextKey = currentShotId ? `pro-chat:${projectId}:shot:${currentShotId}` : currentSceneIdCaptured ? `pro-chat:${projectId}:scene:${currentSceneIdCaptured}` : `pro-chat:${projectId}:global`;
 
+        // Capture active references
+        const activeRefUrls = activeReferences.map(r => r.url);
+
         const userMsgId = generateMessageId();
         const userMessage: ChatPanelMessage = {
             id: userMsgId,
             role: 'user',
             content: inputText,
             timestamp: new Date(),
-            images: uploadedImages.map(f => URL.createObjectURL(f)),
+            // Display ALL images (uploaded + active refs)
+            images: [
+                ...uploadedImages.map(f => URL.createObjectURL(f)),
+                ...activeRefUrls
+            ],
             shotId: currentShotId || undefined,
             sceneId: currentSceneIdCaptured || undefined,
         };
         setMessages(prev => [...prev, userMessage]);
         setInputText('');
         setUploadedImages([]);
+        setManualReferenceUrls([]); // Clear manual refs
         setIsGenerating(true);
 
         let uploadedUrls: string[] = [];
         if (uploadedImages.length > 0) {
             try {
                 const uploadPromises = uploadedImages.map(async file => {
-                    // 直接上传原图到 R2，不再预压缩
                     return storageService.uploadFile(file, `chat-uploads/${user.id}`, user.id);
                 });
                 const results = await Promise.all(uploadPromises);
@@ -603,6 +610,8 @@ export default function ChatPanel() {
             }
         }
 
+        const allRefUrls = [...activeRefUrls, ...uploadedUrls];
+
         try {
             await dataService.saveChatMessage({
                 id: userMsgId,
@@ -614,7 +623,7 @@ export default function ChatPanel() {
                 role: 'user',
                 content: userMessage.content,
                 timestamp: userMessage.timestamp,
-                metadata: { images: uploadedUrls },
+                metadata: { images: allRefUrls }, // Save ALL images
                 createdAt: userMessage.timestamp,
                 updatedAt: userMessage.timestamp,
             });
@@ -627,22 +636,24 @@ export default function ChatPanel() {
                 await generateSoraVideo(
                     userMessage.content,
                     uploadedUrls,
-                    manualReferenceUrls,
+                    activeRefUrls,
                     currentShotId || undefined,
                     currentSceneIdCaptured || undefined
                 );
             } else if (selectedModel === 'jimeng') {
-                await jimengGeneration.generateImage(userMessage.content, currentShotId, currentSceneIdCaptured, contextKey, uploadedUrls);
+                await jimengGeneration.generateImage(userMessage.content, currentShotId, currentSceneIdCaptured, contextKey, allRefUrls);
             } else {
                 const selectedShot = project.shots.find(s => s.id === selectedShotId);
-                const { enrichedPrompt } = enrichPromptWithAssets(userMessage.content, project, selectedShot?.description);
 
-                // Use activeReferences + newly uploaded images
-                const activeRefUrls = activeReferences.map(r => r.url);
-                const allRefUrls = [...activeRefUrls, ...uploadedUrls];
+                // Smart detection: If user provided a base image (upload or history ref), 
+                // treat as editing/in-painting and skip verbose context enrichment.
+                const hasBaseImage = activeReferences.some(r => r.source === 'manual_upload' || r.source === 'history_ref') || uploadedImages.length > 0;
+
+                const { enrichedPrompt } = enrichPromptWithAssets(userMessage.content, project, selectedShot?.description, { onlyExtractRefs: hasBaseImage });
+
+                // activeRefUrls and allRefUrls are already defined above
 
                 const referenceImagesData = await urlsToReferenceImages(allRefUrls);
-
                 let resultImages: string[] = [];
                 let gridData: ChatPanelMessage['gridData'] | undefined;
 

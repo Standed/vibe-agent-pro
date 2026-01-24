@@ -161,6 +161,13 @@ Agent 通过 Function Calling 调用以下工具操作项目（共 28 个工具�
 | `batchGenerateProjectImages` | 批量生成项目图片 | `mode`, `gridSize`, `force` |
 | `generateCharacterThreeView` | 生成角色三视图 | `characterId`, `prompt`, `artStyle` |
 | `generateLocationImages` | 批量生成地点参考图 | `locationIds[]`, `model (jimeng/gemini)` |
+| `generateSingleImage` | 生成单张图片 (支持编辑) | `prompt`, `referenceImages[]` |
+
+### 🎨 Gemini Image Editing (v3.5+)
+- **Pure Prompt Mode**: When editing an existing image (uploaded or history), the system automatically disables character/location context injection.
+- **Instruction**: Use direct commands like "Remove text", "Change background to blue".
+- **Reference**: The base image is sent as a reference image.
+- **Smart Compression**: Single image editing supports up to 3.5MB / 2.5K resolution.
 
 ### 视频生成工具 (Sora)
 
