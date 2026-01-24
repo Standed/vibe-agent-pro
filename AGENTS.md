@@ -347,6 +347,7 @@ const results = await executor.execute(toolCalls);
 | **请求可取消** | 所有长耗时 AI 请求必须支持 AbortSignal |
 | **Grid 场景级** | Grid 生成是场景级别的，切片后手动分配给镜头 |
 | **状态自动保存** | Store 变更触发 800ms 防抖保存，无需手动 save |
+| **生成历史持久化** | 所有 AI 生成结果（含 Grid/单图/视频）自动保存至历史记录，确保素材可下载 |
 | **Serverless 限制** | Sora 长时任务在 Vercel Serverless 环境下会超时，需容器化部署 |
 | **Planning 模式限制** | Planning 频道禁止调用图片/视频生成工具，避免提前消耗资源 |
 

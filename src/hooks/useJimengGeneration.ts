@@ -62,6 +62,35 @@ export function useJimengGeneration({
     const { project, updateShot, addGenerationHistory } = useProjectStore();
     const { user } = useAuth();
 
+    // 提取上传逻辑
+    const uploadToR2 = async (url: string, shotId: string): Promise<string> => {
+        if (!user) throw new Error('User not authenticated');
+
+        // 如果已经是 R2 链接，直接返回
+        if (url.includes('r2.dev') || url.includes('r2.cloudflarestorage')) {
+            return url;
+        }
+
+        const folder = `projects/${project?.id}/shots/${shotId}`;
+        let blob: Blob;
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Network response was not ok');
+            blob = await response.blob();
+        } catch (e) {
+            console.warn('Direct fetch failed, trying proxy...', e);
+            const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`;
+            const response = await fetch(proxyUrl);
+            if (!response.ok) throw new Error('Proxy fetch failed');
+            blob = await response.blob();
+        }
+
+        const file = new File([blob], `gen_${Date.now()}_${Math.random().toString(36).substr(2, 5)}.png`, { type: blob.type });
+        const result = await storageService.uploadFile(file, folder, user.id);
+        return result.url;
+    };
+
     const generateImage = async (
         prompt: string,
         capturedShotId: string | null,
@@ -107,7 +136,7 @@ export function useJimengGeneration({
         }
 
         // 保存上下文
-        setContext({
+        const currentContext = {
             prompt: promptForModel,
             basePrompt: prompt,
             shotId: capturedShotId,
@@ -115,7 +144,8 @@ export function useJimengGeneration({
             contextKey: capturedContextKey,
             referenceImages: allReferenceUrls,
             skipAssetRefs: false
-        });
+        };
+        setContext(currentContext);
 
         toast.info(`即梦任务已提交 (${model}, ${resolution})，正在后台生成...`, { duration: 3000 });
 
@@ -138,27 +168,67 @@ export function useJimengGeneration({
             const urls = pollResult.urls || [pollResult.url];
 
             if (urls.length > 0) {
-                setGeneratedImages(urls);
+                // 立即在后台处理持久化和历史记录
+                // 注意：这里不 await，以免阻塞 UI 显示
+                const persistPromise = (async () => {
+                    if (capturedShotId) {
+                        const r2Urls: string[] = [];
+                        for (const url of urls) {
+                            try {
+                                const r2Url = await uploadToR2(url, capturedShotId);
+                                r2Urls.push(r2Url);
+
+                                // 添加到历史记录
+                                const historyItem: GenerationHistoryItem = {
+                                    id: `gen_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                                    type: 'image',
+                                    timestamp: new Date(),
+                                    result: r2Url,
+                                    prompt: promptForModel,
+                                    parameters: {
+                                        model: model,
+                                        aspectRatio: projectAspectRatio,
+                                    },
+                                    status: 'success',
+                                };
+                                addGenerationHistory(capturedShotId, historyItem);
+                            } catch (e) {
+                                console.error('Auto persist failed for url:', url, e);
+                                r2Urls.push(url); // Fallback to original
+                            }
+                        }
+                        // 更新 UI 显示为 R2 URL (如果成功)
+                        if (r2Urls.length > 0) {
+                            setGeneratedImages(r2Urls);
+                        }
+                        return r2Urls;
+                    }
+                    return urls;
+                })();
+
+                // 先显示原始 URL (或等待持久化完成，为了体验流畅，先显示)
+                // 但为了避免 saveImage 时重复上传，最好是等待一下或者让 saveImage 智能判断
+                // 这里我们选择：先显示原始 URL，后台静默上传。
+                // 当用户点击保存时，saveImage 会检查是否已经是 R2 URL。
+                // 但为了确保 generatedImages 最终是 R2 URL，我们需要在 persistPromise 完成后更新状态。
+
+                setGeneratedImages(urls); // 先显示，让用户能看到
+
                 if (autoSelect) {
-                    // 自动选择第一张并保存
                     toast.info('Agent 自动选择第一张图片保存...');
-
-                    // 重新构建 context 用于保存
-                    const tempContext = {
-                        prompt: promptForModel,
-                        basePrompt: prompt,
-                        shotId: capturedShotId,
-                        sceneId: capturedSceneId,
-                        contextKey: capturedContextKey,
-                        referenceImages: allReferenceUrls,
-                        skipAssetRefs: false
-                    };
-                    setContext(tempContext); // 保持状态同步
-
-                    await saveImage(urls[0], tempContext);
+                    // 等待持久化完成，确保拿到 R2 URL
+                    const finalUrls = await persistPromise;
+                    await saveImage(finalUrls[0], currentContext);
                 } else {
                     setIsModalOpen(true);
-                    toast.success('即梦图片生成完成，请选择一张保存');
+                    toast.success('即梦图片生成完成');
+                    // 触发后台持久化
+                    persistPromise.then(r2Urls => {
+                        if (r2Urls.length > 0 && r2Urls[0] !== urls[0]) {
+                            console.log('Images persisted to R2, updating UI...');
+                            setGeneratedImages(r2Urls);
+                        }
+                    });
                 }
             } else {
                 throw new Error('未返回图片 URL');
@@ -178,36 +248,13 @@ export function useJimengGeneration({
         let imageUrl = selectedUrl;
 
         try {
-            // Upload to R2
-            try {
-                const folder = `projects/${project.id}/shots/${activeContext.shotId || 'chat'}`;
-
-                if (imageUrl.startsWith('http')) {
-                    // Fetch and convert to File
-                    let blob: Blob;
-                    try {
-                        const response = await fetch(imageUrl);
-                        if (!response.ok) throw new Error('Network response was not ok');
-                        blob = await response.blob();
-                    } catch (e) {
-                        console.warn('Direct fetch failed, trying proxy...', e);
-                        const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
-                        const response = await fetch(proxyUrl);
-                        if (!response.ok) throw new Error('Proxy fetch failed');
-                        blob = await response.blob();
-                    }
-
-                    const file = new File([blob], `gen_${Date.now()}.png`, { type: blob.type });
-
-                    // Upload using uploadFile
-                    const result = await storageService.uploadFile(file, folder, user.id);
-                    imageUrl = result.url;
-                } else {
-                    // Assume Base64
-                    imageUrl = await storageService.uploadBase64ToR2(imageUrl, folder, `gen_${Date.now()}.png`, user.id);
+            // 检查是否需要上传 (如果已经是 R2 URL 则跳过)
+            if (!imageUrl.includes('r2.dev') && !imageUrl.includes('r2.cloudflarestorage')) {
+                try {
+                    imageUrl = await uploadToR2(imageUrl, activeContext.shotId || 'chat');
+                } catch (error) {
+                    console.error('R2 upload failed in saveImage, using original url:', error);
                 }
-            } catch (error) {
-                console.error('R2 upload failed, using original url:', error);
             }
 
             // Update shot if selected
@@ -217,20 +264,10 @@ export function useJimengGeneration({
                     status: 'done',
                 });
 
-                // Add to history
-                const historyItem: GenerationHistoryItem = {
-                    id: `gen_${Date.now()}`,
-                    type: 'image',
-                    timestamp: new Date(),
-                    result: imageUrl,
-                    prompt: activeContext.prompt,
-                    parameters: {
-                        model: model,
-                        aspectRatio: project.settings.aspectRatio,
-                    },
-                    status: 'success',
-                };
-                addGenerationHistory(activeContext.shotId, historyItem);
+                // 注意：历史记录已经在 generateImage 中自动添加了
+                // 这里不需要重复添加，除非我们想标记"被选中"的状态
+                // 目前 GenerationHistoryItem 没有"selected"状态，所以不重复添加
+                toast.success('已应用到分镜');
             }
 
             // Add assistant message
@@ -253,8 +290,6 @@ export function useJimengGeneration({
                 }
             };
 
-            // 只有当上下文匹配时才添加到当前视图（这里简化处理，直接添加，因为 ChatPanel 会过滤）
-            // 但由于 setMessages 是传入的，通常就是当前视图的 setter
             setMessages(prev => [...prev, assistantMessage]);
 
             // Save to cloud
@@ -285,7 +320,6 @@ export function useJimengGeneration({
                 console.error('保存消息失败:', error);
             }
 
-            toast.success('图片已保存！');
             setIsModalOpen(false);
             setGeneratedImages([]);
             setContext(null);

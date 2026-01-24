@@ -634,6 +634,50 @@ export async function batchDownloadAssets(
     });
   }
 
+  // 3.3 场景 Grid 历史 (关键修复：包含未分配的 Grid)
+  const gridHistoryFolder = historyFolder?.folder('grids');
+  if (project.scenes && gridHistoryFolder) {
+    project.scenes.forEach(scene => {
+      if (scene.gridHistory?.length) {
+        scene.gridHistory.forEach((grid, idx) => {
+          // 3.3.1 Full Grid
+          if (grid.fullGridUrl && !downloadedUrls.has(grid.fullGridUrl)) {
+            downloadedUrls.add(grid.fullGridUrl);
+            addTask(async () => {
+              const blob = await fetchImageBlob(grid.fullGridUrl);
+              if (blob) {
+                const sceneName = scene.name.replace(/[^\w\u4e00-\u9fa5]/g, '_');
+                gridHistoryFolder.file(`${sceneName}_grid_${idx + 1}_full.png`, blob);
+                imageCount++;
+              } else {
+                failedDownloads.push({ type: 'Grid历史全图', url: grid.fullGridUrl, reason: '下载失败' });
+              }
+            });
+          }
+
+          // 3.3.2 Slices
+          if (grid.slices?.length) {
+            grid.slices.forEach((sliceUrl, sliceIdx) => {
+              if (sliceUrl && !downloadedUrls.has(sliceUrl)) {
+                downloadedUrls.add(sliceUrl);
+                addTask(async () => {
+                  const blob = await fetchImageBlob(sliceUrl);
+                  if (blob) {
+                    const sceneName = scene.name.replace(/[^\w\u4e00-\u9fa5]/g, '_');
+                    gridHistoryFolder.file(`${sceneName}_grid_${idx + 1}_slice_${sliceIdx + 1}.png`, blob);
+                    imageCount++;
+                  } else {
+                    failedDownloads.push({ type: 'Grid历史切片', url: sliceUrl, reason: '下载失败' });
+                  }
+                });
+              }
+            });
+          }
+        });
+      }
+    });
+  }
+
   // ==========================================
   // 5. 执行下载
   // ==========================================
