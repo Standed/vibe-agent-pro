@@ -378,6 +378,11 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Auth Middleware Refresh Token** - Auto-refresh expired access tokens
 - ✅ **SmartRecovery Fix** - Prevents infinite polling loop on page refresh
 
+### v3.8.4 (2026-01-27)
+- ✅ **Concurrency Optimization** - Implemented parallel R2 uploads (Promise.all) for Grid generation, reducing upload time by ~4x.
+- ✅ **Non-blocking UI** - Decoupled upload status from generation status, allowing immediate interaction after AI generation completes while uploads continue in background.
+- ✅ **Refined UX** - Removed persistent "Generating..." spinner during upload phase to improve perceived performance.
+
 ### v3.8.3 (2026-01-27)
 - ✅ **R2 Presigned Uploads** - Implemented direct-to-R2 upload using Presigned URLs to bypass Vercel 4.5MB payload limit, fixing 413 errors for large Grid images.
 - ✅ **Chat Message Deletion** - Added ability to delete chat messages in Pro Mode (Soft delete, preserving referenced R2 files).
