@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDrag, useDrop } from 'react-dnd';
 import { useProjectStore } from '@/store/useProjectStore';
 import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Plus, Loader2, Edit2, Upload } from 'lucide-react';
 import type { ShotSize, CameraMovement, Shot } from '@/types/project';
@@ -14,6 +15,9 @@ import { toast } from 'sonner';
 import { CanvasUserWidget } from '@/components/layout/CanvasUserWidget';
 import { ShotEditor } from '@/components/layout/sidebar/ShotEditor';
 import { batchDownloadAssets } from '@/utils/batchDownload';
+import { SHOT_TO_CHAT, IMAGE_TO_SHOT } from '@/components/chat/dragTypes';
+import { dataService } from '@/lib/dataService';
+import DraggableCanvasShotCard from '@/components/canvas/DraggableCanvasShotCard';
 
 export default function InfiniteCanvas() {
   const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed, updateShot, addShot, reorderShots, addCharacter, addLocation } = useProjectStore();
@@ -480,75 +484,21 @@ export default function InfiniteCanvas() {
                           const shotLabel = formatShotLabel(scene.order, shot.order, shot.globalOrder);
 
                           return (
-                            <div
-                              role="button"
-                              tabIndex={0}
+                            <DraggableCanvasShotCard
                               key={shot.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                selectShot(shot.id);
-                              }}
-                              className={`group bg-white/40 dark:bg-black/40 rounded-2xl overflow-hidden hover:border-light-accent/50 dark:hover:border-cine-accent/50 transition-all duration-300 ${isShotSelected
-                                ? 'border-2 border-light-accent dark:border-cine-accent shadow-lg shadow-light-accent/20 dark:shadow-cine-accent/20 scale-[1.02]'
-                                : 'border border-white/20 dark:border-white/5 hover:shadow-lg'
-                                }`}
-                            >
-                              {/* Shot Thumbnail */}
-                              <div className="aspect-video bg-light-bg dark:bg-cine-black flex items-center justify-center relative">
-                                {shot.referenceImage ? (
-                                  <>
-                                    <img
-                                      src={shot.referenceImage}
-                                      alt={shotLabel}
-                                      className="w-full h-full object-cover cursor-pointer"
-                                      onClick={(e) => { e.stopPropagation(); handlePreview(shot.referenceImage!); }}
-                                    />
-                                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
-                                      <button onClick={(e) => handleDownload(shot.referenceImage!, shot.order, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="下载"><Download size={12} /></button>
-                                      <button onClick={(e) => handleEditShot(shot, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="编辑"><Edit2 size={12} /></button>
-                                      <button onClick={(e) => { e.stopPropagation(); selectShot(shot.id); uploadInputRef.current?.click(); }} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="上传图片"><Upload size={12} /></button>
-                                      <button onClick={(e) => handleGenerate(shot.id, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="重新生成"><RefreshCw size={12} /></button>
-                                    </div>
-                                  </>
-                                ) : shot.gridImages && shot.gridImages.length > 0 ? (
-                                  <>
-                                    <img
-                                      src={shot.gridImages[0]}
-                                      alt={shotLabel}
-                                      className="w-full h-full object-cover cursor-pointer"
-                                      onClick={(e) => { e.stopPropagation(); handlePreview(shot.gridImages![0]); }}
-                                    />
-                                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
-                                      <button onClick={(e) => { e.stopPropagation(); selectShot(shot.id); uploadInputRef.current?.click(); }} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="上传图片"><Upload size={12} /></button>
-                                      <button onClick={(e) => handleGenerate(shot.id, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="重新生成"><RefreshCw size={12} /></button>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <ImageIcon size={24} className="text-light-text-muted dark:text-cine-text-muted" />
-                                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
-                                      <button onClick={(e) => { e.stopPropagation(); selectShot(shot.id); uploadInputRef.current?.click(); }} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="上传图片"><Upload size={12} /></button>
-                                      <button onClick={(e) => handleGenerate(shot.id, e)} className="px-3 py-1.5 rounded-full bg-light-accent hover:bg-light-accent-hover text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm flex items-center gap-1 text-xs"><Sparkles size={12} /> 生成图片</button>
-                                    </div>
-                                  </>
-                                )}
-                                {/* Status Indicator */}
-                                <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${shot.status === 'done' ? 'bg-green-500' : shot.status === 'processing' ? 'bg-yellow-500' : shot.status === 'error' ? 'bg-red-500' : 'bg-gray-500'}`} />
-                                {shot.videoClip && (
-                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                                    <Play size={32} className="text-white" fill="white" />
-                                  </div>
-                                )}
-                              </div>
-                              {/* Shot Info */}
-                              <div className="p-2">
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="font-mono text-light-text-muted dark:text-cine-text-muted">{shotLabel}</span>
-                                  <span className="text-light-text-muted dark:text-cine-text-muted">{shot.duration}s</span>
-                                </div>
-                                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 truncate">{translateShotSize(shot.shotSize)} · {translateCameraMovement(shot.cameraMovement)}</div>
-                              </div>
-                            </div>
+                              shot={shot}
+                              sceneId={scene.id}
+                              shotLabel={shotLabel}
+                              isShotSelected={isShotSelected}
+                              onSelect={() => selectShot(shot.id)}
+                              onPreview={handlePreview}
+                              onDownload={handleDownload}
+                              onEdit={handleEditShot}
+                              onUpload={() => { selectShot(shot.id); uploadInputRef.current?.click(); }}
+                              onGenerate={handleGenerate}
+                              shotSizeLabel={translateShotSize(shot.shotSize)}
+                              cameraMovementLabel={translateCameraMovement(shot.cameraMovement)}
+                            />
                           );
                         })}
                         {/* Add Shot Button */}

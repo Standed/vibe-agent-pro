@@ -196,6 +196,7 @@ const sliceImageGrid = (
 export interface ReferenceImageData {
   mimeType: string;
   data: string;
+  url?: string;
 }
 
 /**
@@ -214,9 +215,9 @@ export const generateMultiViewGrid = async (
   // 过多参考图会触发 FUNCTION_PAYLOAD_TOO_LARGE 错误，限制数量；压缩处理在 optimizeDataUrl
   const MAX_REF_IMAGES = 10;
 
-  // 去重：根据 data 内容去重，避免上传重复图片
+  // 去重：根据 data 或 url 内容去重
   const uniqueReferenceImages = Array.from(
-    new Map(referenceImages.map(img => [img.data, img])).values()
+    new Map(referenceImages.map(img => [img.url || img.data, img])).values()
   );
 
   // 限制数量
@@ -226,6 +227,7 @@ export const generateMultiViewGrid = async (
       : uniqueReferenceImages;
 
   const totalViews = gridRows * gridCols;
+  // ... (rest of function)
   const gridType = `${gridRows}x${gridCols}`;
 
   // Determine panel orientation based on aspect ratio
@@ -341,7 +343,7 @@ export const generateSimpleGrid = async (
   // 限制参考图数量
   const MAX_REF_IMAGES = 10;
   const uniqueReferenceImages = Array.from(
-    new Map(referenceImages.map(img => [img.data, img])).values()
+    new Map(referenceImages.map(img => [img.url || img.data, img])).values()
   );
   const safeReferenceImages = uniqueReferenceImages.slice(0, MAX_REF_IMAGES);
 
@@ -700,25 +702,14 @@ export const urlToReferenceImageData = async (imageUrl: string, maxSizeBytes?: n
 
 /**
  * Convert multiple image URLs to ReferenceImageData array
- * 每张图独立 4MB 预算，不再共享总预算，提高单图质量
+ * 优化：直接传递 URL 给后端，绕过 Vercel Request Body 限制 (4.5MB)
  */
 export const urlsToReferenceImages = async (imageUrls: string[]): Promise<ReferenceImageData[]> => {
   if (imageUrls.length === 0) return [];
 
-  // 限制参考图数量，确保每张图有足够质量
-  const MAX_IMAGES = 10;
-  const limitedUrls = imageUrls.slice(0, MAX_IMAGES);
-
-  // 每张图独立 4MB 预算（压缩后），不再按总量分配
-  const PER_IMAGE_BUDGET = 4 * 1024 * 1024;
-
-  // console.log(`[geminiService] 处理 ${limitedUrls.length} 张图片，每张预算: 4MB`);
-
-  const results = await Promise.all(
-    limitedUrls.map(url => urlToReferenceImageData(url, PER_IMAGE_BUDGET).catch(err => {
-      console.warn(`跳过无效参考图: ${url}`, err);
-      return null;
-    }))
-  );
-  return results.filter((r): r is ReferenceImageData => r !== null);
+  return imageUrls.map(url => ({
+    mimeType: 'image/jpeg', // 后端会重新探测或忽略此字段
+    data: '', // 为空，表示使用 URL
+    url: url
+  }));
 };

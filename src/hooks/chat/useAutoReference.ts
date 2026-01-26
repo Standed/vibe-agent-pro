@@ -14,7 +14,8 @@ export function useAutoReference(
     selectedShotId: string | null,
     inputText: string,
     setInputText: (text: string) => void,
-    manualReferenceUrls: string[]
+    manualReferenceUrls: string[],
+    droppedReferences: ActiveReference[] = []
 ) {
     const [activeReferences, setActiveReferences] = useState<ActiveReference[]>([]);
     const [ignoredUrls, setIgnoredUrls] = useState<Set<string>>(new Set());
@@ -30,7 +31,31 @@ export function useAutoReference(
         const newRefs: ActiveReference[] = [];
         const seenUrls = new Set<string>();
 
-        // Auto Detect from Prompt
+        // 1. Dropped Refs (Highest Priority)
+        droppedReferences.forEach(ref => {
+            // Even if it was in ignoredUrls, if it's in droppedReferences, we show it (means user re-added it)
+            // But we should check if it's explicitly ignored? 
+            // Actually, if it's in droppedReferences, it means user just added it.
+            // The ChatPanel logic removes it from ignoredUrls on drop.
+            if (!seenUrls.has(ref.url) && !ignoredUrls.has(ref.url)) {
+                newRefs.push(ref);
+                seenUrls.add(ref.url);
+            }
+        });
+
+        // 2. Manual History Refs
+        manualReferenceUrls.forEach(url => {
+            if (!seenUrls.has(url) && !ignoredUrls.has(url)) {
+                newRefs.push({
+                    url,
+                    source: 'history_ref',
+                    label: '历史引用'
+                });
+                seenUrls.add(url);
+            }
+        });
+
+        // 3. Auto Detect from Prompt (Lowest Priority)
         const { referenceImageMap } = enrichPromptWithAssets(inputText, project, undefined);
 
         let newText = inputText;
@@ -56,28 +81,12 @@ export function useAutoReference(
             }
         });
 
-        if (textChanged) {
-            setInputText(newText);
-        }
-
-        // Manual History Refs
-        manualReferenceUrls.forEach(url => {
-            if (!seenUrls.has(url) && !ignoredUrls.has(url)) {
-                newRefs.push({
-                    url,
-                    source: 'history_ref',
-                    label: '历史引用'
-                });
-                seenUrls.add(url);
-            }
-        });
-
         setActiveReferences(prev => {
             if (JSON.stringify(prev) === JSON.stringify(newRefs)) return prev;
             return newRefs;
         });
 
-    }, [inputText, selectedShotId, project, manualReferenceUrls, ignoredUrls, setInputText]);
+    }, [inputText, selectedShotId, project, manualReferenceUrls, droppedReferences, ignoredUrls, setInputText]);
 
     const handleMention = async (query: string) => {
         if (!project) return [];
