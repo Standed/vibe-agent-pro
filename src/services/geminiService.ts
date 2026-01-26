@@ -327,6 +327,76 @@ ${prompt}
 };
 
 /**
+ * Pro 模式简化版 Grid 生成
+ * 与 Gemini 直出逻辑类似，只添加简单的 Grid 布局提示词
+ * 不包含复杂的分镜描述要求，适合用户自由创作
+ */
+export const generateSimpleGrid = async (
+  prompt: string,
+  gridRows: number,
+  gridCols: number,
+  aspectRatio: AspectRatio,
+  referenceImages: ReferenceImageData[] = []
+): Promise<{ fullImage: string; slices: string[] }> => {
+  // 限制参考图数量
+  const MAX_REF_IMAGES = 10;
+  const uniqueReferenceImages = Array.from(
+    new Map(referenceImages.map(img => [img.data, img])).values()
+  );
+  const safeReferenceImages = uniqueReferenceImages.slice(0, MAX_REF_IMAGES);
+
+  const totalViews = gridRows * gridCols;
+  const gridType = `${gridRows}x${gridCols}`;
+
+  // 确定每个面板的方向
+  const isPortrait = aspectRatio === AspectRatio.MOBILE || aspectRatio === AspectRatio.PORTRAIT;
+  const isLandscape = aspectRatio === AspectRatio.WIDE || aspectRatio === AspectRatio.STANDARD || aspectRatio === AspectRatio.CINEMA;
+  const orientationHint = isPortrait ? '竖屏/portrait' : isLandscape ? '横屏/landscape' : '';
+
+  // Pro 模式简化版提示词 - 只强调布局和比例
+  const gridPrompt = `Create a ${gridType} grid image with ${totalViews} panels.
+
+LAYOUT:
+- Divide the image into ${gridRows} rows × ${gridCols} columns
+- Each panel separated by thin black lines
+- Each panel aspect ratio: ${aspectRatio} (${orientationHint})
+
+CONTENT:
+${prompt}
+
+STYLE:
+- Consistent art style across all panels
+- Cinematic lighting, high quality
+- Use reference images for character/scene consistency
+- No text, watermarks, or UI elements`;
+
+  try {
+    const data = await postJson<{ fullImage: string }>('/api/gemini-grid', {
+      prompt: gridPrompt,
+      gridRows,
+      gridCols,
+      aspectRatio,
+      referenceImages: safeReferenceImages
+    });
+
+    const fullImageBase64 = data.fullImage;
+    if (!fullImageBase64) throw new Error('未能生成 Grid 图片');
+
+    const panels = await sliceImageGrid(fullImageBase64, gridRows, gridCols);
+    return { fullImage: fullImageBase64, slices: panels };
+  } catch (error: any) {
+    console.error('Simple Grid generation error:', error);
+    if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED')) {
+      throw new Error('Gemini API Key 无效或服务被封禁 (400/403)。');
+    }
+    if (error.status === 503 || error.message?.includes('overloaded')) {
+      throw new Error('Gemini 服务当前过载 (503)。请稍后重试。');
+    }
+    throw error;
+  }
+};
+
+/**
  * 图片编辑 (Image-to-Image with Gemini)
  * 根据原图和新提示词生成编辑后的图片
  */
@@ -628,19 +698,22 @@ export const urlToReferenceImageData = async (imageUrl: string, maxSizeBytes?: n
 
 /**
  * Convert multiple image URLs to ReferenceImageData array
- * 智能分配预算：总大小控制在 3.8MB 以内
+ * 每张图独立 4MB 预算，不再共享总预算，提高单图质量
  */
 export const urlsToReferenceImages = async (imageUrls: string[]): Promise<ReferenceImageData[]> => {
   if (imageUrls.length === 0) return [];
 
-  // Vercel 限制 4.5MB，留 0.7MB 给 prompt 和其他开销，总预算 3.8MB
-  const TOTAL_BUDGET = 3.8 * 1024 * 1024;
-  const perImageBudget = Math.floor(TOTAL_BUDGET / imageUrls.length);
+  // 限制参考图数量，确保每张图有足够质量
+  const MAX_IMAGES = 10;
+  const limitedUrls = imageUrls.slice(0, MAX_IMAGES);
 
-  // console.log(`[geminiService] 处理 ${imageUrls.length} 张图片，每张预算: ${(perImageBudget / 1024 / 1024).toFixed(2)}MB`);
+  // 每张图独立 4MB 预算（压缩后），不再按总量分配
+  const PER_IMAGE_BUDGET = 4 * 1024 * 1024;
+
+  // console.log(`[geminiService] 处理 ${limitedUrls.length} 张图片，每张预算: 4MB`);
 
   const results = await Promise.all(
-    imageUrls.map(url => urlToReferenceImageData(url, perImageBudget).catch(err => {
+    limitedUrls.map(url => urlToReferenceImageData(url, PER_IMAGE_BUDGET).catch(err => {
       console.warn(`跳过无效参考图: ${url}`, err);
       return null;
     }))

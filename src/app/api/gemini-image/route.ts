@@ -3,7 +3,7 @@ import { ProxyAgent, Agent } from 'undici';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
-export const maxDuration = 60;
+export const maxDuration = 120;  // 与 AbortController 保持一致
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,13 +55,14 @@ export async function POST(request: NextRequest) {
         {
           role: 'user',
           parts: [
-            { text: prompt },
+            // 参考图在前，与 Grid 保持一致，提高视觉参考权重
             ...referenceImages.map((img: any) => ({
               inlineData: {
                 data: img.data,
                 mimeType: img.mimeType || 'image/png',
               },
             })),
+            { text: prompt },
           ],
         },
       ],

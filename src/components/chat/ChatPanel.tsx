@@ -3,8 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useProjectStore } from '@/store/useProjectStore';
-import { generateMultiViewGrid, generateSingleImage, urlsToReferenceImages } from '@/services/geminiService';
-import { AspectRatio, Character, Location, ImageSize, GridData } from '@/types/project';
+import { generateSimpleGrid, generateSingleImage, urlsToReferenceImages } from '@/services/geminiService';
+import { AspectRatio, Character, Location, GridData } from '@/types/project';
 import { toast } from 'sonner';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
@@ -465,19 +465,22 @@ export default function ChatPanel() {
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             const files = Array.from(e.target.files);
+            const MAX_IMAGES = 10;
+            const MAX_SIZE_PER_IMAGE = 10 * 1024 * 1024;  // 10MB per image
 
-            // 计算当前已选图片的总大小
-            const currentTotalSize = uploadedImages.reduce((acc, f) => acc + f.size, 0);
-            const newFilesSize = files.reduce((acc, f) => acc + f.size, 0);
-
-            if (currentTotalSize + newFilesSize > 10 * 1024 * 1024) {
-                toast.error("所有上传图片的总大小不能超过 10MB");
+            // 检查数量限制
+            if (uploadedImages.length + files.length > MAX_IMAGES) {
+                toast.error(`最多只能上传 ${MAX_IMAGES} 张参考图`);
                 return;
             }
 
             const validFiles = files.filter(file => {
                 if (!file.type.startsWith('image/')) {
                     toast.error(`文件 ${file.name} 不是图片`);
+                    return false;
+                }
+                if (file.size > MAX_SIZE_PER_IMAGE) {
+                    toast.error(`文件 ${file.name} 超过 10MB 限制`);
                     return false;
                 }
                 return true;
@@ -500,19 +503,22 @@ export default function ChatPanel() {
 
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             const files = Array.from(e.dataTransfer.files);
+            const MAX_IMAGES = 10;
+            const MAX_SIZE_PER_IMAGE = 10 * 1024 * 1024;  // 10MB per image
 
-            // 计算当前已选图片的总大小
-            const currentTotalSize = uploadedImages.reduce((acc, f) => acc + f.size, 0);
-            const newFilesSize = files.reduce((acc, f) => acc + f.size, 0);
-
-            if (currentTotalSize + newFilesSize > 10 * 1024 * 1024) {
-                toast.error("所有上传图片的总大小不能超过 10MB");
+            // 检查数量限制
+            if (uploadedImages.length + files.length > MAX_IMAGES) {
+                toast.error(`最多只能上传 ${MAX_IMAGES} 张参考图`);
                 return;
             }
 
             const validFiles = files.filter(file => {
                 if (!file.type.startsWith('image/')) {
                     toast.error(`文件 ${file.name} 不是图片`);
+                    return false;
+                }
+                if (file.size > MAX_SIZE_PER_IMAGE) {
+                    toast.error(`文件 ${file.name} 超过 10MB 限制`);
                     return false;
                 }
                 return true;
@@ -669,7 +675,8 @@ export default function ChatPanel() {
                 if (selectedModel === 'gemini-grid') {
                     const rows = gridSize === '3x3' ? 3 : 2;
                     const cols = gridSize === '3x3' ? 3 : 2;
-                    const res = await generateMultiViewGrid(enrichedPrompt, rows, cols, project.settings.aspectRatio || AspectRatio.WIDE, ImageSize.K4, referenceImagesData);
+                    // Pro 模式使用简化版 Grid（不包含复杂分镜逻辑）
+                    const res = await generateSimpleGrid(enrichedPrompt, rows, cols, project.settings.aspectRatio || AspectRatio.WIDE, referenceImagesData);
                     resultImages = [res.fullImage];
                     gridData = {
                         fullImage: res.fullImage,

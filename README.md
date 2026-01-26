@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-3.0.0-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-3.6.0-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -358,6 +358,12 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Latest-Video API Optimization** - Pure read-only, no more R2 upload delays
 - ✅ **Auth Middleware Refresh Token** - Auto-refresh expired access tokens
 - ✅ **SmartRecovery Fix** - Prevents infinite polling loop on page refresh
+
+### v3.6.0 (2026-01-26)
+- ✅ **Pro Mode Grid Simplified** - Simple prompt template for user creativity
+- ✅ **Reference Image Optimization** - Max 10 images, 10MB each, 4MB budget after compression
+- ✅ **Timeout Unified** - All API routes use 120s timeout
+- ✅ **Code Cleanup** - Removed unused `useProGeneration.ts` hook
 
 ### v3.1.0 (2026-01-20)
 - ✅ **Sora Registration Optimization** - Async registration (<1s response) + Smart Task Recovery
