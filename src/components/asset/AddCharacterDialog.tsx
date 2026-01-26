@@ -12,9 +12,9 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { JimengModel } from '@/components/jimeng/JimengOptions';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSoraCharacter } from '@/hooks/useSoraCharacter';
+import { useSoraCharacter } from '@/hooks/sora/useSoraCharacter';
 import { SoraReferenceSection } from './SoraReferenceSection';
-import { useThreeViewGeneration } from '@/hooks/useThreeViewGeneration';
+import { useThreeViewGeneration } from '@/hooks/generation/useThreeViewGeneration';
 import { ThreeViewGenerator, ThreeViewPrompt } from './ThreeViewSection';
 import { CharacterImageManager } from './CharacterImageManager';
 

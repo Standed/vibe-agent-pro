@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { toast } from 'sonner';
-import { useAIStoryboard } from '@/hooks/useAIStoryboard';
+import { useAIStoryboard } from '@/hooks/generation/useAIStoryboard';
 import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import AddLocationDialog from '@/components/asset/AddLocationDialog';
 

@@ -249,7 +249,7 @@ Agent 通过 Function Calling 调用以下工具操作项目（共 27 个工具�
 
 ---
 
-## � 项目结构速查
+## 📁 项目结构速查
 
 ```
 src/
@@ -266,40 +266,48 @@ src/
 │   ├── admin/                  # 管理后台页面
 │   ├── auth/                   # 认证页面 (登录/注册)
 │   └── project/[id]/           # 项目编辑页
-├── components/                 # UI 组件 (18 个目录)
+├── components/                 # UI 组件 (13 个目录)
 │   ├── agent/                  # Agent 相关组件
+│   ├── asset/                  # 资产管理 (角色、地点)
 │   ├── auth/                   # 认证组件 (AuthProvider)
 │   ├── canvas/                 # 无限画布
-│   ├── chat/                   # 聊天界面
-│   ├── layout/                 # 布局组件 (侧边栏、面板等)
-│   ├── pro/                    # Pro 模式组件
+│   ├── chat/                   # 聊天界面 + Pro 模式组件
+│   ├── director/               # 导演/构思模式
+│   ├── grid/                   # Grid 生成 UI
+│   ├── jimeng/                 # 即梦集成
+│   ├── layout/                 # 布局组件 (侧边栏、面板、设置等)
+│   ├── project/                # 项目对话框
+│   ├── providers/              # React Context
 │   ├── shot/                   # 分镜相关组件
-│   └── ...
+│   └── ui/                     # 通用 UI 组件
 ├── config/
 │   ├── credits.ts              # 积分配置
 │   └── users.ts                # 管理员名单
-├── hooks/
-│   ├── chat/                   # 聊天面板逻辑 (v3.8 重构)
-│   │   ├── useChatHistory.ts   # 历史记录与 Sora 状态合并
-│   │   └── useAutoReference.ts # 引用管理与 At 检测
-│   ├── useAgent.ts             # Agent Hook (含防重复提交)
-│   ├── useSoraTaskManager.ts   # Sora 任务管理
-│   └── useAIStoryboard.ts      # AI 分镜生成
+├── hooks/                      # 自定义 Hooks (按功能分组)
+│   ├── agent/                  # Agent Hook (useAgent)
+│   ├── chat/                   # 聊天面板逻辑 (useChatHistory, useAutoReference)
+│   ├── generation/             # AI 生成 (useAIStoryboard, useJimengGeneration...)
+│   └── sora/                   # Sora 视频 (useSoraTaskManager, useSoraCharacter...)
 ├── lib/
-│   ├── dataService.ts          # 统一数据服务层 (1269 行)
+│   ├── dataService.ts          # 统一数据服务层
 │   ├── storageService.ts       # R2 存储服务
 │   ├── auth-middleware.ts      # 认证中间件
 │   ├── api-client.ts           # 认证请求客户端
 │   └── supabase/               # Supabase 客户端配置
 ├── services/                   # 业务服务层 (19+ 文件)
-│   ├── agentService.ts         # Agent 核心 (976 行)
+│   ├── agentService.ts         # Agent 核心
 │   ├── agentToolDefinitions.ts # 工具定义 (28 个工具)
-│   ├── SoraOrchestrator.ts     # Sora 编排器 (723 行)
+│   ├── SoraOrchestrator.ts     # Sora 编排器
 │   └── tools/                  # 工具实现 (7 个文件)
 ├── store/
-│   └── useProjectStore.ts      # Zustand 状态管理 (674 行)
+│   └── useProjectStore.ts      # Zustand 状态管理
 └── types/                      # TypeScript 类型定义
-    └── project.ts              # 项目数据模型 (512 行)
+    └── project.ts              # 项目数据模型
+
+scripts/
+├── deploy/                     # 部署脚本
+├── test/                       # 测试脚本
+└── tools/                      # 工具脚本
 ```
 
 ---

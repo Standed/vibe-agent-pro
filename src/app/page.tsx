@@ -428,7 +428,7 @@ export default function Home() {
       setShowNewProjectDialog(false);
       setUploadedScript('');
       setImportedStoryboard(null);
-      router.push(`/project/${currentProject.id}/planning`);
+      router.push(`/project/${currentProject.id}?view=planning`);
     } catch (error) {
       console.error('[HomePage] ❌ Create failed:', error);
       toast.error('创建项目失败');

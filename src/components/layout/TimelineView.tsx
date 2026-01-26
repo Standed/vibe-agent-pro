@@ -24,7 +24,7 @@ import ChatPanel from '@/components/chat/ChatPanel';
 import type { SoraTask, Shot } from '@/types/project';
 import LeftSidebarNew from './LeftSidebarNew';
 
-import { useSoraTaskManager } from '@/hooks/useSoraTaskManager';
+import { useSoraTaskManager } from '@/hooks/sora/useSoraTaskManager';
 
 interface TimelineViewProps {
     onClose: () => void;

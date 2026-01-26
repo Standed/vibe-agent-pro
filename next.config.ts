@@ -26,6 +26,15 @@ const nextConfig: NextConfig = {
     });
     return config;
   },
+  async redirects() {
+    return [
+      {
+        source: '/project/:id/planning',
+        destination: '/project/:id?view=planning',
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

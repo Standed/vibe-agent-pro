@@ -237,7 +237,7 @@ Visit [http://localhost:3000](http://localhost:3000)
 
 ---
 
-## 📂 Project Structure
+## 项文结构
 
 ```
 src/
@@ -246,11 +246,25 @@ src/
 │   ├── admin/                        # Admin dashboard
 │   ├── auth/                         # Authentication pages
 │   └── project/[id]/                 # Project editing page
-├── components/                       # React components (18 directories)
-│   ├── layout/                       # Layout (sidebars, panels, timeline)
-│   ├── canvas/                       # Infinite canvas
+├── components/                       # React components (13 directories)
 │   ├── agent/                        # Agent components
-│   └── chat/                         # Chat interface
+│   ├── asset/                        # Asset management (characters, locations)
+│   ├── auth/                         # Authentication (AuthProvider)
+│   ├── canvas/                       # Infinite canvas
+│   ├── chat/                         # Chat interface + Pro mode components
+│   ├── director/                     # Director/Planning mode
+│   ├── grid/                         # Grid generation UI
+│   ├── jimeng/                       # Jimeng integration
+│   ├── layout/                       # Layout (sidebars, panels, settings)
+│   ├── project/                      # Project dialogs
+│   ├── providers/                    # React Context providers
+│   ├── shot/                         # Shot components
+│   └── ui/                           # Shared UI components
+├── hooks/                            # Custom hooks (4 directories)
+│   ├── agent/                        # Agent-related hooks
+│   ├── chat/                         # Chat panel hooks
+│   ├── generation/                   # AI generation hooks
+│   └── sora/                         # Sora video hooks
 ├── services/                         # Business services (19+ files)
 │   ├── agentService.ts               # Agent core (Function Calling)
 │   ├── agentToolDefinitions.ts       # 28 Agent tools
@@ -259,13 +273,18 @@ src/
 │   ├── KaponaiService.ts             # Sora API wrapper
 │   └── jimengService.ts              # Jimeng integration
 ├── lib/                              # Core libraries
-│   ├── dataService.ts                # Unified data service (1269 lines)
+│   ├── dataService.ts                # Unified data service
 │   ├── storageService.ts             # R2 file upload
 │   └── auth-middleware.ts            # Authentication middleware
 ├── store/                            # Zustand state management
-│   └── useProjectStore.ts            # Project state (674 lines)
+│   └── useProjectStore.ts            # Project state
 └── types/                            # TypeScript definitions
-    └── project.ts                    # Project types (512 lines)
+    └── project.ts                    # Project types
+
+scripts/
+├── deploy/                           # Deployment scripts
+├── test/                             # Test scripts
+└── tools/                            # Utility scripts
 ```
 
 ---

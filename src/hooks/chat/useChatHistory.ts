@@ -3,7 +3,7 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { dataService } from '@/lib/dataService';
 import { ChatPanelMessage, GenerationModel, AspectRatio } from '@/types/project';
-import { useSoraVideoMessages } from '@/hooks/useSoraVideoMessages';
+import { useSoraVideoMessages } from '@/hooks/sora/useSoraVideoMessages';
 
 export function useChatHistory(
     projectId: string | undefined,

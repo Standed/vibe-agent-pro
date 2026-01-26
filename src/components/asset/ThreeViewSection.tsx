@@ -1,7 +1,7 @@
 import React from 'react';
 import { Sparkles, Wand2, ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { UseThreeViewGenerationReturn } from '@/hooks/useThreeViewGeneration';
+import { UseThreeViewGenerationReturn } from '@/hooks/generation/useThreeViewGeneration';
 import { JimengModel } from '@/components/jimeng/JimengOptions';
 
 interface ThreeViewComponentProps {

@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { CheckCircle2, Loader2, Pencil, Sparkles, Wand2, Video } from 'lucide-react';
-import { UseSoraCharacterReturn } from '@/hooks/useSoraCharacter';
+import { UseSoraCharacterReturn } from '@/hooks/sora/useSoraCharacter';
 import { Character } from '@/types/project';
 import { toast } from 'sonner';
 

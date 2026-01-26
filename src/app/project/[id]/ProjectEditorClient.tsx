@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
 import { dataService } from '@/lib/dataService';
 import LeftSidebarNew from '@/components/layout/LeftSidebarNew';
@@ -18,14 +18,16 @@ import PlanningView from '@/components/director/PlanningView';
 export function ProjectEditorClient() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const initialView = searchParams.get('view');
     const { t } = useI18n();
     const project = useProjectStore(s => s.project);
     const loadProjectToStore = useProjectStore(s => s.loadProject);
     const { user, profile, signOut, loading: authLoading } = useRequireWhitelist();
     const [isLoadingProject, setIsLoadingProject] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [showTimelineView, setShowTimelineView] = useState(false);
-    const [showDirectorMode, setShowDirectorMode] = useState(false);
+    const [showTimelineView, setShowTimelineView] = useState(initialView === 'timeline');
+    const [showDirectorMode, setShowDirectorMode] = useState(initialView === 'planning');
 
     const activeView: ViewType = showTimelineView ? 'timeline' : showDirectorMode ? 'planning' : 'canvas';
 
@@ -176,7 +178,7 @@ export function ProjectEditorClient() {
             <ViewSwitcher
                 activeView={activeView}
                 onViewChange={handleViewChange}
-                className={activeView === 'planning' ? 'top-24' : ''}
+                className="z-[200]"
             />
 
             {/* Fullscreen Timeline View */}
@@ -187,8 +189,8 @@ export function ProjectEditorClient() {
             {/* Planning View (Director Mode) */}
             {showDirectorMode && createPortal(
                 <div className="fixed inset-0 z-[100]">
-                        <PlanningView
-                            onClose={() => setShowDirectorMode(false)}
+                    <PlanningView
+                        onClose={() => setShowDirectorMode(false)}
                         showHomeButton={true}
                         onSwitchToCanvas={() => setShowDirectorMode(false)}
                         onSwitchToTimeline={() => {

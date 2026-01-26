@@ -6,7 +6,7 @@ import { Bot, Sliders, ChevronRight, ChevronLeft, X } from 'lucide-react';
 import AgentPanel from '../agent/AgentPanel';
 import ChatPanel from '@/components/chat/ChatPanel';
 
-import { ShotDetailsPanel } from '../pro/ShotDetailsPanel';
+import { ShotDetailsPanel } from '../chat/ShotDetailsPanel';
 import { toast } from 'sonner';
 import { createPortal } from 'react-dom';
 import { AspectRatio } from '@/types/project';

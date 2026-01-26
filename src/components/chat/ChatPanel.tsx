@@ -18,14 +18,14 @@ import { formatShotLabel } from '@/utils/shotOrder';
 import { ImagePreviewOverlay } from './ImagePreviewOverlay';
 import { dataService } from '@/lib/dataService';
 import { storageService } from '@/lib/storageService';
-import { useJimengGeneration } from '@/hooks/useJimengGeneration';
+import { useJimengGeneration } from '@/hooks/generation/useJimengGeneration';
 import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
 import { ChatBubble } from './ChatBubble';
 import { ChatInput } from './ChatInput';
 import { Sparkles, Bug, Loader2, X } from 'lucide-react';
 import { compressImage, compressFileToBase64 } from '@/utils/imageCompression';
 import { replaceSoraCharacterCodes } from '@/utils/soraCharacterReplace';
-import { useSoraGeneration } from '@/hooks/useSoraGeneration';
+import { useSoraGeneration } from '@/hooks/sora/useSoraGeneration';
 // import { useSoraVideoMessages } from '@/hooks/useSoraVideoMessages'; // Moved to useChatHistory
 import { useChatHistory } from '@/hooks/chat/useChatHistory';
 import { useAutoReference, ActiveReference } from '@/hooks/chat/useAutoReference';
