@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { ProxyAgent, Agent } from 'undici';
+import sharp from 'sharp';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist, checkRateLimit } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
@@ -17,6 +18,10 @@ const GEMINI_API_KEY =
 
 const isValidGridSize = (n: any) => Number.isInteger(n) && (n === 2 || n === 3);
 
+/**
+ * Fetch image from URL and compress to max 2048px JPEG
+ * This prevents 5MB+ payload errors from high-resolution Gemini images
+ */
 const fetchImageToBase64 = async (url: string): Promise<{ data: string, mimeType: string } | null> => {
   try {
     const controller = new AbortController();
@@ -26,11 +31,22 @@ const fetchImageToBase64 = async (url: string): Promise<{ data: string, mimeType
 
     if (!response.ok) return null;
     const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
-    const mimeType = response.headers.get('content-type') || 'image/png';
+    const inputBuffer = Buffer.from(arrayBuffer);
+
+    // Compress with sharp: resize to max 2048px, JPEG quality 90
+    const compressedBuffer = await sharp(inputBuffer)
+      .resize(2048, 2048, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+
+    const base64 = compressedBuffer.toString('base64');
+    const mimeType = 'image/jpeg';
+
+    console.log(`[Gemini Grid] 📦 Image compressed: ${(inputBuffer.length / 1024).toFixed(0)}KB → ${(compressedBuffer.length / 1024).toFixed(0)}KB`);
+
     return { data: base64, mimeType };
   } catch (error) {
-    console.error('Failed to fetch image:', url, error);
+    console.error('Failed to fetch/compress image:', url, error);
     return null;
   }
 };

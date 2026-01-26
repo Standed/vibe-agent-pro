@@ -20,6 +20,12 @@ import { Toaster } from 'sonner';
 export const metadata: Metadata = {
   title: 'Video Agent Pro - 西羊石 AI 影视创作工具',
   description: 'AI-powered video production tool',
+  icons: {
+    icon: [
+      { url: '/favicon.png', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 export default function RootLayout({

@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
 import CRC32 from 'crc-32';
 import sizeOf from 'image-size';
+import sharp from 'sharp';
 import * as querystring from 'querystring';
 
 export const maxDuration = 60;
@@ -307,7 +308,15 @@ class JimengApiClient {
             // 1. 获取图片数据
             console.log('[Jimeng] Downloading image from:', fileUrl);
             const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
-            const imageData = Buffer.from(response.data);
+            const rawImageData = Buffer.from(response.data);
+
+            // 1.5. 压缩图片（防止 5MB+ 大图导致问题）
+            const imageData = await sharp(rawImageData)
+                .resize(2048, 2048, { fit: 'inside', withoutEnlargement: true })
+                .jpeg({ quality: 85 })
+                .toBuffer();
+
+            console.log(`[Jimeng] 📦 Image compressed: ${(rawImageData.length / 1024).toFixed(0)}KB → ${(imageData.length / 1024).toFixed(0)}KB`);
 
             // 2. 获取上传凭证
             const uploadAuth = await this.getUploadAuth();
