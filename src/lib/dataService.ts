@@ -25,6 +25,7 @@ interface DataBackend {
   saveProject(project: Project): Promise<void>;
   loadProject(id: string): Promise<Project | undefined>;
   getAllProjects(): Promise<Project[]>;
+  getProjectFirstImage(projectId: string): Promise<string | null>;
   deleteProject(id: string): Promise<void>;
   saveScene(projectId: string, scene: Scene): Promise<void>;
   deleteScene(sceneId: string): Promise<void>;
@@ -231,6 +232,7 @@ class SupabaseBackend implements DataBackend {
             chatHistory: project.chatHistory || [],
             timeline: project.timeline || [],
             locations: safeLocations,
+            coverImage: project.metadata.coverImage, // 保存项目封面
           },
           scene_count: project.scenes?.length || 0,
           shot_count: project.shots?.length || 0,
@@ -239,7 +241,7 @@ class SupabaseBackend implements DataBackend {
         },
       });
 
-      console.log('[SupabaseBackend] ✅ 项目基本信息保存成功');
+      // console.log('[SupabaseBackend] ✅ 项目基本信息保存成功');
 
       // 保存场景（如果有）
       if (project.scenes.length > 0) {
@@ -429,6 +431,7 @@ class SupabaseBackend implements DataBackend {
           artStyle: project.art_style || '',
           created: new Date(project.created_at),
           modified: new Date(project.updated_at),
+          coverImage: project.metadata?.coverImage,
         },
         settings: project.settings || {},
         script: project.metadata?.script || '',
@@ -496,7 +499,7 @@ class SupabaseBackend implements DataBackend {
         table: 'projects',
         operation: 'select',
         filters: { eq: { user_id: this.userId } },
-        select: 'id, title, description, art_style, created_at, updated_at, scene_count, shot_count, series_id, episode_order',
+        select: 'id, title, description, art_style, created_at, updated_at, scene_count, shot_count, series_id, episode_order, metadata, settings',
         order: { column: 'updated_at', ascending: false },
       });
 
@@ -510,8 +513,9 @@ class SupabaseBackend implements DataBackend {
           artStyle: p.art_style || '',
           created: new Date(p.created_at),
           modified: new Date(p.updated_at),
+          coverImage: p.metadata?.coverImage, // 从数据库 metadata 中加载封面
         },
-        settings: { ...DEFAULT_SETTINGS },
+        settings: p.settings || { ...DEFAULT_SETTINGS },
         script: '',
         chatHistory: [],
         timeline: [],
@@ -524,6 +528,45 @@ class SupabaseBackend implements DataBackend {
     } catch (err) {
       console.error('[SupabaseBackend] ❌ getAllProjects 失败:', err);
       return [];
+    }
+  }
+
+  /**
+   * 获取项目的第一张分镜参考图（用于生成封面）
+   * 通过 Supabase 跨表查询: shots -> scenes -> project
+   */
+  async getProjectFirstImage(projectId: string): Promise<string | null> {
+    try {
+      // 1. 先获取该项目的所有场景 ID，按顺序排列
+      const scenes = await this.callSupabaseAPI({
+        table: 'scenes',
+        operation: 'select',
+        filters: { eq: { project_id: projectId } },
+        select: 'id',
+        order: { column: 'order_index', ascending: true },
+        limit: 5 // 只取前5个场景够了
+      });
+
+      if (!scenes || scenes.length === 0) return null;
+      const sceneIds = scenes.map((s: any) => s.id);
+
+      // 2. 查询这些场景下的 shots，寻找有 reference_image 的
+      const shots = await this.callSupabaseAPI({
+        table: 'shots',
+        operation: 'select',
+        filters: { in: { scene_id: sceneIds } }, // 注意：Supabase JS 客户端的 in 语法可能不同，这里使用统一网关
+        select: 'reference_image, scene_id, order_index',
+        order: { column: 'order_index', ascending: true },
+        limit: 10 // 取前10个分镜
+      });
+
+      // 找到第一个有图的
+      const firstShotWithImage = (shots || []).find((s: any) => s.reference_image && !s.reference_image.startsWith('data:'));
+
+      return firstShotWithImage ? firstShotWithImage.reference_image : null;
+    } catch (err) {
+      // console.warn(`[SupabaseBackend] 获取项目封面失败 ${projectId}:`, err);
+      return null;
     }
   }
 
@@ -1123,6 +1166,11 @@ export class UnifiedDataService {
   async getAllProjects(userId?: string): Promise<Project[]> {
     await this.ensureInitialized(userId);
     return this.backend!.getAllProjects();
+  }
+
+  async getProjectFirstImage(projectId: string, userId?: string): Promise<string | null> {
+    await this.ensureInitialized(userId);
+    return this.backend!.getProjectFirstImage(projectId);
   }
 
   async deleteProject(id: string): Promise<void> {
