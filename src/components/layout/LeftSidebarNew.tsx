@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/useProjectStore';
+import { dataService } from '@/lib/dataService';
 import AddShotDialog from '@/components/shot/AddShotDialog';
 import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import AddLocationDialog from '@/components/asset/AddLocationDialog';
@@ -564,6 +565,48 @@ export default function LeftSidebarNew({
                     setControlMode('pro');
                     if (useProjectStore.getState().rightSidebarCollapsed) {
                       useProjectStore.getState().toggleRightSidebar();
+                    }
+                  }}
+                  onShotImageDrop={(shotId, imageUrl) => {
+                    // P2: 处理跨分镜图片拖拽
+                    const shot = shots.find(s => s.id === shotId);
+                    if (!shot) return;
+
+                    // 构造新的历史记录项
+                    const historyItem = {
+                      id: `drag_drop_${Date.now()}`,
+                      type: 'image' as const,
+                      timestamp: new Date(),
+                      result: imageUrl,
+                      prompt: 'Dragged Image',
+                      parameters: {
+                        model: 'drag-drop',
+                        source: 'drag-drop',
+                      },
+                      status: 'success' as const,
+                    };
+
+                    const newHistory = [historyItem, ...(shot.generationHistory || [])].slice(0, 20);
+
+                    // 1. Optimistic Update
+                    updateShot(shotId, {
+                      referenceImage: imageUrl,
+                      status: 'done',
+                      generationHistory: newHistory
+                    });
+                    toast.success('已应用参考图');
+
+                    // 2. Persist to Backend
+                    if (shot.sceneId) {
+                      dataService.saveShot(shot.sceneId, {
+                        id: shot.id,
+                        referenceImage: imageUrl,
+                        status: 'done',
+                        generationHistory: newHistory
+                      } as any).catch(err => {
+                        console.error('Failed to persist dragged image:', err);
+                        toast.error('保存失败，请重试');
+                      });
                     }
                   }}
                 />

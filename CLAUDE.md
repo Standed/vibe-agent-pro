@@ -529,8 +529,28 @@ src/
 ├── services/         # 业务逻辑和 API 调用
 ├── store/            # Zustand 状态管理
 ├── types/            # TypeScript 类型定义
+├── components/        # UI 组件
+│   ├── layout/       # 布局组件（Sidebar, Panel）
+│   ├── canvas/       # 画布相关
+│   ├── grid/         # Grid 相关
+│   ├── shot/         # 镜头相关
+│   └── project/      # 项目相关
+├── hooks/            # 自定义 Hooks
+│   ├── chat/         # 聊天相关 Hooks (useChatHistory, useAutoReference)
+│   └── ...
+├── services/         # 业务逻辑和 API 调用
+├── store/            # Zustand 状态管理
+├── types/            # TypeScript 类型定义
 └── locales/          # 国际化翻译
 ```
+
+#### 4. 复杂组件重构 (v3.8+)
+对于超过 500 行的复杂组件（如 `ChatPanel`），应采用 **Custom Hooks** 模式进行解耦：
+- **逻辑抽离**：将状态管理、副作用 (useEffect)、事件处理抽离到 `src/hooks/`
+- **UI 纯粹化**：组件本体主要负责 JSX 渲染和 Context 传递
+- **示例**：
+  - `useChatHistory`: 管理消息列表、Sora 视频合并、历史记录加载
+  - `useAutoReference`: 管理 `@` 提及、参考图自动检测、拖拽状态
 
 ### 代码质量
 

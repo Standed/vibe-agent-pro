@@ -359,6 +359,12 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Auth Middleware Refresh Token** - Auto-refresh expired access tokens
 - ✅ **SmartRecovery Fix** - Prevents infinite polling loop on page refresh
 
+### v3.8.0 (2026-01-27)
+- ✅ **Bidirectional Drag-Drop** - Drag generated images to Storyboard shots (with history sync) & Drag shots to Pro chat as references
+- ✅ **ChatPanel Decoupling** - Refactored core logic into `useChatHistory` and `useAutoReference` hooks
+- ✅ **Image Preview Drag** - Direct drag support from full-screen image preview
+- ✅ **History Synchronization** - Optimistic updates + Backend persistence for all drag-drop actions
+
 ### v3.6.0 (2026-01-26)
 - ✅ **Pro Mode Grid Simplified** - Simple prompt template for user creativity
 - ✅ **Reference Image Optimization** - Max 10 images, 10MB each, 4MB budget after compression

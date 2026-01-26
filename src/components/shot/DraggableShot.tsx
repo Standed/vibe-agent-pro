@@ -13,6 +13,7 @@ interface DraggableShotProps {
   onSelect: () => void;
   onDelete: () => void;
   onMove: (dragIndex: number, hoverIndex: number) => void;
+  onImageDrop?: (shotId: string, imageUrl: string) => void; // 新增：接收图片拖拽
   label?: string;
 }
 
@@ -22,7 +23,15 @@ interface DragItem {
   type: string;
 }
 
+// 新增：图片拖拽项类型
+interface ImageDragItem {
+  type: string;
+  imageUrl: string;
+  sourceType: 'history' | 'grid' | 'chat';
+}
+
 const ITEM_TYPE = 'SHOT';
+export const IMAGE_TO_SHOT_TYPE = 'IMAGE_TO_SHOT'; // 导出供其他组件使用
 
 export default function DraggableShot({
   shot,
@@ -31,18 +40,33 @@ export default function DraggableShot({
   onSelect,
   onDelete,
   onMove,
+  onImageDrop,
   label,
 }: DraggableShotProps) {
   const ref = useRef<HTMLDivElement>(null);
 
-  const [{ handlerId }, drop] = useDrop<DragItem, void, { handlerId: Identifier | null }>({
-    accept: ITEM_TYPE,
+  // 扩展 useDrop 以同时接收分镜排序和图片拖拽
+  const [{ handlerId, isOverWithImage }, drop] = useDrop<DragItem | ImageDragItem, void, { handlerId: Identifier | null; isOverWithImage: boolean }>({
+    accept: [ITEM_TYPE, IMAGE_TO_SHOT_TYPE],
     collect(monitor) {
+      const item = monitor.getItem();
+      const isImageDrop = item && 'imageUrl' in item;
       return {
         handlerId: monitor.getHandlerId(),
+        isOverWithImage: monitor.isOver() && isImageDrop,
       };
     },
-    hover(item: DragItem, monitor) {
+    drop(item, monitor) {
+      // 处理图片拖拽
+      if ('imageUrl' in item && onImageDrop) {
+        onImageDrop(shot.id, item.imageUrl);
+        return;
+      }
+    },
+    hover(item: DragItem | ImageDragItem, monitor) {
+      // 只处理分镜排序拖拽，图片拖拽在 drop 中处理
+      if ('imageUrl' in item) return;
+
       if (!ref.current) {
         return;
       }
@@ -107,13 +131,13 @@ export default function DraggableShot({
     <div
       ref={ref}
       data-handler-id={handlerId}
-      className={`relative rounded-lg transition-all ${
-        isDragging ? 'opacity-50' : 'opacity-100'
-      } ${
-        isSelected
-          ? 'bg-light-accent/10 dark:bg-cine-accent/10 border-2 border-light-accent dark:border-cine-accent'
-          : 'bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border hover:border-light-accent/50 dark:hover:border-cine-accent/50'
-      } cursor-move`}
+      className={`relative rounded-lg transition-all ${isDragging ? 'opacity-50' : 'opacity-100'
+        } ${isOverWithImage
+          ? 'bg-green-500/20 border-2 border-green-500 ring-2 ring-green-500/50'
+          : isSelected
+            ? 'bg-light-accent/10 dark:bg-cine-accent/10 border-2 border-light-accent dark:border-cine-accent'
+            : 'bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border hover:border-light-accent/50 dark:hover:border-cine-accent/50'
+        } cursor-move`}
     >
       {/* Shot Content - Clickable */}
       <button onClick={onSelect} className="w-full text-left p-3">

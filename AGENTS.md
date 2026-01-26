@@ -103,7 +103,7 @@ VOLCANO_VIDEO: 50 积分
 
 ## 🤖 Agent 工具列表
 
-Agent 通过 Function Calling 调用以下工具操作项目（共 28 个工具）：
+Agent 通过 Function Calling 调用以下工具操作项目（共 27 个工具）：
 
 ### 查询类工具
 
@@ -148,7 +148,6 @@ Agent 通过 Function Calling 调用以下工具操作项目（共 28 个工具�
 | `batchGenerateProjectImages` | 批量生成项目图片 | `mode`, `gridSize`, `force` |
 | `generateCharacterThreeView` | 生成角色三视图 | `characterId`, `prompt`, `artStyle` |
 | `generateLocationImages` | 批量生成地点参考图 | `locationIds[]`, `model (jimeng/gemini)` |
-| `generateSingleImage` | 生成单张图片 (支持编辑) | `prompt`, `referenceImages[]` |
 
 ### 🎨 Gemini Image Editing (v3.5+)
 - **Pure Prompt Mode**: When editing an existing image (uploaded or history), the system automatically disables character/location context injection.
@@ -217,6 +216,16 @@ Agent 通过 Function Calling 调用以下工具操作项目（共 28 个工具�
 | **与 Gemini 直出类似** | 只添加 Grid 布局提示词，保持简单 |
 | **参考图限制** | 最多 10 张，每张最大 10MB，压缩后每张 4MB 预算 |
 | **不影响 Agent** | Agent 模式仍使用 `generateMultiViewGrid`（完整分镜描述） |
+| **Grid 历史记录** | 分镜级别 Grid 生成历史自动保存，支持刷新后查看 |
+
+### Pro 模式拖拽交互 (v3.8+)
+
+| 功能 | 说明 |
+|------|------|
+| **预览图 / Grid 切片拖拽** | 图片预览 Modal 或 Pro 模式生成的图片可直接拖拽到左侧分镜列表 |
+| **持久化策略** | 拖拽操作不仅更新前端 `referenceImage`，还会**同步写入**目标分镜的 `generationHistory` |
+| **反向拖拽** | 左侧分镜列表的缩略图可拖拽到 Pro 模式输入框，自动添加为参考图 |
+| **数据一致性** | 采用 Optimistic UI 更新 + 后台异步保存，确保刷新后历史记录不丢失 |
 
 ---
 
@@ -250,6 +259,9 @@ src/
 │   ├── credits.ts              # 积分配置
 │   └── users.ts                # 管理员名单
 ├── hooks/
+│   ├── chat/                   # 聊天面板逻辑 (v3.8 重构)
+│   │   ├── useChatHistory.ts   # 历史记录与 Sora 状态合并
+│   │   └── useAutoReference.ts # 引用管理与 At 检测
 │   ├── useAgent.ts             # Agent Hook (含防重复提交)
 │   ├── useSoraTaskManager.ts   # Sora 任务管理
 │   └── useAIStoryboard.ts      # AI 分镜生成
@@ -417,4 +429,13 @@ const results = await executor.execute(toolCalls);
     - 移除了首页过时的“灵感推荐”标签占位符。
 3. **基础设施**：
     - 修复了 `saveProject` 在仅更新元数据时可能因空关联数据触发的数据库约束错误 (500 Error)。
+
+### v3.8.0 更新日志
+1. **ChatPanel 重构与解耦**：
+    - 将 `ChatPanel.tsx` 核心逻辑拆分为 `useChatHistory` (历史记录管理) 和 `useAutoReference` (引用与 At 检测)。
+    - 大幅降低组件复杂度，提升可维护性和渲染性能。
+2. **双向拖拽支持**：
+    - **Pro -> Storyboard**: 支持将生成的 Grid/单图从预览视图直接拖拽到分镜卡片，并自动同步到该分镜的历史记录。
+    - **Storyboard -> Pro**: 支持将分镜列表中的缩略图拖拽到 Pro 聊天框，自动识别为参考图。
+
 

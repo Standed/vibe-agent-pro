@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Edit2, X, ImageIcon, Check, Plus, Loader2 } from 'lucide-react';
 import { Shot, ShotSize, CameraMovement, SHOT_SIZE_OPTIONS, CAMERA_MOVEMENT_OPTIONS } from '@/types/project';
 import { translateShotSize, translateCameraMovement } from '@/utils/translations';
+import DraggableImage from '@/components/shot/DraggableImage';
 
 
 interface ShotEditorProps {
@@ -213,12 +214,14 @@ export const ShotEditor: React.FC<ShotEditorProps> = ({
                                             </button>
                                         )}
                                         {shotHistoryImages.map((url, idx) => (
-                                            <div
+                                            <DraggableImage
                                                 key={`${url}_${idx}`}
+                                                imageUrl={url}
+                                                sourceType="history"
                                                 className={`group relative aspect-video bg-light-bg dark:bg-cine-black rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${selectedHistoryImage === url ? 'border-light-accent dark:border-cine-accent ring-2 ring-light-accent/10 dark:ring-cine-accent/10' : 'border-transparent hover:border-light-accent/30 dark:hover:border-cine-accent/30'}`}
                                                 onClick={() => setShotImagePreview(url)}
                                             >
-                                                <img src={url} alt={`history-${idx + 1}`} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                                                <img src={url} alt={`history-${idx + 1}`} className="w-full h-full object-cover transition-transform group-hover:scale-110" draggable={false} />
 
                                                 <button
                                                     onClick={(e) => {
@@ -233,7 +236,7 @@ export const ShotEditor: React.FC<ShotEditorProps> = ({
                                                 >
                                                     <Check size={12} />
                                                 </button>
-                                            </div>
+                                            </DraggableImage>
                                         ))}
                                     </div>
                                 )}
