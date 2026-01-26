@@ -378,6 +378,12 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Auth Middleware Refresh Token** - Auto-refresh expired access tokens
 - ✅ **SmartRecovery Fix** - Prevents infinite polling loop on page refresh
 
+### v3.8.3 (2026-01-27)
+- ✅ **R2 Presigned Uploads** - Implemented direct-to-R2 upload using Presigned URLs to bypass Vercel 4.5MB payload limit, fixing 413 errors for large Grid images.
+- ✅ **Chat Message Deletion** - Added ability to delete chat messages in Pro Mode (Soft delete, preserving referenced R2 files).
+- ✅ **UI Refinement** - Enhanced Chat Bubble UI with hover-visible actions and refined iconography.
+- ✅ **Linting Fixes** - Fixed React Hook dependencies in Chat History management.
+
 ### v3.8.2 (2026-01-27)
 - ✅ **Server-side Image Compression** - All API routes (gemini-grid, gemini-image, jimeng) now use sharp to compress reference images to max 2048px JPEG
 - ✅ **Payload Size Fix** - Prevents "请求载荷过大 (5MB+)" errors when using high-resolution images as references

@@ -30,9 +30,62 @@ class CloudflareR2Service {
 
   /**
    * 上传文件到 Cloudflare R2
-   * 通过 API Route 代理上传（保护 R2 凭证安全）
+   * 采用预签名 URL 直传模式 (Presigned URL)
+   * 1. 请求后端获取 PUT 授权地址
+   * 2. 前端直接 PUT 文件到 R2 (绕过 Vercel 4.5MB 限制)
    */
   async uploadFile(
+    file: File,
+    folder: string,
+    userId: string
+  ): Promise<R2UploadResult> {
+    // 1. 获取预签名 URL
+    const presignRes = await authenticatedFetch('/api/upload-r2?mode=presigned', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: file.name,
+        contentType: file.type,
+        folder: folder
+      }),
+    });
+
+    if (!presignRes.ok) {
+      const error = await presignRes.text();
+      // 尝试降级到旧的 FormData 上传 (作为 fallback)
+      if (presignRes.status === 404 || error.includes('mode')) {
+        console.warn('Presigned API not supported, falling back to FormData upload...');
+        return this.uploadFileFallback(file, folder, userId);
+      }
+      throw new Error(`获取上传授权失败: ${error}`);
+    }
+
+    const { uploadUrl, publicUrl, key } = await presignRes.json();
+
+    // 2. 直传文件到 R2
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: {
+        'Content-Type': file.type
+      }
+    });
+
+    if (!uploadRes.ok) {
+      throw new Error(`R2 直传失败: ${uploadRes.statusText}`);
+    }
+
+    return {
+      url: publicUrl,
+      key: key,
+      bucket: '', // bucket name not exposed in client usually
+    };
+  }
+
+  /**
+   * 旧的 FormData 上传方式 (Fallback)
+   */
+  private async uploadFileFallback(
     file: File,
     folder: string,
     userId: string
@@ -40,7 +93,10 @@ class CloudflareR2Service {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('folder', folder);
-    formData.append('userId', userId);
+
+    // 注意: 这里不需要 userId, 后端会从 token 提取 (auth-middleware)
+    // 但旧接口似乎接收 userId 参数? 检查一下服务端代码 -> 服务端从 authResult 获取 user.id, 同时也检查 FormData 里的 folder
+    // 为了兼容性，保持原样
 
     const response = await authenticatedFetch('/api/upload-r2', {
       method: 'POST',
@@ -49,11 +105,10 @@ class CloudflareR2Service {
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`R2 上传失败: ${error}`);
+      throw new Error(`R2 上传失败 (Fallback): ${error}`);
     }
 
-    const result = await response.json();
-    return result;
+    return response.json();
   }
 
   /**

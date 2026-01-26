@@ -498,5 +498,18 @@ const results = await executor.execute(toolCalls);
 
 ---
 
+### v3.8.3 更新日志
+1. **R2 直传架构 (Presigned URL)**：
+    - 重构了底层 R2 上传逻辑，采用预签名 URL (Presigned URL) 模式。
+    - 前端直接 PUT 文件到 R2 存储桶，绕过 Vercel Serverless Function 的 4.5MB 请求体限制。
+    - 彻底解决了 Pro 模式下生成高分辨率 Grid 图片 (9MB+) 无法上传的问题 (413 Payload Too Large)。
+2. **Pro 模式功能增强**：
+    - **聊天记录删除**：新增聊天消息删除功能 (软删除)，只删除数据库记录，保留 R2 文件以防止死链。
+    - **UI 优化**：使用精致的 Trash2 图标替代文本按钮，增加了悬停反馈和二次确认机制。
+3. **代码质量**：
+    - 修复了 `useChatHistory` Hook 的 ESLint 依赖警告，提升了代码稳定性。
+
+---
+
 **最后更新**: 2026-01-27
-**版本**: v3.8.2 (服务端图片压缩 + 可靠性修复)
+**版本**: v3.8.3 (R2 直传架构 + Pro 模式增强)

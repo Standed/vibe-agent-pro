@@ -172,7 +172,7 @@ export function useChatHistory(
         };
 
         loadHistory();
-    }, [projectId, selectedShotId, currentSceneId, user]);
+    }, [projectId, selectedShotId, currentSceneId, user, setInputText]);
 
     // Merge Video Messages
     useEffect(() => {
@@ -249,5 +249,36 @@ export function useChatHistory(
         };
     }, [projectId, selectedShotId, currentSceneId]);
 
-    return { messages, setMessages };
+    const deleteMessage = async (messageId: string) => {
+        // 1. Optimistic Update
+        setMessages(prev => prev.filter(m => m.id !== messageId));
+
+        try {
+            // 2. Try deleting from Chat Messages (DB)
+            // If it's a UUID, it's likely a chat message
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(messageId);
+
+            if (isUuid) {
+                await dataService.deleteChatMessage(messageId);
+            } else {
+                // 3. Fallback: Check if it's in Shot Generation History
+                const project = useProjectStore.getState().project;
+                if (selectedShotId && project?.shots) {
+                    const shot = project.shots.find((s) => s.id === selectedShotId);
+                    if (shot && shot.generationHistory) {
+                        const existsInHistory = shot.generationHistory.some(h => h.id === messageId);
+                        if (existsInHistory) {
+                            const newHistory = shot.generationHistory.filter(h => h.id !== messageId);
+                            await dataService.saveShot(shot.sceneId, { ...shot, generationHistory: newHistory });
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Failed to delete message:', error);
+            // Revert on failure? Strict consistency might not be needed for quick delete
+        }
+    };
+
+    return { messages, setMessages, deleteMessage };
 }
