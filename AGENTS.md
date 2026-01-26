@@ -226,6 +226,26 @@ Agent 通过 Function Calling 调用以下工具操作项目（共 27 个工具�
 | **持久化策略** | 拖拽操作不仅更新前端 `referenceImage`，还会**同步写入**目标分镜的 `generationHistory` |
 | **反向拖拽** | 左侧分镜列表的缩略图可拖拽到 Pro 模式输入框，自动添加为参考图 |
 | **数据一致性** | 采用 Optimistic UI 更新 + 后台异步保存，确保刷新后历史记录不丢失 |
+| **文件拖拽** | 支持直接从文件系统拖拽图片到 Pro 输入框 (`NativeTypes.FILE`) |
+
+### Pro 模式生成架构 (v3.8.1)
+
+| 组件/Hook | 职责 |
+|-----------|------|
+| `useChatGeneration` | 核心生成 Hook：消息发送、参考图预上传 (带压缩)、乐观更新、后台 R2 上传 |
+| `useChatHistory` | 历史记录管理：加载/保存聊天消息、Sora 视频状态合并 |
+| `useAutoReference` | 引用管理：`@` 提及检测、自动添加角色/地点参考图、拖拽状态处理 |
+| `ChatPanel.tsx` | 纯 UI 组件：渲染消息列表、输入框、拖拽区域 |
+
+**参考图上传流程 (v3.8.1)**:
+1. 用户选择/拖拽图片 → 添加到 `uploadedImages` 状态
+2. 点击发送 → `useChatGeneration.handleSend()` 触发
+3. 图片压缩 (`compressFileToBase64`) → 2048px JPEG
+4. 并发上传到 R2 → 获得 URL 列表
+5. URL 列表传入 `geminiService` → API Route 服务端拉取图片
+6. 生成结果 (Base64) 立即上屏 (乐观更新)
+7. 后台异步上传结果到 R2 → 更新消息为持久化 URL
+
 
 ---
 
@@ -438,4 +458,19 @@ const results = await executor.execute(toolCalls);
     - **Pro -> Storyboard**: 支持将生成的 Grid/单图从预览视图直接拖拽到分镜卡片，并自动同步到该分镜的历史记录。
     - **Storyboard -> Pro**: 支持将分镜列表中的缩略图拖拽到 Pro 聊天框，自动识别为参考图。
 
+### v3.8.1 更新日志
+1. **Pro Mode 架构重构**：
+    - 新增 `useChatGeneration` Hook，将消息发送、图片上传、生成状态管理等核心逻辑从 `ChatPanel.tsx` 中解耦。
+    - 实现**乐观更新模式**：生成结果立即上屏 (Base64)，后台静默上传 R2。
+    - 实现**参考图 R2 预上传**：本地参考图先压缩上传到 R2，再传 URL 给 API。
+2. **前端图片压缩**：
+    - 集成 `compressFileToBase64`，所有上传图片自动压缩为 2048px JPEG。
+3. **后端 API Route 优化**：
+    - 支持从 URL 拉取图片，载荷限制放宽至 20MB，新增 15s 超时保护。
+4. **拖拽修复**：
+    - 统一处理分镜拖拽和文件拖拽，修复 `ignoredUrls` 状态问题。
 
+---
+
+**最后更新**: 2026-01-27
+**版本**: v3.8.1 (Pro Mode 架构重构 + 图片压缩优化)

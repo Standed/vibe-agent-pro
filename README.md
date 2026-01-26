@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-3.6.0-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-3.8.1-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -358,6 +358,12 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Latest-Video API Optimization** - Pure read-only, no more R2 upload delays
 - ✅ **Auth Middleware Refresh Token** - Auto-refresh expired access tokens
 - ✅ **SmartRecovery Fix** - Prevents infinite polling loop on page refresh
+
+### v3.8.1 (2026-01-27)
+- ✅ **Pro Mode Refactor** - New `useChatGeneration` hook for message/upload logic
+- ✅ **Image Compression** - Auto-compress uploads to 2048px JPEG before R2 upload
+- ✅ **Backend Optimization** - API routes fetch images from URL, 20MB limit, 15s timeout
+- ✅ **Drag Fix** - Unified handling for shot drag and file drag
 
 ### v3.8.0 (2026-01-27)
 - ✅ **Bidirectional Drag-Drop** - Drag generated images to Storyboard shots (with history sync) & Drag shots to Pro chat as references
