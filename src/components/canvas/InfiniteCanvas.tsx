@@ -184,8 +184,8 @@ export default function InfiniteCanvas() {
     if (shot) {
       // 1. 设置生成请求，包含场景上下文
       const scene = project?.scenes.find(s => s.id === shot.sceneId);
-      const sceneContext = scene?.description ? `\n场景环境: ${scene.description}` : '';
-      const fullPrompt = `镜头画面: ${shot.description || ''}${sceneContext}`;
+      const sceneContext = scene?.description ? `\n${scene.description}` : '';
+      const fullPrompt = `${shot.description || ''}${sceneContext}`;
 
       useProjectStore.getState().setGenerationRequest({
         prompt: fullPrompt,

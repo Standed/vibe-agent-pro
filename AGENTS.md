@@ -486,9 +486,12 @@ const results = await executor.execute(toolCalls);
     - **上传重试**：R2 上传失败自动重试 (5次，指数退避)，失败降级为 Base64 显示。
     - **防刷新保护**：生成/上传期间阻止页面关闭，防止 Base64 数据丢失。
     - **场景 Grid 修复**：修复 Scene 模式下 Grid 历史未保存的问题。
-3. **Favicon 支持**：
+3. **体验优化 (UX)**：
+    - **视图同步**：URL 参数 (`?view=`) 现与界面视图实时同步，解决刷新后视图重置或卡死在 Planning 视图的问题。
+    - **提示词净化**：移除生成逻辑中所有冗余标签前缀（如"景别："、"镜头画面:"），直接使用纯文本描述。
+4. **Favicon 支持**：
     - 添加 `favicon.png` 和 `apple-touch-icon.png`，浏览器标签页显示 logo。
-4. **项目结构重组**：
+5. **项目结构重组**：
     - Components 目录合并：input/pro → chat, navigation/settings → layout
     - Hooks 按功能分组：agent/, chat/, generation/, sora/
     - Scripts 整理：测试脚本移入 test/ 目录
