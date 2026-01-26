@@ -378,6 +378,15 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Auth Middleware Refresh Token** - Auto-refresh expired access tokens
 - ✅ **SmartRecovery Fix** - Prevents infinite polling loop on page refresh
 
+### v3.8.2 (2026-01-27)
+- ✅ **Server-side Image Compression** - All API routes (gemini-grid, gemini-image, jimeng) now use sharp to compress reference images to max 2048px JPEG
+- ✅ **Payload Size Fix** - Prevents "请求载荷过大 (5MB+)" errors when using high-resolution images as references
+- ✅ **R2 Upload Resilience** - Added exponential backoff retry (up to 5 times) for R2 uploads
+- ✅ **Data Safety** - Added page unload warning during generation/upload to prevent data loss
+- ✅ **Scene Grid Persistence** - Fixed bug where Grid generated in Scene mode wasn't saved to history
+- ✅ **Favicon Support** - Added favicon.png and apple-touch-icon.png for browser tab icons
+- ✅ **Project Structure Reorganization** - Merged components (input/pro → chat, navigation/settings → layout), organized hooks into functional groups
+
 ### v3.8.1 (2026-01-27)
 - ✅ **Pro Mode Refactor** - New `useChatGeneration` hook for message/upload logic
 - ✅ **Image Compression** - Auto-compress uploads to 2048px JPEG before R2 upload

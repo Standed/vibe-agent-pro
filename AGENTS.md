@@ -478,7 +478,22 @@ const results = await executor.execute(toolCalls);
 4. **拖拽修复**：
     - 统一处理分镜拖拽和文件拖拽，修复 `ignoredUrls` 状态问题。
 
+### v3.8.2 更新日志
+1. **服务端图片压缩**：
+    - 所有 API 路由 (gemini-grid, gemini-image, jimeng) 使用 sharp 压缩参考图至 2048px JPEG。
+    - 解决了"请求载荷过大 (5MB+)"错误，5MB 的 4K 图片压缩到约 500KB。
+2. **数据可靠性增强**：
+    - **上传重试**：R2 上传失败自动重试 (5次，指数退避)，失败降级为 Base64 显示。
+    - **防刷新保护**：生成/上传期间阻止页面关闭，防止 Base64 数据丢失。
+    - **场景 Grid 修复**：修复 Scene 模式下 Grid 历史未保存的问题。
+3. **Favicon 支持**：
+    - 添加 `favicon.png` 和 `apple-touch-icon.png`，浏览器标签页显示 logo。
+4. **项目结构重组**：
+    - Components 目录合并：input/pro → chat, navigation/settings → layout
+    - Hooks 按功能分组：agent/, chat/, generation/, sora/
+    - Scripts 整理：测试脚本移入 test/ 目录
+
 ---
 
 **最后更新**: 2026-01-27
-**版本**: v3.8.1 (Pro Mode 架构重构 + 图片压缩优化)
+**版本**: v3.8.2 (服务端图片压缩 + 可靠性修复)

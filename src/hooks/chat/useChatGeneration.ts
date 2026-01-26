@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { compressFileToBase64 } from '@/utils/imageCompression';
 import { toast } from 'sonner';
 import { useProjectStore } from '@/store/useProjectStore';
@@ -33,6 +33,48 @@ interface UseChatGenerationProps {
     setDroppedReferences: (refs: ActiveReference[]) => void;
 }
 
+/**
+ * Upload Base64 image to R2 with retry mechanism
+ * Retries up to 5 times with exponential backoff (3s, 6s, 12s, 24s, 48s)
+ * On failure, returns original Base64 data URL so user can still view the image
+ */
+const uploadWithRetry = async (
+    base64DataUrl: string,
+    folder: string,
+    userId: string,
+    maxRetries = 5
+): Promise<string> => {
+    // If not a base64 data URL, return as-is
+    if (!base64DataUrl.startsWith('data:')) {
+        return base64DataUrl;
+    }
+
+    const base64Data = base64DataUrl.split(',')[1];
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            const r2Url = await storageService.uploadBase64ToR2(base64Data, folder, undefined, userId);
+            if (attempt > 0) {
+                console.log(`[uploadWithRetry] ✅ R2 上传成功 (重试 ${attempt} 次后)`);
+            }
+            return r2Url;
+        } catch (error: any) {
+            lastError = error;
+            const delay = 3000 * Math.pow(2, attempt); // 3s, 6s, 12s, 24s, 48s
+            console.warn(`[uploadWithRetry] ⚠️ R2 上传失败 (第 ${attempt + 1}/${maxRetries} 次)，${delay / 1000}s 后重试...`, error.message);
+
+            if (attempt < maxRetries - 1) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+
+    // All retries failed - return original Base64 so user can still view the image
+    console.error('[uploadWithRetry] ❌ R2 上传最终失败，使用 Base64 作为临时图片', lastError);
+    return base64DataUrl;
+};
+
 export function useChatGeneration({
     project,
     user,
@@ -45,7 +87,22 @@ export function useChatGeneration({
     setDroppedReferences
 }: UseChatGenerationProps) {
     const [isGenerating, setIsGenerating] = useState(false);
-    const { updateShot } = useProjectStore();
+    const [isUploading, setIsUploading] = useState(false);
+    const { updateShot, addGridHistory } = useProjectStore();
+
+    // Prevent page unload during generation/upload
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (isGenerating || isUploading) {
+                e.preventDefault();
+                e.returnValue = '图片正在生成或上传中，离开页面可能会导致数据丢失。';
+                return e.returnValue;
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [isGenerating]);
 
     const handleSend = async (
         inputText: string,
@@ -227,17 +284,13 @@ export function useChatGeneration({
             // 8. Background R2 Upload & Persistence
             // Fire and forget promise chain
             (async () => {
+                setIsUploading(true);
                 try {
                     const uploadedResultImages: string[] = [];
-                    // Upload main result images
+                    // Upload main result images with retry
                     for (const img of resultImages) {
-                        if (img.startsWith('data:')) {
-                            const base64Data = img.split(',')[1];
-                            const r2Url = await storageService.uploadBase64ToR2(base64Data, `generated/${user.id}`, undefined, user.id);
-                            uploadedResultImages.push(r2Url);
-                        } else {
-                            uploadedResultImages.push(img);
-                        }
+                        const uploadedUrl = await uploadWithRetry(img, `generated/${user.id}`, user.id);
+                        uploadedResultImages.push(uploadedUrl);
                     }
 
                     // Update Grid Data if needed
@@ -251,16 +304,11 @@ export function useChatGeneration({
                         // We uploaded fullImage in the loop above (index 0).
                         const uploadedFullImage = uploadedResultImages[0];
 
-                        // Upload slices if they aren't the same as resultImages
+                        // Upload slices with retry
                         const uploadedSlices: string[] = [];
                         for (const slice of gridData.slices) {
-                            if (slice.startsWith('data:')) {
-                                const base64Data = slice.split(',')[1];
-                                const r2Url = await storageService.uploadBase64ToR2(base64Data, `generated/${user.id}/slices`, undefined, user.id);
-                                uploadedSlices.push(r2Url);
-                            } else {
-                                uploadedSlices.push(slice);
-                            }
+                            const uploadedUrl = await uploadWithRetry(slice, `generated/${user.id}/slices`, user.id);
+                            uploadedSlices.push(uploadedUrl);
                         }
 
                         uploadedGridData = {
@@ -306,9 +354,24 @@ export function useChatGeneration({
                             } : undefined,
                             referenceImages: allRefUrls
                         },
-                        createdAt: assistantMessage.timestamp,
                         updatedAt: assistantMessage.timestamp,
+                        createdAt: assistantMessage.timestamp,
                     });
+
+                    // Save to Scene History (if Scene Mode Grid)
+                    if (!selectedShotId && currentSceneIdCaptured && uploadedGridData) {
+                        // We are in Scene Mode + Grid
+                        addGridHistory(currentSceneIdCaptured, {
+                            id: `grid_${Date.now()}`,
+                            timestamp: new Date(),
+                            fullGridUrl: uploadedGridData.fullImage,
+                            slices: uploadedGridData.slices,
+                            gridSize: uploadedGridData.gridSize,
+                            prompt: uploadedGridData.prompt,
+                            aspectRatio: uploadedGridData.aspectRatio as AspectRatio,
+                            // assignments will be empty initially
+                        });
+                    }
 
                     // Save to Shot History (if Shot Mode Grid)
                     if (selectedShotId && selectedModel === 'gemini-grid' && !uploadedGridData) {
@@ -350,6 +413,8 @@ export function useChatGeneration({
                 } catch (err) {
                     console.error("Background upload failed", err);
                     toast.error("图片上传到服务器失败，但您可以继续浏览");
+                } finally {
+                    setIsUploading(false);
                 }
             })();
 
@@ -362,7 +427,7 @@ export function useChatGeneration({
     };
 
     return {
-        isGenerating,
+        isGenerating: isGenerating || isUploading, // Merge status for UI
         setIsGenerating,
         handleSend
     };
