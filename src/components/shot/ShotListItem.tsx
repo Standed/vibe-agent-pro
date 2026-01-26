@@ -1,9 +1,13 @@
 'use client';
 
+import { useRef } from 'react';
+import { useDrag, useDrop } from 'react-dnd';
 import { Film, Trash2, Sparkles } from 'lucide-react';
 import Image from 'next/image';
 import type { Shot } from '@/types/project';
 import { translateShotSize } from '@/utils/translations';
+import { IMAGE_TO_SHOT_TYPE } from './DraggableShot';
+import { SHOT_TO_CHAT } from '@/components/chat/dragTypes';
 
 interface ShotListItemProps {
   shot: Shot;
@@ -13,6 +17,7 @@ interface ShotListItemProps {
   onEdit?: () => void;
   label?: string;
   onImageClick?: () => void;
+  onImageDrop?: (shotId: string, imageUrl: string) => void;
 }
 
 export default function ShotListItem({
@@ -23,12 +28,41 @@ export default function ShotListItem({
   onEdit,
   label,
   onImageClick,
+  onImageDrop,
 }: ShotListItemProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  const [{ isOver, canDrop }, drop] = useDrop({
+    accept: IMAGE_TO_SHOT_TYPE,
+    drop: (item: { imageUrl: string }) => {
+      if (onImageDrop) {
+        onImageDrop(shot.id, item.imageUrl);
+      }
+    },
+    collect: (monitor) => ({
+      isOver: monitor.isOver(),
+      canDrop: monitor.canDrop(),
+    }),
+  });
+
+  const [{ isDragging }, drag] = useDrag({
+    type: SHOT_TO_CHAT,
+    item: { imageUrl: shot.referenceImage, source: 'shot_list' },
+    canDrag: !!shot.referenceImage,
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
+
+  drop(ref);
   return (
     <div
-      className={`relative rounded-xl transition-all duration-300 group/item ${isSelected
-        ? 'bg-light-accent/10 dark:bg-cine-accent/10 ring-2 ring-light-accent dark:ring-cine-accent shadow-[0_0_20px_rgba(168,85,247,0.15)]'
-        : 'glass-card hover:border-light-accent/30 dark:hover:border-cine-accent/30 hover:shadow-lg hover:-translate-y-0.5'
+      ref={ref}
+      className={`relative rounded-xl transition-all duration-300 group/item ${isOver && canDrop
+        ? 'bg-green-500/10 ring-2 ring-green-500 border-green-500 z-10 scale-[1.02]'
+        : isSelected
+          ? 'bg-light-accent/10 dark:bg-cine-accent/10 ring-2 ring-light-accent dark:ring-cine-accent shadow-[0_0_20px_rgba(168,85,247,0.15)]'
+          : 'glass-card hover:border-light-accent/30 dark:hover:border-cine-accent/30 hover:shadow-lg hover:-translate-y-0.5'
         }`}
     >
       {/* Shot Content - Clickable */}
@@ -36,7 +70,8 @@ export default function ShotListItem({
         <div className="flex items-start gap-3">
           {/* Thumbnail */}
           <div
-            className="w-16 h-16 flex-shrink-0 bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden border border-light-border/50 dark:border-cine-border/50 shadow-sm relative group/image cursor-pointer"
+            ref={drag as any}
+            className={`w-16 h-16 flex-shrink-0 bg-light-bg dark:bg-cine-black rounded-lg overflow-hidden border border-light-border/50 dark:border-cine-border/50 shadow-sm relative group/image cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-50' : ''}`}
             onClick={(e) => {
               e.stopPropagation();
               onImageClick?.();
