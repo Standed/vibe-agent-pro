@@ -549,6 +549,7 @@ src/
 - **逻辑抽离**：将状态管理、副作用 (useEffect)、事件处理抽离到 `src/hooks/`
 - **UI 纯粹化**：组件本体主要负责 JSX 渲染和 Context 传递
 - **示例**：
+  - `useChatGeneration` (v3.8.1): 核心生成逻辑 - 消息发送、参考图压缩上传、乐观更新、后台 R2 上传
   - `useChatHistory`: 管理消息列表、Sora 视频合并、历史记录加载
   - `useAutoReference`: 管理 `@` 提及、参考图自动检测、拖拽状态
 
