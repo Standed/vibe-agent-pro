@@ -286,30 +286,26 @@ export function useChatGeneration({
             (async () => {
                 setIsUploading(true);
                 try {
-                    const uploadedResultImages: string[] = [];
-                    // Upload main result images with retry
-                    for (const img of resultImages) {
-                        const uploadedUrl = await uploadWithRetry(img, `generated/${user.id}`, user.id);
-                        uploadedResultImages.push(uploadedUrl);
-                    }
+                    // Parallel Upload: Result Images
+                    const uploadedResultImages = await Promise.all(
+                        resultImages.map(img => uploadWithRetry(img, `generated/${user.id}`, user.id))
+                    );
 
                     // Update Grid Data if needed
                     let uploadedGridData = gridData;
                     if (gridData) {
-                        // If we have grid data, we need to ensure fullImage and slices are uploaded
-                        // Note: If resultImages was [fullImage], it's already uploaded above.
-                        // But slices inside gridData might need uploading if they act as source of truth.
-                        // For Scene Mode, resultImages = [fullImage].
+                        // Parallel Upload: Grid Slices
+                        // Note: If resultImages = [fullImage], it's already uploaded above.
+                        // We need to upload slices separately.
 
-                        // We uploaded fullImage in the loop above (index 0).
+                        // We uploaded fullImage in the uploadedResultImages above (index 0).
                         const uploadedFullImage = uploadedResultImages[0];
 
-                        // Upload slices with retry
-                        const uploadedSlices: string[] = [];
-                        for (const slice of gridData.slices) {
-                            const uploadedUrl = await uploadWithRetry(slice, `generated/${user.id}/slices`, user.id);
-                            uploadedSlices.push(uploadedUrl);
-                        }
+                        const uploadedSlices = await Promise.all(
+                            gridData.slices.map(slice =>
+                                uploadWithRetry(slice, `generated/${user.id}/slices`, user.id)
+                            )
+                        );
 
                         uploadedGridData = {
                             ...gridData,
@@ -427,8 +423,9 @@ export function useChatGeneration({
     };
 
     return {
-        isGenerating: isGenerating || isUploading, // Merge status for UI
+        isGenerating, // Decoupled from isUploading to avoid UI blocking
         setIsGenerating,
-        handleSend
+        handleSend,
+        isUploading // Expose uploading state if UI wants to show non-blocking indicator
     };
 }

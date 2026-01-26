@@ -498,6 +498,16 @@ const results = await executor.execute(toolCalls);
 
 ---
 
+### v3.8.4 更新日志
+1. **R2 上传并发优化**：
+    - 将 Grid 切片和结果图片的上传逻辑从串行改为并行 (Parallel / Promise.all)。
+    - 大幅缩短了多图生成后的等待时间 (30s+ -> ~8s)。
+2. **UI 交互优化**：
+    - 解耦了 "生成中" (Thinking) 与 "上传中" (Saving) 的状态。
+    - AI 生成完成后立即结束 Loading 动画，允许用户立即查看和操作图片 (Optimistic UI)，后台静默完成持久化。
+
+---
+
 ### v3.8.3 更新日志
 1. **R2 直传架构 (Presigned URL)**：
     - 重构了底层 R2 上传逻辑，采用预签名 URL (Presigned URL) 模式。
