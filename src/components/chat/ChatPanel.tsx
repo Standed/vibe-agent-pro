@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useDrop } from 'react-dnd';
+import { NativeTypes } from 'react-dnd-html5-backend';
 import { createPortal } from 'react-dom';
 import { SHOT_TO_CHAT } from './dragTypes';
 import { useProjectStore } from '@/store/useProjectStore';
@@ -11,6 +12,7 @@ import { toast } from 'sonner';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
 import { GridSliceSelector } from '@/components/ui/GridSliceSelector';
+import { useChatGeneration } from '@/hooks/chat/useChatGeneration';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { formatShotLabel } from '@/utils/shotOrder';
 import { ImagePreviewOverlay } from './ImagePreviewOverlay';
@@ -53,13 +55,22 @@ export default function ChatPanel() {
 
     const { user } = useAuth();
 
+    // Derived State (Moved up for hooks dependency)
+    const shots = project?.shots || [];
+    const scenes = project?.scenes || [];
+    const selectedShot = shots.find((s) => s.id === selectedShotId);
+    const selectedScene = scenes.find((s) => s.id === (selectedShot?.sceneId || currentSceneId));
+    const selectedShotLabel = selectedShot ? formatShotLabel(selectedScene?.order, selectedShot.order, selectedShot.globalOrder) : undefined;
+    const projectId = project?.id || 'default';
+
     // State
     const [inputText, setInputText] = useState('');
     const [selectedModel, setSelectedModel] = useState<GenerationModel>('gemini-grid');
     const [uploadedImages, setUploadedImages] = useState<File[]>([]);
-    const [isGenerating, setIsGenerating] = useState(false);
+
     const [manualReferenceUrls, setManualReferenceUrls] = useState<string[]>([]);
     const [geminiImageSize, setGeminiImageSize] = useState<'2K' | '4K'>('2K');
+    const [droppedReferences, setDroppedReferences] = useState<ActiveReference[]>([]);
 
     // Use Custom Hook for Chat History Logic
     const { messages, setMessages } = useChatHistory(
@@ -84,7 +95,8 @@ export default function ChatPanel() {
         selectedShotId,
         inputText,
         setInputText,
-        manualReferenceUrls
+        manualReferenceUrls,
+        droppedReferences
     );
 
     // Grid specific
@@ -94,6 +106,20 @@ export default function ChatPanel() {
         shotId?: string;
         currentSliceIndex?: number;
     } | null>(null);
+
+    const { isGenerating, setIsGenerating, handleSend } = useChatGeneration({
+        project,
+        user,
+        selectedShotId,
+        currentSceneId: currentSceneId || (selectedShot ? selectedShot.sceneId : null),
+        setMessages,
+        setInputText,
+        setUploadedImages,
+        setManualReferenceUrls,
+        setDroppedReferences
+    });
+
+
 
     // Preview State
     const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -125,13 +151,9 @@ export default function ChatPanel() {
     // Refs
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // Derived State
-    const shots = project?.shots || [];
-    const scenes = project?.scenes || [];
-    const selectedShot = shots.find((s) => s.id === selectedShotId);
-    const selectedScene = scenes.find((s) => s.id === (selectedShot?.sceneId || currentSceneId));
-    const selectedShotLabel = selectedShot ? formatShotLabel(selectedScene?.order, selectedShot.order, selectedShot.globalOrder) : undefined;
-    const projectId = project?.id || 'default';
+
+
+
 
     // Handle Generation Request from other components (e.g. Storyboard)
     useEffect(() => {
@@ -190,44 +212,7 @@ export default function ChatPanel() {
         }
     };
 
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-    };
 
-    const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            const files = Array.from(e.dataTransfer.files);
-            const MAX_IMAGES = 10;
-            const MAX_SIZE_PER_IMAGE = 10 * 1024 * 1024;  // 10MB per image
-
-            // 检查数量限制
-            if (uploadedImages.length + files.length > MAX_IMAGES) {
-                toast.error(`最多只能上传 ${MAX_IMAGES} 张参考图`);
-                return;
-            }
-
-            const validFiles = files.filter(file => {
-                if (!file.type.startsWith('image/')) {
-                    toast.error(`文件 ${file.name} 不是图片`);
-                    return false;
-                }
-                if (file.size > MAX_SIZE_PER_IMAGE) {
-                    toast.error(`文件 ${file.name} 超过 10MB 限制`);
-                    return false;
-                }
-                return true;
-            });
-
-            if (validFiles.length > 0) {
-                setUploadedImages((prev) => [...prev, ...validFiles]);
-                toast.success(`已添加 ${validFiles.length} 张图片`);
-            }
-        }
-    };
 
     const removeUploadedImage = (index: number) => {
         setUploadedImages((prev) => prev.filter((_, i) => i !== index));
@@ -235,238 +220,7 @@ export default function ChatPanel() {
 
 
 
-    const handleSend = async () => {
-        if ((!inputText.trim() && uploadedImages.length === 0) || isGenerating || !user || !project) return;
-
-        const currentShotId = selectedShotId || null;
-        const currentSceneIdCaptured = currentSceneId || (selectedShot ? selectedShot.sceneId : null);
-        const contextKey = currentShotId ? `pro-chat:${projectId}:shot:${currentShotId}` : currentSceneIdCaptured ? `pro-chat:${projectId}:scene:${currentSceneIdCaptured}` : `pro-chat:${projectId}:global`;
-
-        // Capture active references
-        const activeRefUrls = activeReferences.map(r => r.url);
-
-        const userMsgId = generateMessageId();
-        const userMessage: ChatPanelMessage = {
-            id: userMsgId,
-            role: 'user',
-            content: inputText,
-            timestamp: new Date(),
-            // Display ALL images (uploaded + active refs)
-            images: [
-                ...uploadedImages.map(f => URL.createObjectURL(f)),
-                ...activeRefUrls
-            ],
-            shotId: currentShotId || undefined,
-            sceneId: currentSceneIdCaptured || undefined,
-        };
-        setMessages(prev => [...prev, userMessage]);
-        setInputText('');
-        setUploadedImages([]);
-        setManualReferenceUrls([]); // Clear manual refs
-        setIsGenerating(true);
-
-        let uploadedUrls: string[] = [];
-        if (uploadedImages.length > 0) {
-            try {
-                const uploadPromises = uploadedImages.map(async file => {
-                    return storageService.uploadFile(file, `chat-uploads/${user.id}`, user.id);
-                });
-                const results = await Promise.all(uploadPromises);
-                uploadedUrls = results.map(r => r.url);
-            } catch (error) {
-                console.error("Failed to upload images", error);
-                toast.error("图片上传失败");
-                setIsGenerating(false);
-                return;
-            }
-        }
-
-        const allRefUrls = [...activeRefUrls, ...uploadedUrls];
-
-        try {
-            await dataService.saveChatMessage({
-                id: userMsgId,
-                userId: user.id,
-                projectId: project.id,
-                scope: currentShotId ? 'shot' : currentSceneIdCaptured ? 'scene' : 'project',
-                shotId: currentShotId || undefined,
-                sceneId: currentSceneIdCaptured || undefined,
-                role: 'user',
-                content: userMessage.content,
-                timestamp: userMessage.timestamp,
-                metadata: { images: allRefUrls }, // Save ALL images
-                createdAt: userMessage.timestamp,
-                updatedAt: userMessage.timestamp,
-            });
-        } catch (e) {
-            console.error("Failed to save user message", e);
-        }
-
-        try {
-            if (selectedModel === 'sora-video') {
-                await generateSoraVideo(
-                    userMessage.content,
-                    uploadedUrls,
-                    activeRefUrls,
-                    currentShotId || undefined,
-                    currentSceneIdCaptured || undefined
-                );
-            } else if (selectedModel === 'jimeng') {
-                const hasBaseImage = activeReferences.some(r => r.source === 'manual_upload' || r.source === 'history_ref') || uploadedImages.length > 0;
-                await jimengGeneration.generateImage(
-                    userMessage.content,
-                    currentShotId,
-                    currentSceneIdCaptured,
-                    contextKey,
-                    allRefUrls,
-                    false,
-                    { onlyExtractRefs: hasBaseImage }
-                );
-            } else {
-                const selectedShot = project.shots.find(s => s.id === selectedShotId);
-
-                // Smart detection: If user provided a base image (upload or history ref), 
-                // treat as editing/in-painting and skip verbose context enrichment.
-                const hasBaseImage = activeReferences.some(r => r.source === 'manual_upload' || r.source === 'history_ref') || uploadedImages.length > 0;
-
-                const { enrichedPrompt } = enrichPromptWithAssets(userMessage.content, project, selectedShot?.description, { onlyExtractRefs: hasBaseImage });
-
-                // activeRefUrls and allRefUrls are already defined above
-
-                const referenceImagesData = await urlsToReferenceImages(allRefUrls);
-                let resultImages: string[] = [];
-                let gridData: ChatPanelMessage['gridData'] | undefined;
-
-                if (selectedModel === 'gemini-grid') {
-                    const rows = gridSize === '3x3' ? 3 : 2;
-                    const cols = gridSize === '3x3' ? 3 : 2;
-                    const projectAspectRatio = project.settings?.aspectRatio || AspectRatio.WIDE;
-                    // Pro 模式使用简化版 Grid（不包含复杂分镜逻辑）
-                    const res = await generateSimpleGrid(enrichedPrompt, rows, cols, projectAspectRatio, referenceImagesData);
-                    resultImages = [res.fullImage];
-                    gridData = {
-                        fullImage: res.fullImage,
-                        slices: res.slices,
-                        gridRows: rows,
-                        gridCols: cols,
-                        gridSize: gridSize,
-                        prompt: enrichedPrompt,
-                        aspectRatio: projectAspectRatio,
-                        sceneId: currentSceneIdCaptured || undefined
-                    };
-                } else if (selectedModel === 'gemini-direct') {
-                    const res = await generateSingleImage(enrichedPrompt, project.settings?.aspectRatio || AspectRatio.WIDE, referenceImagesData, geminiImageSize);
-                    resultImages = [res];
-                }
-
-                const uploadedResultImages: string[] = [];
-                for (const img of resultImages) {
-                    if (img.startsWith('data:')) {
-                        const base64Data = img.split(',')[1];
-                        const r2Url = await storageService.uploadBase64ToR2(base64Data, `generated/${user.id}`, undefined, user.id);
-                        uploadedResultImages.push(r2Url);
-                    } else {
-                        uploadedResultImages.push(img);
-                    }
-                }
-                resultImages = uploadedResultImages;
-                if (gridData) gridData.fullImage = resultImages[0];
-
-                const assistantMsgId = generateMessageId();
-                const assistantMessage: ChatPanelMessage = {
-                    id: assistantMsgId,
-                    role: 'assistant',
-                    content: `已生成 ${selectedModel === 'gemini-grid' ? 'Grid' : '图片'}`,
-                    timestamp: new Date(),
-                    images: resultImages,
-                    model: selectedModel,
-                    gridData,
-                    shotId: currentShotId || undefined,
-                    sceneId: currentSceneIdCaptured || undefined,
-                };
-
-                setMessages(prev => [...prev, assistantMessage]);
-
-                await dataService.saveChatMessage({
-                    id: assistantMsgId,
-                    userId: user.id,
-                    projectId: project.id,
-                    scope: currentShotId ? 'shot' : currentSceneIdCaptured ? 'scene' : 'project',
-                    shotId: currentShotId || undefined,
-                    sceneId: currentSceneIdCaptured || undefined,
-                    role: 'assistant',
-                    content: assistantMessage.content,
-                    timestamp: assistantMessage.timestamp,
-                    metadata: {
-                        images: resultImages,
-                        model: selectedModel,
-                        gridData: gridData ? {
-                            ...gridData,
-                            gridRows: gridData.gridRows || 2,
-                            gridCols: gridData.gridCols || 2,
-                            gridSize: gridData.gridSize || '2x2',
-                            prompt: gridData.prompt || '',
-                            aspectRatio: gridData.aspectRatio || AspectRatio.WIDE,
-                        } : undefined,
-                        referenceImages: allRefUrls
-                    },
-                    createdAt: assistantMessage.timestamp,
-                    updatedAt: assistantMessage.timestamp,
-                });
-
-                // 🔥 P0: 分镜级别 Grid 生成 - 将所有切片保存到当前分镜的 generationHistory
-                // 这样用户可以在分镜历史中选择使用，而不需要通过分配弹窗
-                if (currentShotId && gridData && gridData.slices && gridData.slices.length > 0) {
-                    const latestShot = await dataService.getShot(currentShotId);
-                    const currentHistory = latestShot?.generationHistory || [];
-
-                    // 将每个切片作为独立的历史记录项
-                    const newHistoryItems = gridData.slices.map((sliceUrl, idx) => ({
-                        id: `grid_slice_${Date.now()}_${idx}`,
-                        type: 'image' as const,
-                        timestamp: new Date(),
-                        result: sliceUrl,
-                        prompt: gridData.prompt || enrichedPrompt,
-                        parameters: {
-                            model: 'gemini-grid',
-                            source: 'pro-chat',
-                            sliceIndex: idx,
-                            gridSize: gridData.gridSize,
-                            fullGridUrl: gridData.fullImage
-                        },
-                        status: 'success' as const
-                    }));
-
-                    // 合并历史记录（新的在前）
-                    const updatedHistory = [...newHistoryItems, ...currentHistory].slice(0, 20); // 限制最多 20 条
-
-                    // 更新分镜的 generationHistory（不自动设置 referenceImage，让用户选择）
-                    updateShot(currentShotId, {
-                        generationHistory: updatedHistory,
-                        // 同时保存 Grid 信息供后续使用
-                        gridImages: gridData.slices,
-                        fullGridUrl: gridData.fullImage
-                    } as any);
-
-                    // 后台异步保存到数据库
-                    const sceneId = latestShot?.sceneId || currentSceneIdCaptured;
-                    if (sceneId) {
-                        dataService.saveShot(sceneId, {
-                            id: currentShotId,
-                            generationHistory: updatedHistory,
-                            gridImages: gridData.slices,
-                            fullGridUrl: gridData.fullImage
-                        } as any).catch(e => console.error('保存切片历史失败:', e));
-                    }
-                }
-            }
-        } catch (error: any) {
-            console.error('Generation failed:', error);
-            toast.error(`生成失败: ${error.message}`);
-        } finally {
-            setIsGenerating(false);
-        }
-    };
+    // handleSend logic moved to useChatGeneration hook
 
     const handleRestoreState = (message: ChatPanelMessage) => {
         const meta = (message as any).metadata;
@@ -486,8 +240,17 @@ export default function ChatPanel() {
     };
 
     const handleReuseImage = (url: string) => {
-        setManualReferenceUrls(prev => [...prev, url]);
-        toast.success("已添加为参考图");
+        // Fix: Remove from ignoredUrls if it was previously removed
+        setIgnoredUrls(prev => {
+            const next = new Set(prev);
+            next.delete(url);
+            return next;
+        });
+
+        setManualReferenceUrls(prev => {
+            if (prev.includes(url)) return prev;
+            return [...prev, url];
+        });
     };
 
     const handleApplyToShot = async (url: string) => {
@@ -587,21 +350,66 @@ export default function ChatPanel() {
         if (content?.trim()) toast.success('反馈已提交');
     };
 
-    // P6: Storyboard -> Pro Drag Drop
+    // P6: Storyboard -> Pro Drag Drop AND File Drop
     const [{ isOver }, drop] = useDrop({
-        accept: SHOT_TO_CHAT,
-        drop: (item: { imageUrl: string, source: string }) => {
-            if (item.imageUrl) {
-                setActiveReferences(prev => {
+        accept: [SHOT_TO_CHAT, NativeTypes.FILE],
+        drop: (item: any, monitor) => {
+            const itemType = monitor.getItemType();
+
+            // 1. Handle Shot Drop
+            if (itemType === SHOT_TO_CHAT) {
+                console.log("Dropped Shot:", item);
+                if (!item.imageUrl) return;
+
+                // FIX: Remove from ignoredUrls if it was previously removed
+                setIgnoredUrls(prev => {
+                    const next = new Set(prev);
+                    next.delete(item.imageUrl);
+                    return next;
+                });
+
+                setDroppedReferences(prev => {
                     if (prev.some(r => r.url === item.imageUrl)) return prev;
                     return [...prev, {
                         url: item.imageUrl,
                         source: 'shot_ref',
-                        label: '分镜参考与',
+                        label: '分镜参考图',
                         entityName: 'Shot Reference'
                     }];
                 });
-                toast.success("已添加分镜参考图");
+                return;
+            }
+
+            // 2. Handle Native File Drop
+            if (itemType === NativeTypes.FILE) {
+                const files = item.files;
+                if (files && files.length > 0) {
+                    const fileList = Array.from(files as FileList); // Cast to array
+                    const MAX_IMAGES = 10;
+                    const MAX_SIZE_PER_IMAGE = 10 * 1024 * 1024;  // 10MB per image
+
+                    // 检查数量限制
+                    if (uploadedImages.length + fileList.length > MAX_IMAGES) {
+                        toast.error(`最多只能上传 ${MAX_IMAGES} 张参考图`);
+                        return;
+                    }
+
+                    const validFiles = fileList.filter(file => {
+                        if (!file.type.startsWith('image/')) {
+                            toast.error(`文件 ${file.name} 不是图片`);
+                            return false;
+                        }
+                        if (file.size > MAX_SIZE_PER_IMAGE) {
+                            toast.error(`文件 ${file.name} 超过 10MB 限制`);
+                            return false;
+                        }
+                        return true;
+                    });
+
+                    if (validFiles.length > 0) {
+                        setUploadedImages((prev) => [...prev, ...validFiles]);
+                    }
+                }
             }
         },
         collect: (monitor) => ({
@@ -610,7 +418,7 @@ export default function ChatPanel() {
     });
 
     return (
-        <div ref={drop as any} className={`h-full flex flex-col bg-zinc-50 dark:bg-black relative ${isOver ? 'ring-2 ring-light-accent dark:ring-cine-accent' : ''}`} onDragOver={handleDragOver} onDrop={handleDrop}>
+        <div ref={drop as any} className={`h-full flex flex-col bg-zinc-50 dark:bg-black relative ${isOver ? 'ring-2 ring-light-accent dark:ring-cine-accent' : ''}`}>
             {isOver && (
                 <div className="absolute inset-0 bg-light-accent/10 dark:bg-cine-accent/10 z-50 pointer-events-none flex items-center justify-center backdrop-blur-[1px]">
                     <div className="bg-white/90 dark:bg-black/90 px-4 py-2 rounded-full shadow-lg border border-light-accent/20 dark:border-cine-accent/20 text-light-accent dark:text-cine-accent font-medium flex items-center gap-2">
@@ -726,6 +534,7 @@ export default function ChatPanel() {
                             />
                             <button
                                 onClick={() => {
+                                    setDroppedReferences(prev => prev.filter(r => r.url !== ref.url));
                                     setIgnoredUrls(prev => {
                                         const next = new Set(prev);
                                         next.add(ref.url);
@@ -752,7 +561,30 @@ export default function ChatPanel() {
             <ChatInput
                 inputText={inputText}
                 setInputText={setInputText}
-                onSend={handleSend}
+                onSend={() => handleSend(
+                    inputText,
+                    uploadedImages,
+                    activeReferences,
+                    selectedModel,
+                    gridSize,
+                    geminiImageSize,
+                    (urls) => generateSoraVideo(
+                        inputText,
+                        urls,
+                        [], // All refs in first arg
+                        selectedShotId || undefined,
+                        (currentSceneId || (selectedShot ? selectedShot.sceneId : null)) || undefined
+                    ),
+                    (urls, contextKey) => jimengGeneration.generateImage(
+                        inputText,
+                        selectedShotId,
+                        (currentSceneId || (selectedShot ? selectedShot.sceneId : null)),
+                        contextKey,
+                        urls,
+                        false,
+                        { onlyExtractRefs: false } // Already enriched
+                    )
+                )}
                 onAssetSelected={handleAssetSelected}
                 isGenerating={isGenerating}
                 selectedModel={selectedModel}

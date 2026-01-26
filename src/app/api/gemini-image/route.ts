@@ -8,6 +8,52 @@ export const maxDuration = 120;  // 与 AbortController 保持一致
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const fetchImageToBase64 = async (url: string): Promise<{ data: string, mimeType: string } | null> => {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout per image
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return null;
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const mimeType = response.headers.get('content-type') || 'image/png';
+    return { data: base64, mimeType };
+  } catch (error) {
+    console.error('Failed to fetch image:', url, error);
+    return null;
+  }
+};
+
+const processReferenceImages = async (refs: any[]) => {
+  if (!Array.isArray(refs)) return [];
+  const processed = await Promise.all(refs.map(async (img) => {
+    if (!img) return null;
+    if (typeof img.data === 'string' && img.data.length > 0) {
+      return {
+        inlineData: {
+          data: img.data,
+          mimeType: img.mimeType || 'image/png',
+        },
+      };
+    }
+    if (typeof img.url === 'string' && img.url.length > 0) {
+      const fetched = await fetchImageToBase64(img.url);
+      if (fetched) {
+        return {
+          inlineData: {
+            data: fetched.data,
+            mimeType: fetched.mimeType,
+          },
+        };
+      }
+    }
+    return null;
+  }));
+  return processed.filter((p) => p !== null);
+};
+
 export async function POST(request: NextRequest) {
   // 1. 验证用户身份
   const authResult = await authenticateRequest(request);
@@ -31,7 +77,6 @@ export async function POST(request: NextRequest) {
   }
 
   const requestId = `image-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  // console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}, credits: ${user.credits}, cost: ${requiredCredits}`);
 
   try {
     const body = await request.json();
@@ -52,28 +97,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'gemini api key not configured' }, { status: 500 });
     }
 
+    // Process reference images (server-side fetch)
+    const safeRefsPart = await processReferenceImages(referenceImages);
+
     const requestBody: any = {
       contents: [
         {
           role: 'user',
           parts: [
-            // 参考图在前，与 Grid 保持一致，提高视觉参考权重
-            ...referenceImages.map((img: any) => ({
-              inlineData: {
-                data: img.data,
-                mimeType: img.mimeType || 'image/png',
-              },
-            })),
+            ...safeRefsPart,
             { text: prompt },
           ],
         },
       ],
       generationConfig: {
-        temperature: 1.0, // 统一使用 temperature=1.0
+        temperature: 1.0,
         // @ts-ignore
         imageConfig: {
           aspectRatio,
-          imageSize: validImageSize,  // 用户选择的分辨率 (2K/4K)
+          imageSize: validImageSize,
         },
       },
     };
@@ -84,8 +126,8 @@ export async function POST(request: NextRequest) {
 
     const finalRequestBody = JSON.stringify(requestBody);
 
-    // 🛡️ 载荷大小检查：Vercel 限制为 4.5MB，我们限制在 4MB 以内以确保安全
-    if (finalRequestBody.length > 4 * 1024 * 1024) {
+    // 🛡️ 载荷大小检查：Gemini 限制通常在 20MB 左右 (Base64 后)，我们放宽限制到 20MB
+    if (finalRequestBody.length > 20 * 1024 * 1024) {
       console.error(`[Gemini Image] ❌ Payload too large: ${(finalRequestBody.length / 1024 / 1024).toFixed(2)}MB`);
       return NextResponse.json(
         { error: `请求载荷过大 (${(finalRequestBody.length / 1024 / 1024).toFixed(2)}MB)，请减少参考图数量或缩短提示词。` },
