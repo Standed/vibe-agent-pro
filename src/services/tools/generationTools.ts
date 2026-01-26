@@ -146,23 +146,23 @@ export class GenerationTools {
             const promptParts: string[] = [];
 
             if (scene?.description) {
-                promptParts.push(`场景：${scene.description}`);
+                promptParts.push(scene.description);
             }
 
             const shotDetails: string[] = [];
-            if (shot.shotSize) shotDetails.push(`景别：${shot.shotSize}`);
-            if (shot.cameraMovement) shotDetails.push(`运镜：${shot.cameraMovement}`);
-            if (shot.description) shotDetails.push(`内容：${shot.description}`);
+            if (shot.shotSize) shotDetails.push(shot.shotSize);
+            if (shot.cameraMovement) shotDetails.push(shot.cameraMovement);
+            if (shot.description) shotDetails.push(shot.description);
             if (shotDetails.length > 0) {
                 promptParts.push(shotDetails.join('，'));
             }
 
             if (this.project.metadata?.artStyle) {
-                promptParts.push(`画风：${this.project.metadata.artStyle}`);
+                promptParts.push(this.project.metadata.artStyle);
             }
 
             if (prompt) {
-                promptParts.push(`额外要求：${prompt}`);
+                promptParts.push(prompt);
             }
 
             const basePrompt = promptParts.filter(Boolean).join('\n') || prompt || shot.description || 'Cinematic shot';

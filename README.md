@@ -384,6 +384,8 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **R2 Upload Resilience** - Added exponential backoff retry (up to 5 times) for R2 uploads
 - ✅ **Data Safety** - Added page unload warning during generation/upload to prevent data loss
 - ✅ **Scene Grid Persistence** - Fixed bug where Grid generated in Scene mode wasn't saved to history
+- ✅ **View State Sync** - URL now syncs with current view (Canvas/Planning/Timeline), fixing persistent view issues
+- ✅ **Prompt Engineering** - Removed redundant prefixes (e.g., "镜头画面:", "景别:") for cleaner, more direct prompts
 - ✅ **Favicon Support** - Added favicon.png and apple-touch-icon.png for browser tab icons
 - ✅ **Project Structure Reorganization** - Merged components (input/pro → chat, navigation/settings → layout), organized hooks into functional groups
 

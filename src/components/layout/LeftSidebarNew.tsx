@@ -553,8 +553,8 @@ export default function LeftSidebarNew({
                   handleDeleteShot={handleDeleteShot}
                   handleShotImageClick={(shot) => {
                     const scene = scenes.find(s => s.id === shot.sceneId);
-                    const sceneContext = scene?.description ? `\n场景环境: ${scene.description}` : '';
-                    const fullPrompt = `镜头画面: ${shot.description || ''}${sceneContext}`;
+                    const sceneContext = scene?.description ? `\n${scene.description}` : '';
+                    const fullPrompt = `${shot.description || ''}${sceneContext}`;
                     useProjectStore.getState().setGenerationRequest({
                       prompt: fullPrompt,
                       model: 'jimeng',

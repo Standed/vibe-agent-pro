@@ -42,6 +42,11 @@ export function ProjectEditorClient() {
             setShowTimelineView(false);
             setShowDirectorMode(false);
         }
+
+        // Sync to URL
+        const newParams = new URLSearchParams(searchParams.toString());
+        newParams.set('view', view);
+        router.push(`?${newParams.toString()}`);
     };
 
 
