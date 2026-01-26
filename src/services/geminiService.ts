@@ -428,14 +428,16 @@ export const editImageWithGemini = async (
 export const generateSingleImage = async (
   prompt: string,
   aspectRatio: AspectRatio,
-  referenceImages: ReferenceImageData[] = []
+  referenceImages: ReferenceImageData[] = [],
+  imageSize: '2K' | '4K' = '2K'
 ): Promise<string> => {
   // 直接使用传入的 prompt，避免系统预设的模板干扰用户的编辑意图
   try {
     const data = await postJson<{ url: string }>('/api/gemini-image', {
       prompt,
       referenceImages,
-      aspectRatio
+      aspectRatio,
+      imageSize
     });
     if (!data.url) {
       throw new Error('未能生成图片');

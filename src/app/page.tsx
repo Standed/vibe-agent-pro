@@ -206,7 +206,7 @@ export default function Home() {
   }, [user, authLoading, currentSeriesId]);
 
   const loadData = async () => {
-    console.log('[HomePage] 🔄 开始加载数据...');
+    // console.log('[HomePage] 🔄 开始加载数据...');
     setIsLoading(true);
     setLoadError(null);
 
@@ -223,16 +223,54 @@ export default function Home() {
         dataService.getAllSeries(),
         dataService.getGlobalCharacters(user.id)
       ]);
-      console.log('[HomePage] Raw projects:', allProjects);
-      console.log('[HomePage] Raw series:', allSeries);
-      console.log('[HomePage] Global characters:', allGlobalCharacters);
+      // console.log('[HomePage] Raw projects:', allProjects);
+      // console.log('[HomePage] Raw series:', allSeries);
+      // console.log('[HomePage] Global characters:', allGlobalCharacters);
 
       setProjects(allProjects);
+
+      // 自动设置项目封面：如果项目没有封面，尝试从数据库获取第一张分镜图
+      // 不阻塞页面渲染，完全异步执行
+      const projectsNeedCover = allProjects.filter(p => !p.metadata.coverImage);
+
+      if (projectsNeedCover.length > 0) {
+        // console.log(`[HomePage] 🖼️ 尝试自动设置 ${projectsNeedCover.length} 个项目封面`);
+        (async () => {
+          let updatedCount = 0;
+          for (const p of projectsNeedCover) {
+            try {
+              const coverUrl = await dataService.getProjectFirstImage(p.id);
+              if (coverUrl) {
+                // console.log(`[HomePage] ✅ 找到项目封面 ${p.id}: ${coverUrl}`);
+                // 更新数据库：注意！必须清空 scenes 和 shots，因为 getAllProjects 返回的是空对象
+                // 否则会导致 "null value in column name ... violates not-null constraint"
+                const projectToSave = {
+                  ...p,
+                  metadata: { ...p.metadata, coverImage: coverUrl },
+                  scenes: [], // 避免保存空场景
+                  shots: [],  // 避免保存空分镜
+                  characters: [], // 避免保存空角色
+                  audioAssets: [],
+                };
+                await dataService.saveProject(projectToSave as Project, user.id);
+                // 更新本地状态
+                setProjects(prev => prev.map(curr => curr.id === p.id ? { ...curr, metadata: { ...curr.metadata, coverImage: coverUrl } } : curr));
+                updatedCount++;
+              }
+            } catch (e) {
+              // 忽略错误，仅仅是封面设置失败
+            }
+          }
+          if (updatedCount > 0) {
+            // console.log(`[HomePage] 成功更新 ${updatedCount} 个封面`);
+          }
+        })();
+      }
       setSeries(allSeries);
       setGlobalCharacters(allGlobalCharacters);
-      console.log('[HomePage] ✅ 数据加载完成', { projects: allProjects.length, series: allSeries.length });
+      // console.log('[HomePage] ✅ 数据加载完成', { projects: allProjects.length, series: allSeries.length });
     } catch (error) {
-      console.error('[HomePage] ❌ 加载失败:', error);
+      // console.error('[HomePage] ❌ 加载失败:', error);
       setLoadError(error instanceof Error ? error.message : '加载失败');
       toast.error('加载数据失败');
     } finally {
@@ -750,20 +788,7 @@ export default function Home() {
                 </div>
               </form>
 
-              <div className="mt-10 flex flex-wrap justify-center gap-4">
-                {['婚礼上的背叛', '小猫游九寨沟', '风魔劫', '三生三世的羁绊'].map((tag) => (
-                  <button
-                    key={tag}
-                    onClick={() => setAiDirectorInput(tag)}
-                    className="px-6 py-2.5 bg-white/40 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 rounded-2xl text-sm font-bold text-zinc-700 dark:text-zinc-300 transition-all flex items-center gap-3 border border-white/20 dark:border-white/5 backdrop-blur-md hover:scale-105 active:scale-95 shadow-sm"
-                  >
-                    <div className="w-6 h-6 rounded-full overflow-hidden bg-zinc-200 dark:bg-zinc-800 flex-shrink-0 border border-white/20">
-                      <div className="w-full h-full bg-gradient-to-br from-light-accent/40 to-cine-accent/40 animate-pulse" />
-                    </div>
-                    {tag}
-                  </button>
-                ))}
-              </div>
+
             </div>
           </section>
         )}
@@ -872,8 +897,9 @@ export default function Home() {
                     className="group relative flex flex-col bg-white dark:bg-zinc-900 rounded-[32px] border border-black/5 dark:border-white/10 p-4 transition-all duration-500 hover:shadow-2xl hover:shadow-black/5 dark:hover:shadow-white/5 hover:-translate-y-1"
                   >
                     <div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[24px] mb-4 flex items-center justify-center relative overflow-hidden">
-                      {p.shots?.find(s => s.referenceImage)?.referenceImage ? (
-                        <img src={p.shots.find(s => s.referenceImage)!.referenceImage} alt={p.metadata.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      {/* 优先使用持久化封面，兼容旧数据回退到分镜参考图 */}
+                      {(p.metadata.coverImage || p.shots?.find(s => s.referenceImage)?.referenceImage) ? (
+                        <img src={p.metadata.coverImage || p.shots?.find(s => s.referenceImage)?.referenceImage} alt={p.metadata.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                       ) : (
                         <div className="flex flex-col items-center gap-2 opacity-20">
                           <Film size={40} className="text-zinc-900 dark:text-white" />

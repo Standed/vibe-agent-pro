@@ -75,7 +75,9 @@
       "Bash(cd E:\\\\N8N\\\\devProject\\\\vibe-agent-pro && npm run build:*)",
       "Bash(gh api:*)",
       "Bash(xargs gh run watch:*)",
-      "Bash(gh secret:*)"
+      "Bash(gh secret:*)",
+      "Bash(npx vercel:*)",
+      "Bash(git stash pop:*)"
     ]
   }
 }

@@ -35,7 +35,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { prompt, referenceImages = [], aspectRatio = '1:1' } = body || {};
+    const { prompt, referenceImages = [], aspectRatio = '1:1', imageSize = '2K' } = body || {};
+    // 验证 imageSize 参数，只允许 2K 或 4K
+    const validImageSize = ['2K', '4K'].includes(imageSize) ? imageSize : '2K';
     if (!prompt) {
       return NextResponse.json({ error: 'missing prompt' }, { status: 400 });
     }
@@ -71,7 +73,7 @@ export async function POST(request: NextRequest) {
         // @ts-ignore
         imageConfig: {
           aspectRatio,
-          imageSize: '2K',  // 单图生成使用 2K 分辨率
+          imageSize: validImageSize,  // 用户选择的分辨率 (2K/4K)
         },
       },
     };

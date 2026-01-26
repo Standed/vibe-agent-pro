@@ -61,6 +61,7 @@ export default function ChatPanel() {
     const [uploadedImages, setUploadedImages] = useState<File[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
     const [manualReferenceUrls, setManualReferenceUrls] = useState<string[]>([]);
+    const [geminiImageSize, setGeminiImageSize] = useState<'2K' | '4K'>('2K');
 
     // New: Active References State
     const [activeReferences, setActiveReferences] = useState<ActiveReference[]>([]);
@@ -675,8 +676,9 @@ export default function ChatPanel() {
                 if (selectedModel === 'gemini-grid') {
                     const rows = gridSize === '3x3' ? 3 : 2;
                     const cols = gridSize === '3x3' ? 3 : 2;
+                    const projectAspectRatio = project.settings?.aspectRatio || AspectRatio.WIDE;
                     // Pro 模式使用简化版 Grid（不包含复杂分镜逻辑）
-                    const res = await generateSimpleGrid(enrichedPrompt, rows, cols, project.settings.aspectRatio || AspectRatio.WIDE, referenceImagesData);
+                    const res = await generateSimpleGrid(enrichedPrompt, rows, cols, projectAspectRatio, referenceImagesData);
                     resultImages = [res.fullImage];
                     gridData = {
                         fullImage: res.fullImage,
@@ -685,11 +687,11 @@ export default function ChatPanel() {
                         gridCols: cols,
                         gridSize: gridSize,
                         prompt: enrichedPrompt,
-                        aspectRatio: project.settings.aspectRatio || AspectRatio.WIDE,
+                        aspectRatio: projectAspectRatio,
                         sceneId: currentSceneIdCaptured || undefined
                     };
                 } else if (selectedModel === 'gemini-direct') {
-                    const res = await generateSingleImage(enrichedPrompt, project.settings.aspectRatio || AspectRatio.WIDE, referenceImagesData);
+                    const res = await generateSingleImage(enrichedPrompt, project.settings?.aspectRatio || AspectRatio.WIDE, referenceImagesData, geminiImageSize);
                     resultImages = [res];
                 }
 
@@ -1027,6 +1029,8 @@ export default function ChatPanel() {
                 setGridSize={setGridSize}
                 manualReferenceUrls={manualReferenceUrls}
                 onRemoveReferenceUrl={(index) => setManualReferenceUrls(prev => prev.filter((_, i) => i !== index))}
+                geminiImageSize={geminiImageSize}
+                setGeminiImageSize={setGeminiImageSize}
                 soraAspectRatio={soraAspectRatio}
                 setSoraAspectRatio={setSoraAspectRatio}
                 soraDuration={soraDuration}

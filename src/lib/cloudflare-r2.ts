@@ -94,6 +94,67 @@ class CloudflareR2Service {
   getPublicUrl(key: string): string {
     return `${this.publicUrl}/${key}`;
   }
+
+  /**
+   * 上传临时文件到 Cloudflare R2 (temp/ 目录，1天后自动删除)
+   * 用于上传大参考图，避免请求载荷过大
+   */
+  async uploadTempFile(
+    file: File,
+    userId: string
+  ): Promise<R2UploadResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await authenticatedFetch('/api/upload-temp-r2', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`R2 临时上传失败: ${error}`);
+    }
+
+    const result = await response.json();
+    return result;
+  }
+
+  /**
+   * 上传 base64 图片为临时文件
+   */
+  async uploadTempBase64(
+    base64Data: string,
+    userId: string,
+    filename?: string
+  ): Promise<string> {
+    // 转换 base64 为 File
+    let mime = 'image/png';
+    let bstr = '';
+
+    if (base64Data.includes(',')) {
+      const arr = base64Data.split(',');
+      const mimeMatch = arr[0].match(/:(.*?);/);
+      if (mimeMatch) {
+        mime = mimeMatch[1];
+      }
+      bstr = atob(arr[1]);
+    } else {
+      bstr = atob(base64Data);
+    }
+
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+
+    const finalFilename = filename || `temp_${Date.now()}.png`;
+    const file = new File([u8arr], finalFilename, { type: mime });
+
+    const result = await this.uploadTempFile(file, userId);
+    return result.url;
+  }
 }
 
 export const r2Service = new CloudflareR2Service();

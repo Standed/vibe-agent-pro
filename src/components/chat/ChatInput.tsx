@@ -28,6 +28,9 @@ interface ChatInputProps {
     setGridSize: (size: '2x2' | '3x3') => void;
     manualReferenceUrls?: string[];
     onRemoveReferenceUrl?: (index: number) => void;
+    // Gemini Direct specific
+    geminiImageSize?: '2K' | '4K';
+    setGeminiImageSize?: (size: '2K' | '4K') => void;
     // Sora specific
     soraAspectRatio?: '16:9' | '9:16';
     setSoraAspectRatio?: (ratio: '16:9' | '9:16') => void;
@@ -54,6 +57,8 @@ export function ChatInput({
     setGridSize,
     manualReferenceUrls = [],
     onRemoveReferenceUrl,
+    geminiImageSize = '2K',
+    setGeminiImageSize,
     soraAspectRatio = '16:9',
     setSoraAspectRatio,
     soraDuration = 10,
@@ -203,6 +208,26 @@ export function ChatInput({
                                 className={cn(
                                     "px-2 py-1 text-xs font-medium rounded-lg transition-all duration-300",
                                     gridSize === size
+                                        ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
+                                        : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                )}
+                            >
+                                {size}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {/* Gemini Direct Resolution Options */}
+                {selectedModel === 'gemini-direct' && (
+                    <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-white/5 rounded-xl">
+                        {(['2K', '4K'] as const).map((size) => (
+                            <button
+                                key={size}
+                                onClick={() => setGeminiImageSize?.(size)}
+                                className={cn(
+                                    "px-2 py-1 text-xs font-medium rounded-lg transition-all duration-300",
+                                    geminiImageSize === size
                                         ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
                                         : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
                                 )}
