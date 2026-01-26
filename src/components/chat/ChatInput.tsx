@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Send, Image as ImageIcon, Loader2, X, ChevronDown, Command, Sparkles } from 'lucide-react';
-import MentionInput from '@/components/input/MentionInput';
+import MentionInput from '@/components/chat/MentionInput';
 import { JimengOptions, JimengModel, JimengResolution } from '@/components/jimeng/JimengOptions';
 import { cn } from '@/lib/utils';
 import { getCommandSuggestions, SLASH_COMMANDS, type SlashCommand } from '@/utils/slashCommands';

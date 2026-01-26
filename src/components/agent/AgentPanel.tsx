@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { Send, Loader2, User, Bot, Trash2, Sparkles, Image as ImageIcon, Grid3x3, Grid2x2, Video, CircleStop, ChevronDown, ChevronUp } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { ChatMessage } from '@/types/project';
-import { useAgent } from '@/hooks/useAgent';
+import { useAgent } from '@/hooks/agent/useAgent';
 import ThinkingProcess, { ThinkingStep } from './ThinkingProcess';
 import { dataService } from '@/lib/dataService';
 import { useAuth } from '@/components/auth/AuthProvider';

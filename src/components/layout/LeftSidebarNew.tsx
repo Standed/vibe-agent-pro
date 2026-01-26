@@ -25,7 +25,7 @@ import AddLocationDialog from '@/components/asset/AddLocationDialog';
 import { toast } from 'sonner';
 import { Shot, ShotSize, CameraMovement, Character, Location } from '@/types/project';
 import { createPortal } from 'react-dom';
-import { useAIStoryboard } from '@/hooks/useAIStoryboard';
+import { useAIStoryboard } from '@/hooks/generation/useAIStoryboard';
 import { StoryboardTab } from './sidebar/StoryboardTab';
 import { AssetsTab } from './sidebar/AssetsTab';
 import { ShotEditor } from './sidebar/ShotEditor';

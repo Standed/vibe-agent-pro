@@ -3,9 +3,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { toast } from 'sonner';
-import { useAIStoryboard } from '@/hooks/useAIStoryboard';
-import { useAssetGeneration } from '@/hooks/useAssetGeneration';
-import { useAgent } from '@/hooks/useAgent';
+import { useAIStoryboard } from '@/hooks/generation/useAIStoryboard';
+import { useAssetGeneration } from '@/hooks/generation/useAssetGeneration';
+import { useAgent } from '@/hooks/agent/useAgent';
 import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import AddLocationDialog from '@/components/asset/AddLocationDialog';
 import { useAuth } from '@/components/auth/AuthProvider';

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { LogOut, User, Settings, Coins, ChevronDown, CreditCard } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { SettingsPanel, SettingsModal } from '@/components/settings/SettingsPanel';
+import { SettingsPanel, SettingsModal } from '@/components/layout/SettingsPanel';
 import { AnimatePresence, motion } from 'framer-motion';
 
 export function UserNav() {

@@ -56,7 +56,7 @@ export default function ViewSwitcher({ activeView, onViewChange, className }: Vi
     if (!mounted) return null;
 
     return createPortal(
-        <div className={cn("fixed top-6 left-6 z-[110] pointer-events-auto", className)} ref={containerRef}>
+        <div className={cn("fixed top-6 left-6 z-[200] pointer-events-auto", className)} ref={containerRef}>
             <div className="relative">
                 {/* Main Button */}
                 <button

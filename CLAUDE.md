@@ -520,28 +520,27 @@ User Action → Store Action → State Update → Component Re-render
 #### 3. 文件组织
 ```
 src/
-├── components/        # UI 组件
-│   ├── layout/       # 布局组件（Sidebar, Panel）
-│   ├── canvas/       # 画布相关
-│   ├── grid/         # Grid 相关
-│   ├── shot/         # 镜头相关
-│   └── project/      # 项目相关
-├── services/         # 业务逻辑和 API 调用
-├── store/            # Zustand 状态管理
-├── types/            # TypeScript 类型定义
-├── components/        # UI 组件
-│   ├── layout/       # 布局组件（Sidebar, Panel）
-│   ├── canvas/       # 画布相关
-│   ├── grid/         # Grid 相关
-│   ├── shot/         # 镜头相关
-│   └── project/      # 项目相关
-├── hooks/            # 自定义 Hooks
-│   ├── chat/         # 聊天相关 Hooks (useChatHistory, useAutoReference)
-│   └── ...
-├── services/         # 业务逻辑和 API 调用
-├── store/            # Zustand 状态管理
-├── types/            # TypeScript 类型定义
-└── locales/          # 国际化翻译
+├── components/        # UI 组件 (13 个目录)
+│   ├── agent/        # Agent 组件
+│   ├── asset/        # 资产管理 (角色、地点)
+│   ├── canvas/       # 无限画布
+│   ├── chat/         # 聊天界面 + Pro 模式组件
+│   ├── director/     # 导演/构思模式
+│   ├── grid/         # Grid 生成 UI
+│   ├── layout/       # 布局组件 (Sidebar, Panel, Settings)
+│   ├── project/      # 项目对话框
+│   ├── providers/    # React Context
+│   ├── shot/         # 分镜组件
+│   └── ui/           # 通用 UI 组件
+├── hooks/             # 自定义 Hooks (按功能分组)
+│   ├── agent/        # Agent 相关 (useAgent)
+│   ├── chat/         # 聊天面板 (useChatHistory, useAutoReference)
+│   ├── generation/   # AI 生成 (useAIStoryboard, useJimengGeneration...)
+│   └── sora/         # Sora 视频 (useSoraTaskManager, useSoraCharacter...)
+├── services/          # 业务逻辑和 API 调用
+├── store/             # Zustand 状态管理
+├── types/             # TypeScript 类型定义
+└── locales/           # 国际化翻译
 ```
 
 #### 4. 复杂组件重构 (v3.8+)
