@@ -73,7 +73,7 @@ export default function ChatPanel() {
     const [droppedReferences, setDroppedReferences] = useState<ActiveReference[]>([]);
 
     // Use Custom Hook for Chat History Logic
-    const { messages, setMessages } = useChatHistory(
+    const { messages, setMessages, deleteMessage } = useChatHistory(
         project?.id,
         selectedShotId,
         currentSceneId,
@@ -470,6 +470,7 @@ export default function ChatPanel() {
                     <ChatBubble
                         key={msg.id}
                         message={msg as any}
+                        onDelete={() => deleteMessage(msg.id)}
                         onReusePrompt={() => handleRestoreState(msg)}
                         onReuseImage={handleReuseImage}
                         onApplyToShot={handleApplyToShot}

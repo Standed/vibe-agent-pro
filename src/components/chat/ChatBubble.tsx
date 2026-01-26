@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { GenerationResult } from './GenerationResult';
 import { AspectRatio } from '@/types/project';
-import { User, Sparkles, Maximize2, RefreshCw, Grid3x3 } from 'lucide-react';
+import { User, Sparkles, Maximize2, RefreshCw, Grid3x3, Trash2 } from 'lucide-react';
 
 export interface ChatMessage {
     id: string;
@@ -35,6 +35,7 @@ interface ChatBubbleProps {
     onReuseImage?: (url: string) => void;
     onApplyToShot?: (url: string) => void;
     onApplyVideoToShot?: (message: ChatMessage) => void;  // 应用视频到分镜
+    onDelete?: () => void;
 }
 
 export function ChatBubble({
@@ -44,14 +45,15 @@ export function ChatBubble({
     onReusePrompt,
     onReuseImage,
     onApplyToShot,
-    onApplyVideoToShot
+    onApplyVideoToShot,
+    onDelete
 }: ChatBubbleProps) {
     const isUser = message.role === 'user';
     const hasImages = message.images && message.images.length > 0;
     const hasVideo = !!message.videoUrl;
 
     return (
-        <div className={cn("flex w-full mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300", isUser ? "justify-end" : "justify-start")}>
+        <div className={cn("flex w-full mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300 group/message", isUser ? "justify-end" : "justify-start")}>
             <div className={cn("flex max-w-[90%] md:max-w-[85%] gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
 
                 {/* Avatar */}
@@ -66,7 +68,6 @@ export function ChatBubble({
                     )}
                 </div>
 
-                {/* Content Bubble */}
                 {/* Content Bubble */}
                 <div className={cn(
                     "flex flex-col gap-1 min-w-0 max-w-[85%]",
@@ -180,9 +181,25 @@ export function ChatBubble({
                         </div>
                     )}
 
-                    {/* Timestamp */}
-                    <div className="px-1 text-[10px] text-zinc-400 dark:text-zinc-500 font-medium self-end">
-                        {message.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                    {/* Timestamp & Actions */}
+                    <div className="flex items-center gap-2 self-end">
+                        <div className="px-1 text-[10px] text-zinc-400 dark:text-zinc-500 font-medium">
+                            {message.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                        {onDelete && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (confirm('确认删除这条消息吗？')) {
+                                        onDelete();
+                                    }
+                                }}
+                                className="opacity-0 group-hover/message:opacity-100 transition-all duration-200 p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md"
+                                title="删除消息"
+                            >
+                                <Trash2 size={13} strokeWidth={1.5} />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 import { createClient } from '@supabase/supabase-js';
@@ -41,6 +42,9 @@ const extractCharacterId = (key: string) => {
 
 /**
  * POST - 上传文件到 R2
+ * 支持两种模式：
+ * 1. 直接上传 (默认): 适用于小文件 (<4.5MB)，由 Serverless Function 中转
+ * 2. 预签名 URL (mode=presigned): 适用于大文件，返回 PUT URL，前端直接上传
  */
 export async function POST(request: NextRequest) {
   // 1. 验证用户身份
@@ -56,6 +60,49 @@ export async function POST(request: NextRequest) {
 
   const operationDesc = getOperationDescription('UPLOAD_PROCESS');
   const requestId = `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  // 检查请求模式
+  const url = new URL(request.url);
+  const mode = url.searchParams.get('mode');
+
+  if (mode === 'presigned') {
+    // === 预签名模式 ===
+    try {
+      const { filename, contentType, folder } = await request.json();
+
+      if (!filename || !folder) {
+        return NextResponse.json({ error: '缺少 filename 或 folder' }, { status: 400 });
+      }
+
+      console.log(`[${requestId}] 📝 获取预签名 URL: ${filename} (${contentType})`);
+
+      const timestamp = Date.now();
+      const extension = filename.split('.').pop() || 'bin';
+      const key = `${user.id}/${folder}/${timestamp}.${extension}`;
+
+      const command = new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        ContentType: contentType || 'application/octet-stream',
+        CacheControl: 'public, max-age=31536000',
+      });
+
+      // 生成签名 URL，有效期 5 分钟
+      const signedUrl = await getSignedUrl(r2Client, command, { expiresIn: 300 });
+
+      return NextResponse.json({
+        uploadUrl: signedUrl,
+        publicUrl: `${PUBLIC_URL}/${key}`,
+        key,
+      });
+
+    } catch (error: any) {
+      console.error(`[${requestId}] ❌ 获取预签名 URL 失败:`, error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
+
+  // === 直接上传模式 ===
   console.log(`[${requestId}] 🔐 ${operationDesc} request from ${user.role} user: ${user.email}`);
 
   try {
@@ -162,17 +209,17 @@ export async function DELETE(request: NextRequest) {
 
       const nextIdentity = existingUsername
         ? {
-            ...existingIdentity,
-            referenceVideoUrl: '',
-            status: 'registered',
-            taskId: null
-          }
+          ...existingIdentity,
+          referenceVideoUrl: '',
+          status: 'registered',
+          taskId: null
+        }
         : {
-            username: '',
-            referenceVideoUrl: '',
-            status: 'failed',
-            taskId: null
-          };
+          username: '',
+          referenceVideoUrl: '',
+          status: 'failed',
+          taskId: null
+        };
 
       await supabase.from('characters').update({
         metadata: {
