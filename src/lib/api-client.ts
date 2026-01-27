@@ -2,18 +2,33 @@ import { readSessionCookie, isTokenExpired, setSessionCookie, parseJWT } from '.
 
 /**
  * 后台刷新 session（不阻塞主流程）
+ * 增强：添加重试和更详细的日志
  */
 async function refreshSessionInBackground(): Promise<void> {
   if (typeof window === 'undefined') return;
-  try {
-    const { supabase } = await import('./supabase/client');
-    const { data: { session }, error } = await supabase.auth.refreshSession();
-    if (session && !error) {
-      setSessionCookie(session.access_token, session.refresh_token);
-      console.log('[authenticatedFetch] ✅ 后台刷新 session 成功');
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const { supabase } = await import('./supabase/client');
+      const { data: { session }, error } = await supabase.auth.refreshSession();
+
+      if (session && !error) {
+        setSessionCookie(session.access_token, session.refresh_token);
+        console.log('[authenticatedFetch] ✅ 后台刷新 session 成功');
+        return;
+      }
+
+      if (error) {
+        console.warn(`[authenticatedFetch] 后台刷新尝试 ${attempt}/2 失败:`, error.message);
+      }
+    } catch (e) {
+      console.warn(`[authenticatedFetch] 后台刷新异常 ${attempt}/2:`, e);
     }
-  } catch (e) {
-    console.warn('[authenticatedFetch] 后台刷新 session 失败:', e);
+
+    // 第一次失败后等待 500ms 再重试
+    if (attempt < 2) {
+      await new Promise(r => setTimeout(r, 500));
+    }
   }
 }
 
