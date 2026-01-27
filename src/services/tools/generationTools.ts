@@ -147,18 +147,15 @@ export class GenerationTools {
             const scene = this.project.scenes.find(s => s.id === shot.sceneId);
             const promptParts: string[] = [];
 
-            // 1. 添加场景信息（场景名称 + 地点）
-            if (scene?.name) {
-                const sceneLine = scene.location
-                    ? `场景：${scene.name}（${scene.location}）`
-                    : `场景：${scene.name}`;
-                promptParts.push(sceneLine);
+            // 1. 添加画风
+            if (this.project.metadata?.artStyle) {
+                promptParts.push(this.project.metadata.artStyle);
             }
 
             // 2. 添加景别（中文）
             if (shot.shotSize) {
                 const chineseShotSize = translateShotSize(shot.shotSize as ShotSize);
-                promptParts.push(`景别：${chineseShotSize}`);
+                promptParts.push(`${chineseShotSize}`);
             }
 
             // 3. 添加分镜描述
@@ -166,9 +163,16 @@ export class GenerationTools {
                 promptParts.push(shot.description);
             }
 
-            // 4. 添加画风
-            if (this.project.metadata?.artStyle) {
-                promptParts.push(this.project.metadata.artStyle);
+            // 4. 添加场景信息（场景名称 + 地点 + 描述）
+            if (scene?.name) {
+                const sceneLine = scene.location
+                    ? `场景：${scene.name}（${scene.location}）`
+                    : `场景：${scene.name}`;
+                promptParts.push(sceneLine);
+
+                if (scene.description) {
+                    promptParts.push(`场景描述：${scene.description}`);
+                }
             }
 
             // 5. 添加用户额外提示词

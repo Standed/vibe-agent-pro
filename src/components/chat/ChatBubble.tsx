@@ -36,6 +36,7 @@ interface ChatBubbleProps {
     onApplyToShot?: (url: string) => void;
     onApplyVideoToShot?: (message: ChatMessage) => void;  // 应用视频到分镜
     onDelete?: () => void;
+    project?: any; // Project type imported
 }
 
 export function ChatBubble({
@@ -46,7 +47,8 @@ export function ChatBubble({
     onReuseImage,
     onApplyToShot,
     onApplyVideoToShot,
-    onDelete
+    onDelete,
+    project
 }: ChatBubbleProps) {
     const isUser = message.role === 'user';
     const hasImages = message.images && message.images.length > 0;
@@ -176,6 +178,7 @@ export function ChatBubble({
                                     onReusePrompt={() => onReusePrompt?.(message.gridData?.prompt || message.model?.prompt || message.content)}
                                     onReuseImage={onReuseImage}
                                     onApplyToShot={onApplyToShot}
+                                    defaultAspectRatio={project?.settings?.aspectRatio}
                                 />
                             )}
                         </div>
