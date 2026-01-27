@@ -58,43 +58,63 @@ function DraggableResultImage({
     let containerClass = "relative group rounded-xl border border-black/5 dark:border-white/10 overflow-hidden cursor-pointer hover:border-zinc-900 dark:hover:border-white transition-colors bg-zinc-100 dark:bg-zinc-900";
 
     if (isSingle) {
-        switch (ratio) {
-            case AspectRatio.MOBILE: // 9:16
-                containerClass += " w-[200px] aspect-[9/16]";
-                break;
-            case AspectRatio.PORTRAIT: // 3:4
-                containerClass += " w-[270px] aspect-[3/4]";
-                break;
-            case AspectRatio.SQUARE: // 1:1
-                containerClass += " w-full aspect-square";
-                break;
-            case AspectRatio.STANDARD: // 4:3
-                containerClass += " w-full aspect-[4/3]";
-                break;
-            case AspectRatio.CINEMA: // 21:9
-                containerClass += " w-full aspect-[21/9]";
-                break;
-            default: // 16:9 or unknown
-                containerClass += " w-full aspect-video";
+        // 有明确的 aspectRatio 时按比例显示，否则使用自适应布局
+        if (ratio !== undefined) {
+            switch (ratio) {
+                case AspectRatio.MOBILE: // 9:16
+                    containerClass += " w-[200px] aspect-[9/16]";
+                    break;
+                case AspectRatio.PORTRAIT: // 3:4
+                    containerClass += " w-[270px] aspect-[3/4]";
+                    break;
+                case AspectRatio.SQUARE: // 1:1
+                    containerClass += " w-full aspect-square";
+                    break;
+                case AspectRatio.STANDARD: // 4:3
+                    containerClass += " w-full aspect-[4/3]";
+                    break;
+                case AspectRatio.CINEMA: // 21:9
+                    containerClass += " w-full aspect-[21/9]";
+                    break;
+                default: // 16:9
+                    containerClass += " w-full aspect-video";
+            }
+        } else {
+            // 无明确比例：使用自适应容器，限制最大尺寸
+            containerClass += " w-auto max-w-full";
         }
     } else {
         // Grid items keep standard video aspect
         containerClass += " aspect-video";
     }
 
+    // 是否使用自适应布局
+    const isAutoFit = isSingle && ratio === undefined;
+
     return (
         <div
             ref={drag as any}
             className={`${containerClass} ${isDragging ? 'opacity-50 cursor-grabbing' : 'cursor-grab'}`}
         >
-            <Image
-                src={img}
-                alt={`Result ${idx + 1}`}
-                fill
-                className="object-cover transition-transform duration-500 group-hover:scale-105"
-                unoptimized
-                onClick={() => onImageClick?.(img, idx)}
-            />
+            {isAutoFit ? (
+                // 自适应布局：使用 img 标签让图片保持原有比例
+                <img
+                    src={img}
+                    alt={`Result ${idx + 1}`}
+                    className="w-auto h-auto max-w-full max-h-[360px] object-contain transition-transform duration-500 group-hover:scale-105"
+                    onClick={() => onImageClick?.(img, idx)}
+                />
+            ) : (
+                // 固定比例布局：使用 next/image fill 模式
+                <Image
+                    src={img}
+                    alt={`Result ${idx + 1}`}
+                    fill
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                    unoptimized
+                    onClick={() => onImageClick?.(img, idx)}
+                />
+            )}
 
             {/* Grid Badge */}
             {isGrid && (
