@@ -537,5 +537,24 @@ const results = await executor.execute(toolCalls);
 
 ---
 
+### v3.8.5 更新日志
+1. **API 超时优化**：
+    - 统一所有 API 路由超时配置为 120s（SeeDream/Jimeng/Gemini-Image）
+    - 解决了生产环境 `FUNCTION_INVOCATION_TIMEOUT` 错误
+2. **Agent 并发修复**：
+    - 分离 Jimeng 和 SeeDream 调用逻辑，修复 Jimeng 错误调用 SeeDream API 的问题
+    - 实现 Jimeng 客户端轮询模式（`check-status-once`），避免服务端 60s 长阻塞
+    - 保持 `IMAGE_CONCURRENCY=3` 和 `SCENE_CONCURRENCY=2` 并发配置
+3. **Supabase 连接稳健性**：
+    - 认证中间件使用指数退避重试（最多 3 次：200ms, 400ms, 800ms）
+    - 客户端 Session 刷新增加重试（最多 2 次）
+    - 增加详细错误日志便于生产调试
+4. **Jimeng API 增强**：
+    - 新增 `checkTaskOnce()` 单次查询方法
+    - 新增 `check-status-once` API action
+    - 新增 `pollTaskClient()` 客户端轮询方法
+
+---
+
 **最后更新**: 2026-01-27
-**版本**: v3.8.3 (R2 直传架构 + Pro 模式增强)
+**版本**: v3.8.5 (API 超时优化 + 并发修复 + 认证增强)

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-3.8.1-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-3.8.5-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -377,6 +377,12 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Latest-Video API Optimization** - Pure read-only, no more R2 upload delays
 - ✅ **Auth Middleware Refresh Token** - Auto-refresh expired access tokens
 - ✅ **SmartRecovery Fix** - Prevents infinite polling loop on page refresh
+
+### v3.8.5 (2026-01-27)
+- ✅ **API Timeout Optimization** - Unified all API routes to 120s timeout (SeeDream/Jimeng/Gemini-Image), fixing production `FUNCTION_INVOCATION_TIMEOUT` errors.
+- ✅ **Agent Concurrency Fix** - Separated Jimeng and SeeDream call logic; implemented Jimeng client-side polling (`check-status-once`) to avoid 60s server blocking.
+- ✅ **Supabase Connection Resilience** - Auth middleware now uses exponential backoff retry (up to 3 times); client session refresh adds retry (up to 2 times).
+- ✅ **Jimeng API Enhancement** - Added `checkTaskOnce()`, `check-status-once` action, and `pollTaskClient()` for non-blocking status checks.
 
 ### v3.8.4 (2026-01-27)
 - ✅ **Concurrency Optimization** - Implemented parallel R2 uploads (Promise.all) for Grid generation, reducing upload time by ~4x.
