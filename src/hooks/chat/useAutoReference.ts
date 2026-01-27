@@ -82,8 +82,28 @@ export function useAutoReference(
         });
 
         setActiveReferences(prev => {
-            if (JSON.stringify(prev) === JSON.stringify(newRefs)) return prev;
-            return newRefs;
+            const newRefMap = new Map(newRefs.map(r => [r.url, r]));
+            const prevUrlSet = new Set(prev.map(r => r.url));
+
+            // 1. Keep existing refs that are still valid (preserve user order)
+            // Use the object from newRefs to ensure latest data (e.g. labels), but keep position from prev
+            const result: ActiveReference[] = [];
+            prev.forEach(p => {
+                if (newRefMap.has(p.url)) {
+                    result.push(newRefMap.get(p.url)!);
+                }
+            });
+
+            // 2. Append new refs that weren't there before
+            newRefs.forEach(r => {
+                if (!prevUrlSet.has(r.url)) {
+                    result.push(r);
+                }
+            });
+
+            // Deep compare to avoid unnecessary re-renders
+            if (JSON.stringify(result) === JSON.stringify(prev)) return prev;
+            return result;
         });
 
     }, [inputText, selectedShotId, project, manualReferenceUrls, droppedReferences, ignoredUrls, setInputText]);
