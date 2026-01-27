@@ -619,6 +619,57 @@ class JimengApiClient {
         };
     }
 
+    // 单次查询任务状态（用于客户端轮询模式）
+    async checkTaskOnce(historyId: string) {
+        const imageInfo = {
+            "width": 2048,
+            "height": 2048,
+            "format": "webp",
+            "image_scene_list": [
+                { "scene": "normal", "width": 2400, "height": 2400, "uniq_key": "2400", "format": "webp" },
+                { "scene": "normal", "width": 1080, "height": 1080, "uniq_key": "1080", "format": "webp" },
+            ]
+        };
+
+        const historyResult = await this.request('post', '/mweb/v1/get_history_by_ids', {
+            "history_ids": [historyId],
+            "image_info": imageInfo,
+            "http_common_info": {
+                "aid": parseInt(DEFAULT_ASSISTANT_ID, 10)
+            }
+        });
+
+        const record = historyResult.data?.[historyId];
+        if (!record) {
+            return { success: false, status: 'not_found', error: '任务记录不存在' };
+        }
+
+        const status = record.status;
+        const failCode = record.fail_code;
+        const itemList = record.item_list || [];
+
+        // status: 20=processing, 30=failed, 50=success
+        if (status === 30) {
+            return {
+                success: false,
+                status: 'failed',
+                error: failCode === '2038' ? '图片内容被过滤' : `生成失败: ${failCode}`
+            };
+        }
+
+        if (status === 50) {
+            const imageUrls: string[] = [];
+            for (const item of itemList) {
+                const imageUrl = item.image?.large_images?.[0]?.image_url || item.common_attr?.cover_url;
+                if (imageUrl) imageUrls.push(imageUrl);
+            }
+            return { success: true, status: 'completed', imageUrls };
+        }
+
+        // Still processing
+        return { success: false, status: 'processing' };
+    }
+
     async pollImageTask(historyId: string, maxTimes: number = 60) {
         const imageInfo = {
             "width": 2048,
@@ -724,9 +775,15 @@ export async function POST(request: NextRequest) {
 
         if (action === 'check-status') {
             const { historyId } = payload;
-            // Revert to long-polling as requested by user.
-            // Server will wait until completion or timeout (default 60s).
+            // Long-polling: 服务端轮询直到完成（用于 Pro 模式）
             const result = await client.pollImageTask(historyId);
+            return NextResponse.json(result);
+        }
+
+        if (action === 'check-status-once') {
+            const { historyId } = payload;
+            // 单次查询：立即返回当前状态（用于 Agent 模式客户端轮询）
+            const result = await client.checkTaskOnce(historyId);
             return NextResponse.json(result);
         }
 

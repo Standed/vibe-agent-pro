@@ -292,8 +292,8 @@ export class GenerationTools {
                         throw new Error('Jimeng 生成失败：未返回 historyId');
                     }
 
-                    // 轮询等待完成
-                    const pollResult = await jimengService.pollTask(genResult.historyId, sessionid);
+                    // 客户端轮询等待完成（避免服务端长阻塞）
+                    const pollResult = await jimengService.pollTaskClient(genResult.historyId, sessionid);
                     if (!pollResult.success || !pollResult.url) {
                         throw new Error('Jimeng 生成失败：轮询超时或无结果');
                     }
