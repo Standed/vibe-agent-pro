@@ -59,6 +59,21 @@ class JimengService {
         }
     }
 
+    // 单次查询任务状态（不阻塞）
+    async checkStatusOnce(params: JimengTaskStatus) {
+        try {
+            const response = await axios.post('/api/jimeng', {
+                action: 'check-status-once',
+                payload: params,
+                sessionid: params.sessionid
+            });
+            return response.data;
+        } catch (error: any) {
+            console.error('Jimeng checkStatusOnce error:', error);
+            throw error;
+        }
+    }
+
     async getCredit(sessionid?: string) {
         try {
             const response = await axios.post('/api/jimeng', {
@@ -70,6 +85,31 @@ class JimengService {
             console.error('Jimeng getCredit error:', error);
             throw error;
         }
+    }
+
+    // 客户端轮询模式（用于 Agent 并发，每次查询 < 5s）
+    async pollTaskClient(historyId: string, sessionid?: string, maxAttempts = 120) {
+        for (let i = 0; i < maxAttempts; i++) {
+            const result = await this.checkStatusOnce({ historyId, sessionid });
+
+            if (result.status === 'completed' && result.imageUrls?.length > 0) {
+                return {
+                    success: true,
+                    urls: result.imageUrls,
+                    url: result.imageUrls[0],
+                    type: 'image',
+                };
+            }
+
+            if (result.status === 'failed') {
+                throw new Error(result.error || 'Jimeng 生成失败');
+            }
+
+            // Still processing, wait 1s
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        throw new Error('Jimeng 轮询超时');
     }
 
     // 轮询任务直到完成
