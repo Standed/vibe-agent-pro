@@ -90,19 +90,8 @@ export function useChatGeneration({
     const [isUploading, setIsUploading] = useState(false);
     const { updateShot, addGridHistory } = useProjectStore();
 
-    // Prevent page unload during generation/upload
-    useEffect(() => {
-        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            if (isGenerating || isUploading) {
-                e.preventDefault();
-                e.returnValue = '图片正在生成或上传中，离开页面可能会导致数据丢失。';
-                return e.returnValue;
-            }
-        };
-
-        window.addEventListener('beforeunload', handleBeforeUnload);
-        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [isGenerating]);
+    // Note: beforeunload 提示已移除
+    // 现在服务端直接上传 R2，数据保存到 Supabase，刷新不会丢失数据
 
     const handleSend = async (
         inputText: string,
