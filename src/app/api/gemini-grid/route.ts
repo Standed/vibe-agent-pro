@@ -3,6 +3,7 @@ import { ProxyAgent, Agent } from 'undici';
 import sharp from 'sharp';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist, checkRateLimit } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
+import { isR2Configured, processAndUploadGrid } from '@/lib/r2-server-upload';
 
 export const maxDuration = 120;
 
@@ -269,7 +270,46 @@ export async function POST(request: NextRequest) {
 
     // console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
 
-    return NextResponse.json({ fullImage: `data:image/png;base64,${uri}`, requestId });
+    // 5. 尝试服务端直传 R2（跳过客户端上传，极大减少延迟）
+    if (isR2Configured()) {
+      const uploadResult = await processAndUploadGrid(uri, user.id, gridRows, gridCols);
+
+      if (uploadResult.success && uploadResult.fullImageUrl) {
+        console.log(`[Gemini Grid] ✅ R2 服务端直传成功 (${uploadResult.uploadTime}s): 1 fullImage + ${uploadResult.sliceUrls.length} slices`);
+        return NextResponse.json({
+          fullImage: uploadResult.fullImageUrl,
+          slices: uploadResult.sliceUrls as string[],
+          requestId,
+          uploadedToR2: true,
+          timings: {
+            geminiGeneration: elapsedTime,
+            r2Upload: uploadResult.uploadTime
+          }
+        });
+      }
+
+      // 部分成功：只有 fullImage 上传成功
+      if (uploadResult.fullImageUrl) {
+        console.log(`[Gemini Grid] ⚠️ 部分成功：fullImage 已上传 R2 (${uploadResult.uploadTime}s)`);
+        return NextResponse.json({
+          fullImage: uploadResult.fullImageUrl,
+          requestId,
+          uploadedToR2: 'partial',
+          timings: {
+            geminiGeneration: elapsedTime,
+            r2Upload: uploadResult.uploadTime
+          }
+        });
+      }
+    }
+
+    // 5.2 完全回退到 Base64
+    console.warn(`[Gemini Grid] ⚠️ R2 未配置或上传失败，回退 Base64`);
+    return NextResponse.json({
+      fullImage: `data:image/png;base64,${uri}`,
+      requestId,
+      uploadedToR2: false
+    });
   } catch (error: any) {
     console.error('[Gemini Grid fetch failed]', requestId, error);
     const message =

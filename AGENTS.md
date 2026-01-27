@@ -67,6 +67,7 @@ AI 驱动的视频分镜生成与编辑工具 | Next.js 15.1 + React 19 + TypeSc
 | **Kaponai 服务** | `src/services/KaponaiService.ts` | Sora API 底层封装 |
 | **角色一致性** | `src/services/CharacterConsistencyService.ts` | 角色注册与参考视频生成 |
 | **Sora Prompt** | `src/services/SoraPromptService.ts` | Sora 专用提示词生成 |
+| **R2 服务端上传** | `src/lib/r2-server-upload.ts` | 服务端 R2 上传工具 (切片、并行上传) |
 > ⚠️ **重要**: 本项目**不支持游客模式**，所有功能必须登录后使用。
 
 ### 认证流程
@@ -329,6 +330,21 @@ scripts/
 |------|------|------|
 | **Supabase PostgreSQL** | 结构化数据 | 用户、项目、场景、分镜、聊天历史、积分记录 |
 | **Cloudflare R2** | 媒体文件 | 图片、视频、音频、Grid 切片 |
+
+### R2 服务端上传（v3.8.2+）
+
+为优化上传性能，Gemini 图片生成 API 在服务端直接上传 R2，跳过客户端中转：
+
+| API | 上传位置 | 返回格式 |
+|-----|----------|----------|
+| `/api/gemini-grid` | **服务端** | `{ fullImage: R2 URL, slices: [R2 URLs] }` |
+| `/api/gemini-image` | **服务端** | `{ url: R2 URL }` |
+| `/api/jimeng` | 客户端 | 即梦 CDN URL（由客户端上传 R2）|
+
+**共享模块**：`src/lib/r2-server-upload.ts`
+- `uploadBase64ToR2()` - Base64 直传
+- `processAndUploadGrid()` - Grid 切片 + 并行上传
+- `isR2Configured()` - 检查 R2 配置
 
 ### 数据表概览
 

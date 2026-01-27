@@ -291,7 +291,12 @@ ${prompt}
 
   try {
     // console.log('[geminiService Grid Debug] 📡 调用 postJson...');
-    const data = await postJson<{ fullImage: string }>('/api/gemini-grid', {
+    const data = await postJson<{
+      fullImage: string;
+      slices?: string[];
+      uploadedToR2?: boolean | 'partial';
+      timings?: { geminiGeneration: string; r2Upload: string }
+    }>('/api/gemini-grid', {
       prompt: gridPrompt,
       gridRows,
       gridCols,
@@ -301,16 +306,23 @@ ${prompt}
     // console.log('[geminiService Grid Debug] ✅ API 请求成功');
     // console.log('[geminiService Grid Debug] fullImage 长度:', data.fullImage?.length || 0);
 
-    const fullImageBase64 = data.fullImage;
-    if (!fullImageBase64) throw new Error('未能生成 Grid 图片');
+    const fullImageSource = data.fullImage;
+    if (!fullImageSource) throw new Error('未能生成 Grid 图片');
+
+    // 如果服务端已返回 slices URL，直接使用（跳过客户端切片）
+    if (data.slices && data.slices.length === gridRows * gridCols) {
+      console.log(`[generateMultiViewGrid] ✅ 服务端已上传 R2 (${data.timings?.r2Upload || '?'}s)`);
+      return { fullImage: fullImageSource, slices: data.slices };
+    }
 
     // Slice the single high-res grid into separate base64 images
     // console.log('[geminiService Grid Debug] 🔪 开始切片 Grid 图片...');
     // console.log('[geminiService Grid Debug] Grid 尺寸:', gridRows, 'x', gridCols);
-    const panels = await sliceImageGrid(fullImageBase64, gridRows, gridCols);
+    console.log('[generateMultiViewGrid] 客户端切片中...');
+    const panels = await sliceImageGrid(fullImageSource, gridRows, gridCols);
     // console.log('[geminiService Grid Debug] ✅ 切片完成，共', panels.length, '个面板');
 
-    const returnValue = { fullImage: fullImageBase64, slices: panels };
+    const returnValue = { fullImage: fullImageSource, slices: panels };
     // console.log('[geminiService Grid Debug] 🎉 准备返回结果...');
     // console.log('[geminiService Grid Debug] returnValue.fullImage 长度:', returnValue.fullImage.length);
     // console.log('[geminiService Grid Debug] returnValue.slices 数量:', returnValue.slices.length);
@@ -373,7 +385,12 @@ STYLE:
 - No text, watermarks, or UI elements`;
 
   try {
-    const data = await postJson<{ fullImage: string }>('/api/gemini-grid', {
+    const data = await postJson<{
+      fullImage: string;
+      slices?: string[];
+      uploadedToR2?: boolean | 'partial';
+      timings?: { geminiGeneration: string; r2Upload: string }
+    }>('/api/gemini-grid', {
       prompt: gridPrompt,
       gridRows,
       gridCols,
@@ -381,11 +398,19 @@ STYLE:
       referenceImages: safeReferenceImages
     });
 
-    const fullImageBase64 = data.fullImage;
-    if (!fullImageBase64) throw new Error('未能生成 Grid 图片');
+    const fullImageSource = data.fullImage;
+    if (!fullImageSource) throw new Error('未能生成 Grid 图片');
 
-    const panels = await sliceImageGrid(fullImageBase64, gridRows, gridCols);
-    return { fullImage: fullImageBase64, slices: panels };
+    // 如果服务端已返回 slices URL，直接使用（跳过客户端切片）
+    if (data.slices && data.slices.length === gridRows * gridCols) {
+      console.log(`[generateSimpleGrid] ✅ 服务端已上传 R2 (${data.timings?.r2Upload || '?'}s)`);
+      return { fullImage: fullImageSource, slices: data.slices };
+    }
+
+    // 否则在客户端切片
+    console.log('[generateSimpleGrid] 客户端切片中...');
+    const panels = await sliceImageGrid(fullImageSource, gridRows, gridCols);
+    return { fullImage: fullImageSource, slices: panels };
   } catch (error: any) {
     console.error('Simple Grid generation error:', error);
     if (error.message?.includes('403') || error.message?.includes('PERMISSION_DENIED')) {
