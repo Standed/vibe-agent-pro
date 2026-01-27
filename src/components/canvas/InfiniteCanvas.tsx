@@ -184,12 +184,17 @@ export default function InfiniteCanvas() {
     const shot = project?.shots.find(s => s.id === shotId);
     if (shot) {
       const promptParts = constructBaseShotPrompt(project!, shot);
-      const fullPrompt = promptParts
+      const cleanParts = promptParts
         .join('\n')
         .split('\n')
         .map(part => part.trim().replace(/[，,。.]+$/, ''))
-        .filter(Boolean)
-        .join('，');
+        .filter(Boolean);
+
+      const fullPrompt = cleanParts.reduce((acc, part, index) => {
+        if (index === 0) return part;
+        const separator = part.startsWith('场景描述：') ? '。' : '，';
+        return `${acc}${separator}${part}`;
+      }, '');
 
       useProjectStore.getState().setGenerationRequest({
         prompt: fullPrompt,

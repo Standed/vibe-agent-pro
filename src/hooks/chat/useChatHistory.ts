@@ -155,12 +155,17 @@ export function useChatHistory(
                                 const currentShot = project.shots.find(s => s.id === selectedShotId);
                                 if (currentShot) {
                                     const promptParts = constructBaseShotPrompt(project, currentShot);
-                                    const defaultPrompt = promptParts
+                                    const cleanParts = promptParts
                                         .join('\n')
                                         .split('\n')
                                         .map(part => part.trim().replace(/[，,。.]+$/, ''))
-                                        .filter(Boolean)
-                                        .join('，');
+                                        .filter(Boolean);
+
+                                    const defaultPrompt = cleanParts.reduce((acc, part, index) => {
+                                        if (index === 0) return part;
+                                        const separator = part.startsWith('场景描述：') ? '。' : '，';
+                                        return `${acc}${separator}${part}`;
+                                    }, '');
                                     setInputText(defaultPrompt);
                                 } else {
                                     setInputText('');

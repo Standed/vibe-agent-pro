@@ -156,11 +156,16 @@ export class GenerationTools {
             }
 
             const basePrompt = promptParts.filter(Boolean).join('\n') || prompt || shot.description || 'Cinematic shot';
-            const compactPrompt = basePrompt
+            const cleanParts = basePrompt
                 .split('\n')
-                .map(part => part.trim())
-                .filter(Boolean)
-                .join('，');
+                .map(part => part.trim().replace(/[，,。.]+$/, ''))
+                .filter(Boolean);
+
+            const compactPrompt = cleanParts.reduce((acc, part, index) => {
+                if (index === 0) return part;
+                const separator = part.startsWith('场景描述：') ? '。' : '，';
+                return `${acc}${separator}${part}`;
+            }, '');
 
             const promptForModel = mode === 'grid'
                 ? Array.from({ length: gridSize === '3x3' ? 9 : 4 }, (_, idx) => `${idx + 1}. ${compactPrompt}`).join('\n')
