@@ -1,12 +1,13 @@
 import { ToolResult } from '../agentTools';
 import { BaseToolParams, generateId } from './baseTool';
-import { AspectRatio, ImageSize } from '@/types/project';
+import { AspectRatio, ImageSize, ShotSize } from '@/types/project';
 import { generateMultiViewGrid, urlsToReferenceImages, generateSingleImage } from '../geminiService';
 import { VolcanoEngineService } from '../volcanoEngineService';
 import { jimengService } from '../jimengService';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import { storageService } from '@/lib/storageService';
 import { dataService } from '@/lib/dataService';
+import { translateShotSize } from '@/utils/translations';
 
 const parseConcurrency = (val: string | undefined, fallback: number) => {
     const n = Number(val);
@@ -22,34 +23,6 @@ const SCENE_CONCURRENCY = parseConcurrency(
     process.env.AGENT_SCENE_CONCURRENCY || process.env.NEXT_PUBLIC_AGENT_SCENE_CONCURRENCY,
     2
 );
-
-/**
- * 将英文镜头景别转为中文
- */
-function translateShotSizeToChinese(shotSize: string): string {
-    const map: Record<string, string> = {
-        'Wide Shot': '远景',
-        'WS': '远景',
-        'Full Shot': '全景',
-        'FS': '全景',
-        'Medium Wide Shot': '中全景',
-        'MWS': '中全景',
-        'Medium Shot': '中景',
-        'MS': '中景',
-        'Medium Close-Up': '中近景',
-        'MCU': '中近景',
-        'Close-Up': '特写',
-        'CU': '特写',
-        'Extreme Close-Up': '大特写',
-        'ECU': '大特写',
-        'Over-the-Shoulder': '过肩',
-        'OTS': '过肩',
-        'Two Shot': '双人镜头',
-        'Insert': '特写插入',
-        'POV': '主观视角',
-    };
-    return map[shotSize] || shotSize;
-}
 
 async function runWithConcurrency<T>(
     items: T[],
@@ -174,7 +147,7 @@ export class GenerationTools {
             const scene = this.project.scenes.find(s => s.id === shot.sceneId);
             const promptParts: string[] = [];
 
-            // 添加场景信息（场景名称 + 地点）
+            // 1. 添加场景信息（场景名称 + 地点）
             if (scene?.name) {
                 const sceneLine = scene.location
                     ? `场景：${scene.name}（${scene.location}）`
@@ -182,23 +155,23 @@ export class GenerationTools {
                 promptParts.push(sceneLine);
             }
 
-            // 添加景别（中文）
+            // 2. 添加景别（中文）
             if (shot.shotSize) {
-                const chineseShotSize = translateShotSizeToChinese(shot.shotSize);
+                const chineseShotSize = translateShotSize(shot.shotSize as ShotSize);
                 promptParts.push(`景别：${chineseShotSize}`);
             }
 
-            // 添加分镜描述
+            // 3. 添加分镜描述
             if (shot.description) {
                 promptParts.push(shot.description);
             }
 
-            // 添加画风
+            // 4. 添加画风
             if (this.project.metadata?.artStyle) {
                 promptParts.push(this.project.metadata.artStyle);
             }
 
-            // 添加用户额外提示词
+            // 5. 添加用户额外提示词
             if (prompt) {
                 promptParts.push(prompt);
             }
