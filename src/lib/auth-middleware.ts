@@ -155,13 +155,28 @@ export async function authenticateRequest(
     if (profileError || !profile) {
       console.log('[Auth Middleware] Profile 查询失败或不存在，进行重试确认...', user.id, profileError?.code);
 
-      // 重试查询一次（防止临时网络问题导致误判）
-      await new Promise(r => setTimeout(r, 300));
-      const { data: retryProfile, error: retryError } = await admin
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
+      // 使用指数退避重试（最多 3 次，防止临时网络问题）
+      let retryProfile = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const waitTime = 200 * Math.pow(2, attempt - 1); // 200ms, 400ms, 800ms
+        await new Promise(r => setTimeout(r, waitTime));
+
+        const { data: attemptProfile, error: retryError } = await admin
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (attemptProfile) {
+          retryProfile = attemptProfile;
+          console.log(`[Auth Middleware] ✅ 重试 ${attempt} 次成功，Profile 存在`);
+          break;
+        }
+
+        if (attempt < 3) {
+          console.log(`[Auth Middleware] 重试 ${attempt}/3 失败，继续...`);
+        }
+      }
 
       if (retryProfile) {
         // 重试成功，Profile 实际存在
