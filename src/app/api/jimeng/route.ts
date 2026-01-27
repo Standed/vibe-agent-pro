@@ -8,7 +8,7 @@ import sizeOf from 'image-size';
 import sharp from 'sharp';
 import * as querystring from 'querystring';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

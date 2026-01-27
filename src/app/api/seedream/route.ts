@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist, checkRateLimit } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
