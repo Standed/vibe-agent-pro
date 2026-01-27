@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { useProjectStore } from '@/store/useProjectStore';
-import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Plus, Loader2, Edit2, Upload } from 'lucide-react';
+import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Plus, Loader2, Edit2, Upload, GalleryHorizontal } from 'lucide-react';
 import type { ShotSize, CameraMovement, Shot } from '@/types/project';
 import { translateShotSize, translateCameraMovement } from '@/utils/translations';
 import { formatShotLabel } from '@/utils/shotOrder';
@@ -21,13 +21,14 @@ import DraggableCanvasShotCard from '@/components/canvas/DraggableCanvasShotCard
 import { constructBaseShotPrompt } from '@/utils/promptConstruction';
 
 export default function InfiniteCanvas() {
-  const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed, updateShot, addShot, reorderShots, addCharacter, addLocation } = useProjectStore();
+  const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed, updateShot, addShot, reorderShots, addCharacter, addLocation, updateScene, autoArrangeScenes } = useProjectStore();
 
   // Canvas State
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+  const [draggedScene, setDraggedScene] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -121,7 +122,11 @@ export default function InfiniteCanvas() {
         setScale(newScale);
         setPosition({ x: newX, y: newY });
       } else {
-        setPosition(prev => ({ ...prev, y: prev.y - e.deltaY }));
+        // Support both vertical and horizontal scroll (trackpad)
+        setPosition(prev => ({
+          x: prev.x - e.deltaX,
+          y: prev.y - e.deltaY
+        }));
       }
     };
 
@@ -135,15 +140,40 @@ export default function InfiniteCanvas() {
     if (e.button === 1 || e.button === 0) { // Middle or Left click
       // Check if target is interactive
       const target = e.target as HTMLElement;
-      if (target.closest('button') || target.closest('.interactive')) return;
+      // If clicking inside a scene but NOT initiating scene drag (handled separately), prevent canvas drag
+      if (target.closest('.interactive')) return;
+
+      if (target.closest('button')) return;
 
       setIsDragging(true);
       setLastMousePos({ x: e.clientX, y: e.clientY });
     }
   };
 
+  const handleSceneDragStart = (e: React.MouseEvent, sceneId: string) => {
+    if (e.button !== 0) return; // Only left click
+    e.stopPropagation(); // Prevent canvas pan
+    e.preventDefault(); // Prevent text selection
+    setDraggedScene(sceneId);
+    setLastMousePos({ x: e.clientX, y: e.clientY });
+  };
+
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging) {
+    if (draggedScene) {
+      const deltaX = (e.clientX - lastMousePos.x) / scale;
+      const deltaY = (e.clientY - lastMousePos.y) / scale;
+
+      const scene = project?.scenes.find(s => s.id === draggedScene);
+      if (scene) {
+        updateScene(draggedScene, {
+          position: {
+            x: scene.position.x + deltaX,
+            y: scene.position.y + deltaY
+          }
+        });
+      }
+      setLastMousePos({ x: e.clientX, y: e.clientY });
+    } else if (isDragging) {
       const deltaX = e.clientX - lastMousePos.x;
       const deltaY = e.clientY - lastMousePos.y;
 
@@ -158,6 +188,7 @@ export default function InfiniteCanvas() {
 
   const handleMouseUp = () => {
     setIsDragging(false);
+    setDraggedScene(null);
   };
 
   // --- Actions ---
@@ -381,6 +412,42 @@ export default function InfiniteCanvas() {
     };
   });
 
+  // Helper to determine grid columns based on aspect ratio
+  const getGridColsClass = (ratio: string) => {
+    switch (ratio) {
+      case '9:16':
+      case '3:4':
+        return 'grid-cols-6';
+      case '1:1':
+      case '4:3':
+        return 'grid-cols-5';
+      case '21:9':
+        return 'grid-cols-3';
+      default:
+        return 'grid-cols-4';
+    }
+  };
+
+  const getSceneWidth = (ratio: string) => {
+    switch (ratio) {
+      case '9:16':
+      case '3:4':
+        return '1400px';
+      case '1:1':
+      case '4:3':
+        return '1200px';
+      case '21:9':
+        return '1400px';
+      default:
+        return '1000px';
+    }
+  };
+
+  const aspectRatio = project?.settings.aspectRatio || '16:9';
+  const gridColsClass = getGridColsClass(aspectRatio);
+  const ratioStyle = { aspectRatio: aspectRatio.replace(':', '/') };
+  const sceneWidth = getSceneWidth(aspectRatio);
+
   return (
     <div
       ref={containerRef}
@@ -390,8 +457,9 @@ export default function InfiniteCanvas() {
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
     >
-      {/* Floating Toolbar */}
+      {/* ... (Toolbars code unchanged) ... */}
       <div className="absolute top-4 left-4 z-10 flex items-center gap-2 interactive">
+        {/* ... contents of top toolbar ... */}
         <div className="flex gap-1 glass-panel p-1.5 rounded-2xl shadow-lg ring-1 ring-black/5">
           <button className="p-2 glass-button rounded-xl text-gray-600 dark:text-gray-300">
             <MousePointer2 className="w-4 h-4" />
@@ -408,6 +476,10 @@ export default function InfiniteCanvas() {
           </button>
           <button onClick={() => setScale(s => Math.min(s + 0.1, 5))} className="p-2 glass-button rounded-xl text-gray-600 dark:text-gray-300">
             <ZoomIn className="w-4 h-4" />
+          </button>
+          <div className="w-px bg-black/5 dark:bg-white/10 mx-1 my-1"></div>
+          <button onClick={() => autoArrangeScenes()} className="p-2 glass-button rounded-xl text-gray-600 dark:text-gray-300" title="自动整理布局">
+            <GalleryHorizontal className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -430,12 +502,9 @@ export default function InfiniteCanvas() {
           transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
         }}
       >
-        {/* Grid Background - Scaled with content or fixed? 
-            If inside here, it scales. If outside, it needs background-size adjustment.
-            Let's put it inside so it scales naturally like a real surface.
-        */}
+        {/* Grid Background */}
         <div
-          className="absolute -inset-[5000px]" // Huge background
+          className="absolute -inset-[5000px]"
           style={{
             backgroundImage: 'radial-gradient(#27272a 1px, transparent 1px)',
             backgroundSize: '24px 24px',
@@ -455,7 +524,7 @@ export default function InfiniteCanvas() {
               </p>
             </div>
           ) : (
-            <div className="space-y-8">
+            <div className="relative w-full h-full">
               {sceneGroups.map(({ scene, shots: sceneShots }) => {
                 const isSceneSelected = currentSceneId === scene.id && !selectedShotId;
                 return (
@@ -466,28 +535,32 @@ export default function InfiniteCanvas() {
                       : 'shadow-xl'
                       }`}
                     style={{
-                      marginLeft: scene.position.x,
-                      marginTop: scene.position.y,
+                      position: 'absolute',
+                      left: scene.position.x,
+                      top: scene.position.y,
+                      width: sceneWidth,
+                      // maxWidth: 'none' // Removed constraint
                     }}
-                    onMouseDown={(e) => e.stopPropagation()} // Prevent drag when clicking scene
+                    onMouseDown={(e) => e.stopPropagation()}
                   >
                     {/* Scene Header */}
-                    <button
+                    <div
+                      onMouseDown={(e) => handleSceneDragStart(e, scene.id)}
                       onClick={() => selectScene(scene.id)}
-                      className="w-full flex items-center justify-between mb-4 hover:bg-light-bg dark:bg-cine-panel/50 rounded p-2 -m-2 transition-colors text-left"
+                      className="w-full flex items-center justify-between mb-4 hover:bg-light-bg dark:bg-cine-panel/50 rounded p-2 -m-2 transition-colors text-left cursor-grab active:cursor-grabbing"
                     >
                       <div>
-                        <h3 className="font-bold text-light-text dark:text-white">{scene.name}</h3>
-                        <p className="text-xs text-light-text-muted dark:text-cine-text-muted">{scene.location}</p>
+                        <h3 className="font-bold text-light-text dark:text-white pointer-events-none">{scene.name}</h3>
+                        <p className="text-xs text-light-text-muted dark:text-cine-text-muted pointer-events-none">{scene.location}</p>
                       </div>
-                      <div className="text-xs text-light-text-muted dark:text-cine-text-muted">
+                      <div className="text-xs text-light-text-muted dark:text-cine-text-muted pointer-events-none">
                         {sceneShots.length} 个镜头
                       </div>
-                    </button>
+                    </div>
 
                     {/* Shots Grid */}
                     {sceneShots.length > 0 ? (
-                      <div className="grid grid-cols-4 gap-3">
+                      <div className={`grid ${gridColsClass} gap-3`}>
                         {sceneShots.map((shot) => {
                           const isShotSelected = selectedShotId === shot.id;
                           const shotLabel = formatShotLabel(scene.order, shot.order, shot.globalOrder);
@@ -507,13 +580,15 @@ export default function InfiniteCanvas() {
                               onGenerate={handleGenerate}
                               shotSizeLabel={translateShotSize(shot.shotSize)}
                               cameraMovementLabel={translateCameraMovement(shot.cameraMovement)}
+                              aspectRatio={aspectRatio}
                             />
                           );
                         })}
                         {/* Add Shot Button */}
                         <button
                           onClick={(e) => { e.stopPropagation(); handleAddShotClick(scene.id); }}
-                          className="aspect-video rounded border-2 border-dashed border-light-border dark:border-cine-border flex flex-col items-center justify-center text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent transition-colors"
+                          className="rounded border-2 border-dashed border-light-border dark:border-cine-border flex flex-col items-center justify-center text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent transition-colors"
+                          style={ratioStyle}
                         >
                           <Plus size={24} />
                           <span className="text-xs mt-1">添加镜头</span>

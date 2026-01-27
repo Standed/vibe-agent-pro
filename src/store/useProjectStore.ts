@@ -98,6 +98,7 @@ interface ProjectStore {
   reorderShots: (sceneId: string, shotIds: string[]) => void;
   addGenerationHistory: (shotId: string, historyItem: GenerationHistoryItem) => void;
   refreshShot: (shotId: string) => Promise<void>;
+  autoArrangeScenes: () => void;
 
   // Character Actions
   addCharacter: (character: Character, options?: { keepOpen?: boolean; immediateSave?: boolean }) => Promise<void> | void;
@@ -167,7 +168,7 @@ export const useProjectStore = create<ProjectStore>()(
         return {
           project,
           leftSidebarCollapsed: true, // Reset sidebar state on load
-          rightSidebarCollapsed: false
+          rightSidebarCollapsed: true
         };
       }),
 
@@ -261,7 +262,7 @@ export const useProjectStore = create<ProjectStore>()(
           },
         },
         leftSidebarCollapsed: true, // Reset sidebar state for new project
-        rightSidebarCollapsed: false,
+        rightSidebarCollapsed: true,
       });
     },
 
@@ -315,6 +316,35 @@ export const useProjectStore = create<ProjectStore>()(
         }
       });
       // 自动保存
+      get().debouncedSaveProject();
+    },
+
+    // Scene Actions
+    autoArrangeScenes: () => {
+      set((state) => {
+        if (!state.project) return;
+
+        // Sort scenes by order
+        const sortedScenes = [...state.project.scenes].sort((a, b) => (a.order || 0) - (b.order || 0));
+
+        let currentX = 100;
+        const GAP = 100;
+        const aspectRatio = state.project.settings.aspectRatio || '16:9';
+
+        // Define widths consistent with InfiniteCanvas layout
+        let sceneWidth = 1000; // Default 16:9 (4 cols)
+        if (aspectRatio === '9:16' || aspectRatio === '3:4') sceneWidth = 1400; // 6 cols
+        else if (aspectRatio === '1:1' || aspectRatio === '4:3') sceneWidth = 1200; // 5 cols
+        else if (aspectRatio === '21:9') sceneWidth = 1400; // Wide
+
+        sortedScenes.forEach((scene) => {
+          scene.position = { x: currentX, y: 100 };
+          currentX += sceneWidth + GAP;
+        });
+
+        // Update scenes array
+        state.project.scenes = sortedScenes;
+      });
       get().debouncedSaveProject();
     },
 

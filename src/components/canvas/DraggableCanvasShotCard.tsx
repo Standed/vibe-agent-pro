@@ -22,6 +22,7 @@ interface DraggableCanvasShotCardProps {
     onGenerate: (shotId: string, e: React.MouseEvent) => void;
     shotSizeLabel: string;
     cameraMovementLabel: string;
+    aspectRatio?: string;
 }
 
 export default function DraggableCanvasShotCard({
@@ -37,9 +38,19 @@ export default function DraggableCanvasShotCard({
     onGenerate,
     shotSizeLabel,
     cameraMovementLabel,
+    aspectRatio = '16:9',
 }: DraggableCanvasShotCardProps) {
     const { updateShot } = useProjectStore();
     const cardRef = useRef<HTMLDivElement>(null);
+
+    // 计算布局模式
+    const ratioStr = aspectRatio.replace(':', '/');
+    const isTall = aspectRatio === '9:16' || aspectRatio === '3:4';
+
+    // 动态样式类
+    const buttonBaseClass = "rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm flex items-center justify-center";
+    const buttonClass = `${buttonBaseClass} ${isTall ? 'p-1 w-6 h-6' : 'p-1.5 w-7 h-7'}`; // Tall模式下更小
+    const iconSize = isTall ? 10 : 12;
 
     // --- Drag: Canvas Shot -> Pro Mode ---
     const [{ isDragging }, drag] = useDrag(() => ({
@@ -121,8 +132,11 @@ export default function DraggableCanvasShotCard({
                 : 'border border-white/20 dark:border-white/5 hover:shadow-lg'
                 } ${isDragging ? 'opacity-50 cursor-grabbing' : ''} ${isOver ? 'ring-2 ring-light-accent dark:ring-cine-accent' : ''}`}
         >
-            {/* Shot Thumbnail */}
-            <div className="aspect-video bg-light-bg dark:bg-cine-black flex items-center justify-center relative">
+            {/* Shot Thumbnail Container with Dynamic Aspect Ratio */}
+            <div
+                className="bg-light-bg dark:bg-cine-black flex items-center justify-center relative w-full"
+                style={{ aspectRatio: ratioStr }}
+            >
                 {shot.referenceImage ? (
                     <>
                         <img
@@ -132,11 +146,11 @@ export default function DraggableCanvasShotCard({
                             draggable={false}
                             onClick={(e) => { e.stopPropagation(); onPreview(shot.referenceImage!); }}
                         />
-                        <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
-                            <button onClick={(e) => onDownload(shot.referenceImage!, shot.order, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="下载"><Download size={12} /></button>
-                            <button onClick={(e) => onEdit(shot, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="编辑"><Edit2 size={12} /></button>
-                            <button onClick={(e) => { e.stopPropagation(); onUpload(); }} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="上传图片"><Upload size={12} /></button>
-                            <button onClick={(e) => onGenerate(shot.id, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="重新生成"><RefreshCw size={12} /></button>
+                        <div className={`absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end pointer-events-none ${isTall ? 'gap-1' : 'gap-2'}`}>
+                            <button onClick={(e) => onDownload(shot.referenceImage!, shot.order, e)} className={buttonClass} title="下载"><Download size={iconSize} /></button>
+                            <button onClick={(e) => onEdit(shot, e)} className={buttonClass} title="编辑"><Edit2 size={iconSize} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); onUpload(); }} className={buttonClass} title="上传图片"><Upload size={iconSize} /></button>
+                            <button onClick={(e) => onGenerate(shot.id, e)} className={buttonClass} title="重新生成"><RefreshCw size={iconSize} /></button>
                         </div>
                     </>
                 ) : shot.gridImages && shot.gridImages.length > 0 ? (
@@ -148,17 +162,17 @@ export default function DraggableCanvasShotCard({
                             draggable={false}
                             onClick={(e) => { e.stopPropagation(); onPreview(shot.gridImages![0]); }}
                         />
-                        <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
-                            <button onClick={(e) => { e.stopPropagation(); onUpload(); }} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="上传图片"><Upload size={12} /></button>
-                            <button onClick={(e) => onGenerate(shot.id, e)} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="重新生成"><RefreshCw size={12} /></button>
+                        <div className={`absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end pointer-events-none ${isTall ? 'gap-1' : 'gap-2'}`}>
+                            <button onClick={(e) => { e.stopPropagation(); onUpload(); }} className={buttonClass} title="上传图片"><Upload size={iconSize} /></button>
+                            <button onClick={(e) => onGenerate(shot.id, e)} className={buttonClass} title="重新生成"><RefreshCw size={iconSize} /></button>
                         </div>
                     </>
                 ) : (
                     <>
                         <ImageIcon size={24} className="text-light-text-muted dark:text-cine-text-muted" />
-                        <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
-                            <button onClick={(e) => { e.stopPropagation(); onUpload(); }} className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm" title="上传图片"><Upload size={12} /></button>
-                            <button onClick={(e) => onGenerate(shot.id, e)} className="px-3 py-1.5 rounded-full bg-light-accent hover:bg-light-accent-hover text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm flex items-center gap-1 text-xs"><Sparkles size={12} /> 生成图片</button>
+                        <div className={`absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end pointer-events-none ${isTall ? 'gap-1' : 'gap-2'}`}>
+                            <button onClick={(e) => { e.stopPropagation(); onUpload(); }} className={buttonClass} title="上传图片"><Upload size={iconSize} /></button>
+                            <button onClick={(e) => onGenerate(shot.id, e)} className={`${buttonBaseClass} px-3 py-1 text-xs gap-1`}><Sparkles size={iconSize} /> {isTall ? '生成' : '生成图片'}</button>
                         </div>
                     </>
                 )}
@@ -176,13 +190,29 @@ export default function DraggableCanvasShotCard({
                     </div>
                 )}
             </div>
-            {/* Shot Info */}
+            {/* Shot Info - Optimized for Tall Cards */}
             <div className="p-2">
-                <div className="flex items-center justify-between text-xs">
-                    <span className="font-mono text-light-text-muted dark:text-cine-text-muted">{shotLabel}</span>
-                    <span className="text-light-text-muted dark:text-cine-text-muted">{shot.duration}s</span>
-                </div>
-                <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 truncate">{shotSizeLabel} · {cameraMovementLabel}</div>
+                {isTall ? (
+                    // Tall Layout: Two rows, compact
+                    <>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="font-mono font-medium text-light-text-primary dark:text-cine-text-primary truncate mr-1">{shotLabel}</span>
+                            <span className="text-light-text-muted dark:text-cine-text-muted shrink-0 text-[10px] bg-black/10 dark:bg-white/10 px-1 rounded">{shot.duration}s</span>
+                        </div>
+                        <div className="text-[10px] text-light-text-muted dark:text-cine-text-muted truncate leading-tight">
+                            {shotSizeLabel} · {cameraMovementLabel}
+                        </div>
+                    </>
+                ) : (
+                    // Regular Layout
+                    <>
+                        <div className="flex items-center justify-between text-xs">
+                            <span className="font-mono text-light-text-muted dark:text-cine-text-muted">{shotLabel}</span>
+                            <span className="text-light-text-muted dark:text-cine-text-muted">{shot.duration}s</span>
+                        </div>
+                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 truncate">{shotSizeLabel} · {cameraMovementLabel}</div>
+                    </>
+                )}
             </div>
         </div>
     );

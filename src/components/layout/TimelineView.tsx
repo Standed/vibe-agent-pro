@@ -1259,7 +1259,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
 
                         {/* Panel Content */}
                         <div className="flex-1 overflow-hidden">
-                            {controlMode === 'agent' ? <AgentPanel /> : <ChatPanel />}
+                            {controlMode === 'agent' ? <AgentPanel /> : <ChatPanel key={selectedShotId} />}
                         </div>
                     </div>
                 ) : (

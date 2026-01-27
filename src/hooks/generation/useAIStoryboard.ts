@@ -169,7 +169,7 @@ export const useAIStoryboard = () => {
                     location: sceneGroup.location,
                     description: '',
                     shotIds: [],
-                    position: { x: idx * 300, y: 100 },
+                    position: { x: idx * 800, y: 100 },
                     order: idx + 1,
                     status: 'draft' as const,
                     created: new Date(),
@@ -264,6 +264,9 @@ export const useAIStoryboard = () => {
             if (leftSidebarCollapsed) {
                 toggleLeftSidebar();
             }
+
+            // ⭐ 自动整理场景布局，防止重叠
+            useProjectStore.getState().autoArrangeScenes();
 
             // ⭐ 保存一条总结消息到聊天历史，记录策划过程
             if (project) {
