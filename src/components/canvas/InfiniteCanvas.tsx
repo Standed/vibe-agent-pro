@@ -18,6 +18,7 @@ import { batchDownloadAssets } from '@/utils/batchDownload';
 import { SHOT_TO_CHAT, IMAGE_TO_SHOT } from '@/components/chat/dragTypes';
 import { dataService } from '@/lib/dataService';
 import DraggableCanvasShotCard from '@/components/canvas/DraggableCanvasShotCard';
+import { constructBaseShotPrompt } from '@/utils/promptConstruction';
 
 export default function InfiniteCanvas() {
   const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed, updateShot, addShot, reorderShots, addCharacter, addLocation } = useProjectStore();
@@ -182,10 +183,9 @@ export default function InfiniteCanvas() {
     // Find the shot to get its description
     const shot = project?.shots.find(s => s.id === shotId);
     if (shot) {
-      // 1. 设置生成请求，包含场景上下文
-      const scene = project?.scenes.find(s => s.id === shot.sceneId);
-      const sceneContext = scene?.description ? `\n${scene.description}` : '';
-      const fullPrompt = `${shot.description || ''}${sceneContext}`;
+      // 1. 设置生成请求，包含场景上下文（使用统一工具构建）
+      const promptParts = constructBaseShotPrompt(project!, shot);
+      const fullPrompt = promptParts.join('，');
 
       useProjectStore.getState().setGenerationRequest({
         prompt: fullPrompt,
