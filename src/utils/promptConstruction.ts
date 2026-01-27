@@ -31,16 +31,9 @@ export function constructBaseShotPrompt(project: Project, shot: Shot): string[] 
         promptParts.push(shot.description);
     }
 
-    // 4. 添加场景信息（场景名称 + 地点 + 描述）
-    if (scene?.name) {
-        const sceneLine = scene.location
-            ? `场景：${scene.name}（${scene.location}）`
-            : `场景：${scene.name}`;
-        promptParts.push(sceneLine);
-
-        if (scene.description) {
-            promptParts.push(`场景描述：${scene.description}`);
-        }
+    // 4. 添加场景信息（仅描述）
+    if (scene?.description) {
+        promptParts.push(`场景描述：${scene.description}`);
     }
 
     return promptParts;
