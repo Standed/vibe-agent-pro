@@ -3,6 +3,7 @@ import { ProxyAgent, Agent } from 'undici';
 import sharp from 'sharp';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
+import { isR2Configured, uploadBase64ToR2 } from '@/lib/r2-server-upload';
 
 export const maxDuration = 120;  // 与 AbortController 保持一致
 
@@ -240,8 +241,29 @@ export async function POST(request: NextRequest) {
 
     // console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
 
-    // Return data URL
-    return NextResponse.json({ url: `data:image/png;base64,${uri}`, requestId });
+    // 5. 尝试服务端上传到 R2（跳过客户端上传，减少延迟）
+    if (isR2Configured()) {
+      const r2UploadStart = Date.now();
+      const r2Url = await uploadBase64ToR2(uri, user.id, 'generated', 'direct');
+      const r2UploadTime = ((Date.now() - r2UploadStart) / 1000).toFixed(2);
+
+      if (r2Url) {
+        console.log(`[Gemini Image] ✅ R2 服务端直传成功 (${r2UploadTime}s)`);
+        return NextResponse.json({
+          url: r2Url,
+          requestId,
+          uploadedToR2: true,
+          timings: {
+            geminiGeneration: elapsedTime,
+            r2Upload: r2UploadTime
+          }
+        });
+      }
+    }
+
+    // 回退：返回 Base64 Data URL
+    console.warn('[Gemini Image] ⚠️ R2 未配置或上传失败，回退 Base64');
+    return NextResponse.json({ url: `data:image/png;base64,${uri}`, requestId, uploadedToR2: false });
   } catch (error: any) {
     console.error('[Gemini Image fetch failed]', requestId, error);
     const message =
