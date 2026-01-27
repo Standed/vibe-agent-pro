@@ -23,6 +23,7 @@ AI 驱动的视频分镜生成与编辑工具 | Next.js 15.1 + React 19 + TypeSc
 │                         前端层 (Frontend)                              │
 │   React 19 + Zustand + Tailwind CSS                                  │
 │   useProjectStore (状态管理) + useAgent (AI 交互)                      │
+│   Unified Sidebar (统一侧边栏) + Timeline Context Sync (历史记录同步)    │
 └────────────────────────────────┬─────────────────────────────────────┘
                                  │
 ┌────────────────────────────────┴─────────────────────────────────────┐
