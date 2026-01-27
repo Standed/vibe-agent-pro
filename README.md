@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-3.8.5-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-3.8.6-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -377,6 +377,12 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Latest-Video API Optimization** - Pure read-only, no more R2 upload delays
 - ✅ **Auth Middleware Refresh Token** - Auto-refresh expired access tokens
 - ✅ **SmartRecovery Fix** - Prevents infinite polling loop on page refresh
+
+### v3.8.6 (2026-01-27)
+- ✅ **Reference Drag & Drop** - Implemented draggable sorting for reference images in Pro Mode. New references now append to the end, preserving user-defined order.
+- ✅ **Prompt Enhancement** - Injected `scene.description` into generation prompts for better context awareness.
+- ✅ **Preview Fallback** - Image previews now fallback to project aspect ratio when metadata is missing, ensuring consistent UI visuals.
+- ✅ **Code Refactoring** - Consolidated shot translation logic and improved state management for reference ordering.
 
 ### v3.8.5 (2026-01-27)
 - ✅ **API Timeout Optimization** - Unified all API routes to 120s timeout (SeeDream/Jimeng/Gemini-Image), fixing production `FUNCTION_INVOCATION_TIMEOUT` errors.
