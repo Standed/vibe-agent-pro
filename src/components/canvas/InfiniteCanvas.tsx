@@ -183,9 +183,13 @@ export default function InfiniteCanvas() {
     // Find the shot to get its description
     const shot = project?.shots.find(s => s.id === shotId);
     if (shot) {
-      // 1. 设置生成请求，包含场景上下文（使用统一工具构建）
       const promptParts = constructBaseShotPrompt(project!, shot);
-      const fullPrompt = promptParts.join('，');
+      const fullPrompt = promptParts
+        .join('\n')
+        .split('\n')
+        .map(part => part.trim().replace(/[，,。.]+$/, ''))
+        .filter(Boolean)
+        .join('，');
 
       useProjectStore.getState().setGenerationRequest({
         prompt: fullPrompt,

@@ -158,7 +158,7 @@ export function useChatHistory(
                                     const defaultPrompt = promptParts
                                         .join('\n')
                                         .split('\n')
-                                        .map(part => part.trim())
+                                        .map(part => part.trim().replace(/[，,。.]+$/, ''))
                                         .filter(Boolean)
                                         .join('，');
                                     setInputText(defaultPrompt);
