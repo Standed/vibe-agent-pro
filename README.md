@@ -64,12 +64,13 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 
 ### 📍 Infinite Canvas
 - Drag-and-drop scene and shot management
-- Zoom (50%-200%) and pan controls
-- Dot grid background
+- Zoom (50%-200%) and pan controls (Horizontal & Vertical)
+- Smart Auto-Arrange based on aspect ratio
+- Unified Sidebar with Floating Collapse Button
 - Visual status indicators (draft/generating/done/failed)
 
 ### ✂️ Timeline Editor
-- Three states: collapsed/default/expanded
+- Collapsible Sidebar with Pro History Sync
 - Video and audio tracks
 - Time ruler with 5-second intervals
 - Playhead indicator
@@ -382,7 +383,10 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Prompt Logic Unified** - Centralized prompt construction logic (`constructBaseShotPrompt`) for Agent, Pro Mode, and Canvas generation.
 - ✅ **Punctuation Optimization** - Intelligent prompt concatenation that removes redundant punctuation and uses periods to separate scene descriptions for better clarity.
 - ✅ **Canvas Generation Repair** - Fixed the "Regenerate" button on canvas to use the latest prompt logic, ensuring consistency with Pro Mode.
-- ✅ **Pro Mode UX UX** - Auto-fills complete prompt in Pro Mode when viewing shots with no user history (only AI-generated content).
+- ✅ **Canvas Layout Optimization** - Shot cards on canvas now dynamically adapt to the project's aspect ratio (e.g., 9:16 vertical cards).
+- ✅ **Adaptive Grid Density** - Grid columns automatically adjust based on card width (6 columns for vertical, 4 for wide) for better screen utilization.
+- ✅ **Responsive Card UI** - Redesigned bottom toolbar and info layout specifically for narrow vertical cards (`Tall` mode) to prevent overcrowding.
+- ✅ **Pro Mode UX** - Auto-fills complete prompt in Pro Mode when viewing shots with no user history (only AI-generated content).
 
 ### v3.8.6 (2026-01-27)
 - ✅ **Reference Drag & Drop** - Implemented draggable sorting for reference images in Pro Mode. New references now append to the end, preserving user-defined order.

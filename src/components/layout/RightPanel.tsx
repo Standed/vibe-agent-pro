@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { Bot, Sliders, ChevronRight, ChevronLeft, X } from 'lucide-react';
+import { Bot, Sliders, ChevronRight, ChevronLeft, X, Sparkles } from 'lucide-react';
 import AgentPanel from '../agent/AgentPanel';
 import ChatPanel from '@/components/chat/ChatPanel';
 
@@ -74,26 +74,53 @@ export default function RightPanel() {
 
   return (
     <div
-      className={`glass-panel border-l flex flex-col transition-all duration-300 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[-4px_0_24px_rgba(0,0,0,0.2)] z-20 ${rightSidebarCollapsed ? 'w-16' : ''}`}
+      className={`glass-panel border-l flex flex-col transition-all duration-300 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[-4px_0_24px_rgba(0,0,0,0.2)] z-20 relative ${rightSidebarCollapsed ? 'w-12' : ''}`}
       style={rightSidebarCollapsed ? {} : { width: panelWidth }}
     >
+      {/* Collapse/Expand Button (Floating on edge) */}
+      <button
+        onClick={toggleRightSidebar}
+        className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-8 h-8 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 rounded-full text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all shadow-xl border border-black/5 dark:border-white/10 flex items-center justify-center group"
+        title={rightSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+      >
+        {rightSidebarCollapsed ? (
+          <ChevronLeft size={18} className="transition-transform group-hover:-translate-x-0.5" />
+        ) : (
+          <ChevronRight size={18} className="transition-transform group-hover:translate-x-0.5" />
+        )}
+      </button>
       {rightSidebarCollapsed ? (
         /* Collapsed State */
-        <div className="flex flex-col items-center h-full py-6">
-          <button
-            onClick={toggleRightSidebar}
-            className="p-3 glass-button rounded-xl group"
-            title="展开侧边栏"
-          >
-            <ChevronLeft size={20} className="text-gray-500 dark:text-gray-400 group-hover:text-black dark:group-hover:text-white" />
-          </button>
+        <div className="flex flex-col items-center py-4 gap-3 w-full">
+          {/* Quick mode indicators */}
+          <div className="flex flex-col gap-2 mt-2">
+            <button
+              onClick={() => { toggleRightSidebar(); setControlMode('agent'); }}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${controlMode === 'agent' ? 'bg-light-accent/20 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent' : 'bg-light-accent/5 dark:bg-cine-accent/5 text-light-text-muted dark:text-cine-text-muted hover:bg-light-accent/10 dark:hover:bg-cine-accent/10'}`}
+              title="Agent 模式"
+            >
+              <Bot size={18} />
+            </button>
+            <button
+              onClick={() => { toggleRightSidebar(); setControlMode('pro'); }}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${controlMode === 'pro' ? 'bg-light-accent/20 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent' : 'bg-light-accent/5 dark:bg-cine-accent/5 text-light-text-muted dark:text-cine-text-muted hover:bg-light-accent/10 dark:hover:bg-cine-accent/10'}`}
+              title="Pro 模式"
+            >
+              <Sliders size={18} />
+            </button>
+          </div>
+          <div className="mt-4 text-[10px] font-medium text-gray-400 tracking-widest select-none opacity-50" style={{ writingMode: 'vertical-rl' }}>
+            {controlMode === 'agent' ? 'AGENT' : 'PRO'}
+          </div>
         </div>
       ) : (
         /* Agent/Pro Mode */
         <>
           {/* Mode Toggle */}
-          <div className="p-6 pb-2 relative flex-shrink-0">
-            <div className="flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
+          {/* Mode Toggle & Header */}
+          <div className="p-4 pb-2 relative flex-shrink-0 flex items-center gap-2">
+            {/* Remove Old Header Button */}
+            <div className="flex-1 flex p-1 bg-black/5 dark:bg-white/5 rounded-xl backdrop-blur-sm">
               <button
                 onClick={() => setControlMode('agent')}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 px-2 text-xs font-medium rounded-lg transition-all duration-300 ${controlMode === 'agent'
@@ -115,14 +142,6 @@ export default function RightPanel() {
                 <span>Pro</span>
               </button>
             </div>
-            {/* Collapse Button */}
-            <button
-              onClick={toggleRightSidebar}
-              className="absolute left-2 top-8 p-1 glass-button rounded-lg hidden"
-              title="收起侧边栏"
-            >
-              <ChevronRight size={16} className="text-gray-500 dark:text-gray-400" />
-            </button>
             {!rightSidebarCollapsed && (
               <div
                 className={`absolute -left-1 top-0 h-full w-1 cursor-col-resize ${resizing ? 'bg-light-accent/50 dark:bg-cine-accent/50' : 'bg-transparent hover:bg-black/10 dark:hover:bg-white/10'}`}
