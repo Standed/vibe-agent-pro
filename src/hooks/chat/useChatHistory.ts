@@ -4,6 +4,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { dataService } from '@/lib/dataService';
 import { ChatPanelMessage, GenerationModel, AspectRatio } from '@/types/project';
 import { useSoraVideoMessages } from '@/hooks/sora/useSoraVideoMessages';
+import { constructBaseShotPrompt } from '@/utils/promptConstruction';
 
 export function useChatHistory(
     projectId: string | undefined,
@@ -155,7 +156,16 @@ export function useChatHistory(
                         if (selectedShotId && project?.shots) {
                             const currentShot = project.shots.find(s => s.id === selectedShotId);
                             if (currentShot) {
-                                setInputText(currentShot.description || '');
+                                // Default Prompt Logic (Same as Agent)
+                                const promptParts = constructBaseShotPrompt(project, currentShot);
+                                // Compact prompt parts same as generationTools
+                                const defaultPrompt = promptParts
+                                    .join('\n')
+                                    .split('\n')
+                                    .map(part => part.trim())
+                                    .filter(Boolean)
+                                    .join('，');
+                                setInputText(defaultPrompt);
                             } else {
                                 setInputText('');
                             }

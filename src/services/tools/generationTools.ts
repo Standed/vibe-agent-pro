@@ -7,7 +7,9 @@ import { jimengService } from '../jimengService';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import { storageService } from '@/lib/storageService';
 import { dataService } from '@/lib/dataService';
-import { translateShotSize } from '@/utils/translations';
+import { constructBaseShotPrompt } from '@/utils/promptConstruction';
+
+
 
 const parseConcurrency = (val: string | undefined, fallback: number) => {
     const n = Number(val);
@@ -145,35 +147,8 @@ export class GenerationTools {
 
         try {
             const scene = this.project.scenes.find(s => s.id === shot.sceneId);
-            const promptParts: string[] = [];
-
-            // 1. 添加画风
-            if (this.project.metadata?.artStyle) {
-                promptParts.push(this.project.metadata.artStyle);
-            }
-
-            // 2. 添加景别（中文）
-            if (shot.shotSize) {
-                const chineseShotSize = translateShotSize(shot.shotSize as ShotSize);
-                promptParts.push(`${chineseShotSize}`);
-            }
-
-            // 3. 添加分镜描述
-            if (shot.description) {
-                promptParts.push(shot.description);
-            }
-
-            // 4. 添加场景信息（场景名称 + 地点 + 描述）
-            if (scene?.name) {
-                const sceneLine = scene.location
-                    ? `场景：${scene.name}（${scene.location}）`
-                    : `场景：${scene.name}`;
-                promptParts.push(sceneLine);
-
-                if (scene.description) {
-                    promptParts.push(`场景描述：${scene.description}`);
-                }
-            }
+            // 使用共享工具构建基础 Prompt
+            const promptParts = constructBaseShotPrompt(this.project, shot);
 
             // 5. 添加用户额外提示词
             if (prompt) {
