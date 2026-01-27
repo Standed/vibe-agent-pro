@@ -150,7 +150,22 @@ export function useChatHistory(
                             }
                             setInputText(prompt);
                         } else {
-                            setInputText('');
+                            // Fallback to default if no user message found
+                            if (selectedShotId && project?.shots) {
+                                const currentShot = project.shots.find(s => s.id === selectedShotId);
+                                if (currentShot) {
+                                    const promptParts = constructBaseShotPrompt(project, currentShot);
+                                    const defaultPrompt = promptParts
+                                        .join('\n')
+                                        .split('\n')
+                                        .map(part => part.trim())
+                                        .filter(Boolean)
+                                        .join('，');
+                                    setInputText(defaultPrompt);
+                                } else {
+                                    setInputText('');
+                                }
+                            }
                         }
                     } else {
                         if (selectedShotId && project?.shots) {
