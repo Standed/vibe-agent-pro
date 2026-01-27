@@ -12,6 +12,7 @@
 - **Learning from existing code** - Study and plan before implementing
 - **Pragmatic over dogmatic** - Adapt to project reality
 - **Clear intent over clever code** - Be boring and obvious
+- **UI Consistency** - Reuse patterns (Sidebar, Icons) across views
 
 ### Simplicity Means
 
