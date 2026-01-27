@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useDrop } from 'react-dnd';
 import { NativeTypes } from 'react-dnd-html5-backend';
 import { createPortal } from 'react-dom';
@@ -22,6 +22,7 @@ import { useJimengGeneration } from '@/hooks/generation/useJimengGeneration';
 import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
 import { ChatBubble } from './ChatBubble';
 import { ChatInput } from './ChatInput';
+import { DraggableReference } from './DraggableReference';
 import { Sparkles, Bug, Loader2, X } from 'lucide-react';
 import { compressImage, compressFileToBase64 } from '@/utils/imageCompression';
 import { replaceSoraCharacterCodes } from '@/utils/soraCharacterReplace';
@@ -150,6 +151,35 @@ export default function ChatPanel() {
 
     // Refs
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Handlers for Reference Dragging
+    const moveReferenceFn = useCallback((dragIndex: number, hoverIndex: number) => {
+        if (dragIndex === hoverIndex) return;
+        setActiveReferences((prevRefs) => {
+            const newRefs = [...prevRefs];
+            const [dragItem] = newRefs.splice(dragIndex, 1);
+            newRefs.splice(hoverIndex, 0, dragItem);
+            return newRefs;
+        });
+    }, [setActiveReferences]);
+
+    const onRemoveReferenceFn = useCallback((ref: any) => {
+        setDroppedReferences(prev => prev.filter(r => r.url !== ref.url));
+        setIgnoredUrls(prev => {
+            const next = new Set(prev);
+            next.add(ref.url);
+            return next;
+        });
+        if (ref.entityName) {
+            const mentionText = `@${ref.entityName}`;
+            setInputText((prevText: string) => { // Use functional update
+                if (prevText.includes(mentionText)) {
+                    return prevText.replaceAll(mentionText, '').replace(/\s{2,}/g, ' ').trim();
+                }
+                return prevText;
+            });
+        }
+    }, [setDroppedReferences, setIgnoredUrls, setInputText]);
 
 
 
@@ -524,37 +554,14 @@ export default function ChatPanel() {
             {/* Active References UI */}
             {activeReferences.length > 0 && (
                 <div className="px-4 py-2 border-t border-white/5 flex gap-2 overflow-x-auto custom-scrollbar">
-                    {activeReferences.map((ref) => (
-                        <div key={ref.url} className="relative group flex-shrink-0 w-16 h-16" title={ref.label}>
-                            <img
-                                src={ref.url}
-                                alt={ref.label}
-                                className={`w-full h-full object-cover rounded-lg border ${ref.source === 'manual_upload' ? 'border-green-500/50' :
-                                    'border-white/10'
-                                    }`}
-                            />
-                            <button
-                                onClick={() => {
-                                    setDroppedReferences(prev => prev.filter(r => r.url !== ref.url));
-                                    setIgnoredUrls(prev => {
-                                        const next = new Set(prev);
-                                        next.add(ref.url);
-                                        return next;
-                                    });
-                                    if (ref.entityName) {
-                                        const mentionText = `@${ref.entityName}`;
-                                        if (inputText.includes(mentionText)) {
-                                            const newText = inputText.replaceAll(mentionText, '').replace(/\s{2,}/g, ' ').trim();
-                                            setInputText(newText);
-                                        }
-                                    }
-                                }}
-                                className="absolute -top-1 -right-1 bg-black/50 hover:bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="移除此参考图"
-                            >
-                                <X size={12} />
-                            </button>
-                        </div>
+                    {activeReferences.map((ref, index) => (
+                        <DraggableReference
+                            key={ref.url}
+                            index={index}
+                            refItem={ref}
+                            moveReference={moveReferenceFn}
+                            onRemove={onRemoveReferenceFn}
+                        />
                     ))}
                 </div>
             )}
