@@ -3,6 +3,7 @@ import { BaseToolParams, generateId } from './baseTool';
 import { AspectRatio, ImageSize } from '@/types/project';
 import { generateMultiViewGrid, urlsToReferenceImages, generateSingleImage } from '../geminiService';
 import { VolcanoEngineService } from '../volcanoEngineService';
+import { jimengService } from '../jimengService';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import { storageService } from '@/lib/storageService';
 import { dataService } from '@/lib/dataService';
@@ -266,13 +267,38 @@ export class GenerationTools {
 
             } else {
                 // --- Non-Grid Modes ---
-                if (mode === 'seedream' || mode === 'jimeng') {
-                    // Volcano Engine (SeeDream / Jimeng)
+                if (mode === 'seedream') {
+                    // SeeDream API
                     resultUrl = await VolcanoEngineService.getInstance().generateSingleImage(
                         enrichedPrompt,
                         aspectRatio,
-                        referenceImageUrls // expects string[]
+                        referenceImageUrls
                     );
+                    finalResult = { imageUrl: resultUrl };
+                } else if (mode === 'jimeng') {
+                    // Jimeng API (异步：生成 + 轮询)
+                    const sessionid = typeof window !== 'undefined'
+                        ? localStorage.getItem('jimeng_session_id') || undefined
+                        : process.env.JIMENG_SESSION_ID;
+
+                    const genResult = await jimengService.generateImage({
+                        prompt: enrichedPrompt,
+                        aspectRatio,
+                        imageUrls: referenceImageUrls,
+                        sessionid,
+                    });
+
+                    if (!genResult.historyId) {
+                        throw new Error('Jimeng 生成失败：未返回 historyId');
+                    }
+
+                    // 轮询等待完成
+                    const pollResult = await jimengService.pollTask(genResult.historyId, sessionid);
+                    if (!pollResult.success || !pollResult.url) {
+                        throw new Error('Jimeng 生成失败：轮询超时或无结果');
+                    }
+
+                    resultUrl = pollResult.url;
                     finalResult = { imageUrl: resultUrl };
                 } else {
                     // Gemini Direct
