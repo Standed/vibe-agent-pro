@@ -500,6 +500,7 @@ export default function ChatPanel() {
                     <ChatBubble
                         key={msg.id}
                         message={msg as any}
+                        project={project}
                         onDelete={() => deleteMessage(msg.id)}
                         onReusePrompt={() => handleRestoreState(msg)}
                         onReuseImage={handleReuseImage}

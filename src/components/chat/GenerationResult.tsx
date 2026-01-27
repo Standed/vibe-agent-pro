@@ -24,6 +24,7 @@ interface GenerationResultProps {
     onReusePrompt?: () => void;
     onReuseImage?: (url: string) => void;
     onApplyToShot?: (url: string) => void;
+    defaultAspectRatio?: AspectRatio;
 }
 
 // Sub-component for individual draggable images
@@ -34,7 +35,8 @@ function DraggableResultImage({
     gridData,
     onImageClick,
     onReuseImage,
-    onApplyToShot
+    onApplyToShot,
+    defaultAspectRatio
 }: {
     img: string;
     idx: number;
@@ -43,6 +45,7 @@ function DraggableResultImage({
     onImageClick?: (url: string, index: number) => void;
     onReuseImage?: (url: string) => void;
     onApplyToShot?: (url: string) => void;
+    defaultAspectRatio?: AspectRatio;
 }) {
     const [{ isDragging }, drag] = useDrag(() => ({
         type: IMAGE_TO_SHOT,
@@ -53,12 +56,14 @@ function DraggableResultImage({
     }), [img]);
 
     const isGrid = !!gridData;
-    const ratio = gridData?.aspectRatio;
+    // 优先使用 gridData 中的比例，否则使用默认比例（项目比例）
+    const ratio = gridData?.aspectRatio ?? defaultAspectRatio;
 
     let containerClass = "relative group rounded-xl border border-black/5 dark:border-white/10 overflow-hidden cursor-pointer hover:border-zinc-900 dark:hover:border-white transition-colors bg-zinc-100 dark:bg-zinc-900";
 
     if (isSingle) {
-        // 有明确的 aspectRatio 时按比例显示，否则使用自适应布局
+        // 无明确比例或默认比例时，才自适应（虽然现在加上了 defaultAspectRatio，理论上总会有比例）
+        // 但为了兼容性，如果 defaultAspectRatio 也是 undefined (虽然给了默认值 WIDE)，还保留兜底
         if (ratio !== undefined) {
             switch (ratio) {
                 case AspectRatio.MOBILE: // 9:16
@@ -76,11 +81,12 @@ function DraggableResultImage({
                 case AspectRatio.CINEMA: // 21:9
                     containerClass += " w-full aspect-[21/9]";
                     break;
+                case AspectRatio.WIDE: // 16:9
                 default: // 16:9
                     containerClass += " w-full aspect-video";
             }
         } else {
-            // 无明确比例：使用自适应容器，限制最大尺寸
+            // 理论上不会走到这里，除非 defaultAspectRatio 被手动传了 undefined
             containerClass += " w-auto max-w-full";
         }
     } else {
@@ -157,7 +163,8 @@ export function GenerationResult({
     onSliceSelect,
     onReusePrompt,
     onReuseImage,
-    onApplyToShot
+    onApplyToShot,
+    defaultAspectRatio = AspectRatio.WIDE
 }: GenerationResultProps) {
     // Determine display label based on model
     const getModelLabel = () => {
@@ -193,6 +200,7 @@ export function GenerationResult({
                                 onImageClick={onImageClick}
                                 onReuseImage={onReuseImage}
                                 onApplyToShot={onApplyToShot}
+                                defaultAspectRatio={defaultAspectRatio}
                             />
 
                             {/* Grid Slice Button - remains outside the draggable container to prevent drag behaviors on update */}
