@@ -26,8 +26,10 @@ import { toast } from 'sonner';
 import { Shot, ShotSize, CameraMovement, Character, Location } from '@/types/project';
 import { createPortal } from 'react-dom';
 import { useAIStoryboard } from '@/hooks/generation/useAIStoryboard';
+import { ScriptTab } from './sidebar/ScriptTab';
 import { StoryboardTab } from './sidebar/StoryboardTab';
 import { AssetsTab } from './sidebar/AssetsTab';
+import { SettingsTab } from './sidebar/SettingsTab';
 import { ShotEditor } from './sidebar/ShotEditor';
 import ShotTableEditor from '../project/ShotTableEditor';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -35,7 +37,7 @@ import { cn } from '@/lib/utils';
 import { storageService } from '@/lib/storageService';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
-type Tab = 'storyboard' | 'assets';
+type Tab = 'storyboard' | 'script' | 'assets' | 'settings';
 
 interface LeftSidebarNewProps {
   activeView?: 'planning' | 'canvas' | 'timeline' | 'drafts';
@@ -438,8 +440,24 @@ export default function LeftSidebarNew({
 
         <div className="w-8 h-px bg-black/5 dark:bg-white/10 my-2" />
 
-        <button className="p-3 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-zinc-400 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 mt-auto">
-          <Settings size={20} />
+        <button
+          onClick={() => {
+            if (activeTab === 'settings' && !leftSidebarCollapsed) {
+              toggleLeftSidebar();
+            } else {
+              setActiveTab('settings');
+              if (leftSidebarCollapsed) toggleLeftSidebar();
+            }
+          }}
+          className={cn(
+            "p-3 rounded-full transition-all duration-300 mt-auto group relative",
+            activeTab === 'settings' && !leftSidebarCollapsed
+              ? "bg-light-accent dark:bg-cine-accent text-white dark:text-black shadow-lg shadow-light-accent/20 dark:shadow-cine-accent/20"
+              : "text-zinc-400 dark:text-zinc-500 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-zinc-200"
+          )}
+          title="设置"
+        >
+          <Settings size={20} strokeWidth={activeTab === 'settings' && !leftSidebarCollapsed ? 2.5 : 2} />
         </button>
       </div>
 
@@ -502,7 +520,7 @@ export default function LeftSidebarNew({
                     </div>
                   )}
                   <span className="text-[10px] text-zinc-500 font-medium">
-                    {activeTab === 'storyboard' ? '分镜脚本' : '资源库'}
+                    {activeTab === 'storyboard' ? '分镜脚本' : activeTab === 'script' ? '剧本脑暴' : activeTab === 'assets' ? '资源库' : '项目设置'}
                   </span>
                 </div>
               </div>
@@ -612,6 +630,15 @@ export default function LeftSidebarNew({
                 />
               )}
 
+              {activeTab === 'script' && (
+                <ScriptTab
+                  project={project}
+                  updateScript={updateScript}
+                  isGenerating={isGenerating}
+                  handleAIStoryboard={handleAIStoryboard}
+                />
+              )}
+
               {activeTab === 'assets' && (
                 <AssetsTab
                   project={project!}
@@ -626,6 +653,10 @@ export default function LeftSidebarNew({
                   setEditingLocation={setEditingLocation}
                   deleteLocation={deleteLocation}
                 />
+              )}
+
+              {activeTab === 'settings' && (
+                <SettingsTab project={project!} />
               )}
             </div>
           </motion.div>

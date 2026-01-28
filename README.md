@@ -370,6 +370,13 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 
 ## 📝 Changelog
 
+### v3.8.8 (2026-01-28)
+- ✅ **New Script Tab Integration** - Enabled "Script" tab in the unified sidebar, consolidating story brainstorming and AI script analysis into a dedicated view.
+- ✅ **AI Quick Commands Relocation** - Moved "AI Quick Commands" (Refine Script, Brainstorm, etc.) from Agent Panel to the new Script Tab for better contextual relevance.
+- ✅ **Canvas Rendering Optimization** - Fixed canvas flickering during zoom/pan by removing conflicting CSS transitions and enabling hardware acceleration.
+- ✅ **Agent Panel Cleanup** - Removed legacy quick command buttons from the chat interface to streamline the Agent interaction flow.
+- ✅ **Standardized Image Interaction** - Added standard "Use as Reference" and "One-click Apply" hover actions to user-uploaded images in chat, matching the Grid interaction experience.
+
 ### v3.0.0 (2026-01-19)
 - ✅ **Pure Cloud Architecture** - Removed guest mode, all data stored in cloud
 - ✅ **28 Agent Tools** - Complete CRUD + generation + batch operations

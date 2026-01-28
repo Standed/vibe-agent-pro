@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Loader2, User, Bot, Trash2, Sparkles, Image as ImageIcon, Grid3x3, Grid2x2, Video, CircleStop, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, Loader2, User, Bot, Trash2, Sparkles, Image as ImageIcon, Grid3x3, CircleStop, ChevronDown, ChevronUp } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { ChatMessage } from '@/types/project';
 import { useAgent } from '@/hooks/agent/useAgent';
@@ -122,8 +122,67 @@ export default function AgentPanel() {
     });
   };
 
+  // Local state for text-detected confirmation
+  const [localConfirmation, setLocalConfirmation] = useState<{ message: string, credits: number, onConfirm: () => void, onCancel: () => void } | null>(null);
+
+  const handleSendMessageWithText = async (text: string) => {
+    const userMessageId = crypto?.randomUUID() || `msg-${Date.now()}`;
+    const userMessage: ChatMessage = {
+      id: userMessageId,
+      userId: user?.id || '',
+      projectId: project?.id || '',
+      scope: 'project',
+      role: 'user',
+      content: text,
+      timestamp: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    setChatHistory((prev) => [...prev, userMessage]);
+    await sendMessage(text);
+    // Reload history
+    if (project && user) {
+      const messages = await dataService.getChatMessages({ projectId: project.id, scope: 'project' });
+      const filteredMessages = messages.filter(msg => msg.metadata?.channel !== 'planning');
+      setChatHistory(filteredMessages);
+    }
+  };
+
+  // Auto-detect confirmation requests from Agent text
+  useEffect(() => {
+    if (!chatHistory.length) return;
+    const lastMsg = chatHistory[chatHistory.length - 1];
+
+    // Only detect if it's an assistant message and we are NOT processing (waiting for user input)
+    if (lastMsg.role === 'assistant' && !isProcessing) {
+      const content = lastMsg.content;
+      // Heuristic: contains "predicted cost" and ("confirm" or "whether")
+      if (content.includes('预计消耗') && (content.includes('是否') || content.includes('确认'))) {
+        // Try to extract credits
+        const creditMatch = content.match(/消耗\s*(\d+)\s*积分/);
+        const credits = creditMatch ? parseInt(creditMatch[1]) : 0;
+
+        // Prevent duplicate trigger if already handled
+        if (!pendingConfirmation && !localConfirmation) {
+          setLocalConfirmation({
+            message: "Agent 请求确认操作",
+            credits: credits,
+            onConfirm: () => { handleSendMessageWithText("是"); setLocalConfirmation(null); },
+            onCancel: () => { handleSendMessageWithText("否"); setLocalConfirmation(null); }
+          });
+        }
+      } else {
+        // If the latest message doesn't match, clear local confirmation
+        if (localConfirmation) setLocalConfirmation(null);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatHistory, isProcessing, pendingConfirmation]);
+
+  const activeConfirmation = pendingConfirmation || localConfirmation;
+
   return (
-    <div className="flex flex-col h-full glass-panel">
+    <div className="flex flex-col h-full glass-panel relative">
       {/* Header */}
       <div className="flex items-center justify-between p-6 border-b border-black/5 dark:border-white/5">
         <div className="flex items-center gap-2">
@@ -285,44 +344,7 @@ export default function AgentPanel() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick Presets */}
-      {chatHistory.length === 0 && !isProcessing && (
-        <div className="px-6 py-4 border-t border-black/5 dark:border-white/5 bg-white/30 dark:bg-black/20 backdrop-blur-sm">
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 font-medium">
-            快捷操作：
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setInput('使用 Gemini 直出模式为整个项目生成图片')}
-              className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
-            >
-              <Sparkles size={14} className="text-blue-500" />
-              Gemini 直出生成所有分镜
-            </button>
-            <button
-              onClick={() => setInput('使用 Gemini Grid (2x2) 为整个项目生成多视图')}
-              className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
-            >
-              <Grid2x2 size={14} className="text-indigo-500" />
-              Gemini Grid 2x2 生成所有分镜
-            </button>
-            <button
-              onClick={() => setInput('使用 Sora2 为整个项目生成视频')}
-              className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
-            >
-              <Video size={14} className="text-purple-500" />
-              Sora2 生成所有分镜视频
-            </button>
-            <button
-              onClick={() => setInput('使用即梦(Jimeng)为整个项目生成图片')}
-              className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
-            >
-              <ImageIcon size={14} className="text-orange-500" />
-              使用即梦生成所有分镜
-            </button>
-          </div>
-        </div>
-      )}
+
 
       {/* Input */}
       <div className="p-4 m-4 mt-0 glass-card">
@@ -357,8 +379,8 @@ export default function AgentPanel() {
         </div>
       </div>
 
-      {/* Confirmation Overlay */}
-      {pendingConfirmation && (
+      {/* Confirmation Overlay - Update to use activeConfirmation */}
+      {activeConfirmation && (
         <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-black/20 backdrop-blur-sm">
           <div className="w-full max-w-sm glass-card p-6 shadow-2xl border border-white/20 animate-in fade-in zoom-in duration-300">
             <div className="flex items-center gap-3 mb-4">
@@ -369,20 +391,20 @@ export default function AgentPanel() {
             </div>
 
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
-              {pendingConfirmation.message}
+              {activeConfirmation.message || (activeConfirmation === pendingConfirmation ? pendingConfirmation.message : "Agent 请求执行耗费积分的操作")}
               <br />
-              预计将消耗 <span className="font-bold text-blue-500 dark:text-blue-400">{pendingConfirmation.credits}</span> 积分。
+              预计将消耗 <span className="font-bold text-blue-500 dark:text-blue-400">{activeConfirmation.credits}</span> 积分。
             </p>
 
             <div className="flex gap-3">
               <button
-                onClick={pendingConfirmation.onCancel}
+                onClick={activeConfirmation.onCancel}
                 className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
               >
                 取消
               </button>
               <button
-                onClick={pendingConfirmation.onConfirm}
+                onClick={activeConfirmation.onConfirm}
                 className="flex-1 px-4 py-2.5 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg"
               >
                 确认继续

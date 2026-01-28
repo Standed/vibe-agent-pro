@@ -76,6 +76,7 @@ interface ProjectStore {
     script?: string
   ) => void;
   updateProjectMetadata: (metadata: Partial<Project['metadata']>) => void;
+  updateProjectSettings: (settings: Partial<Project['settings']>) => void;
   updateScript: (script: string) => void;
   setGenerationRequest: (request: ProjectStore['generationRequest']) => void;
   setGenerationProgress: (progress: Partial<ProjectStore['generationProgress']>) => void;
@@ -282,6 +283,15 @@ export const useProjectStore = create<ProjectStore>()(
         }
       });
       // 自动保存
+      get().debouncedSaveProject();
+    },
+
+    updateProjectSettings: (settings) => {
+      set((state) => {
+        if (state.project) {
+          state.project.settings = { ...state.project.settings, ...settings };
+        }
+      });
       get().debouncedSaveProject();
     },
 

@@ -1,9 +1,7 @@
-'use client';
-
-import { useRef } from 'react';
+import { memo, useRef } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { Play, Download, Edit2, Upload, RefreshCw, Sparkles, Image as ImageIcon } from 'lucide-react';
-import type { Shot } from '@/types/project';
+import { Shot, AspectRatio } from '@/types/project';
 import { SHOT_TO_CHAT, IMAGE_TO_SHOT } from '@/components/chat/dragTypes';
 import { useProjectStore } from '@/store/useProjectStore';
 import { dataService } from '@/lib/dataService';
@@ -14,18 +12,18 @@ interface DraggableCanvasShotCardProps {
     sceneId: string;
     shotLabel: string;
     isShotSelected: boolean;
-    onSelect: () => void;
+    onSelect: (shotId: string) => void;
     onPreview: (imageUrl: string) => void;
     onDownload: (imageUrl: string, order: number, e: React.MouseEvent) => void;
     onEdit: (shot: Shot, e: React.MouseEvent) => void;
-    onUpload: () => void;
+    onUpload: (shotId: string) => void;
     onGenerate: (shotId: string, e: React.MouseEvent) => void;
     shotSizeLabel: string;
     cameraMovementLabel: string;
     aspectRatio?: string;
 }
 
-export default function DraggableCanvasShotCard({
+const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
     shot,
     sceneId,
     shotLabel,
@@ -38,14 +36,14 @@ export default function DraggableCanvasShotCard({
     onGenerate,
     shotSizeLabel,
     cameraMovementLabel,
-    aspectRatio = '16:9',
+    aspectRatio = AspectRatio.WIDE,
 }: DraggableCanvasShotCardProps) {
     const { updateShot } = useProjectStore();
     const cardRef = useRef<HTMLDivElement>(null);
 
     // 计算布局模式
     const ratioStr = aspectRatio.replace(':', '/');
-    const isTall = aspectRatio === '9:16' || aspectRatio === '3:4';
+    const isTall = aspectRatio === AspectRatio.MOBILE || aspectRatio === AspectRatio.PORTRAIT || aspectRatio === '9:16' || aspectRatio === '3:4';
 
     // 动态样式类
     const buttonBaseClass = "rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm flex items-center justify-center";
@@ -125,7 +123,7 @@ export default function DraggableCanvasShotCard({
             tabIndex={0}
             onClick={(e) => {
                 e.stopPropagation();
-                onSelect();
+                onSelect(shot.id);
             }}
             className={`group bg-white/40 dark:bg-black/40 rounded-2xl overflow-hidden hover:border-light-accent/50 dark:hover:border-cine-accent/50 transition-all duration-300 ${isShotSelected
                 ? 'border-2 border-light-accent dark:border-cine-accent shadow-lg shadow-light-accent/20 dark:shadow-cine-accent/20 scale-[1.02]'
@@ -149,7 +147,7 @@ export default function DraggableCanvasShotCard({
                         <div className={`absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end pointer-events-none ${isTall ? 'gap-1' : 'gap-2'}`}>
                             <button onClick={(e) => onDownload(shot.referenceImage!, shot.order, e)} className={buttonClass} title="下载"><Download size={iconSize} /></button>
                             <button onClick={(e) => onEdit(shot, e)} className={buttonClass} title="编辑"><Edit2 size={iconSize} /></button>
-                            <button onClick={(e) => { e.stopPropagation(); onUpload(); }} className={buttonClass} title="上传图片"><Upload size={iconSize} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); onUpload(shot.id); }} className={buttonClass} title="上传图片"><Upload size={iconSize} /></button>
                             <button onClick={(e) => onGenerate(shot.id, e)} className={buttonClass} title="重新生成"><RefreshCw size={iconSize} /></button>
                         </div>
                     </>
@@ -163,7 +161,7 @@ export default function DraggableCanvasShotCard({
                             onClick={(e) => { e.stopPropagation(); onPreview(shot.gridImages![0]); }}
                         />
                         <div className={`absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end pointer-events-none ${isTall ? 'gap-1' : 'gap-2'}`}>
-                            <button onClick={(e) => { e.stopPropagation(); onUpload(); }} className={buttonClass} title="上传图片"><Upload size={iconSize} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); onUpload(shot.id); }} className={buttonClass} title="上传图片"><Upload size={iconSize} /></button>
                             <button onClick={(e) => onGenerate(shot.id, e)} className={buttonClass} title="重新生成"><RefreshCw size={iconSize} /></button>
                         </div>
                     </>
@@ -171,7 +169,7 @@ export default function DraggableCanvasShotCard({
                     <>
                         <ImageIcon size={24} className="text-light-text-muted dark:text-cine-text-muted" />
                         <div className={`absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end pointer-events-none ${isTall ? 'gap-1' : 'gap-2'}`}>
-                            <button onClick={(e) => { e.stopPropagation(); onUpload(); }} className={buttonClass} title="上传图片"><Upload size={iconSize} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); onUpload(shot.id); }} className={buttonClass} title="上传图片"><Upload size={iconSize} /></button>
                             <button onClick={(e) => onGenerate(shot.id, e)} className={`${buttonBaseClass} px-3 py-1 text-xs gap-1`}><Sparkles size={iconSize} /> {isTall ? '生成' : '生成图片'}</button>
                         </div>
                     </>
@@ -216,4 +214,6 @@ export default function DraggableCanvasShotCard({
             </div>
         </div>
     );
-}
+});
+
+export default DraggableCanvasShotCard;

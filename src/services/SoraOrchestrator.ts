@@ -10,6 +10,8 @@ import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { AuthenticatedUser, consumeCredits } from '@/lib/auth-middleware';
+import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 // sizeOf 同步调用在脚本/后端环境下更稳定且无兼容性问题
 
@@ -33,11 +35,11 @@ export class SoraOrchestrator {
 
     /**
      * 核心功能：为特定场景生成连贯视频 (支持长场景自动拆分)
-     * @param userId 当前用户ID (用于鉴权和写库)
+     * @param user 当前用户对象 (用于鉴权和扣费)
      */
-    async generateSceneVideo(project: Project, sceneId: string, userId: string): Promise<string[]> {
+    async generateSceneVideo(project: Project, sceneId: string, user: AuthenticatedUser): Promise<string[]> {
         // Init DB Service
-        await this.dataService.initialize(userId);
+        await this.dataService.initialize(user.id);
 
         const scene = project.scenes.find(s => s.id === sceneId);
         if (!scene) throw new Error(`Scene ${sceneId} not found`);
@@ -45,14 +47,14 @@ export class SoraOrchestrator {
         const shots = project.shots.filter(s => s.sceneId === sceneId).sort((a, b) => a.order - b.order);
         if (shots.length === 0) throw new Error(`No shots in scene ${sceneId}`);
 
-        return await this.generateVideoForShots(project, scene, shots, userId, { appendToScene: false });
+        return await this.generateVideoForShots(project, scene, shots, user, { appendToScene: false });
     }
 
     /**
      * 核心功能：为指定分镜生成视频 (支持跨场景并行处理)
      */
-    async generateShotsVideo(project: Project, sceneId: string, shotIds: string[], userId: string): Promise<string[]> {
-        await this.dataService.initialize(userId);
+    async generateShotsVideo(project: Project, sceneId: string, shotIds: string[], user: AuthenticatedUser): Promise<string[]> {
+        await this.dataService.initialize(user.id);
 
         const uniqueIds = Array.from(new Set((shotIds || []).filter(Boolean)));
         if (uniqueIds.length === 0) {
@@ -96,7 +98,7 @@ export class SoraOrchestrator {
 
             // 每个场景独立生成（并行）
             scenePromises.push(
-                this.generateVideoForShots(project, scene, shots, userId, { appendToScene: true })
+                this.generateVideoForShots(project, scene, shots, user, { appendToScene: true })
             );
         }
 
@@ -109,12 +111,12 @@ export class SoraOrchestrator {
         project: Project,
         scene: Scene,
         shots: Shot[],
-        userId: string,
+        user: AuthenticatedUser,
         options: { appendToScene: boolean }
     ): Promise<string[]> {
         // 1. 识别并注册角色
         const involvedCharacters = this.identifyCharactersInScene(project, shots);
-        await this.ensureCharactersRegistered(project.id, involvedCharacters, userId);
+        await this.ensureCharactersRegistered(project.id, involvedCharacters, user.id);
 
         // 2. 智能拆分分镜 (Smart Splitting > 15s)
         const chunks = this.splitShotsIntoChunks(shots);
@@ -161,6 +163,28 @@ export class SoraOrchestrator {
                 }
             }
 
+            // 扣除积分 (在调用 Sora 之前)
+            // 注意：因为是并行执行，这里会产生多次积分扣除
+            const requiredCredits = calculateCredits('VOLCANO_VIDEO', user.role);
+            const operationDesc = getOperationDescription('VOLCANO_VIDEO');
+
+            // 尝试扣除积分
+            const consumeResult = await consumeCredits(
+                user.id,
+                requiredCredits,
+                'sora-generate',
+                `${operationDesc} (Agent: Scene ${scene.name} Chunk ${i + 1})`
+            );
+
+            if (!consumeResult.success) {
+                const errorMsg = `积分不足或扣除失败: ${consumeResult.error}`;
+                console.error(`[SoraOrchestrator] ${errorMsg}`);
+                // 抛出错误以停止该子任务
+                throw new Error(errorMsg);
+            }
+
+            console.log(`[SoraOrchestrator] Credits consumed: ${requiredCredits} for chunk ${i + 1}`);
+
             // 提交任务到 Kaponai（耗时操作，并行执行提升效率）
             const task = await this.kaponai.createVideo({
                 model: 'sora-2', // User requested cost saving
@@ -173,7 +197,7 @@ export class SoraOrchestrator {
             // 构建并保存任务记录
             const soraTask: SoraTask = {
                 id: task.id,
-                userId,
+                userId: user.id,
                 projectId: project.id,
                 sceneId: scene.id,
                 shotId: chunkShots.length === 1 ? chunkShots[0].id : undefined,
@@ -196,7 +220,7 @@ export class SoraOrchestrator {
                 targetSize: targetSize,
                 kaponaiUrl: task.video_url,
                 r2Url: undefined,
-                pointCost: 0,
+                pointCost: requiredCredits, // 记录实际消耗
                 type: 'shot_generation',
                 createdAt: new Date(),
                 updatedAt: new Date(),
@@ -718,11 +742,11 @@ export class SoraOrchestrator {
     async batchGenerateProjectVideos(
         project: Project,
         force: boolean,
-        userId: string,
+        user: AuthenticatedUser,
         onProgress?: (progress: any) => void
     ): Promise<any> {
         // Init DB Service
-        await this.dataService.initialize(userId);
+        await this.dataService.initialize(user.id);
 
         const charactersWithoutImages = project.characters.filter(c =>
             (!c.referenceImages || c.referenceImages.length === 0) &&
@@ -766,7 +790,7 @@ export class SoraOrchestrator {
                     message: `正在预注册 ${allInvolvedCharacters.length} 位角色...`
                 });
                 console.log(`[SoraOrchestrator] Pre-registering ${allInvolvedCharacters.length} characters for batch job...`);
-                await this.ensureCharactersRegistered(project.id, allInvolvedCharacters, userId);
+                await this.ensureCharactersRegistered(project.id, allInvolvedCharacters, user.id);
             }
         } catch (e: any) {
             console.error('[SoraOrchestrator] Character pre-registration failed:', e);
@@ -786,7 +810,7 @@ export class SoraOrchestrator {
         const scenePromises = targetScenes.map(async (scene) => {
             try {
                 // Note: generateSceneVideo 内部已经处理了分镜的拆分和并行提交
-                const taskIds = await this.generateSceneVideo(project, scene.id, userId);
+                const taskIds = await this.generateSceneVideo(project, scene.id, user);
 
                 completedCount++;
                 if (onProgress) onProgress({

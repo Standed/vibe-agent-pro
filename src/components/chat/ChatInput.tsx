@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Send, Image as ImageIcon, Loader2, X, ChevronDown, Command, Sparkles } from 'lucide-react';
+import { Send, Image as ImageIcon, Loader2, X, ChevronDown, Command, Sparkles, Maximize2, Minimize2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import MentionInput from '@/components/chat/MentionInput';
 import { JimengOptions, JimengModel, JimengResolution } from '@/components/jimeng/JimengOptions';
 import { cn } from '@/lib/utils';
@@ -69,6 +70,46 @@ export function ChatInput({
     const [commandSuggestions, setCommandSuggestions] = useState<SlashCommand[]>([]);
     const [showCommands, setShowCommands] = useState(false);
     const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [inputHeight, setInputHeight] = useState(120); // Default height
+    const [isResizing, setIsResizing] = useState(false);
+    const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+    // Resize Handlers
+    const startResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        setIsResizing(true);
+        resizeRef.current = { startY: e.clientY, startHeight: inputHeight };
+        document.body.style.cursor = 'row-resize';
+        document.body.style.userSelect = 'none';
+    };
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isResizing || !resizeRef.current) return;
+            // Dragging UP (negative delta) should INCREASE height
+            const deltaY = resizeRef.current.startY - e.clientY;
+            const newHeight = Math.min(Math.max(resizeRef.current.startHeight + deltaY, 120), 800); // 120px min, 800px max
+            setInputHeight(newHeight);
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+            resizeRef.current = null;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+
+        if (isResizing) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
 
     // 监听输入变化，检测斜杠命令
     useEffect(() => {
@@ -113,7 +154,17 @@ export function ChatInput({
     ];
 
     return (
-        <div className="flex-shrink-0 p-4 m-4 mt-0 bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-3xl shadow-lg z-20 relative">
+        <div className="flex-shrink-0 p-4 m-4 mt-0 bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-3xl shadow-lg z-20 relative transition-all duration-75 ease-out">
+            {/* Top Resize Handle */}
+            <div
+                onMouseDown={startResize}
+                className="absolute top-0 left-0 right-0 h-4 -mt-2 cursor-row-resize z-50 flex items-center justify-center group"
+                title="拖拽调整高度"
+            >
+                {/* Visual Indicator (Pill) - Only visible on hover/drag */}
+                <div className={`w-12 h-1 rounded-full bg-zinc-300 dark:bg-zinc-600 transition-all ${isResizing ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'}`} />
+            </div>
+
             {/* Slash Command Suggestions */}
             {showCommands && commandSuggestions.length > 0 && (
                 <div className="absolute bottom-full left-4 right-4 mb-2 bg-white dark:bg-zinc-900 rounded-xl border border-black/10 dark:border-white/10 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 z-50">
@@ -179,28 +230,69 @@ export function ChatInput({
                 </div>
             )}
 
+            {/* Mode Switcher Tabs */}
+            <div className="flex items-center gap-1 mb-3 px-1">
+                <div className="flex p-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-xl">
+                    <button
+                        onClick={() => {
+                            // Switch to Image mode default
+                            const firstImageModel = models.find(m => m.category === 'image')?.id;
+                            if (firstImageModel) setSelectedModel(firstImageModel);
+                        }}
+                        className={cn(
+                            "px-4 py-1.5 text-xs font-medium rounded-lg transition-all",
+                            models.find(m => m.id === selectedModel)?.category === 'image'
+                                ? "bg-white dark:bg-zinc-700 text-black dark:text-white shadow-sm"
+                                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                        )}
+                    >
+                        图片生成
+                    </button>
+                    <button
+                        onClick={() => {
+                            // Switch to Video mode default
+                            const firstVideoModel = models.find(m => m.category === 'video')?.id;
+                            if (firstVideoModel) setSelectedModel(firstVideoModel);
+                        }}
+                        className={cn(
+                            "px-4 py-1.5 text-xs font-medium rounded-lg transition-all",
+                            models.find(m => m.id === selectedModel)?.category === 'video'
+                                ? "bg-white dark:bg-zinc-700 text-black dark:text-white shadow-sm"
+                                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                        )}
+                    >
+                        视频生成
+                    </button>
+                </div>
+            </div>
+
             {/* Model Selection Bar */}
             <div className="flex items-center justify-between mb-3 px-1">
-                <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-white/5 rounded-xl">
-                    {models.map((m) => (
-                        <button
-                            key={m.id}
-                            onClick={() => setSelectedModel(m.id)}
-                            className={cn(
-                                "px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-300",
-                                selectedModel === m.id
-                                    ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
-                                    : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/5"
-                            )}
-                        >
-                            {m.label}
-                        </button>
-                    ))}
+                <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-white/5 rounded-xl overflow-x-auto scrollbar-hide">
+                    {models
+                        .filter(m => {
+                            const currentCategory = models.find(curr => curr.id === selectedModel)?.category || 'image';
+                            return m.category === currentCategory;
+                        })
+                        .map((m) => (
+                            <button
+                                key={m.id}
+                                onClick={() => setSelectedModel(m.id)}
+                                className={cn(
+                                    "px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-300 min-w-fit whitespace-nowrap",
+                                    selectedModel === m.id
+                                        ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
+                                        : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/5"
+                                )}
+                            >
+                                {m.label}
+                            </button>
+                        ))}
                 </div>
 
                 {/* Sub-options for specific models */}
                 {selectedModel === 'gemini-grid' && (
-                    <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-white/5 rounded-xl">
+                    <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-white/5 rounded-xl ml-2 flex-shrink-0">
                         {(['2x2', '3x3'] as const).map((size) => (
                             <button
                                 key={size}
@@ -220,7 +312,7 @@ export function ChatInput({
 
                 {/* Gemini Direct Resolution Options */}
                 {selectedModel === 'gemini-direct' && (
-                    <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-white/5 rounded-xl">
+                    <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-white/5 rounded-xl ml-2 flex-shrink-0">
                         {(['2K', '4K'] as const).map((size) => (
                             <button
                                 key={size}
@@ -241,65 +333,68 @@ export function ChatInput({
 
             {/* Input Area */}
             <div className="flex flex-col gap-2">
-                {/* Jimeng Options Panel */}
-                {selectedModel === 'jimeng' && (
-                    <div className="px-1 animate-in fade-in slide-in-from-top-2">
-                        <JimengOptions
-                            model={jimengModel}
-                            resolution={jimengResolution}
-                            onModelChange={setJimengModel}
-                            onResolutionChange={setJimengResolution}
-                        />
-                    </div>
-                )}
+                {/* Scrollable Settings Area */}
+                <div className="max-h-[20vh] overflow-y-auto custom-scrollbar px-1 -mx-1 flex flex-col gap-2">
+                    {/* Jimeng Options Panel */}
+                    {selectedModel === 'jimeng' && (
+                        <div className="animate-in fade-in slide-in-from-top-2">
+                            <JimengOptions
+                                model={jimengModel}
+                                resolution={jimengResolution}
+                                onModelChange={setJimengModel}
+                                onResolutionChange={setJimengResolution}
+                            />
+                        </div>
+                    )}
 
-                {/* Sora Video Options Panel */}
-                {selectedModel === 'sora-video' && (
-                    <div className="px-1 animate-in fade-in slide-in-from-top-2 flex items-center gap-4">
-                        {/* 尺寸选择 */}
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] text-zinc-500">尺寸:</span>
-                            <div className="flex p-0.5 bg-zinc-100 dark:bg-white/5 rounded-lg">
-                                {(['16:9', '9:16'] as const).map((ratio) => (
-                                    <button
-                                        key={ratio}
-                                        onClick={() => setSoraAspectRatio?.(ratio)}
-                                        className={cn(
-                                            "px-2 py-1 text-[10px] font-medium rounded transition-all",
-                                            soraAspectRatio === ratio
-                                                ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
-                                                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
-                                        )}
-                                    >
-                                        {ratio === '16:9' ? '横屏' : '竖屏'}
-                                    </button>
-                                ))}
+                    {/* Sora Video Options Panel */}
+                    {selectedModel === 'sora-video' && (
+                        <div className="animate-in fade-in slide-in-from-top-2 flex items-center gap-4">
+                            {/* 尺寸选择 */}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-zinc-500">尺寸:</span>
+                                <div className="flex p-0.5 bg-zinc-100 dark:bg-white/5 rounded-lg">
+                                    {(['16:9', '9:16'] as const).map((ratio) => (
+                                        <button
+                                            key={ratio}
+                                            onClick={() => setSoraAspectRatio?.(ratio)}
+                                            className={cn(
+                                                "px-2 py-1 text-[10px] font-medium rounded transition-all",
+                                                soraAspectRatio === ratio
+                                                    ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
+                                                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                            )}
+                                        >
+                                            {ratio === '16:9' ? '横屏' : '竖屏'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {/* 时长选择 */}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-zinc-500">时长:</span>
+                                <div className="flex p-0.5 bg-zinc-100 dark:bg-white/5 rounded-lg">
+                                    {([10, 15] as const).map((dur) => (
+                                        <button
+                                            key={dur}
+                                            onClick={() => setSoraDuration?.(dur)}
+                                            className={cn(
+                                                "px-2 py-1 text-[10px] font-medium rounded transition-all",
+                                                soraDuration === dur
+                                                    ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
+                                                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                            )}
+                                        >
+                                            {dur}s
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         </div>
-                        {/* 时长选择 */}
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] text-zinc-500">时长:</span>
-                            <div className="flex p-0.5 bg-zinc-100 dark:bg-white/5 rounded-lg">
-                                {([10, 15] as const).map((dur) => (
-                                    <button
-                                        key={dur}
-                                        onClick={() => setSoraDuration?.(dur)}
-                                        className={cn(
-                                            "px-2 py-1 text-[10px] font-medium rounded transition-all",
-                                            soraDuration === dur
-                                                ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
-                                                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
-                                        )}
-                                    >
-                                        {dur}s
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
+                    )}
+                </div>
 
-                <div className="flex gap-2 items-end">
+                <div className="flex gap-2 items-end relative">
                     <input
                         ref={fileInputRef}
                         type="file"
@@ -311,35 +406,93 @@ export function ChatInput({
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isGenerating}
-                        className="flex-shrink-0 p-3 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-zinc-400 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                        className="flex-shrink-0 p-3 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-zinc-400 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-white mb-1"
                         title="上传参考图"
                     >
                         <ImageIcon size={20} />
                     </button>
 
-                    <MentionInput
-                        value={inputText}
-                        onChange={setInputText}
-                        onMention={onAssetSelected || (() => { })}
-                        onEnterSend={onSend}
-                        placeholder="输入提示词... (@ 引用资源)"
-                        disabled={isGenerating}
-                        className="flex-1 bg-transparent border-none px-2 py-3 text-sm focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
-                    />
+                    <div className="flex-1 relative">
+                        <MentionInput
+                            value={inputText}
+                            onChange={setInputText}
+                            onMention={onAssetSelected || (() => { })}
+                            onEnterSend={onSend}
+                            placeholder="输入提示词... (@ 引用资源)"
+                            disabled={isGenerating}
+                            autoResize={false}
+                            style={{ height: inputHeight, minHeight: inputHeight }}
+                            className="w-full bg-transparent border-none px-2 py-3 text-sm focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600 custom-scrollbar pb-12"
+                        />
+                        {/* Expand Button */}
+                        <button
+                            onClick={() => setIsExpanded(true)}
+                            className="absolute top-2 right-2 p-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white bg-white/50 dark:bg-black/50 hover:bg-white dark:hover:bg-black rounded-lg transition-all backdrop-blur-sm opacity-50 hover:opacity-100"
+                            title="展开编辑"
+                        >
+                            <Maximize2 size={14} />
+                        </button>
+                    </div>
 
-                    <button
-                        onClick={onSend}
-                        disabled={isGenerating || (!inputText.trim() && uploadedImages.length === 0)}
-                        className="flex-shrink-0 w-10 h-10 rounded-full bg-zinc-900 dark:bg-white text-white dark:text-black hover:scale-105 active:scale-95 transition-all flex items-center justify-center shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isGenerating ? (
-                            <Loader2 size={18} className="animate-spin" />
-                        ) : (
-                            <Send size={18} />
-                        )}
-                    </button>
+                    <div className="absolute bottom-2 right-2 flex gap-2">
+                        <button
+                            onClick={onSend}
+                            disabled={isGenerating || (!inputText.trim() && uploadedImages.length === 0)}
+                            className="w-10 h-10 rounded-full bg-zinc-900 dark:bg-white text-white dark:text-black hover:scale-105 active:scale-95 transition-all flex items-center justify-center shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isGenerating ? (
+                                <Loader2 size={18} className="animate-spin" />
+                            ) : (
+                                <Send size={18} />
+                            )}
+                        </button>
+                    </div>
                 </div>
             </div>
+
+            {/* Expanded Editor Overlay */}
+            {isExpanded && typeof document !== 'undefined' && (() => {
+                const container = document.getElementById('chat-panel-container');
+                if (!container) return null;
+                return createPortal(
+                    <div className="absolute inset-0 z-[100] bg-white dark:bg-[#1a1a1a] flex flex-col animate-in fade-in duration-200" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-black/5 dark:border-white/5 bg-zinc-50/50 dark:bg-black/20">
+                            <span className="font-bold text-sm text-zinc-900 dark:text-gray-100">提示词详情</span>
+                            <button
+                                onClick={() => setIsExpanded(false)}
+                                className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-colors"
+                            >
+                                <Minimize2 size={16} className="text-zinc-500" />
+                            </button>
+                        </div>
+                        <div className="flex-1 p-4 relative overflow-hidden">
+                            <textarea
+                                value={inputText}
+                                onChange={(e) => setInputText(e.target.value)}
+                                className="w-full h-full bg-transparent border-none focus:ring-0 text-sm leading-relaxed resize-none custom-scrollbar focus:outline-none text-zinc-900 dark:text-white placeholder:text-zinc-400 font-medium"
+                                placeholder="输入提示词..."
+                                autoFocus
+                            />
+                            <div className="absolute bottom-4 right-4 flex gap-2">
+                                <button
+                                    onClick={() => setIsExpanded(false)}
+                                    className="px-4 py-2 rounded-xl border border-black/10 dark:border-white/10 hover:bg-zinc-100 dark:hover:bg-white/5 text-xs font-medium transition-colors"
+                                >
+                                    完成
+                                </button>
+                                <button
+                                    onClick={() => { setIsExpanded(false); onSend(); }}
+                                    className="px-5 py-2 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-black hover:scale-105 active:scale-95 transition-all text-xs font-bold shadow-lg flex items-center gap-1.5"
+                                >
+                                    <Send size={14} />
+                                    发送
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    container
+                );
+            })()}
 
             <div className="mt-2 px-1 text-[10px] text-zinc-400 dark:text-zinc-600 flex justify-between">
                 <span>Shift + Enter 换行 · / 快捷命令</span>

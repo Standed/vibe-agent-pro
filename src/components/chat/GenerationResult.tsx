@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { useDrag } from 'react-dnd';
-import { Grid3x3, Download, Copy, RefreshCw, Image as ImageIcon } from 'lucide-react';
+import { Grid3x3, Download, Copy, RefreshCw, Image as ImageIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { AspectRatio } from '@/types/project';
 import { toast } from 'sonner';
 import { IMAGE_TO_SHOT } from './dragTypes';
@@ -60,41 +60,49 @@ function DraggableResultImage({
     const ratio = gridData?.aspectRatio ?? defaultAspectRatio;
 
     let containerClass = "relative group rounded-xl border border-black/5 dark:border-white/10 overflow-hidden cursor-pointer hover:border-zinc-900 dark:hover:border-white transition-colors bg-zinc-100 dark:bg-zinc-900";
+    let aspectClass = "";
 
-    if (isSingle) {
-        // 无明确比例或默认比例时，才自适应（虽然现在加上了 defaultAspectRatio，理论上总会有比例）
-        // 但为了兼容性，如果 defaultAspectRatio 也是 undefined (虽然给了默认值 WIDE)，还保留兜底
-        if (ratio !== undefined) {
-            switch (ratio) {
-                case AspectRatio.MOBILE: // 9:16
-                    containerClass += " w-[200px] aspect-[9/16]";
-                    break;
-                case AspectRatio.PORTRAIT: // 3:4
-                    containerClass += " w-[270px] aspect-[3/4]";
-                    break;
-                case AspectRatio.SQUARE: // 1:1
-                    containerClass += " w-full aspect-square";
-                    break;
-                case AspectRatio.STANDARD: // 4:3
-                    containerClass += " w-full aspect-[4/3]";
-                    break;
-                case AspectRatio.CINEMA: // 21:9
-                    containerClass += " w-full aspect-[21/9]";
-                    break;
-                case AspectRatio.WIDE: // 16:9
-                default: // 16:9
-                    containerClass += " w-full aspect-video";
-            }
-        } else {
-            // 理论上不会走到这里，除非 defaultAspectRatio 被手动传了 undefined
-            containerClass += " w-auto max-w-full";
+    // 确定宽高比样式
+    if (ratio !== undefined) {
+        switch (ratio) {
+            case AspectRatio.MOBILE: // 9:16
+                aspectClass = "aspect-[9/16]";
+                break;
+            case AspectRatio.PORTRAIT: // 3:4
+                aspectClass = "aspect-[3/4]";
+                break;
+            case AspectRatio.SQUARE: // 1:1
+                aspectClass = "aspect-square";
+                break;
+            case AspectRatio.STANDARD: // 4:3
+                aspectClass = "aspect-[4/3]";
+                break;
+            case AspectRatio.CINEMA: // 21:9
+                aspectClass = "aspect-[21/9]";
+                break;
+            case AspectRatio.WIDE: // 16:9
+            default: // 16:9
+                aspectClass = "aspect-video";
         }
     } else {
-        // Grid items keep standard video aspect
-        containerClass += " aspect-video";
+        aspectClass = "aspect-video";
     }
 
-    // 是否使用自适应布局
+    if (isSingle) {
+        // 单图模式下，如果是特定竖屏比例，限制最大宽度以免太大
+        if (ratio === AspectRatio.MOBILE) {
+            containerClass += ` w-[200px] ${aspectClass}`;
+        } else if (ratio === AspectRatio.PORTRAIT) {
+            containerClass += ` w-[270px] ${aspectClass}`;
+        } else {
+            containerClass += ` w-full ${aspectClass}`;
+        }
+    } else {
+        // 多图 Grid 模式下，直接 fill 容器（由父级 grid 控制宽度），但保持比例
+        containerClass += ` w-full ${aspectClass}`;
+    }
+
+    // 是否使用自适应布局 (兜底情况)
     const isAutoFit = isSingle && ratio === undefined;
 
     return (
@@ -166,6 +174,8 @@ export function GenerationResult({
     onApplyToShot,
     defaultAspectRatio = AspectRatio.WIDE
 }: GenerationResultProps) {
+    const [isExpanded, setIsExpanded] = useState(false);
+
     // Determine display label based on model
     const getModelLabel = () => {
         if (model === 'seedream') return 'SeeDream';
@@ -176,22 +186,31 @@ export function GenerationResult({
     };
 
     const isGrid = !!gridData;
-    const displayImages = images.filter(img => img && img.trim() !== '');
+    const allImages = images.filter(img => img && img.trim() !== '');
 
-    if (displayImages.length === 0) return null;
+    if (allImages.length === 0) return null;
+
+    // Logic for collapsing
+    const MAX_VISIBLE = 4;
+    const shouldCollapse = allImages.length > MAX_VISIBLE;
+    const displayImages = isExpanded || !shouldCollapse ? allImages : allImages.slice(0, MAX_VISIBLE);
+    const hiddenCount = allImages.length - MAX_VISIBLE;
 
     return (
         <div className="space-y-3">
             {/* Images Grid */}
-            <div className={`grid gap-2 ${displayImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} ${(displayImages.length === 1 && (gridData?.aspectRatio === AspectRatio.MOBILE || gridData?.aspectRatio === AspectRatio.PORTRAIT))
-                ? 'w-fit'
-                : 'w-[360px]'
+            <div className={`grid gap-2 ${allImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} ${(allImages.length === 1 && (defaultAspectRatio === AspectRatio.MOBILE || defaultAspectRatio === AspectRatio.PORTRAIT || gridData?.aspectRatio === AspectRatio.MOBILE || gridData?.aspectRatio === AspectRatio.PORTRAIT))
+                ? 'w-fit' // 单张竖图自适应宽度
+                : 'w-full' // 多张或横图占满
                 }`}>
                 {displayImages.map((img, idx) => {
-                    const isSingle = displayImages.length === 1;
+                    const isSingle = allImages.length === 1;
+
+                    // Calculate if this is the last visible item in collapsed state, to show overlay
+                    const isLastVisible = !isExpanded && shouldCollapse && idx === MAX_VISIBLE - 1;
 
                     return (
-                        <div key={idx} className="space-y-2">
+                        <div key={idx} className="relative space-y-2">
                             <DraggableResultImage
                                 img={img}
                                 idx={idx}
@@ -203,8 +222,19 @@ export function GenerationResult({
                                 defaultAspectRatio={defaultAspectRatio}
                             />
 
-                            {/* Grid Slice Button - remains outside the draggable container to prevent drag behaviors on update */}
-                            {isGrid && gridData?.slices && gridData.slices.length > 0 && onSliceSelect && (
+                            {/* "Show More" Overlay */}
+                            {isLastVisible && (
+                                <div
+                                    className="absolute inset-0 z-10 bg-black/60 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-black/70 transition-colors"
+                                    onClick={() => setIsExpanded(true)}
+                                >
+                                    <span className="text-white font-bold text-lg">+{hiddenCount}</span>
+                                    <span className="text-white/80 text-xs">查看更多</span>
+                                </div>
+                            )}
+
+                            {/* Grid Slice Button - remains outside the draggable container */}
+                            {isGrid && gridData?.slices && gridData.slices.length > 0 && onSliceSelect && !isLastVisible && (
                                 <button
                                     onClick={onSliceSelect}
                                     className="w-full px-3 py-2 text-xs font-medium bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-lg hover:bg-zinc-50 dark:hover:bg-white/10 hover:border-zinc-300 dark:hover:border-white/20 transition-all flex items-center justify-center gap-2 text-zinc-700 dark:text-zinc-300"
@@ -218,12 +248,26 @@ export function GenerationResult({
                 })}
             </div>
 
+            {/* Collapse Button (if expanded) */}
+            {isExpanded && shouldCollapse && (
+                <button
+                    onClick={() => setIsExpanded(false)}
+                    className="w-full py-1 text-xs flex items-center justify-center gap-1 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition-colors"
+                >
+                    <ChevronUp size={14} />
+                    收起
+                </button>
+            )}
+
             {/* Footer Info & Actions */}
             <div className="flex items-center justify-between pt-1">
                 <div className="flex items-center gap-2 text-[10px] text-zinc-400 dark:text-zinc-500 font-medium">
                     <span className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
                         {getModelLabel()}
                     </span>
+                    {allImages.length > 1 && (
+                        <span>{allImages.length} 张图片</span>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-2">

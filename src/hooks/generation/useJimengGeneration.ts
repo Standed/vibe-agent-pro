@@ -220,13 +220,15 @@ export function useJimengGeneration({
                     const finalUrls = await persistPromise;
                     await saveImage(finalUrls[0], currentContext);
                 } else {
-                    setIsModalOpen(true);
-                    toast.success('即梦图片生成完成');
-                    // 触发后台持久化
+                    // Pro 模式修改：不再弹出选择窗口，而是直接保存到历史记录
+                    // setIsModalOpen(true); <--- Removed
+
+                    // toast.success('即梦图片已生成并保存至历史记录');
+
+                    // 触发后台持久化 (确保 R2 上传完成)
                     persistPromise.then(r2Urls => {
-                        if (r2Urls.length > 0 && r2Urls[0] !== urls[0]) {
-                            console.log('Images persisted to R2, updating UI...');
-                            setGeneratedImages(r2Urls);
+                        if (r2Urls.length > 0) {
+                            console.log('jimeng Images persisted to R2 and History');
                         }
                     });
                 }

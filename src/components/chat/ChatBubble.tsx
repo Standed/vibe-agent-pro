@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { GenerationResult } from './GenerationResult';
 import { AspectRatio } from '@/types/project';
-import { User, Sparkles, Maximize2, RefreshCw, Grid3x3, Trash2 } from 'lucide-react';
+import { User, Sparkles, Maximize2, RefreshCw, Grid3x3, Trash2, Image as ImageIcon } from 'lucide-react';
 
 export interface ChatMessage {
     id: string;
@@ -135,38 +135,46 @@ export function ChatBubble({
                             isUser ? "rounded-2xl overflow-hidden" : "rounded-2xl overflow-hidden"
                         )}>
                             {isUser ? (
-                                <div className="flex flex-col gap-2">
-                                    {message.images!.map((img, idx) => (
-                                        <div key={idx} className="relative group/image rounded-xl overflow-hidden border border-black/5 dark:border-white/10 shadow-sm">
-                                            <img
-                                                src={img}
-                                                alt="User upload"
-                                                className="w-auto h-auto max-w-full max-h-[360px] object-contain cursor-pointer hover:scale-[1.02] transition-transform duration-500"
+                                <div className="flex flex-wrap gap-2 max-w-[300px] justify-end">
+                                    {message.images!.map((img, idx) => {
+                                        const ratio = project?.settings?.aspectRatio || '16:9';
+                                        return (
+                                            <div
+                                                key={idx}
+                                                className="relative group/image rounded-lg overflow-hidden border border-black/5 dark:border-white/10 shadow-sm w-24 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-light-accent dark:hover:ring-cine-accent transition-all"
+                                                style={{ aspectRatio: ratio.replace(':', '/') }}
                                                 onClick={() => onImageClick?.(img, idx, message)}
-                                            />
-                                            {/* Actions Overlay - iOS Style */}
-                                            <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 via-black/30 to-transparent opacity-0 group-hover/image:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
-                                                {onReuseImage && (
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); onReuseImage(img); }}
-                                                        className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm"
-                                                        title="复用图片"
-                                                    >
-                                                        <RefreshCw size={12} />
-                                                    </button>
-                                                )}
-                                                {onApplyToShot && (
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); onApplyToShot(img); }}
-                                                        className="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm"
-                                                        title="应用到当前分镜"
-                                                    >
-                                                        <Grid3x3 size={12} />
-                                                    </button>
-                                                )}
+                                            >
+                                                <img
+                                                    src={img}
+                                                    alt={`User upload ${idx + 1}`}
+                                                    className="w-full h-full object-cover hover:scale-110 transition-transform duration-500"
+                                                />
+
+                                                {/* Hover Actions Overlay (Standardized with GenerationResult) */}
+                                                <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover/image:opacity-100 transition-opacity flex justify-end gap-1.5 pt-6">
+                                                    {onReuseImage && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onReuseImage(img); }}
+                                                            className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm transition-colors shadow-sm"
+                                                            title="使用此图作为参考"
+                                                        >
+                                                            <ImageIcon size={12} />
+                                                        </button>
+                                                    )}
+                                                    {onApplyToShot && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onApplyToShot(img); }}
+                                                            className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm transition-colors shadow-sm"
+                                                            title="应用到当前分镜"
+                                                        >
+                                                            <Grid3x3 size={12} />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <GenerationResult
@@ -206,6 +214,6 @@ export function ChatBubble({
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }
