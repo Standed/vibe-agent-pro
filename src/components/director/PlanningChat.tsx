@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, FileText, Users, MapPin, MessageSquare, Wand2, CheckCircle2, Circle, Send, Loader2 } from 'lucide-react';
+import { Sparkles, FileText, Users, MapPin, MessageSquare, Wand2, CheckCircle2, Circle, Send, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { ChatMessage, Project } from '@/types/project';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import ThinkingProcess, { ThinkingStep } from '@/components/agent/ThinkingProcess';
@@ -39,6 +40,41 @@ export default function PlanningChat({
 }: PlanningChatProps) {
     // 调试日志
     // console.log('[PlanningChat] 渲染状态:', { isGeneratingAssets, hasStep: !!assetGenerationStep });
+
+    // Resize logic
+    const [inputHeight, setInputHeight] = useState(150); // Default height
+    const [isResizing, setIsResizing] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isResizing || !resizeRef.current) return;
+            const deltaY = resizeRef.current.startY - e.clientY;
+            const newHeight = Math.min(Math.max(resizeRef.current.startHeight + deltaY, 100), 600);
+            setInputHeight(newHeight);
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+            resizeRef.current = null;
+        };
+
+        if (isResizing) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        setIsResizing(true);
+        resizeRef.current = { startY: e.clientY, startHeight: inputHeight };
+    };
 
     return (
         <div className="flex-1 flex flex-col relative bg-white dark:bg-[#0a0a0a] overflow-hidden">
@@ -280,34 +316,42 @@ export default function PlanningChat({
             </div>
 
             {/* Chat Input Area */}
-            <div className="p-8 bg-gradient-to-t from-white via-white to-transparent dark:from-[#0a0a0a] dark:via-[#0a0a0a] dark:to-transparent">
+            <div className="p-8 bg-gradient-to-t from-white via-white to-transparent dark:from-[#0a0a0a] dark:via-[#0a0a0a] dark:to-transparent relative">
+                {/* Drag Handle */}
+                <div
+                    className="absolute top-0 left-0 right-0 h-4 cursor-ns-resize z-10 flex items-center justify-center opacity-0 hover:opacity-100 group transition-opacity"
+                    onMouseDown={handleMouseDown}
+                >
+                    <div className="w-16 h-1 rounded-full bg-black/10 dark:bg-white/10 group-hover:bg-light-accent dark:group-hover:bg-cine-accent transition-colors" />
+                </div>
+
                 <div className="max-w-3xl mx-auto relative">
                     {/* Quick Command Bar */}
                     {!isProcessing && !isGenerating && !isGeneratingAssets && (
                         <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1 mx-1 custom-scrollbar">
                             <button
-                                onClick={() => handleSendMessage('请帮我在现有分镜基础上进行细化，增加画面细节，但请保持目前的场景结构，不要添加新场景。')}
+                                onClick={() => setInputText('请帮我在现有分镜基础上进行细化，增加画面细节，但请保持目前的场景结构，不要添加新场景。')}
                                 className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
                             >
                                 <Sparkles size={12} className="text-blue-500" />
                                 细化分镜
                             </button>
                             <button
-                                onClick={() => handleSendMessage('请发挥你的创意，为当前故事构思新的情节和场景，尽可能丰富故事内容。')}
+                                onClick={() => setInputText('请发挥你的创意，为当前故事构思新的情节和场景，尽可能丰富故事内容。')}
                                 className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
                             >
                                 <Wand2 size={12} className="text-purple-500" />
                                 脑暴剧情
                             </button>
                             <button
-                                onClick={() => handleSendMessage('请根据剧本内容，为我设计 3 个性格鲜明的主要角色，包含外貌和性格描述，并添加到项目中。')}
+                                onClick={() => setInputText('请根据剧本内容，为我设计其中主要角色，包含外貌和性格描述，并添加到项目中。')}
                                 className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
                             >
                                 <Users size={12} className="text-emerald-500" />
                                 设计角色
                             </button>
                             <button
-                                onClick={() => handleSendMessage('这个故事需要哪些关键场景？请帮我列出并描述它们的视觉风格，并添加到项目中。')}
+                                onClick={() => setInputText('这个故事需要哪些关键场景？请帮我列出并描述它们的视觉风格，并添加到项目中。')}
                                 className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
                             >
                                 <MapPin size={12} className="text-amber-500" />
@@ -325,10 +369,20 @@ export default function PlanningChat({
                                     handleSendMessage();
                                 }
                             }}
+                            style={{ height: inputHeight }}
                             disabled={isProcessing || isGenerating || isGeneratingAssets}
                             placeholder="描述你的创意，或者让 AI 帮你完善... (@ 引用资源)"
-                            className="w-full p-6 pr-24 text-sm bg-zinc-50 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-3xl focus:outline-none focus:ring-2 focus:ring-light-accent/20 dark:focus:ring-cine-accent/20 transition-all resize-none min-h-[100px] max-h-[300px] custom-scrollbar disabled:opacity-50"
+                            className="w-full p-6 pr-24 text-sm bg-zinc-50 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-3xl focus:outline-none focus:ring-2 focus:ring-light-accent/20 dark:focus:ring-cine-accent/20 transition-all resize-none custom-scrollbar disabled:opacity-50"
                         />
+                        {/* Expand Button */}
+                        <button
+                            onClick={() => setIsExpanded(true)}
+                            className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white bg-white/50 dark:bg-black/50 hover:bg-white dark:hover:bg-black rounded-lg transition-all backdrop-blur-sm opacity-60 hover:opacity-100 z-10"
+                            title="全屏编辑"
+                        >
+                            <Maximize2 size={16} />
+                        </button>
+
                         <div className="absolute right-4 bottom-4 flex items-center gap-2">
                             <button
                                 onClick={() => handleSendMessage()}
@@ -360,6 +414,48 @@ export default function PlanningChat({
                     </div>
                 </div>
             </div>
-        </div>
+
+            {/* Expanded Editor Overlay */}
+            {
+                isExpanded && typeof document !== 'undefined' && createPortal(
+                    <div className="absolute inset-0 z-[100] bg-white dark:bg-[#0a0a0a] flex flex-col animate-in fade-in duration-200" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-black/5 dark:border-white/5 bg-zinc-50/50 dark:bg-black/20">
+                            <span className="font-bold text-sm text-zinc-900 dark:text-gray-100">提示词详情</span>
+                            <button
+                                onClick={() => setIsExpanded(false)}
+                                className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-colors"
+                            >
+                                <Minimize2 size={16} className="text-zinc-500" />
+                            </button>
+                        </div>
+                        <div className="flex-1 p-6 relative overflow-hidden">
+                            <textarea
+                                value={inputText}
+                                onChange={(e) => setInputText(e.target.value)}
+                                className="w-full h-full bg-transparent border-none focus:ring-0 text-base leading-relaxed resize-none custom-scrollbar focus:outline-none text-zinc-900 dark:text-white placeholder:text-zinc-400 font-medium"
+                                placeholder="输入提示词..."
+                                autoFocus
+                            />
+                            <div className="absolute bottom-6 right-6 flex gap-3">
+                                <button
+                                    onClick={() => setIsExpanded(false)}
+                                    className="px-5 py-2.5 rounded-xl border border-black/10 dark:border-white/10 hover:bg-zinc-100 dark:hover:bg-white/5 text-sm font-medium transition-colors"
+                                >
+                                    完成
+                                </button>
+                                <button
+                                    onClick={() => { setIsExpanded(false); handleSendMessage(); }}
+                                    className="px-6 py-2.5 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-black hover:scale-105 active:scale-95 transition-all text-sm font-bold shadow-lg flex items-center gap-2"
+                                >
+                                    <Send size={16} />
+                                    发送
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body // Or a specific container if needed
+                )
+            }
+        </div >
     );
 }
