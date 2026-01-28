@@ -341,117 +341,107 @@ export default function AgentPanel() {
           </>
         )}
 
-        {/* Quick Presets */}
-        {chatHistory.length === 0 && !isProcessing && (
-          <div className="px-6 py-4 border-t border-black/5 dark:border-white/5 bg-white/30 dark:bg-black/20 backdrop-blur-sm">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 font-medium">
-              快捷创作：
-            </p>
-            <div className="grid grid-cols-2 gap-2">
+        {/* Input */}
+        <div className="p-4 m-4 mt-0 glass-card">
+          {/* Persistent Quick Command Bar */}
+          {!isProcessing && (
+            <div className="flex flex-wrap items-center gap-2 mb-3 px-1">
               <button
                 onClick={() => setInput('使用 Gemini 直出模式为整个项目生成图片')}
-                className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all border border-blue-500/20 bg-blue-500/5 group"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
               >
-                <Sparkles size={14} className="text-blue-500 group-hover:scale-110 transition-transform" />
-                Gemini 直出生成
+                <Sparkles size={12} className="text-blue-500" />
+                Gemini 直出
               </button>
               <button
                 onClick={() => setInput('使用 Gemini Grid (2x2) 为整个项目生成多视图')}
-                className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all border border-indigo-500/20 bg-indigo-500/5 group"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
               >
-                <Grid2x2 size={14} className="text-indigo-500 group-hover:scale-110 transition-transform" />
+                <Grid2x2 size={12} className="text-indigo-500" />
                 Gemini Grid 2x2
               </button>
               <button
                 onClick={() => setInput('使用即梦(Jimeng)为整个项目生成图片')}
-                className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all border border-orange-500/20 bg-orange-500/5 group"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
               >
-                <ImageIcon size={14} className="text-orange-500 group-hover:scale-110 transition-transform" />
-                即梦(Jimeng)生成
+                <ImageIcon size={12} className="text-orange-500" />
+                即梦生成
               </button>
               <button
                 onClick={() => setInput('使用 Sora2 为整个项目生成视频')}
-                className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all border border-purple-500/20 bg-purple-500/5 group"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
               >
-                <Video size={14} className="text-purple-500 group-hover:scale-110 transition-transform" />
-                Sora 视频生成
+                <Video size={12} className="text-purple-500" />
+                Sora 视频
               </button>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+              disabled={isProcessing}
+              className="flex-1 bg-transparent border-none px-2 py-3 text-sm focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 overflow-y-auto"
+              rows={1}
+              style={{ minHeight: '44px', maxHeight: '200px' }}
+            />
+
+            <button
+              onClick={handleSendMessage}
+              disabled={!input.trim() || isProcessing}
+              className="flex-shrink-0 w-10 h-10 rounded-full bg-black dark:bg-white text-white dark:text-black hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center shadow-md"
+            >
+              {isProcessing ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <Send size={18} />
+              )}
+            </button>
+          </div>
+
+          <div className="mt-2 text-[10px] text-gray-400 dark:text-gray-500 px-2">
+            提示: Agent 会自动使用增强上下文和并行执行，大幅提升处理效率
+          </div>
+        </div>
+
+        {/* Confirmation Overlay - Update to use activeConfirmation */}
+        {activeConfirmation && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-black/20 backdrop-blur-sm">
+            <div className="w-full max-w-sm glass-card p-6 shadow-2xl border border-white/20 animate-in fade-in zoom-in duration-300">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                  <Sparkles className="text-blue-500" size={20} />
+                </div>
+                <h3 className="font-bold text-lg text-gray-900 dark:text-white">积分消耗确认</h3>
+              </div>
+
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
+                {activeConfirmation.message || (activeConfirmation === pendingConfirmation ? pendingConfirmation.message : "Agent 请求执行耗费积分的操作")}
+                <br />
+                预计将消耗 <span className="font-bold text-blue-500 dark:text-blue-400">{activeConfirmation.credits}</span> 积分。
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={activeConfirmation.onCancel}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={activeConfirmation.onConfirm}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg"
+                >
+                  确认继续
+                </button>
+              </div>
             </div>
           </div>
         )}
-
-        <div ref={messagesEndRef} />
       </div>
-
-
-
-      {/* Input */}
-      <div className="p-4 m-4 mt-0 glass-card">
-        <div className="flex gap-2">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-            disabled={isProcessing}
-            className="flex-1 bg-transparent border-none px-2 py-3 text-sm focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 overflow-y-auto"
-            rows={1}
-            style={{ minHeight: '44px', maxHeight: '200px' }}
-          />
-
-          <button
-            onClick={handleSendMessage}
-            disabled={!input.trim() || isProcessing}
-            className="flex-shrink-0 w-10 h-10 rounded-full bg-black dark:bg-white text-white dark:text-black hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center shadow-md"
-          >
-            {isProcessing ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              <Send size={18} />
-            )}
-          </button>
-        </div>
-
-        <div className="mt-2 text-[10px] text-gray-400 dark:text-gray-500 px-2">
-          提示: Agent 会自动使用增强上下文和并行执行，大幅提升处理效率
-        </div>
-      </div>
-
-      {/* Confirmation Overlay - Update to use activeConfirmation */}
-      {activeConfirmation && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-black/20 backdrop-blur-sm">
-          <div className="w-full max-w-sm glass-card p-6 shadow-2xl border border-white/20 animate-in fade-in zoom-in duration-300">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                <Sparkles className="text-blue-500" size={20} />
-              </div>
-              <h3 className="font-bold text-lg text-gray-900 dark:text-white">积分消耗确认</h3>
-            </div>
-
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
-              {activeConfirmation.message || (activeConfirmation === pendingConfirmation ? pendingConfirmation.message : "Agent 请求执行耗费积分的操作")}
-              <br />
-              预计将消耗 <span className="font-bold text-blue-500 dark:text-blue-400">{activeConfirmation.credits}</span> 积分。
-            </p>
-
-            <div className="flex gap-3">
-              <button
-                onClick={activeConfirmation.onCancel}
-                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={activeConfirmation.onConfirm}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg"
-              >
-                确认继续
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+      );
 }
