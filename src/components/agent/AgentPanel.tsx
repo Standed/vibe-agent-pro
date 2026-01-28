@@ -341,6 +341,52 @@ export default function AgentPanel() {
           </>
         )}
 
+        {/* Quick Presets */}
+        {chatHistory.length === 0 && !isProcessing && (
+          <div className="px-6 py-4 border-t border-black/5 dark:border-white/5 bg-white/30 dark:bg-black/20 backdrop-blur-sm">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 font-medium">
+              快捷操作：
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setInput('请帮我在现有分镜基础上进行细化，增加画面细节，但请保持目前的场景结构，不要添加新场景。')}
+                className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all border border-blue-500/20 bg-blue-500/5 group"
+              >
+                <Sparkles size={14} className="text-blue-500 group-hover:scale-110 transition-transform" />
+                🔍 细化现有分镜 (只改不增)
+              </button>
+              <button
+                onClick={() => setInput('请发挥你的创意，为当前故事构思新的情节和场景，尽可能丰富故事内容。')}
+                className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all border border-purple-500/20 bg-purple-500/5 group"
+              >
+                <Sparkles size={14} className="text-purple-500 group-hover:scale-110 transition-transform" />
+                ✨ 脑暴新剧情 (丰富内容)
+              </button>
+              <button
+                onClick={() => setInput('使用 Gemini Grid (2x2) 为整个项目生成多视图')}
+                className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+              >
+                <Grid2x2 size={14} className="text-indigo-500" />
+                Gemini Grid 2x2 生成所有分镜
+              </button>
+              <button
+                onClick={() => setInput('使用 Sora2 为整个项目生成视频')}
+                className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+              >
+                <Video size={14} className="text-purple-500" />
+                Sora2 生成所有分镜视频
+              </button>
+              <button
+                onClick={() => setInput('使用即梦(Jimeng)为整个项目生成图片')}
+                className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium rounded-xl glass-button text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-all col-span-2"
+              >
+                <ImageIcon size={14} className="text-orange-500" />
+                使用即梦生成所有分镜
+              </button>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
