@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { useProjectStore } from '@/store/useProjectStore';
 import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Plus, Loader2, Edit2, Upload, GalleryHorizontal, Trash2 } from 'lucide-react';
@@ -21,8 +21,152 @@ import { dataService } from '@/lib/dataService';
 import DraggableCanvasShotCard from '@/components/canvas/DraggableCanvasShotCard';
 import { constructBaseShotPrompt } from '@/utils/promptConstruction';
 
+// Memoized Scene Component to prevent unnecessary re-renders
+const CanvasScene = memo(({
+  scene, sceneShots, currentSceneId, selectedShotId, draggedScene, dragOffset,
+  sceneWidth, gridColsClass, aspectRatio, ratioStyle,
+  handleSceneDragStart, selectScene, deleteScene, setConfirmDialog,
+  handleSelectShot, handlePreview, handleDownload, handleEditShot,
+  handleUploadShotTrigger, handleGenerate, handleAddShotClick
+}: any) => {
+  const isSceneSelected = currentSceneId === scene.id && !selectedShotId;
+  const isDraggingThisScene = draggedScene === scene.id;
+  const currentPosition = {
+    x: scene.position.x + (isDraggingThisScene ? dragOffset.x : 0),
+    y: scene.position.y + (isDraggingThisScene ? dragOffset.y : 0)
+  };
+
+  return (
+    <div
+      className={`glass-card p-6 min-w-[600px] max-w-4xl interactive ${isSceneSelected
+        ? 'border-2 border-light-accent/50 dark:border-cine-accent/50 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] ring-1 ring-light-accent/20 dark:ring-cine-accent/20'
+        : 'shadow-xl'
+        } ${isDraggingThisScene ? 'z-50 shadow-2xl scale-[1.01]' : ''}`}
+      style={{
+        position: 'absolute',
+        left: currentPosition.x,
+        top: currentPosition.y,
+        width: sceneWidth,
+        cursor: isDraggingThisScene ? 'grabbing' : 'grab',
+        transition: isDraggingThisScene ? 'none' : 'transform 0.1s ease-out, box-shadow 0.2s ease',
+        willChange: isDraggingThisScene ? 'transform' : 'auto', // Optimization
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {/* Scene Header */}
+      <div
+        onMouseDown={(e) => handleSceneDragStart(e, scene.id)}
+        onClick={() => selectScene(scene.id)}
+        className="w-full flex items-center justify-between mb-4 hover:bg-light-bg dark:bg-cine-panel/50 rounded p-2 -m-2 transition-colors text-left cursor-grab active:cursor-grabbing"
+      >
+        <div>
+          <h3 className="font-bold text-light-text dark:text-white pointer-events-none">{scene.name}</h3>
+          <p className="text-xs text-light-text-muted dark:text-cine-text-muted pointer-events-none">{scene.location}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-light-text-muted dark:text-cine-text-muted pointer-events-none">
+            {sceneShots.length} 个镜头
+          </span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmDialog({
+                isOpen: true,
+                title: '删除场景',
+                description: `确定要删除场景 "${scene.name}" 及其包含的所有镜头吗？此操作无法撤销。`,
+                variant: 'destructive',
+                onConfirm: () => {
+                  deleteScene(scene.id);
+                  toast.success('场景已删除');
+                  setConfirmDialog((prev: any) => ({ ...prev, isOpen: false }));
+                },
+              });
+            }}
+            className="p-1.5 hover:bg-red-500/10 hover:text-red-500 text-light-text-muted dark:text-cine-text-muted rounded-md transition-colors"
+            title="删除场景"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Shots Grid */}
+      {
+        sceneShots.length > 0 ? (
+          <div className={`grid ${gridColsClass} gap-3`}>
+            {sceneShots.map((shot: any) => {
+              const isShotSelected = selectedShotId === shot.id;
+              const shotLabel = formatShotLabel(scene.order, shot.order, shot.globalOrder);
+
+              return (
+                <DraggableCanvasShotCard
+                  key={shot.id}
+                  shot={shot}
+                  sceneId={scene.id}
+                  shotLabel={shotLabel}
+                  isShotSelected={isShotSelected}
+                  onSelect={handleSelectShot}
+                  onPreview={handlePreview}
+                  onDownload={handleDownload}
+                  onEdit={handleEditShot}
+                  onUpload={handleUploadShotTrigger}
+                  onGenerate={handleGenerate}
+                  shotSizeLabel={translateShotSize(shot.shotSize)}
+                  cameraMovementLabel={translateCameraMovement(shot.cameraMovement)}
+                  aspectRatio={aspectRatio}
+                />
+              );
+
+            })}
+            {/* Add Shot Button */}
+            <button
+              onClick={(e) => { e.stopPropagation(); handleAddShotClick(scene.id); }}
+              className="rounded border-2 border-dashed border-light-border dark:border-cine-border flex flex-col items-center justify-center text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent transition-colors"
+              style={ratioStyle}
+            >
+              <Plus size={24} />
+              <span className="text-xs mt-1">添加镜头</span>
+            </button>
+          </div>
+        ) : (
+          <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8 flex flex-col items-center gap-2">
+            <span>暂无镜头</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleAddShotClick(scene.id); }}
+              className="text-xs text-light-accent dark:text-cine-accent hover:underline"
+            >
+              添加第一个镜头
+            </button>
+          </div>
+        )
+      }
+    </div>
+  );
+}, (prev, next) => {
+  // Custom comparison to prevent re-renders when other scenes are selected
+  return (
+    prev.scene === next.scene &&
+    prev.sceneShots === next.sceneShots &&
+    prev.currentSceneId === next.currentSceneId &&
+    prev.selectedShotId === next.selectedShotId &&
+    prev.draggedScene === next.draggedScene &&
+    prev.dragOffset === next.dragOffset &&
+    prev.aspectRatio === next.aspectRatio
+  );
+});
+
 export default function InfiniteCanvas() {
-  const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed, updateShot, addShot, reorderShots, addCharacter, addLocation, updateScene, deleteScene, autoArrangeScenes } = useProjectStore();
+  const project = useProjectStore((state) => state.project);
+  const currentSceneId = useProjectStore((state) => state.currentSceneId);
+  const selectedShotId = useProjectStore((state) => state.selectedShotId);
+  const selectScene = useProjectStore((state) => state.selectScene);
+  const updateScene = useProjectStore((state) => state.updateScene);
+  const deleteScene = useProjectStore((state) => state.deleteScene);
+  const updateShot = useProjectStore((state) => state.updateShot);
+  const addShot = useProjectStore((state) => state.addShot);
+  const reorderShots = useProjectStore((state) => state.reorderShots);
+  const autoArrangeScenes = useProjectStore((state) => state.autoArrangeScenes);
+
 
   // Canvas State
   const [scale, setScale] = useState(1);
@@ -176,9 +320,8 @@ export default function InfiniteCanvas() {
     setLastMousePos({ x: e.clientX, y: e.clientY });
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (draggedScene) {
-      // Calculate delta based on screen pixels, then divide by scale to get canvas units
       const deltaX = (e.clientX - lastMousePos.x) / scale;
       const deltaY = (e.clientY - lastMousePos.y) / scale;
 
@@ -197,7 +340,7 @@ export default function InfiniteCanvas() {
       }));
       setLastMousePos({ x: e.clientX, y: e.clientY });
     }
-  };
+  }, [draggedScene, isDragging, lastMousePos, scale]);
 
   const handleMouseUp = () => {
     if (draggedScene) {
@@ -485,9 +628,15 @@ export default function InfiniteCanvas() {
   }, []);
 
   return (
+
     <div
       ref={containerRef}
       className="w-full h-full bg-light-bg dark:bg-cine-black relative overflow-hidden cursor-grab active:cursor-grabbing select-none"
+      style={{
+        backgroundImage: 'radial-gradient(rgba(39, 39, 42, 0.5) 1px, transparent 1px)',
+        backgroundSize: `${24 * scale}px ${24 * scale}px`,
+        backgroundPosition: `${position.x}px ${position.y}px`,
+      }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -543,15 +692,8 @@ export default function InfiniteCanvas() {
           transformStyle: 'preserve-3d',
         }}
       >
-        {/* Grid Background */}
-        <div
-          className="absolute -inset-[5000px]"
-          style={{
-            backgroundImage: 'radial-gradient(#27272a 1px, transparent 1px)',
-            backgroundSize: '24px 24px',
-            opacity: 0.5
-          }}
-        />
+        {/* Grid Background - Removed and moved to container to prevent flickering */}
+
 
         {/* Content */}
         <div className="relative p-20 min-w-max min-h-max">
@@ -566,122 +708,32 @@ export default function InfiniteCanvas() {
             </div>
           ) : (
             <div className="relative w-full h-full">
-              {sceneGroups.map(({ scene, shots: sceneShots }) => {
-                const isSceneSelected = currentSceneId === scene.id && !selectedShotId;
-                const isDraggingThisScene = draggedScene === scene.id;
-                const currentPosition = {
-                  x: scene.position.x + (isDraggingThisScene ? dragOffset.x : 0),
-                  y: scene.position.y + (isDraggingThisScene ? dragOffset.y : 0)
-                };
-
-                return (
-                  <div
-                    key={scene.id}
-                    className={`glass-card p-6 min-w-[600px] max-w-4xl interactive ${isSceneSelected
-                      ? 'border-2 border-light-accent/50 dark:border-cine-accent/50 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] ring-1 ring-light-accent/20 dark:ring-cine-accent/20'
-                      : 'shadow-xl'
-                      } ${isDraggingThisScene ? 'z-50 shadow-2xl scale-[1.01]' : ''}`}
-                    style={{
-                      position: 'absolute',
-                      left: currentPosition.x,
-                      top: currentPosition.y,
-                      width: sceneWidth,
-                      cursor: isDraggingThisScene ? 'grabbing' : 'grab',
-                      transition: isDraggingThisScene ? 'none' : 'transform 0.1s ease-out, box-shadow 0.2s ease',
-                      // maxWidth: 'none' // Removed constraint
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  >
-                    {/* Scene Header */}
-                    <div
-                      onMouseDown={(e) => handleSceneDragStart(e, scene.id)}
-                      onClick={() => selectScene(scene.id)}
-                      className="w-full flex items-center justify-between mb-4 hover:bg-light-bg dark:bg-cine-panel/50 rounded p-2 -m-2 transition-colors text-left cursor-grab active:cursor-grabbing"
-                    >
-                      <div>
-                        <h3 className="font-bold text-light-text dark:text-white pointer-events-none">{scene.name}</h3>
-                        <p className="text-xs text-light-text-muted dark:text-cine-text-muted pointer-events-none">{scene.location}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-light-text-muted dark:text-cine-text-muted pointer-events-none">
-                          {sceneShots.length} 个镜头
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmDialog({
-                              isOpen: true,
-                              title: '删除场景',
-                              description: `确定要删除场景 "${scene.name}" 及其包含的所有镜头吗？此操作无法撤销。`,
-                              variant: 'destructive',
-                              onConfirm: () => {
-                                deleteScene(scene.id);
-                                toast.success('场景已删除');
-                                setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-                              },
-                            });
-                          }}
-                          className="p-1.5 hover:bg-red-500/10 hover:text-red-500 text-light-text-muted dark:text-cine-text-muted rounded-md transition-colors"
-                          title="删除场景"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Shots Grid */}
-                    {
-                      sceneShots.length > 0 ? (
-                        <div className={`grid ${gridColsClass} gap-3`}>
-                          {sceneShots.map((shot) => {
-                            const isShotSelected = selectedShotId === shot.id;
-                            const shotLabel = formatShotLabel(scene.order, shot.order, shot.globalOrder);
-
-                            return (
-                              <DraggableCanvasShotCard
-                                key={shot.id}
-                                shot={shot}
-                                sceneId={scene.id}
-                                shotLabel={shotLabel}
-                                isShotSelected={isShotSelected}
-                                onSelect={handleSelectShot}
-                                onPreview={handlePreview}
-                                onDownload={handleDownload}
-                                onEdit={handleEditShot}
-                                onUpload={handleUploadShotTrigger}
-                                onGenerate={handleGenerate}
-                                shotSizeLabel={translateShotSize(shot.shotSize)}
-                                cameraMovementLabel={translateCameraMovement(shot.cameraMovement)}
-                                aspectRatio={aspectRatio}
-                              />
-                            );
-
-                          })}
-                          {/* Add Shot Button */}
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleAddShotClick(scene.id); }}
-                            className="rounded border-2 border-dashed border-light-border dark:border-cine-border flex flex-col items-center justify-center text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent transition-colors"
-                            style={ratioStyle}
-                          >
-                            <Plus size={24} />
-                            <span className="text-xs mt-1">添加镜头</span>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8 flex flex-col items-center gap-2">
-                          <span>暂无镜头</span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleAddShotClick(scene.id); }}
-                            className="text-xs text-light-accent dark:text-cine-accent hover:underline"
-                          >
-                            添加第一个镜头
-                          </button>
-                        </div>
-                      )
-                    }
-                  </div>
-                );
-              })}
+              {sceneGroups.map(({ scene, shots: sceneShots }) => (
+                <CanvasScene
+                  key={scene.id}
+                  scene={scene}
+                  sceneShots={sceneShots}
+                  currentSceneId={currentSceneId}
+                  selectedShotId={selectedShotId}
+                  draggedScene={draggedScene}
+                  dragOffset={dragOffset}
+                  sceneWidth={sceneWidth}
+                  gridColsClass={gridColsClass}
+                  aspectRatio={aspectRatio}
+                  ratioStyle={ratioStyle}
+                  handleSceneDragStart={handleSceneDragStart}
+                  selectScene={selectScene}
+                  deleteScene={deleteScene}
+                  setConfirmDialog={setConfirmDialog}
+                  handleSelectShot={handleSelectShot}
+                  handlePreview={handlePreview}
+                  handleDownload={handleDownload}
+                  handleEditShot={handleEditShot}
+                  handleUploadShotTrigger={handleUploadShotTrigger}
+                  handleGenerate={handleGenerate}
+                  handleAddShotClick={handleAddShotClick}
+                />
+              ))}
             </div>
           )}
         </div>

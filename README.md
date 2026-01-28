@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-3.8.7-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-3.8.9-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -370,11 +370,17 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 
 ## 📝 Changelog
 
+### v3.8.9 (2026-01-29)
+- ✅ **Canvas Flicker Fix** - Completely resolved canvas flickering during zoom/pan by refactoring grid rendering to CSS background and implementing memoized scene components.
+- ✅ **Planning Chat Expansion** - Added a fullscreen edit mode for the Planning Chat input, improving the experience for writing long prompts.
+- ✅ **Performance Optimization** - Significantly reduced re-renders in the infinite canvas through component memoization and optimized state management.
+
 ### v3.8.8 (2026-01-28)
+- ✅ **AI Command Restoration** - Restored AI Quick Commands (Grid/Sora/Jimeng) in the Agent Panel for immediate access in image/video generation workflows.
 - ✅ **New Script Tab Integration** - Enabled "Script" tab in the unified sidebar, consolidating story brainstorming and AI script analysis into a dedicated view.
-- ✅ **AI Quick Commands Relocation** - Moved "AI Quick Commands" (Refine Script, Brainstorm, etc.) from Agent Panel to the new Script Tab for better contextual relevance.
+- ✅ **AI Quick Commands Relocation** - Added "AI Quick Commands" to the new Script Tab while retaining them in Agent Panel, allowing for flexible workflows.
 - ✅ **Canvas Rendering Optimization** - Fixed canvas flickering during zoom/pan by removing conflicting CSS transitions and enabling hardware acceleration.
-- ✅ **Agent Panel Cleanup** - Removed legacy quick command buttons from the chat interface to streamline the Agent interaction flow.
+- ✅ **Agent Panel Cleanup** - Enhanced Agent interaction flow while preserving key shortcuts.
 - ✅ **Standardized Image Interaction** - Added standard "Use as Reference" and "One-click Apply" hover actions to user-uploaded images in chat, matching the Grid interaction experience.
 
 ### v3.0.0 (2026-01-19)
