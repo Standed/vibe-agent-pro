@@ -12,6 +12,8 @@ interface MentionInputProps {
   disabled?: boolean;
   className?: string;
   onEnterSend?: () => void;
+  autoResize?: boolean;
+  style?: React.CSSProperties;
 }
 
 export default function MentionInput({
@@ -22,6 +24,8 @@ export default function MentionInput({
   disabled = false,
   className = '',
   onEnterSend,
+  autoResize = true,
+  style,
 }: MentionInputProps) {
   const { project } = useProjectStore();
   const [showMentionMenu, setShowMentionMenu] = useState(false);
@@ -32,6 +36,12 @@ export default function MentionInput({
 
   const characters = project?.characters || [];
   const locations = project?.locations || [];
+
+  // ... (rest of logic same until useEffect)
+  // I need to skip the middle part, but I can't skip with replace_file_content unless I target specific chunks.
+  // I will use two replacements if needed, or just replace the top interface and then the bottom effect.
+  // Actually, I'll replace the top part first.
+
 
   // 合并角色和场景
   const allAssets: Array<{ type: 'character' | 'location'; item: Character | Location }> = [
@@ -134,11 +144,11 @@ export default function MentionInput({
 
   // Auto-resize
   useEffect(() => {
-    if (textareaRef.current) {
+    if (autoResize && textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
-  }, [value]);
+  }, [value, autoResize]);
 
   return (
     <div className="relative">
@@ -151,7 +161,10 @@ export default function MentionInput({
         disabled={disabled}
         className={`${className} overflow-y-auto`}
         rows={1}
-        style={{ minHeight: '44px', maxHeight: '200px' }}
+        style={{
+          ...(autoResize ? { minHeight: '44px', maxHeight: '200px' } : {}),
+          ...style
+        }}
       />
 
       {/* Mention Menu */}

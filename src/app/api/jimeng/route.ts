@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth-middleware';
+import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
+import { calculateCredits } from '@/config/credits';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
@@ -754,6 +755,7 @@ class JimengApiClient {
 export async function POST(request: NextRequest) {
     const authResult = await authenticateRequest(request);
     if ('error' in authResult) return authResult.error;
+    const { user } = authResult;
 
     try {
         const body = await request.json();
@@ -769,7 +771,19 @@ export async function POST(request: NextRequest) {
 
         if (action === 'generate-image') {
             const { prompt, model = 'jimeng-4.0', aspectRatio = '16:9', imageUrls } = payload;
+
+            // 积分扣除逻辑
+            const creditCost = calculateCredits('SEEDREAM_GENERATE', user.role as 'user' | 'admin' | 'vip');
+            const hasCredits = await checkCredits(user, creditCost);
+            if (!hasCredits) {
+                return NextResponse.json({ error: '积分不足' }, { status: 402 });
+            }
+
             const result = await client.generateImage(prompt, model, aspectRatio, '2k', imageUrls);
+
+            // 只有成功提交任务才扣除（严格来说生成开始即扣除）
+            await consumeCredits(user.id, creditCost, `Jimeng Image Generation: ${model}`);
+
             return NextResponse.json(result);
         }
 

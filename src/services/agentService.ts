@@ -344,7 +344,10 @@ export interface AgentAction {
 /**
  * 预估工具调用所需的积分
  */
-export function estimateCredits(toolCalls: ToolCall[], userRole: 'user' | 'admin' | 'vip' = 'user'): number {
+/**
+ * 预估工具调用所需的积分
+ */
+export function estimateCredits(toolCalls: ToolCall[], userRole: 'user' | 'admin' | 'vip' = 'user', context?: AgentContext): number {
   let total = 0;
   for (const tc of toolCalls) {
     switch (tc.name) {
@@ -358,14 +361,46 @@ export function estimateCredits(toolCalls: ToolCall[], userRole: 'user' | 'admin
           total += calculateCredits('GEMINI_IMAGE', userRole);
         } else if (mode === 'seedream') {
           total += calculateCredits('SEEDREAM_GENERATE', userRole);
+        } else {
+          // 默认为 Jimeng/Volcano
+          total += calculateCredits('VOLCANO_GENERATE', userRole);
         }
         break;
       }
-      case 'batchGenerateSceneImages':
+      case 'batchGenerateSceneImages': {
+        // 估算：假设平均每个场景 5 个镜头
+        const avgShots = 5;
+        const perShotCost = calculateCredits('VOLCANO_GENERATE', userRole);
+        total += avgShots * perShotCost;
+        break;
+      }
       case 'batchGenerateProjectImages': {
-        // 批量操作通常消耗较多，这里做一个保守预估
-        // 实际上 batch 内部会根据镜头数动态消耗，这里先给一个基础预估
-        total += calculateCredits('BATCH_OPERATION', userRole);
+        const shotCount = context?.shotCount || 10;
+        const perShotCost = calculateCredits('VOLCANO_GENERATE', userRole);
+        total += shotCount * perShotCost;
+        break;
+      }
+      case 'generateSceneVideo': {
+        // 估算：假设平均每个场景 5 个镜头，合并后产生 2-3 个视频段
+        // VOLCANO_VIDEO 是单次生成费用
+        const videoCost = calculateCredits('VOLCANO_VIDEO', userRole);
+        total += videoCost * 3;
+        break;
+      }
+      case 'generateShotsVideo': {
+        // 估算：根据 shotIds 数量
+        const shotIds = tc.arguments.shotIds;
+        const count = Array.isArray(shotIds) ? shotIds.length : 1;
+        // 假设智能合并比率 0.5 (每2个镜头合成一段)
+        const videoCost = calculateCredits('VOLCANO_VIDEO', userRole);
+        total += Math.ceil(count * 0.5) * videoCost;
+        break;
+      }
+      case 'batchGenerateProjectVideosSora': {
+        const shotCount = context?.shotCount || 21; // Default to multiple of 3 for cleaner calc
+        // 估算：Sora 逻辑会将连续镜头合并 (平均每 3 个镜头生成一段 15s 视频)
+        const videoCost = calculateCredits('VOLCANO_VIDEO', userRole);
+        total += Math.ceil(shotCount / 3.0) * videoCost;
         break;
       }
       case 'generateCharacterThreeView':
@@ -434,9 +469,11 @@ function generateSystemInstruction(tools: ToolDefinition[] = AGENT_TOOLS): strin
    - description 应该详细描述画面内容、动作、情绪
 
 6. **图片生成模式选择**
-   - seedream: 火山引擎单图生成，适合单个分镜的高质量生成
-   - gemini: Gemini 直出，速度快，适合快速预览
-   - grid: Gemini Grid 多视图，适合批量生成
+   - **jimeng**: 即梦 (Jimeng)，**首选**的高质量写实/艺术风格模型，适合大多数场景。
+   - **seedream**: 火山引擎 Stable Diffusion，生成速度快，适合二次元或简单风格。
+   - **grid**: Gemini Grid 多视图，适合批量生成分镜草图（2x2 或 3x3）。
+   - **gemini**: Gemini Dalle-3 Grade，适合快速概念验证。
+   - **默认推荐**：未指定时，优先使用 jimeng。
 
 7. **Sora 视频生成规则（Agent 模式）**
    - **工具选择关键规则（严格遵守）**：
@@ -463,6 +500,38 @@ function generateSystemInstruction(tools: ToolDefinition[] = AGENT_TOOLS): strin
      → 在战斗相关场景中**插入**新镜头
      → 不是在项目末尾续写新场景
    - 使用 addShots 时传入 insertAfterShotId 可以指定插入位置
+
+9. **严禁事项 (Negative Constraints)**
+   - **禁止**在用户要求"删除"、"移除"、"去掉"时触发**头脑风暴(Brainstorm)**或**分镜脚本生成(Storyboard)**模式。
+     - 错误示例：用户说"删除第5个镜头"，助手调用 brainstorm 或 storyboard 工具。
+     - 正确行为：直接调用 \`deleteShot\` 或 \`deleteScene\`。
+   - **禁止**在未明确 ID 的情况下胡乱删除。如果用户说"删除那个镜头"，必须先询问或根据上下文（context.currentShot）推断，推断失败则询问。
+   - **禁止**生成 ID（如 shot-uuid-123），必须使用真实存在的 ID。
+
+
+10. **修改与删除操作指南**
+    - **删除镜头**：使用 \`deleteShot\` (单数) 或 \`deleteShots\` (复数，如果工具支持，或者多次调用单数接口)。
+      - 注意：当前工具集中若无 deleteShots，请循环调用 deleteShot 或使用 batchUpdateScenesAndShots（高级）。
+      - 优先检查工具定义，确保使用存在的工具。
+    - **删除场景**：使用 \`deleteScene\`。这将级联删除场景下的所有镜头。
+    - **修改内容**：使用 \`updateShot\` 修改 description/dialogue 等。不要先删后加，除非用户明确要求重写。
+
+11. **积分消耗确认机制 (Credit Confirmation) - CRITICAL**
+    - **规则**：执行任何**批量生成**或**Sora视频生成**任务前，**必须先计算预估积分并征求用户确认**。
+    - **适用工具**：
+      - \`batchGenerateProjectVideosSora\` (Sora 全项目生成)
+      - \`batchGenerateSceneImages\` (批量生图)
+      - \`batchGenerateProjectImages\` (全项目生图)
+      - \`generateShotsVideo\` (多镜生成)
+    - **执行流程**：
+      1. **User Request**: 用户请求 "生成所有视频" 或 "为所有分镜生图"。
+      2. **Calculation**: 助手根据当前上下文 (context.shotCount) 计算预估费用。
+         - Image Gen: 镜头数 x 1 (Jimeng/Gemini)
+         - Sora Video: 根据场景和时长智能分组 (约每15s一段视频) x 50积分
+      3. **Ask Confirmation**: 助手回复："這將涉及 X 個鏡头，预计消耗 Y 积分。是否继续？" (**此时不要调用工具！**)
+      4. **Wait for Reply**: 等待用户回复 "是/Yes"。
+      5. **Execute**: 用户确认后，助手才调用工具。
+    - **拒绝执行**：如果用户回复 "否/No" 或 "取消"，则不调用工具。
 
 \`\`\`
 
@@ -753,7 +822,7 @@ export async function sendMessage(
         toolCalls,
         message: `正在调用工具: ${functionCall.name}`,
         requiresToolExecution: true,
-        estimatedCredits: estimateCredits(toolCalls)
+        estimatedCredits: estimateCredits(toolCalls, 'user', context)
       };
     }
 
@@ -779,7 +848,7 @@ export async function sendMessage(
         // If type is tool_use, ensure requiresToolExecution is set
         if (action.type === 'tool_use' && action.toolCalls && action.toolCalls.length > 0) {
           action.requiresToolExecution = true;
-          action.estimatedCredits = estimateCredits(action.toolCalls);
+          action.estimatedCredits = estimateCredits(action.toolCalls, 'user', context);
         }
         return action;
       }

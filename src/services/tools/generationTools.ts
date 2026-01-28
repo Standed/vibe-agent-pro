@@ -135,13 +135,15 @@ export class GenerationTools {
         }
     }
 
-    async generateShotImage(shotId: string, mode: string, gridSize: string, prompt: string, force: boolean): Promise<ToolResult> {
+    async generateShotImage(shotId: string, mode: string, gridSize: string, prompt: string, force: boolean = true): Promise<ToolResult> {
         if (!this.project) return { tool: 'generateShotImage', result: null, error: 'Project not found' };
 
         const shot = this.project.shots.find(s => s.id === shotId);
         if (!shot) return { tool: 'generateShotImage', result: null, error: 'Shot not found' };
 
-        if (!force && shot.referenceImage) {
+        // Agent calls default to force=true to ensure generation happens
+        // unless explicitly set to false (which Agent rarely does)
+        if (force === false && shot.referenceImage) {
             return { tool: 'generateShotImage', result: { imageUrl: shot.referenceImage, message: 'Image already exists' }, success: true };
         }
 
@@ -353,10 +355,11 @@ export class GenerationTools {
         }
     }
 
-    async batchGenerateSceneImages(sceneId: string, mode: string, gridSize: string, prompt: string, force: boolean): Promise<ToolResult> {
+    async batchGenerateSceneImages(sceneId: string, mode: string, gridSize: string, prompt: string, force: boolean = true): Promise<ToolResult> {
         if (!this.project) return { tool: 'batchGenerateSceneImages', result: null, error: 'Project not found' };
 
-        const shouldForce = force || /all|regenerate|update|全部|所有|重新|覆盖/i.test(prompt || '');
+        // Force is true by default for Agent
+        const shouldForce = force !== false;
         const shots = this.project.shots.filter(s => s.sceneId === sceneId && (shouldForce || !s.referenceImage));
 
         if (shots.length === 0) {

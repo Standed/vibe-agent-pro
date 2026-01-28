@@ -266,6 +266,51 @@ export default function Home() {
           }
         })();
       }
+
+      // 自动设置剧集封面：始终同步为该剧集下最新修改的项目的封面
+      const seriesToUpdate = allSeries.filter(s => {
+        // 找出该剧集下的所有项目
+        const seriesProjects = allProjects.filter(p => p.seriesId === s.id);
+        if (seriesProjects.length === 0) return false;
+
+        // 按修改时间降序排序（注意：projects 已经在 getAllProjects 中按 updated_at 排序了，但为了保险再排一次）
+        // getAllProjects 返回的是 'updated_at' 降序
+        // const latestProject = seriesProjects[0]; // 假设已排序
+        // 还是手动排一下稳妥
+        seriesProjects.sort((a, b) => new Date(b.metadata.modified).getTime() - new Date(a.metadata.modified).getTime());
+        const latestProject = seriesProjects[0];
+
+        // 如果最新项目有封面，且剧集封面与最新项目封面不一致 => 需要更新
+        return latestProject.metadata.coverImage && s.coverImage !== latestProject.metadata.coverImage;
+      });
+
+      if (seriesToUpdate.length > 0) {
+        // console.log(`[HomePage] 🎬 尝试更新 ${seriesToUpdate.length} 个剧集封面`);
+        (async () => {
+          let updatedCount = 0;
+          for (const s of seriesToUpdate) {
+            const seriesProjects = allProjects.filter(p => p.seriesId === s.id);
+            seriesProjects.sort((a, b) => new Date(b.metadata.modified).getTime() - new Date(a.metadata.modified).getTime());
+            const latestProject = seriesProjects[0];
+
+            if (latestProject && latestProject.metadata.coverImage) {
+              try {
+                const updatedSeries = { ...s, coverImage: latestProject.metadata.coverImage, updated: new Date() }; // Series type update
+                // 注意：dataService.saveSeries 需要完整对象
+                await dataService.saveSeries(updatedSeries);
+                // Update local state
+                setSeries(prev => prev.map(curr => curr.id === s.id ? updatedSeries : curr));
+                updatedCount++;
+              } catch (e) {
+                console.error('Failed to update series cover', e);
+              }
+            }
+          }
+          if (updatedCount > 0) {
+            // console.log(`[HomePage] 成功更新 ${updatedCount} 个剧集封面`);
+          }
+        })();
+      }
       setSeries(allSeries);
       setGlobalCharacters(allGlobalCharacters);
       // console.log('[HomePage] ✅ 数据加载完成', { projects: allProjects.length, series: allSeries.length });

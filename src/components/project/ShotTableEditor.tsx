@@ -9,6 +9,7 @@ import {
     Upload,
     Save,
     FileText,
+    FileDown,
     LayoutGrid,
     ChevronDown,
     AlertCircle,
@@ -103,7 +104,7 @@ export default function ShotTableEditor({ isOpen, onClose }: ShotTableEditorProp
         if (localScenes.length === 0 || !localScenes.find(s => s.id === targetSceneId)) {
             const newScene: Scene = {
                 id: targetSceneId,
-                name: '新场景',
+                name: `场景 ${localScenes.length + 1}`,
                 location: '',
                 description: '',
                 order: localScenes.length + 1,
@@ -210,18 +211,26 @@ export default function ShotTableEditor({ isOpen, onClose }: ShotTableEditorProp
             }
         });
 
-        // 辅助函数：根据列名获取值
-        const getValue = (row: any[], colName: string): string => {
+        // 辅助函数：根据列名获取值，支持表头匹配和默认索引兜底
+        const getValue = (row: any[], colName: string, defaultIdx: number): string => {
+            // 1. 尝试通过表头映射获取
             const idx = colMap.get(colName);
             if (idx !== undefined && row[idx] !== undefined) {
                 return String(row[idx]).trim();
             }
-            // 尝试模糊匹配 (例如 "时长" 匹配 "时长(秒)")
+            // 2. 尝试模糊匹配表头
             for (const [key, index] of colMap.entries()) {
                 if (key.includes(colName)) {
                     return String(row[index] || '').trim();
                 }
             }
+            // 3. 兜底：如果没找到表头映射，尝试使用默认位置（兼容无表头或表头不一致的情况）
+            // 只有当 colMap 为空或者 row 长度足够时才尝试
+            if (row[defaultIdx] !== undefined) {
+                // 简单的启发式检查：如果该位置的值看起来像数据而不是表头
+                return String(row[defaultIdx]).trim();
+            }
+
             return '';
         };
 
@@ -234,13 +243,13 @@ export default function ShotTableEditor({ isOpen, onClose }: ShotTableEditorProp
             // 跳过空行
             if (!row || row.length === 0) return;
 
-            const sceneName = getValue(row, '场景名称') || getValue(row, '场景');
-            const description = getValue(row, '镜头描述') || getValue(row, '画面') || getValue(row, '描述');
-            const dialogue = getValue(row, '对白');
-            const narration = getValue(row, '旁白');
-            const shotSizeVal = getValue(row, '景别');
-            const cameraMoveVal = getValue(row, '镜头运动') || getValue(row, '运镜');
-            const durationVal = getValue(row, '时长');
+            const sceneName = getValue(row, '场景名称', 0) || getValue(row, '场景', 0);
+            const description = getValue(row, '镜头描述', 2) || getValue(row, '画面', 2) || getValue(row, '描述', 2);
+            const dialogue = getValue(row, '对白', 3);
+            const narration = getValue(row, '旁白', 4);
+            const shotSizeVal = getValue(row, '景别', 5);
+            const cameraMoveVal = getValue(row, '镜头运动', 6) || getValue(row, '运镜', 6);
+            const durationVal = getValue(row, '时长', 7);
 
             if (!sceneName) {
                 // 如果没有场景名，尝试使用上一个有效的场景名（支持合并单元格的逻辑）
@@ -406,6 +415,12 @@ export default function ShotTableEditor({ isOpen, onClose }: ShotTableEditorProp
                         </div>
 
                         <div className="flex items-center gap-3">
+                            <label className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl border border-light-border dark:border-cine-border hover:bg-light-bg dark:hover:bg-cine-panel text-light-text dark:text-cine-text-muted hover:text-light-accent dark:hover:text-white transition-all cursor-pointer">
+                                <Upload size={16} />
+                                <span>导入 Excel/CSV</span>
+                                <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleImport} />
+                            </label>
+
                             <button
                                 onClick={handleExport}
                                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl border border-light-border dark:border-cine-border hover:bg-light-bg dark:hover:bg-cine-panel text-light-text dark:text-cine-text-muted hover:text-light-accent dark:hover:text-white transition-all"
@@ -414,18 +429,12 @@ export default function ShotTableEditor({ isOpen, onClose }: ShotTableEditorProp
                                 <span>导出当前脚本</span>
                             </button>
 
-                            <label className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl border border-light-border dark:border-cine-border hover:bg-light-bg dark:hover:bg-cine-panel text-light-text dark:text-cine-text-muted hover:text-light-accent dark:hover:text-white transition-all cursor-pointer">
-                                <Upload size={16} />
-                                <span>导入 Excel/CSV</span>
-                                <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleImport} />
-                            </label>
-
                             <button
                                 onClick={() => downloadTemplate('xlsx')}
                                 className="p-2.5 rounded-xl border border-light-border dark:border-cine-border hover:bg-light-bg dark:hover:bg-cine-panel text-light-text-muted dark:text-cine-text-muted hover:text-light-accent dark:hover:text-white transition-all"
                                 title="下载空白模板"
                             >
-                                <FileText size={20} />
+                                <FileDown size={20} />
                             </button>
 
                             <div className="w-px h-8 bg-light-border dark:bg-cine-border mx-2" />

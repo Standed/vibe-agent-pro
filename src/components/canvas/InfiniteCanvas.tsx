@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { useProjectStore } from '@/store/useProjectStore';
-import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Plus, Loader2, Edit2, Upload, GalleryHorizontal } from 'lucide-react';
+import { Play, Grid3x3, Image as ImageIcon, ZoomIn, ZoomOut, MousePointer2, LayoutGrid, Eye, Download, Sparkles, RefreshCw, X, Plus, Loader2, Edit2, Upload, GalleryHorizontal, Trash2 } from 'lucide-react';
 import type { ShotSize, CameraMovement, Shot } from '@/types/project';
 import { translateShotSize, translateCameraMovement } from '@/utils/translations';
 import { formatShotLabel } from '@/utils/shotOrder';
@@ -12,6 +12,7 @@ import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import AddLocationDialog from '@/components/asset/AddLocationDialog';
 import ShotListItem from '@/components/shot/ShotListItem';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { CanvasUserWidget } from '@/components/layout/CanvasUserWidget';
 import { ShotEditor } from '@/components/layout/sidebar/ShotEditor';
 import { batchDownloadAssets } from '@/utils/batchDownload';
@@ -21,7 +22,7 @@ import DraggableCanvasShotCard from '@/components/canvas/DraggableCanvasShotCard
 import { constructBaseShotPrompt } from '@/utils/promptConstruction';
 
 export default function InfiniteCanvas() {
-  const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed, updateShot, addShot, reorderShots, addCharacter, addLocation, updateScene, autoArrangeScenes } = useProjectStore();
+  const { project, selectScene, selectShot, currentSceneId, selectedShotId, setControlMode, toggleRightSidebar, rightSidebarCollapsed, updateShot, addShot, reorderShots, addCharacter, addLocation, updateScene, deleteScene, autoArrangeScenes } = useProjectStore();
 
   // Canvas State
   const [scale, setScale] = useState(1);
@@ -29,6 +30,7 @@ export default function InfiniteCanvas() {
   const [isDragging, setIsDragging] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
   const [draggedScene, setDraggedScene] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -51,6 +53,21 @@ export default function InfiniteCanvas() {
     duration: 3,
   });
   const [selectedHistoryImage, setSelectedHistoryImage] = useState<string | null>(null);
+
+  // Confirm Dialog State
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    variant: 'default' | 'destructive';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    variant: 'default',
+    onConfirm: () => { },
+  });
 
   // Dialog State
   const [showAddShotDialog, setShowAddShotDialog] = useState(false);
@@ -155,23 +172,20 @@ export default function InfiniteCanvas() {
     e.stopPropagation(); // Prevent canvas pan
     e.preventDefault(); // Prevent text selection
     setDraggedScene(sceneId);
+    setDragOffset({ x: 0, y: 0 });
     setLastMousePos({ x: e.clientX, y: e.clientY });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (draggedScene) {
+      // Calculate delta based on screen pixels, then divide by scale to get canvas units
       const deltaX = (e.clientX - lastMousePos.x) / scale;
       const deltaY = (e.clientY - lastMousePos.y) / scale;
 
-      const scene = project?.scenes.find(s => s.id === draggedScene);
-      if (scene) {
-        updateScene(draggedScene, {
-          position: {
-            x: scene.position.x + deltaX,
-            y: scene.position.y + deltaY
-          }
-        });
-      }
+      setDragOffset(prev => ({
+        x: prev.x + deltaX,
+        y: prev.y + deltaY
+      }));
       setLastMousePos({ x: e.clientX, y: e.clientY });
     } else if (isDragging) {
       const deltaX = e.clientX - lastMousePos.x;
@@ -181,24 +195,37 @@ export default function InfiniteCanvas() {
         x: prev.x + deltaX,
         y: prev.y + deltaY
       }));
-
       setLastMousePos({ x: e.clientX, y: e.clientY });
     }
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
-    setDraggedScene(null);
+    if (draggedScene) {
+      const scene = project?.scenes.find(s => s.id === draggedScene);
+      if (scene) {
+        // Commit the final position
+        updateScene(draggedScene, {
+          position: {
+            x: scene.position.x + dragOffset.x,
+            y: scene.position.y + dragOffset.y
+          }
+        });
+      }
+      setDragOffset({ x: 0, y: 0 });
+      setDraggedScene(null);
+    } else {
+      setIsDragging(false);
+    }
   };
 
   // --- Actions ---
 
-  const handlePreview = (imageUrl: string, e?: React.MouseEvent) => {
+  const handlePreview = useCallback((imageUrl: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setImagePreview(imageUrl);
-  };
+  }, []);
 
-  const handleDownload = (imageUrl: string, shotOrder: number, e: React.MouseEvent) => {
+  const handleDownload = useCallback((imageUrl: string, shotOrder: number, e: React.MouseEvent) => {
     e.stopPropagation();
     const link = document.createElement('a');
     link.href = imageUrl;
@@ -206,15 +233,15 @@ export default function InfiniteCanvas() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
+  }, []);
 
-  const handleGenerate = (shotId: string, e: React.MouseEvent) => {
+  const handleGenerate = useCallback((shotId: string, e: React.MouseEvent) => {
     e.stopPropagation();
 
     // Find the shot to get its description
-    const shot = project?.shots.find(s => s.id === shotId);
+    const shot = useProjectStore.getState().project?.shots.find(s => s.id === shotId);
     if (shot) {
-      const promptParts = constructBaseShotPrompt(project!, shot);
+      const promptParts = constructBaseShotPrompt(useProjectStore.getState().project!, shot);
       const cleanParts = promptParts
         .join('\n')
         .split('\n')
@@ -235,14 +262,14 @@ export default function InfiniteCanvas() {
       });
     }
 
-    selectShot(shotId);
-    setControlMode('pro');
-    if (rightSidebarCollapsed) {
-      toggleRightSidebar();
+    useProjectStore.getState().selectShot(shotId);
+    useProjectStore.getState().setControlMode('pro');
+    if (useProjectStore.getState().rightSidebarCollapsed) {
+      useProjectStore.getState().toggleRightSidebar();
     }
-  };
+  }, []);
 
-  const handleEditShot = (shot: Shot, e: React.MouseEvent) => {
+  const handleEditShot = useCallback((shot: Shot, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingShot(shot);
     setShotForm({
@@ -253,7 +280,7 @@ export default function InfiniteCanvas() {
       cameraMovement: shot.cameraMovement || '',
       duration: shot.duration || 3,
     });
-  };
+  }, []);
 
   const resolveSelectionMeta = (shot: Shot | null, url: string) => {
     if (!shot) return {};
@@ -296,11 +323,11 @@ export default function InfiniteCanvas() {
     setEditingShot(null);
   };
 
-  const handleAddShotClick = (sceneId: string, insertIndex?: number) => {
+  const handleAddShotClick = useCallback((sceneId: string, insertIndex?: number) => {
     setSelectedSceneForNewShot(sceneId);
     setShotInsertIndex(insertIndex ?? null);
     setShowAddShotDialog(true);
-  };
+  }, []);
 
   const handleAddShot = (shotData: any) => {
     const scene = project?.scenes.find(s => s.id === shotData.sceneId);
@@ -325,12 +352,12 @@ export default function InfiniteCanvas() {
     toast.success('镜头添加成功！');
   };
 
-  const handleDeleteShot = (shotId: string, shotOrder: number, sceneName: string) => {
+  const handleDeleteShot = useCallback((shotId: string, shotOrder: number, sceneName: string) => {
     if (confirm(`确定要删除镜头 #${shotOrder} 吗？`)) {
       useProjectStore.getState().deleteShot(shotId);
       toast.success('镜头已删除');
     }
-  };
+  }, []);
 
   const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>, shotId: string) => {
     const file = e.target.files?.[0];
@@ -355,7 +382,7 @@ export default function InfiniteCanvas() {
       const imageUrl = result.url;
 
       // 添加到历史记录
-      const shot = project?.shots.find(s => s.id === shotId);
+      const shot = useProjectStore.getState().project?.shots.find(s => s.id === shotId);
       if (shot) {
         const historyItem = {
           id: `upload_${Date.now()}`,
@@ -370,7 +397,7 @@ export default function InfiniteCanvas() {
           status: 'success' as const,
         };
         const newHistory = [...(shot.generationHistory || []), historyItem];
-        updateShot(shotId, { generationHistory: newHistory });
+        useProjectStore.getState().updateShot(shotId, { generationHistory: newHistory });
       }
 
       toast.success('图片上传成功');
@@ -448,6 +475,15 @@ export default function InfiniteCanvas() {
   const ratioStyle = { aspectRatio: aspectRatio.replace(':', '/') };
   const sceneWidth = getSceneWidth(aspectRatio);
 
+  const handleSelectShot = useCallback((shotId: string) => {
+    useProjectStore.getState().selectShot(shotId);
+  }, []);
+
+  const handleUploadShotTrigger = useCallback((shotId: string) => {
+    useProjectStore.getState().selectShot(shotId);
+    uploadInputRef.current?.click();
+  }, []);
+
   return (
     <div
       ref={containerRef}
@@ -497,9 +533,14 @@ export default function InfiniteCanvas() {
 
       {/* Canvas Content Container */}
       <div
-        className="absolute top-0 left-0 w-full h-full origin-top-left transition-transform duration-75 ease-out"
+        className="absolute top-0 left-0 w-full h-full origin-top-left"
         style={{
           transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+          transition: 'none', // 禁用 CSS 过渡以防止缩放闪烁 (Fix flickering)
+          willChange: 'transform',
+          backfaceVisibility: 'hidden',
+          WebkitFontSmoothing: 'subpixel-antialiased',
+          transformStyle: 'preserve-3d',
         }}
       >
         {/* Grid Background */}
@@ -527,18 +568,26 @@ export default function InfiniteCanvas() {
             <div className="relative w-full h-full">
               {sceneGroups.map(({ scene, shots: sceneShots }) => {
                 const isSceneSelected = currentSceneId === scene.id && !selectedShotId;
+                const isDraggingThisScene = draggedScene === scene.id;
+                const currentPosition = {
+                  x: scene.position.x + (isDraggingThisScene ? dragOffset.x : 0),
+                  y: scene.position.y + (isDraggingThisScene ? dragOffset.y : 0)
+                };
+
                 return (
                   <div
                     key={scene.id}
                     className={`glass-card p-6 min-w-[600px] max-w-4xl interactive ${isSceneSelected
                       ? 'border-2 border-light-accent/50 dark:border-cine-accent/50 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] ring-1 ring-light-accent/20 dark:ring-cine-accent/20'
                       : 'shadow-xl'
-                      }`}
+                      } ${isDraggingThisScene ? 'z-50 shadow-2xl scale-[1.01]' : ''}`}
                     style={{
                       position: 'absolute',
-                      left: scene.position.x,
-                      top: scene.position.y,
+                      left: currentPosition.x,
+                      top: currentPosition.y,
                       width: sceneWidth,
+                      cursor: isDraggingThisScene ? 'grabbing' : 'grab',
+                      transition: isDraggingThisScene ? 'none' : 'transform 0.1s ease-out, box-shadow 0.2s ease',
                       // maxWidth: 'none' // Removed constraint
                     }}
                     onMouseDown={(e) => e.stopPropagation()}
@@ -553,58 +602,83 @@ export default function InfiniteCanvas() {
                         <h3 className="font-bold text-light-text dark:text-white pointer-events-none">{scene.name}</h3>
                         <p className="text-xs text-light-text-muted dark:text-cine-text-muted pointer-events-none">{scene.location}</p>
                       </div>
-                      <div className="text-xs text-light-text-muted dark:text-cine-text-muted pointer-events-none">
-                        {sceneShots.length} 个镜头
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-light-text-muted dark:text-cine-text-muted pointer-events-none">
+                          {sceneShots.length} 个镜头
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDialog({
+                              isOpen: true,
+                              title: '删除场景',
+                              description: `确定要删除场景 "${scene.name}" 及其包含的所有镜头吗？此操作无法撤销。`,
+                              variant: 'destructive',
+                              onConfirm: () => {
+                                deleteScene(scene.id);
+                                toast.success('场景已删除');
+                                setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                              },
+                            });
+                          }}
+                          className="p-1.5 hover:bg-red-500/10 hover:text-red-500 text-light-text-muted dark:text-cine-text-muted rounded-md transition-colors"
+                          title="删除场景"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
 
                     {/* Shots Grid */}
-                    {sceneShots.length > 0 ? (
-                      <div className={`grid ${gridColsClass} gap-3`}>
-                        {sceneShots.map((shot) => {
-                          const isShotSelected = selectedShotId === shot.id;
-                          const shotLabel = formatShotLabel(scene.order, shot.order, shot.globalOrder);
+                    {
+                      sceneShots.length > 0 ? (
+                        <div className={`grid ${gridColsClass} gap-3`}>
+                          {sceneShots.map((shot) => {
+                            const isShotSelected = selectedShotId === shot.id;
+                            const shotLabel = formatShotLabel(scene.order, shot.order, shot.globalOrder);
 
-                          return (
-                            <DraggableCanvasShotCard
-                              key={shot.id}
-                              shot={shot}
-                              sceneId={scene.id}
-                              shotLabel={shotLabel}
-                              isShotSelected={isShotSelected}
-                              onSelect={() => selectShot(shot.id)}
-                              onPreview={handlePreview}
-                              onDownload={handleDownload}
-                              onEdit={handleEditShot}
-                              onUpload={() => { selectShot(shot.id); uploadInputRef.current?.click(); }}
-                              onGenerate={handleGenerate}
-                              shotSizeLabel={translateShotSize(shot.shotSize)}
-                              cameraMovementLabel={translateCameraMovement(shot.cameraMovement)}
-                              aspectRatio={aspectRatio}
-                            />
-                          );
-                        })}
-                        {/* Add Shot Button */}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleAddShotClick(scene.id); }}
-                          className="rounded border-2 border-dashed border-light-border dark:border-cine-border flex flex-col items-center justify-center text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent transition-colors"
-                          style={ratioStyle}
-                        >
-                          <Plus size={24} />
-                          <span className="text-xs mt-1">添加镜头</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8 flex flex-col items-center gap-2">
-                        <span>暂无镜头</span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleAddShotClick(scene.id); }}
-                          className="text-xs text-light-accent dark:text-cine-accent hover:underline"
-                        >
-                          添加第一个镜头
-                        </button>
-                      </div>
-                    )}
+                            return (
+                              <DraggableCanvasShotCard
+                                key={shot.id}
+                                shot={shot}
+                                sceneId={scene.id}
+                                shotLabel={shotLabel}
+                                isShotSelected={isShotSelected}
+                                onSelect={handleSelectShot}
+                                onPreview={handlePreview}
+                                onDownload={handleDownload}
+                                onEdit={handleEditShot}
+                                onUpload={handleUploadShotTrigger}
+                                onGenerate={handleGenerate}
+                                shotSizeLabel={translateShotSize(shot.shotSize)}
+                                cameraMovementLabel={translateCameraMovement(shot.cameraMovement)}
+                                aspectRatio={aspectRatio}
+                              />
+                            );
+
+                          })}
+                          {/* Add Shot Button */}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleAddShotClick(scene.id); }}
+                            className="rounded border-2 border-dashed border-light-border dark:border-cine-border flex flex-col items-center justify-center text-light-text-muted dark:text-cine-text-muted hover:border-light-accent dark:hover:border-cine-accent hover:text-light-accent dark:hover:text-cine-accent transition-colors"
+                            style={ratioStyle}
+                          >
+                            <Plus size={24} />
+                            <span className="text-xs mt-1">添加镜头</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-light-text-muted dark:text-cine-text-muted text-center py-8 flex flex-col items-center gap-2">
+                          <span>暂无镜头</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleAddShotClick(scene.id); }}
+                            className="text-xs text-light-accent dark:text-cine-accent hover:underline"
+                          >
+                            添加第一个镜头
+                          </button>
+                        </div>
+                      )
+                    }
                   </div>
                 );
               })}
@@ -616,15 +690,28 @@ export default function InfiniteCanvas() {
       {/* Canvas User Widget (Floating) */}
       <CanvasUserWidget />
 
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        variant={confirmDialog.variant}
+        confirmText="确认删除"
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
+
       {/* Modals */}
-      {imagePreview && (
-        <div className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setImagePreview(null)}>
-          <div className="relative w-full h-full flex items-center justify-center">
-            <img src={imagePreview} alt="Preview" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
-            <button onClick={() => setImagePreview(null)} className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-colors"><X size={20} /></button>
+      {
+        imagePreview && (
+          <div className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setImagePreview(null)}>
+            <div className="relative w-full h-full flex items-center justify-center">
+              <img src={imagePreview} alt="Preview" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
+              <button onClick={() => setImagePreview(null)} className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-colors"><X size={20} /></button>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
       <ShotEditor
         editingShot={editingShot}
         setEditingShot={setEditingShot}
@@ -639,16 +726,18 @@ export default function InfiniteCanvas() {
         isUploading={isUploading}
       />
 
-      {showAddShotDialog && selectedSceneForNewShot && (
-        <AddShotDialog
-          sceneId={selectedSceneForNewShot}
-          sceneName={project?.scenes.find(s => s.id === selectedSceneForNewShot)?.name || ''}
-          existingShotsCount={project?.shots.filter(s => s.sceneId === selectedSceneForNewShot).length || 0}
-          insertIndex={shotInsertIndex ?? undefined}
-          onAdd={handleAddShot}
-          onClose={() => { setShowAddShotDialog(false); setShotInsertIndex(null); }}
-        />
-      )}
+      {
+        showAddShotDialog && selectedSceneForNewShot && (
+          <AddShotDialog
+            sceneId={selectedSceneForNewShot}
+            sceneName={project?.scenes.find(s => s.id === selectedSceneForNewShot)?.name || ''}
+            existingShotsCount={project?.shots.filter(s => s.sceneId === selectedSceneForNewShot).length || 0}
+            insertIndex={shotInsertIndex ?? undefined}
+            onAdd={handleAddShot}
+            onClose={() => { setShowAddShotDialog(false); setShotInsertIndex(null); }}
+          />
+        )
+      }
 
       <input
         ref={uploadInputRef}
@@ -660,6 +749,6 @@ export default function InfiniteCanvas() {
         }}
         className="hidden"
       />
-    </div>
+    </div >
   );
 }

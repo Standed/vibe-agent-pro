@@ -24,7 +24,7 @@ const DEFAULT_CREDITS_CONFIG = {
   GEMINI_EDIT: 10,           // 图片编辑（按单图计）
 
   // SeeDream 系列
-  SEEDREAM_GENERATE: 3,      // SeeDream 4.5 单图 ~0.25 元 -> 向上取整 3
+  SEEDREAM_GENERATE: 3,      // SeeDream 4.5 单图 ~0.25 元 -> 3 积分
   SEEDREAM_EDIT: 3,          // 同上
 
   // 火山引擎系列
