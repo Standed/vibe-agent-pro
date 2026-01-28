@@ -282,6 +282,39 @@ export default function PlanningChat({
             {/* Chat Input Area */}
             <div className="p-8 bg-gradient-to-t from-white via-white to-transparent dark:from-[#0a0a0a] dark:via-[#0a0a0a] dark:to-transparent">
                 <div className="max-w-3xl mx-auto relative">
+                    {/* Quick Command Bar */}
+                    {!isProcessing && !isGenerating && !isGeneratingAssets && (
+                        <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1 mx-1 custom-scrollbar">
+                            <button
+                                onClick={() => handleSendMessage('请帮我在现有分镜基础上进行细化，增加画面细节，但请保持目前的场景结构，不要添加新场景。')}
+                                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
+                            >
+                                <Sparkles size={12} className="text-blue-500" />
+                                细化分镜
+                            </button>
+                            <button
+                                onClick={() => handleSendMessage('请发挥你的创意，为当前故事构思新的情节和场景，尽可能丰富故事内容。')}
+                                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
+                            >
+                                <Wand2 size={12} className="text-purple-500" />
+                                脑暴剧情
+                            </button>
+                            <button
+                                onClick={() => handleSendMessage('请根据剧本内容，为我设计 3 个性格鲜明的主要角色，包含外貌和性格描述，并添加到项目中。')}
+                                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
+                            >
+                                <Users size={12} className="text-emerald-500" />
+                                设计角色
+                            </button>
+                            <button
+                                onClick={() => handleSendMessage('这个故事需要哪些关键场景？请帮我列出并描述它们的视觉风格，并添加到项目中。')}
+                                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
+                            >
+                                <MapPin size={12} className="text-amber-500" />
+                                构思场景
+                            </button>
+                        </div>
+                    )}
                     <div className="relative group">
                         <textarea
                             value={inputText}
