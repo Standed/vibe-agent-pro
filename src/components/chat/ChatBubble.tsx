@@ -4,8 +4,8 @@ import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { GenerationResult } from './GenerationResult';
 import { AspectRatio } from '@/types/project';
-import { User, Sparkles, Maximize2, RefreshCw, Grid3x3, Trash2, Image as ImageIcon } from 'lucide-react';
-
+import { User, Sparkles, Maximize2, RefreshCw, Grid3x3, Trash2, Image as ImageIcon, Download } from 'lucide-react';
+import { downloadFile } from '@/utils/download';
 export interface ChatMessage {
     id: string;
     role: 'user' | 'assistant';
@@ -162,6 +162,16 @@ export function ChatBubble({
                                                             <ImageIcon size={12} />
                                                         </button>
                                                     )}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            downloadFile(img, `reference_image_${Date.now()}_${idx + 1}`);
+                                                        }}
+                                                        className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm transition-colors shadow-sm"
+                                                        title="下载图片"
+                                                    >
+                                                        <Download size={12} />
+                                                    </button>
                                                     {onApplyToShot && (
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); onApplyToShot(img); }}

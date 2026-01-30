@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-3.9.0-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-3.9.1-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -388,6 +388,11 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 ---
 
 ## 📝 Changelog
+
+### v3.9.1 (2026-01-30)
+- ✅ **Jimeng Pro Mode Upgrade** - Consolidated multi-image generations into a single "Grid-like" message (2x2), removing the need for manual refresh.
+- ✅ **Critical Login Fix** - Resolved infinite login loop on `/auth/login` by strictly enforcing server-side session validation.
+- ✅ **User UX** - Added download button for user-uploaded reference images in Pro mode chat history.
 
 ### v3.9.0 (2026-01-30)
 - ✅ **Grid Instant Apply** - Applying a Grid image or slice to a shot (via drag, click, or new canvas button) now **immediately** marks the shot as 'Done' and persists to the database, ensuring "what you see is what you get".
