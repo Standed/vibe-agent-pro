@@ -8,7 +8,7 @@ import { storageService } from '@/lib/storageService';
 import { dataService } from '@/lib/dataService';
 import type { R2PathContext } from '@/lib/r2-path';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
-import { AspectRatio, GenerationHistoryItem } from '@/types/project';
+import { AspectRatio } from '@/types/project';
 
 interface ChatMessage {
     id: string;
@@ -60,7 +60,7 @@ export function useJimengGeneration({
         skipAssetRefs: boolean;
     } | null>(null);
 
-    const { project, updateShot, addGenerationHistory } = useProjectStore();
+    const { project, updateShot } = useProjectStore();
     const { user } = useAuth();
 
     // 提取上传逻辑
@@ -184,73 +184,82 @@ export function useJimengGeneration({
 
             // 轮询
             const pollResult = await jimengService.pollTask(historyId, sessionid, 60, uploadContext);
-            const urls = pollResult.urls || [pollResult.url];
+            const rawUrls = [
+                ...(pollResult.urls || []),
+                ...(pollResult.url ? [pollResult.url] : [])
+            ].filter(Boolean);
+            const urls = rawUrls.slice(0, 4);
 
             if (urls.length > 0) {
-                // 立即在后台处理持久化和历史记录
-                // 注意：这里不 await，以免阻塞 UI 显示
                 const persistPromise = (async () => {
+                    const r2Urls: string[] = [];
                     if (capturedShotId) {
-                        const r2Urls: string[] = [];
                         for (const url of urls) {
                             try {
                                 const r2Url = await uploadToR2(url, capturedShotId);
                                 r2Urls.push(r2Url);
-
-                                // 添加到历史记录
-                                const historyItem: GenerationHistoryItem = {
-                                    id: `gen_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                                    type: 'image',
-                                    timestamp: new Date(),
-                                    result: r2Url,
-                                    prompt: promptForModel,
-                                    parameters: {
-                                        model: model,
-                                        aspectRatio: projectAspectRatio,
-                                    },
-                                    status: 'success',
-                                };
-                                addGenerationHistory(capturedShotId, historyItem);
                             } catch (e) {
                                 console.error('Auto persist failed for url:', url, e);
                                 r2Urls.push(url); // Fallback to original
                             }
                         }
-                        // 更新 UI 显示为 R2 URL (如果成功)
-                        if (r2Urls.length > 0) {
-                            setGeneratedImages(r2Urls);
-                        }
-                        return r2Urls;
+                    } else {
+                        r2Urls.push(...urls);
                     }
-                    return urls;
+
+                    // 生成并显示单一聚合消息 (2x2 Grid)
+                    const assistantMessage: ChatMessage = {
+                        id: generateMessageId(),
+                        role: 'assistant',
+                        content: `即梦为您生成了 ${r2Urls.length} 张图片`,
+                        timestamp: new Date(),
+                        images: r2Urls,
+                        model: 'jimeng',
+                        shotId: capturedShotId || undefined,
+                        sceneId: capturedSceneId || undefined,
+                        metadata: {
+                            prompt: promptForModel,
+                            basePrompt: prompt,
+                            model: 'jimeng',
+                            jimengModel: model,
+                            jimengResolution: resolution,
+                            referenceImages: allReferenceUrls,
+                            images: r2Urls
+                        }
+                    };
+
+                    setMessages(prev => [...prev, assistantMessage]);
+
+                    // 持久化聊天记录
+                    await dataService.saveChatMessage({
+                        id: assistantMessage.id,
+                        userId: user!.id,
+                        projectId: project!.id,
+                        scope: capturedShotId ? 'shot' : capturedSceneId ? 'scene' : 'project',
+                        shotId: capturedShotId || undefined,
+                        sceneId: capturedSceneId || undefined,
+                        role: 'assistant',
+                        content: assistantMessage.content,
+                        timestamp: assistantMessage.timestamp,
+                        metadata: assistantMessage.metadata,
+                        createdAt: assistantMessage.timestamp,
+                        updatedAt: assistantMessage.timestamp,
+                    });
+
+                    if (r2Urls.length > 0) {
+                        setGeneratedImages(r2Urls);
+                    }
+                    return r2Urls;
                 })();
 
-                // 先显示原始 URL (或等待持久化完成，为了体验流畅，先显示)
-                // 但为了避免 saveImage 时重复上传，最好是等待一下或者让 saveImage 智能判断
-                // 这里我们选择：先显示原始 URL，后台静默上传。
-                // 当用户点击保存时，saveImage 会检查是否已经是 R2 URL。
-                // 但为了确保 generatedImages 最终是 R2 URL，我们需要在 persistPromise 完成后更新状态。
+                setGeneratedImages(urls);
 
-                setGeneratedImages(urls); // 先显示，让用户能看到
-
-                if (autoSelect) {
-                    toast.info('Agent 自动选择第一张图片保存...');
-                    // 等待持久化完成，确保拿到 R2 URL
-                    const finalUrls = await persistPromise;
-                    await saveImage(finalUrls[0], currentContext);
-                } else {
-                    // Pro 模式修改：不再弹出选择窗口，而是直接保存到历史记录
-                    // setIsModalOpen(true); <--- Removed
-
-                    // toast.success('即梦图片已生成并保存至历史记录');
-
-                    // 触发后台持久化 (确保 R2 上传完成)
-                    persistPromise.then(r2Urls => {
-                        if (r2Urls.length > 0) {
-                            console.log('jimeng Images persisted to R2 and History');
-                        }
-                    });
-                }
+                // 触发后台持久化 (确保 R2 上传完成)
+                persistPromise.then(r2Urls => {
+                    if (r2Urls.length > 0) {
+                        console.log('jimeng Images persisted to R2 and History');
+                    }
+                });
             } else {
                 throw new Error('未返回图片 URL');
             }
@@ -286,18 +295,28 @@ export function useJimengGeneration({
                 });
 
                 // 注意：历史记录已经在 generateImage 中自动添加了
-                // 这里不需要重复添加，除非我们想标记"被选中"的状态
-                // 目前 GenerationHistoryItem 没有"selected"状态，所以不重复添加
                 toast.success('已应用到分镜');
             }
 
-            // Add assistant message
+            // Add assistant message (仅当手动保存时添加一条确认消息，或者不添加？)
+            // 用户反馈希望聚合显示，所以 generateImage 已经添加了。
+            // 这里 manual save 主要是应用到分镜。
+            // 如果我们也加一条消息，会显得冗余？
+            // 之前的逻辑是 saveImage 负责加消息。
+            // 现在 generateImage 负责加 Grid 消息。
+            // 那么 saveImage 只负责 updateShot 即可。
+
+            // 为了反馈明确，可以加一条简短的 system message 或者 update 原 grid message?
+            // 暂时保持简单：只更新分镜，不发新消息。除非用户觉得没反馈。
+            // 但原来的逻辑是 saveImage 发消息。
+            // 我们保留 saveImage 发消息逻辑，但内容要是 "已应用到分镜"。
+
             const assistantMessage: ChatMessage = {
                 id: generateMessageId(),
                 role: 'assistant',
-                content: `已使用 ${model} 生成图片`,
+                content: `已将即梦生成的图片应用到当前分镜`, // 简化文案
                 timestamp: new Date(),
-                images: [imageUrl],
+                images: [imageUrl], // 显示被选中的那张
                 model: 'jimeng',
                 shotId: activeContext.shotId || undefined,
                 sceneId: activeContext.sceneId || undefined,
@@ -307,7 +326,8 @@ export function useJimengGeneration({
                     model: 'jimeng',
                     jimengModel: model,
                     jimengResolution: resolution,
-                    referenceImages: activeContext.referenceImages
+                    referenceImages: activeContext.referenceImages,
+                    action: 'applied_to_shot' // new metadata
                 }
             };
 
@@ -325,15 +345,7 @@ export function useJimengGeneration({
                     role: 'assistant',
                     content: assistantMessage.content,
                     timestamp: assistantMessage.timestamp,
-                    metadata: {
-                        images: [imageUrl],
-                        model: 'jimeng',
-                        referenceImages: activeContext.referenceImages,
-                        jimengModel: model,
-                        jimengResolution: resolution,
-                        prompt: activeContext.prompt,
-                        basePrompt: activeContext.basePrompt
-                    },
+                    metadata: assistantMessage.metadata,
                     createdAt: assistantMessage.timestamp,
                     updatedAt: assistantMessage.timestamp,
                 });

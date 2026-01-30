@@ -133,14 +133,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 created_at: new Date().toISOString(),
               } as User;
 
-              if (isMounted) {
-                setUser(user);
-                setLoading(false); // 立即结束 loading
+              const isLoginPage = window.location.pathname === '/auth/login';
 
-                // 异步加载 profile（不阻塞）
-                fetchProfile(user.id, user.email).catch(err =>
-                  console.warn('[AuthProvider] ⚠️ Profile 加载失败:', err)
-                );
+              if (isMounted) {
+                // 关键修复：如果在登录页，禁用乐观 UI (不立即结束 loading)，强制等待后台验证
+                // 避免 "客户端认为有效 -> 跳转首页 -> 中间件认为无效 -> 跳转登录页" 的死循环
+                if (!isLoginPage) {
+                  setUser(user);
+                  setLoading(false); // 立即结束 loading (非登录页保持高性能)
+
+                  // 异步加载 profile（不阻塞）
+                  fetchProfile(user.id, user.email).catch(err =>
+                    console.warn('[AuthProvider] ⚠️ Profile 加载失败:', err)
+                  );
+                }
               }
 
               // 🔄 后台验证 session
@@ -153,24 +159,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (!error && data?.session) {
                   setSession(data.session);
                   // 如果 token 被 refresh，更新 user
-                  if (data.session.user.id !== user.id) {
-                    setUser(data.session.user);
+                  if (data.session.user.id !== user.id || isLoginPage) {
+                    setUser(data.session.user); // 登录页在这里更新 user
                     fetchProfile(data.session.user.id, data.session.user.email);
+                  }
+
+                  if (isLoginPage) {
+                    setLoading(false); // 登录页验证成功后，结束 loading
                   }
                 } else {
                   const message = error?.message || '';
                   const status = (error as any)?.status;
                   const shouldClear = status === 400 || status === 401 || /invalid|expired|jwt|token/i.test(message);
+
                   if (shouldClear) {
                     console.warn('[AuthProvider] ⛔ 后台验证失败，清除本地会话:', message);
                     clearAuthState();
-                    setLoading(false);
                   } else {
                     console.warn('[AuthProvider] ⚠️ 后台验证失败，但保留当前状态:', message);
+                    // 如果在登录页且验证失败（非清除类错误），也需要结束 loading 让人重新登录
+                    if (isLoginPage && !user) clearAuthState();
                   }
+                  //无论如何，验证结束
+                  if (isLoginPage) setLoading(false);
                 }
               }).catch(err => {
                 console.warn('[AuthProvider] ⚠️ 后台验证异常:', err);
+                if (isLoginPage) {
+                  clearAuthState();
+                  setLoading(false);
+                }
               });
 
               return; // 已处理完毕

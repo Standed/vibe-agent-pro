@@ -103,6 +103,12 @@ export class GenerationTools {
                         ? 'gemini-grid'
                         : 'gemini-direct';
 
+            const imageUrls = Array.isArray(result?.imageUrls) && result.imageUrls.length > 0
+                ? result.imageUrls
+                : result?.imageUrl
+                    ? [result.imageUrl]
+                    : [];
+
             const assistantMsg: any = {
                 id: assistantMsgId,
                 userId: this.userId,
@@ -116,7 +122,7 @@ export class GenerationTools {
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 metadata: {
-                    images: [result.imageUrl],
+                    images: imageUrls,
                     model: modelKey,
                 }
             };
@@ -314,12 +320,16 @@ export class GenerationTools {
 
                     // 客户端轮询等待完成（避免服务端长阻塞）
                     const pollResult = await jimengService.pollTaskClient(genResult.historyId, sessionid, 120, jimengContext);
-                    if (!pollResult.success || !pollResult.url) {
+                    const jimengUrls = (pollResult.urls && pollResult.urls.length > 0 ? pollResult.urls : (pollResult.url ? [pollResult.url] : []))
+                        .filter(Boolean)
+                        .slice(0, 4);
+
+                    if (!pollResult.success || jimengUrls.length === 0) {
                         throw new Error('Jimeng 生成失败：轮询超时或无结果');
                     }
 
-                    resultUrl = pollResult.url;
-                    finalResult = { imageUrl: resultUrl };
+                    resultUrl = jimengUrls[0];
+                    finalResult = { imageUrl: resultUrl, imageUrls: jimengUrls };
                 } else {
                     // Gemini Direct
                     resultUrl = await generateSingleImage(
