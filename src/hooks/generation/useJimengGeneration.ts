@@ -124,7 +124,9 @@ export function useJimengGeneration({
             return;
         }
 
-        const { enrichedPrompt: promptForModel, referenceImageUrls, usedCharacters, usedLocations } = enrichPromptWithAssets(prompt, project, undefined, options);
+        const { referenceImageUrls, usedCharacters, usedLocations } = enrichPromptWithAssets(prompt, project, undefined, options);
+        // User Request: Pro模式下提示词“所见即所得”，不进行自动扩写
+        const promptForModel = prompt;
         const projectAspectRatio = project?.settings.aspectRatio || AspectRatio.WIDE;
         const uploadContext: R2PathContext = {
             projectId: project.id,
@@ -165,7 +167,7 @@ export function useJimengGeneration({
         };
         setContext(currentContext);
 
-        toast.info(`即梦任务已提交 (${model}, ${resolution})，正在后台生成...`, { duration: 3000 });
+        // toast.info(`即梦任务已提交 (${model}, ${resolution})，正在后台生成...`, { duration: 3000 });
 
         // Return the promise so the caller can await it
         return jimengService.generateImage({

@@ -165,6 +165,7 @@ export default function ChatPanel() {
 
     const onRemoveReferenceFn = useCallback((ref: any) => {
         setDroppedReferences(prev => prev.filter(r => r.url !== ref.url));
+        setManualReferenceUrls(prev => prev.filter(url => url !== ref.url)); // Also remove from manual refs
         setIgnoredUrls(prev => {
             const next = new Set(prev);
             next.add(ref.url);
@@ -179,7 +180,7 @@ export default function ChatPanel() {
                 return prevText;
             });
         }
-    }, [setDroppedReferences, setIgnoredUrls, setInputText]);
+    }, [setDroppedReferences, setManualReferenceUrls, setIgnoredUrls, setInputText]);
 
 
 
@@ -292,7 +293,7 @@ export default function ChatPanel() {
             if (prev.includes(url)) return prev;
             return [...prev, url];
         });
-        toast.success("图片已加入参考");
+        // toast.success("图片已加入参考");
     };
 
     const handleApplyToShot = async (url: string) => {
