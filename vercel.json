@@ -66,6 +66,10 @@
     {
       "path": "/api/cron/check-sora-status",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/admin/scan-assets?mode=cron",
+      "schedule": "0 0 * * *"
     }
   ]
 }

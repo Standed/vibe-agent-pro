@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, checkCredits, consumeCredits } from '@/lib/auth-middleware';
 import { calculateCredits } from '@/config/credits';
+import { uploadBufferToR2 } from '@/lib/cloudflare-r2';
+import { assetLogService } from '@/lib/assetLogService';
+import { buildR2Folder, buildR2Key, inferExtFromMime } from '@/lib/r2-path';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
@@ -27,6 +30,8 @@ const MODEL_MAP: Record<string, string> = {
 };
 
 const DEFAULT_MODEL = 'jimeng-4.0';
+const R2_PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || '';
+const isR2Url = (url?: string) => !!url && !!R2_PUBLIC_URL && url.startsWith(R2_PUBLIC_URL);
 
 // 比例值映射
 const RATIO_VALUE_MAP: Record<string, number> = {
@@ -752,6 +757,78 @@ class JimengApiClient {
     }
 }
 
+const fetchBufferWithTimeout = async (url: string, timeoutMs = 15000): Promise<{ buffer: Buffer; contentType: string }> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+        throw new Error(`Fetch failed: ${response.status} ${response.statusText}`);
+    }
+    const contentType = response.headers.get('content-type') || 'image/png';
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return { buffer, contentType };
+};
+
+const persistJimengImages = async (
+    urls: string[],
+    userId: string,
+    uploadContext?: any,
+    metadata?: Record<string, any>
+): Promise<string[]> => {
+    const folder = buildR2Folder(uploadContext, 'generated/jimeng');
+    const results: string[] = [];
+
+    for (const url of urls) {
+        if (!url) continue;
+        if (isR2Url(url)) {
+            results.push(url);
+            continue;
+        }
+
+        const logId = await assetLogService.logStart({
+            userId,
+            operationType: 'jimeng',
+            originalUrl: url,
+            status: 'PENDING',
+            metadata: {
+                ...(metadata || {}),
+                uploadContext: uploadContext || null
+            }
+        });
+
+        try {
+            const { buffer, contentType } = await fetchBufferWithTimeout(url);
+            const ext = inferExtFromMime(contentType);
+            const key = buildR2Key({
+                userId,
+                folder,
+                ext,
+                prefix: 'jimeng'
+            });
+
+            const r2Url = await uploadBufferToR2({
+                buffer,
+                key,
+                contentType
+            });
+
+            if (logId) {
+                await assetLogService.logUpdate(logId, { r2Url, status: 'SUCCESS' });
+            }
+
+            results.push(r2Url);
+        } catch (err: any) {
+            if (logId) {
+                await assetLogService.logUpdate(logId, { status: 'FAILED', error: err.message });
+            }
+            throw err;
+        }
+    }
+
+    return results;
+};
+
 export async function POST(request: NextRequest) {
     const authResult = await authenticateRequest(request);
     if ('error' in authResult) return authResult.error;
@@ -791,6 +868,23 @@ export async function POST(request: NextRequest) {
             const { historyId } = payload;
             // Long-polling: 服务端轮询直到完成（用于 Pro 模式）
             const result = await client.pollImageTask(historyId);
+            if (result?.imageUrls?.length) {
+                try {
+                    const persisted = await persistJimengImages(
+                        result.imageUrls,
+                        user.id,
+                        payload?.uploadContext,
+                        { historyId, action: 'check-status' }
+                    );
+                    return NextResponse.json({
+                        ...result,
+                        imageUrls: persisted,
+                        url: persisted[0] || result.url
+                    });
+                } catch (err: any) {
+                    return NextResponse.json({ error: '图片持久化失败，请稍后重试' }, { status: 500 });
+                }
+            }
             return NextResponse.json(result);
         }
 
@@ -798,6 +892,23 @@ export async function POST(request: NextRequest) {
             const { historyId } = payload;
             // 单次查询：立即返回当前状态（用于 Agent 模式客户端轮询）
             const result = await client.checkTaskOnce(historyId);
+            if (result?.imageUrls?.length) {
+                try {
+                    const persisted = await persistJimengImages(
+                        result.imageUrls,
+                        user.id,
+                        payload?.uploadContext,
+                        { historyId, action: 'check-status-once' }
+                    );
+                    return NextResponse.json({
+                        ...result,
+                        imageUrls: persisted,
+                        url: persisted[0] || result.url
+                    });
+                } catch (err: any) {
+                    return NextResponse.json({ error: '图片持久化失败，请稍后重试' }, { status: 500 });
+                }
+            }
             return NextResponse.json(result);
         }
 

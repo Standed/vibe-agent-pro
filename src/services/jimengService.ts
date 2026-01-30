@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { R2PathContext } from '@/lib/r2-path';
 
 export interface JimengGenerateParams {
     prompt: string;
@@ -8,12 +9,14 @@ export interface JimengGenerateParams {
     sessionid?: string;
     imageUrls?: string[];
     resolutionType?: '1k' | '2k' | '4k';
+    uploadContext?: R2PathContext;
 }
 
 export interface JimengTaskStatus {
     historyId: string;
     sessionid?: string;
     maxAttempts?: number;
+    uploadContext?: R2PathContext;
 }
 
 class JimengService {
@@ -88,9 +91,9 @@ class JimengService {
     }
 
     // 客户端轮询模式（用于 Agent 并发，每次查询 < 5s）
-    async pollTaskClient(historyId: string, sessionid?: string, maxAttempts = 120) {
+    async pollTaskClient(historyId: string, sessionid?: string, maxAttempts = 120, uploadContext?: R2PathContext) {
         for (let i = 0; i < maxAttempts; i++) {
-            const result = await this.checkStatusOnce({ historyId, sessionid });
+            const result = await this.checkStatusOnce({ historyId, sessionid, uploadContext });
 
             if (result.status === 'completed' && result.imageUrls?.length > 0) {
                 return {
@@ -113,9 +116,9 @@ class JimengService {
     }
 
     // 轮询任务直到完成
-    async pollTask(historyId: string, sessionid?: string, maxAttempts = 60) {
+    async pollTask(historyId: string, sessionid?: string, maxAttempts = 60, uploadContext?: R2PathContext) {
         // 新的 check-status API 直接在服务端轮询并返回结果
-        const result = await this.checkStatus({ historyId, sessionid });
+        const result = await this.checkStatus({ historyId, sessionid, uploadContext });
 
         // 如果返回成功，直接使用所有图片
         if (result.success) {

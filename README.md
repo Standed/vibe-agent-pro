@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-3.8.9-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-3.9.0-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -106,8 +106,10 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 ### 🆕 Cloud Storage & Sync
 - **Supabase Database** - PostgreSQL cloud storage for all data
 - **Cloudflare R2** - Media file storage (images, videos, audio)
+- **Project-based R2 Paths** - Assets stored under `projects/{projectId}/...` for traceability (legacy paths remain valid)
 - **Chat History Sync** - Three-level scope (project/scene/shot)
 - **Auto-sync** - Automatic data synchronization across devices
+- **Server-side R2 Persistence** - Gemini/SeeDream/Jimeng results are persisted to R2 before returning URLs
 
 > ⚠️ Guest mode is not supported. Login is required to use all features.
 
@@ -146,12 +148,13 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key  # Server-side only
 
-# Cloudflare R2 (optional, for file storage)
-R2_ACCOUNT_ID=your_account_id
+# Cloudflare R2 (required for production media persistence)
+R2_ENDPOINT=https://your-account.r2.cloudflarestorage.com
 R2_ACCESS_KEY_ID=your_access_key
 R2_SECRET_ACCESS_KEY=your_secret_key
 R2_BUCKET_NAME=your_bucket_name
-R2_PUBLIC_DOMAIN=https://your-domain.r2.dev
+NEXT_PUBLIC_R2_PUBLIC_URL=https://your-public-domain.r2.dev
+NEXT_PUBLIC_R2_ENDPOINT=https://your-account.r2.cloudflarestorage.com
 ```
 
 **Get API Keys:**
@@ -198,6 +201,22 @@ Visit [http://localhost:3000](http://localhost:3000)
 2. Switch to "Pro" mode on right panel
 3. Select "Grid Multi-View"
 4. Set Grid size (2x2 or 3x3)
+
+### 🔧 Admin Maintenance (Asset Recovery)
+
+用于修复临时链接失效、Base64 残留、外链丢失等问题：
+
+- **资产扫描/自愈**：`/api/admin/scan-assets`
+  - 扫描 shots/scenes/characters/projects/chat_messages
+  - 外链自动转存 R2
+  - 输出 `lost_items` 供批量重生成
+  - 支持 `mode=cron`（未设置 `CRON_SECRET` 时可被 Vercel Cron 调用）
+
+- **一键重生成**：`/api/admin/regenerate-assets`
+  - 支持传入 `lost_items` 批量重生成（当前以分镜为主）
+  - 可指定 `mode`（gemini/seedream/jimeng/grid）
+
+> Vercel Cron 可配置为每日 UTC 0 点调用：`/api/admin/scan-assets?mode=cron`
 5. Set aspect ratio and style preset
 6. Enter prompt, click "Generate Grid"
 7. Manually assign slices to shots in preview modal
@@ -369,6 +388,12 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 ---
 
 ## 📝 Changelog
+
+### v3.9.0 (2026-01-30)
+- ✅ **Grid Instant Apply** - Applying a Grid image or slice to a shot (via drag, click, or new canvas button) now **immediately** marks the shot as 'Done' and persists to the database, ensuring "what you see is what you get".
+- ✅ **Proxy Download System** - Introduced `/api/proxy-download` to handle cross-origin R2 file downloads reliably, forcing file download instead of browser preview.
+- ✅ **Canvas Interaction** - Fixed missing Download/Edit actions in Grid state.
+- ✅ **Reference Image Fix** - Resolved issue where reusing history reference images failed in production by disabling fetch caching and adding proper User-Agent headers.
 
 ### v3.8.9 (2026-01-29)
 - ✅ **Canvas Flicker Fix** - Completely resolved canvas flickering during zoom/pan by refactoring grid rendering to CSS background and implementing memoized scene components.

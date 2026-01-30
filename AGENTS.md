@@ -340,12 +340,48 @@ scripts/
 |-----|----------|----------|
 | `/api/gemini-grid` | **服务端** | `{ fullImage: R2 URL, slices: [R2 URLs] }` |
 | `/api/gemini-image` | **服务端** | `{ url: R2 URL }` |
-| `/api/jimeng` | 客户端 | 即梦 CDN URL（由客户端上传 R2）|
+| `/api/seedream` | **服务端** | `{ url: R2 URL }` |
+| `/api/jimeng` | **服务端** | `{ url: R2 URL }`（外链自动转存） |
 
 **共享模块**：`src/lib/r2-server-upload.ts`
 - `uploadBase64ToR2()` - Base64 直传
 - `processAndUploadGrid()` - Grid 切片 + 并行上传
 - `isR2Configured()` - 检查 R2 配置
+
+> 以上 API 均支持 `uploadContext`（R2PathContext）以保证路径统一。
+
+### ✅ R2 命名规范（项目维度路径）
+
+> ⚠️ **重要**：新生成素材统一走 `R2PathContext`，确保**项目维度**可追踪，且不影响历史数据。
+
+路径结构（最终 Key 仍带 `userId/` 前缀）：
+
+```
+projects/{projectId}/{scope}/{entityId}/{assetType}/{model}/{YYYY}/{MM}/{DD}/{filename}
+```
+
+对应工具：`src/lib/r2-path.ts`
+- `buildR2Folder()` - 根据上下文生成统一路径
+- `buildR2Key()` - 生成带随机后缀文件名
+
+> ✅ 历史数据仍按旧路径读取，不迁移、不重写，保证兼容。
+
+### 🛠 资产扫描与自愈（Admin）
+
+新增后台接口用于修复临时链接失效、Base64 残留等问题：
+
+- **扫描 / 修复**：`/api/admin/scan-assets`
+  - 扫描 shots / scenes / characters / projects / chat_messages
+  - 外链 & Base64 自动转存 R2
+  - 输出 `lost_items` 方便批量重生成
+  - 支持 `mode=cron`（未设置 `CRON_SECRET` 时允许 Cron 调用）
+
+- **一键重新生成**：`/api/admin/regenerate-assets`
+  - 支持传入 `lost_items` 批量重生成（当前优先支持分镜）
+  - 可指定 `mode`（gemini/seedream/jimeng/grid）
+  - 会更新 `generation_history` 与分镜主图
+
+> ⚠️ 当前为后台工具，建议仅管理员使用。
 
 ### 数据表概览
 
@@ -462,8 +498,21 @@ const results = await executor.execute(toolCalls);
 
 ---
 
-**最后更新**: 2026-01-29  
-**版本**: v3.8.9 (画布防闪烁重构 + Planning Chat 全屏编辑)
+**最后更新**: 2026-01-30  
+**版本**: v3.9.0 (Grid 立即定稿 + 下载代理增强)
+
+### v3.9.0 更新日志
+1.  **Grid/参考图应用逻辑重构**：
+    - **立即定稿 (Instant Apply)**：无论是通过 Pro 模式拖拽、Grid 切片选择，还是画布卡片上的“确认”按钮，应用图片到分镜后，状态将**立即**变为 `Done`（绿色）。
+    - **强制持久化**：应用图片的动作会跳过传统的 800ms 防抖，**直接**写入数据库，确保“所见即定稿”，防止刷新丢失。
+2.  **下载系统升级**：
+    - **下载代理 (Proxy Download)**：新增 `/api/proxy-download` 端点，专门处理来自 R2/跨域源的图片下载请求。
+    - **强制下载**：解决了浏览器直接打开图片而非下载文件的问题，现在所有下载操作都会正确触发文件保存对话框。
+3.  **画布交互**：
+    - **交互增强**：修复了 Grid 预览模式下缺少“下载”和“编辑”按钮的问题。
+4.  **后端稳定性 (Backend Stability)**：
+    - **参考图缓存修复**：为 Gemini 图像生成接口增加了 `cache: 'no-store'` 和 `User-Agent` 头，彻底解决了线上环境中使用历史参考图失败（需重传才生效）的问题。
+    - **认证中间件优化**：优化了 Middleware 的 Token 刷新逻辑，将刷新的 Access Token 实时同步到下游 Request Header，解决了因 Refresh Token 竞争导致的偶发 401 登出问题。
 
 ### v3.7.1 更新日志
 1. **Gemini Grid 比例修复**：
@@ -481,7 +530,7 @@ const results = await executor.execute(toolCalls);
     - 大幅降低组件复杂度，提升可维护性和渲染性能。
 2. **双向拖拽支持**：
     - **Pro -> Storyboard**: 支持将生成的 Grid/单图从预览视图直接拖拽到分镜卡片，并自动同步到该分镜的历史记录。
-    - **Storyboard -> Pro**: 支持将分镜列表中的缩略图拖拽到 Pro 聊天框，自动识别为参考图。
+    - **Storyboard -> Pro**: 支持将分镜列表中的缩略图拖拽到 Pro 模式输入框，自动识别为参考图。
 
 ### v3.8.1 更新日志
 1. **Pro Mode 架构重构**：

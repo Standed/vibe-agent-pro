@@ -89,8 +89,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                 },
                 mode: {
                     type: 'string',
-                    description: '生成模式：seedream (火山引擎单图)、gemini (Gemini 直出)、grid (Gemini Grid 多视图)',
-                    enum: ['seedream', 'gemini', 'grid']
+                    description: '生成模式：seedream (火山引擎单图)、jimeng (即梦)、gemini (Gemini 直出)、grid (Gemini Grid 多视图)',
+                    enum: ['seedream', 'jimeng', 'gemini', 'grid']
                 },
                 gridSize: {
                     type: 'string',
@@ -121,8 +121,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                 },
                 mode: {
                     type: 'string',
-                    description: '生成模式：seedream (火山引擎单图)、gemini (Gemini 直出)、grid (Gemini Grid 自动分配)',
-                    enum: ['seedream', 'gemini', 'grid']
+                    description: '生成模式：seedream (火山引擎单图)、jimeng (即梦)、gemini (Gemini 直出)、grid (Gemini Grid 自动分配)',
+                    enum: ['seedream', 'jimeng', 'gemini', 'grid']
                 },
                 gridSize: {
                     type: 'string',
@@ -149,8 +149,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
             properties: {
                 mode: {
                     type: 'string',
-                    description: '生成模式：seedream (火山引擎单图)、gemini (Gemini 直出)、grid (Gemini Grid 按场景分组)',
-                    enum: ['seedream', 'gemini', 'grid']
+                    description: '生成模式：seedream (火山引擎单图)、jimeng (即梦)、gemini (Gemini 直出)、grid (Gemini Grid 按场景分组)',
+                    enum: ['seedream', 'jimeng', 'gemini', 'grid']
                 },
                 gridSize: {
                     type: 'string',

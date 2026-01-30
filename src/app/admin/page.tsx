@@ -194,6 +194,31 @@ export default function AdminDashboard() {
               <RefreshCw size={18} className={repairing ? 'animate-spin' : ''} />
               {repairing ? '修复中...' : '修复 Sora 任务'}
             </button>
+            <button
+              onClick={async () => {
+                if (!confirm('确定要开始资产抢救扫描吗？这将消耗服务器资源下载外部图片。')) return;
+                const btn = document.getElementById('rescue-btn') as HTMLButtonElement;
+                if (btn) { btn.innerText = '抢救中...'; btn.disabled = true; }
+
+                try {
+                  const res = await fetch('/api/admin/scan-assets');
+                  const data = await res.json();
+                  if (data.success) {
+                    toast.success(`扫描: ${data.scanned} | ✅恢复: ${data.recovered_external} | 🔗协议修复: ${data.recovered_protocol} | ❌彻底丢失: ${data.lost_external}`);
+                  } else {
+                    toast.error('抢救失败: ' + (data.error || '未知错误'));
+                  }
+                } catch (e: any) {
+                  toast.error('请求失败: ' + e.message);
+                } finally {
+                  if (btn) { btn.innerText = '🚑 资产抢救'; btn.disabled = false; }
+                }
+              }}
+              id="rescue-btn"
+              className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg transition-colors"
+            >
+              🚑 资产抢救
+            </button>
           </div>
         </div>
       </div>

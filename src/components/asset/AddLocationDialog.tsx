@@ -12,6 +12,7 @@ import { JimengModel } from '@/components/jimeng/JimengOptions';
 import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useProjectStore } from '@/store/useProjectStore';
 
 interface AddLocationDialogProps {
   onAdd: (location: Location) => void;
@@ -22,6 +23,8 @@ interface AddLocationDialogProps {
 
 export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initialLocation }: AddLocationDialogProps) {
   const { user } = useAuth();
+  const project = useProjectStore((state) => state.project);
+  const locationIdRef = useRef(initialLocation?.id || `location_${Date.now()}`);
   const [name, setName] = useState(initialLocation?.name || '');
   const [type, setType] = useState<LocationType>(initialLocation?.type || 'interior');
   const [description, setDescription] = useState(initialLocation?.description || '');
@@ -76,7 +79,13 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
       uploadPromises.push(
         (async () => {
           try {
-            const folder = `projects/locations/${user?.id || 'anonymous'}`;
+            const folder = {
+              projectId: project?.id,
+              scope: 'locations',
+              entityId: locationIdRef.current,
+              assetType: 'reference',
+              model: 'upload'
+            };
             // Upload to R2 (or fallback)
             const { url } = await storageService.uploadFile(file, folder, user?.id || 'anonymous');
             return url;
@@ -138,7 +147,18 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
 
       if (genMode === 'seedream') {
         const volcanoService = VolcanoEngineService.getInstance();
-        base64Url = await volcanoService.generateSingleImage(prompt, aspectRatio);
+        base64Url = await volcanoService.generateSingleImage(
+          prompt,
+          aspectRatio,
+          [],
+          {
+            projectId: project?.id,
+            scope: 'locations',
+            entityId: locationIdRef.current,
+            assetType: 'image',
+            model: 'seedream'
+          }
+        );
       } else if (genMode === 'jimeng') {
         const { jimengService } = await import('@/services/jimengService');
         const sessionid = localStorage.getItem('jimeng_session_id');
@@ -148,13 +168,26 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
           prompt,
           model: jimengModel,
           aspectRatio,
-          sessionid
+          sessionid,
+          uploadContext: {
+            projectId: project?.id,
+            scope: 'locations',
+            entityId: locationIdRef.current,
+            assetType: 'image',
+            model: 'jimeng'
+          }
         });
 
         const historyId = genResult.data?.aigc_data?.history_record_id;
         if (!historyId) throw new Error('即梦任务提交失败');
 
-        const pollResult = await jimengService.pollTask(historyId, sessionid);
+        const pollResult = await jimengService.pollTask(historyId, sessionid, 60, {
+          projectId: project?.id,
+          scope: 'locations',
+          entityId: locationIdRef.current,
+          assetType: 'image',
+          model: 'jimeng'
+        });
         const imageUrls = [
           ...(pollResult.urls || []),
           ...(pollResult.url ? [pollResult.url] : [])
@@ -179,7 +212,13 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
 
       if (genMode !== 'jimeng') {
         setReferenceImages(prev => [...prev, base64Url]);
-        const folder = `projects/locations/${user?.id || 'anonymous'}`;
+        const folder = {
+          projectId: project?.id,
+          scope: 'locations',
+          entityId: locationIdRef.current,
+          assetType: 'reference',
+          model: genMode
+        };
         storageService.uploadBase64ToR2(base64Url, folder, `loc_${Date.now()}.png`, user?.id || 'anonymous')
           .then(r2Url => {
             setReferenceImages(prev => prev.map(img => img === base64Url ? r2Url : img));
@@ -216,7 +255,13 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
       const { data: base64Data, mimeType } = await proxyResp.json();
       const base64Url = `data:${mimeType};base64,${base64Data}`;
 
-      const folder = `projects/locations/${user?.id || 'anonymous'}`;
+      const folder = {
+        projectId: project?.id,
+        scope: 'locations',
+        entityId: locationIdRef.current,
+        assetType: 'reference',
+        model: 'jimeng'
+      };
       const r2Url = await storageService.uploadBase64ToR2(base64Url, folder, `loc_${Date.now()}.png`, user?.id || 'anonymous');
 
       setReferenceImages(prev => [r2Url, ...prev]);
@@ -246,7 +291,7 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
     }
 
     const location: Location = {
-      id: initialLocation?.id || `location_${Date.now()}`,
+      id: locationIdRef.current,
       name: name.trim(),
       type,
       description: description.trim(),

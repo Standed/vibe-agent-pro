@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist, checkRateLimit } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 import { isR2Configured, processAndUploadGrid } from '@/lib/r2-server-upload';
+import { assetLogService } from '@/lib/assetLogService';
 
 export const maxDuration = 120;
 
@@ -27,11 +28,36 @@ const fetchImageToBase64 = async (url: string): Promise<{ data: string, mimeType
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout per image
-    const response = await fetch(url, { signal: controller.signal });
+
+    // Add no-store to prevent caching of failed responses
+    // Add User-Agent to avoid blocking by some CDNs/WAFs
+    const response = await fetch(url, {
+      signal: controller.signal,
+      cache: 'no-store',
+      headers: {
+        'User-Agent': 'VibeAgent-Pro/1.0 (Bot)',
+        'Accept': 'image/*'
+      }
+    });
     clearTimeout(timeoutId);
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.error(`[Gemini Grid] ❌ Failed to fetch image: ${response.status} ${response.statusText}`, url);
+      return null;
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (contentType && !contentType.startsWith('image/')) {
+      console.warn(`[Gemini Grid] ⚠️ Fetched non-image content type: ${contentType}`, url);
+      // Continue anyway as some CDNs might have incorrect headers, but log it
+    }
+
     const arrayBuffer = await response.arrayBuffer();
+    if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+      console.error('[Gemini Grid] ❌ Fetched empty image buffer', url);
+      return null;
+    }
+
     const inputBuffer = Buffer.from(arrayBuffer);
 
     // Compress with sharp: resize to max 2048px, JPEG quality 90
@@ -43,11 +69,11 @@ const fetchImageToBase64 = async (url: string): Promise<{ data: string, mimeType
     const base64 = compressedBuffer.toString('base64');
     const mimeType = 'image/jpeg';
 
-    console.log(`[Gemini Grid] 📦 Image compressed: ${(inputBuffer.length / 1024).toFixed(0)}KB → ${(compressedBuffer.length / 1024).toFixed(0)}KB`);
+    console.log(`[Gemini Grid] 📦 Image processed: ${(inputBuffer.length / 1024).toFixed(0)}KB → ${(compressedBuffer.length / 1024).toFixed(0)}KB`);
 
     return { data: base64, mimeType };
-  } catch (error) {
-    console.error('Failed to fetch/compress image:', url, error);
+  } catch (error: any) {
+    console.error('[Gemini Grid] ❌ Error processing image:', url, error.message);
     return null;
   }
 };
@@ -122,6 +148,7 @@ export async function POST(request: NextRequest) {
       gridCols = 2,
       aspectRatio = '16:9',
       referenceImages = [],
+      uploadContext,
     } = body || {};
 
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
@@ -271,10 +298,28 @@ export async function POST(request: NextRequest) {
     // console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
 
     // 5. 尝试服务端直传 R2（跳过客户端上传，极大减少延迟）
+    let logId: string | null = null;
+    logId = await assetLogService.logStart({
+      userId: user.id,
+      operationType: 'gemini',
+      status: 'PENDING',
+      metadata: {
+        prompt,
+        aspectRatio,
+        gridRows,
+        gridCols,
+        requestId,
+        uploadContext: uploadContext || null
+      }
+    });
+
     if (isR2Configured()) {
-      const uploadResult = await processAndUploadGrid(uri, user.id, gridRows, gridCols);
+      const uploadResult = await processAndUploadGrid(uri, user.id, gridRows, gridCols, uploadContext);
 
       if (uploadResult.success && uploadResult.fullImageUrl) {
+        if (logId) {
+          await assetLogService.logUpdate(logId, { r2Url: uploadResult.fullImageUrl, status: 'SUCCESS' });
+        }
         console.log(`[Gemini Grid] ✅ R2 服务端直传成功 (${uploadResult.uploadTime}s): 1 fullImage + ${uploadResult.sliceUrls.length} slices`);
         return NextResponse.json({
           fullImage: uploadResult.fullImageUrl,
@@ -290,6 +335,9 @@ export async function POST(request: NextRequest) {
 
       // 部分成功：只有 fullImage 上传成功
       if (uploadResult.fullImageUrl) {
+        if (logId) {
+          await assetLogService.logUpdate(logId, { r2Url: uploadResult.fullImageUrl, status: 'SUCCESS' });
+        }
         console.log(`[Gemini Grid] ⚠️ 部分成功：fullImage 已上传 R2 (${uploadResult.uploadTime}s)`);
         return NextResponse.json({
           fullImage: uploadResult.fullImageUrl,
@@ -304,6 +352,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 5.2 完全回退到 Base64
+    if (logId) {
+      await assetLogService.logUpdate(logId, { status: 'FAILED', error: 'R2 upload failed' });
+    }
     console.warn(`[Gemini Grid] ⚠️ R2 未配置或上传失败，回退 Base64`);
     return NextResponse.json({
       fullImage: `data:image/png;base64,${uri}`,

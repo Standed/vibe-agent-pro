@@ -161,6 +161,8 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
                             onClick={(e) => { e.stopPropagation(); onPreview(shot.gridImages![0]); }}
                         />
                         <div className={`absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end pointer-events-none ${isTall ? 'gap-1' : 'gap-2'}`}>
+                            <button onClick={(e) => onDownload(shot.gridImages![0], shot.order, e)} className={buttonClass} title="下载"><Download size={iconSize} /></button>
+                            <button onClick={(e) => onEdit(shot, e)} className={buttonClass} title="编辑"><Edit2 size={iconSize} /></button>
                             <button onClick={(e) => { e.stopPropagation(); onUpload(shot.id); }} className={buttonClass} title="上传图片"><Upload size={iconSize} /></button>
                             <button onClick={(e) => onGenerate(shot.id, e)} className={buttonClass} title="重新生成"><RefreshCw size={iconSize} /></button>
                         </div>

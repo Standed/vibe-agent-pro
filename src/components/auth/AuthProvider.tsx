@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
-import { getUserProfile, readSessionCookie, setSessionCookie, parseJWT, isTokenExpired } from '@/lib/supabase/auth';
+import { getUserProfile, readSessionCookie, setSessionCookie, parseJWT, isTokenExpired, getCurrentSession } from '@/lib/supabase/auth';
 import type { Database } from '@/lib/supabase/database.types';
 import { ADMIN_EMAILS, INITIAL_CREDITS } from '@/config/users';
 
@@ -34,6 +34,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const clearAuthState = () => {
+    setSession(null);
+    setUser(null);
+    setProfile(null);
+    setSessionCookie(null);
+  };
 
   // 获取用户 profile
   const fetchProfile = async (userId: string, userEmail?: string) => {
@@ -151,7 +158,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     fetchProfile(data.session.user.id, data.session.user.email);
                   }
                 } else {
-                  console.warn('[AuthProvider] ⚠️ 后台验证失败，但保留当前状态:', error?.message);
+                  const message = error?.message || '';
+                  const status = (error as any)?.status;
+                  const shouldClear = status === 400 || status === 401 || /invalid|expired|jwt|token/i.test(message);
+                  if (shouldClear) {
+                    console.warn('[AuthProvider] ⛔ 后台验证失败，清除本地会话:', message);
+                    clearAuthState();
+                    setLoading(false);
+                  } else {
+                    console.warn('[AuthProvider] ⚠️ 后台验证失败，但保留当前状态:', message);
+                  }
                 }
               }).catch(err => {
                 console.warn('[AuthProvider] ⚠️ 后台验证异常:', err);
@@ -181,21 +197,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             } else {
               console.warn('[AuthProvider] ⚠️ 完整验证失败，清除 cookie');
               if (isMounted) {
-                setSession(null);
-                setUser(null);
-                setProfile(null);
+                clearAuthState();
                 setLoading(false);
-                setSessionCookie(null); // 清除无效 cookie
               }
             }
           } catch (verifyErr: any) {
             console.warn('[AuthProvider] ⚠️ 完整验证异常:', verifyErr?.message || verifyErr);
             if (isMounted) {
-              setSession(null);
-              setUser(null);
-              setProfile(null);
+              clearAuthState();
               setLoading(false);
-              setSessionCookie(null); // 清除无效 cookie
             }
           }
         }
@@ -245,8 +255,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    // 启动心跳检测：每分钟检查一次 Token 有效期
+    const heartbeatInterval = setInterval(async () => {
+      if (!isMounted) return;
+      const currentSession = await getCurrentSession(); // 使用官方 SDK 获取内存中的 session
+
+      if (currentSession?.access_token && currentSession?.expires_at) {
+        // 计算剩余时间 (秒)
+        const now = Math.floor(Date.now() / 1000);
+        const timeLeft = currentSession.expires_at - now;
+
+        // 如果剩余时间少于 10 分钟 (600秒)，主动刷新
+        if (timeLeft < 600) {
+          console.log(`[AuthProvider] 💓 Token 即将过期 (剩余 ${timeLeft}s)，主动刷新...`);
+          const { data, error } = await supabase.auth.refreshSession();
+          if (error) {
+            console.warn('[AuthProvider] 💓 主动刷新失败:', error.message);
+          } else if (data.session) {
+            console.log('[AuthProvider] 💓 主动刷新成功，新过期时间:', new Date((data.session.expires_at || 0) * 1000).toLocaleString());
+            setSession(data.session);
+            setSessionCookie(data.session);
+          }
+        }
+      }
+    }, 5 * 60 * 1000); // 5分钟检查一次 (仅在本地检查，不消耗网络请求，除非需要刷新)
+
     return () => {
       isMounted = false;
+      clearInterval(heartbeatInterval);
       subscriptionWrapper.data.subscription.unsubscribe();
     };
   }, []);

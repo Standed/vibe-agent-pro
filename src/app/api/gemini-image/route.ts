@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
 import { isR2Configured, uploadBase64ToR2 } from '@/lib/r2-server-upload';
+import { assetLogService } from '@/lib/assetLogService';
 
 export const maxDuration = 120;  // 与 AbortController 保持一致
 
@@ -18,11 +19,30 @@ const fetchImageToBase64 = async (url: string): Promise<{ data: string, mimeType
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout per image
-    const response = await fetch(url, { signal: controller.signal });
+
+    // Add no-store to prevent caching of failed responses
+    // Add User-Agent to avoid blocking by some CDNs/WAFs
+    const response = await fetch(url, {
+      signal: controller.signal,
+      cache: 'no-store',
+      headers: {
+        'User-Agent': 'VibeAgent-Pro/1.0 (Bot)',
+        'Accept': 'image/*'
+      }
+    });
     clearTimeout(timeoutId);
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.error(`[Gemini Image] ❌ Failed to fetch image: ${response.status} ${response.statusText}`, url);
+      return null;
+    }
+
     const arrayBuffer = await response.arrayBuffer();
+    if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+      console.error('[Gemini Image] ❌ Fetched empty image buffer', url);
+      return null;
+    }
+
     const inputBuffer = Buffer.from(arrayBuffer);
 
     // Compress with sharp: resize to max 2048px, JPEG quality 90
@@ -34,11 +54,11 @@ const fetchImageToBase64 = async (url: string): Promise<{ data: string, mimeType
     const base64 = compressedBuffer.toString('base64');
     const mimeType = 'image/jpeg';
 
-    console.log(`[Gemini Image] 📦 Image compressed: ${(inputBuffer.length / 1024).toFixed(0)}KB → ${(compressedBuffer.length / 1024).toFixed(0)}KB`);
+    console.log(`[Gemini Image] 📦 Image processed: ${(inputBuffer.length / 1024).toFixed(0)}KB → ${(compressedBuffer.length / 1024).toFixed(0)}KB`);
 
     return { data: base64, mimeType };
-  } catch (error) {
-    console.error('Failed to fetch/compress image:', url, error);
+  } catch (error: any) {
+    console.error('Failed to fetch/compress image:', url, error.message);
     return null;
   }
 };
@@ -97,7 +117,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { prompt, referenceImages = [], aspectRatio = '1:1', imageSize = '2K' } = body || {};
+    const { prompt, referenceImages = [], aspectRatio = '1:1', imageSize = '2K', uploadContext } = body || {};
     // 验证 imageSize 参数，只允许 2K 或 4K
     const validImageSize = ['2K', '4K'].includes(imageSize) ? imageSize : '2K';
     if (!prompt) {
@@ -242,12 +262,29 @@ export async function POST(request: NextRequest) {
     // console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
 
     // 5. 尝试服务端上传到 R2（跳过客户端上传，减少延迟）
+    let logId: string | null = null;
+    logId = await assetLogService.logStart({
+      userId: user.id,
+      operationType: 'gemini',
+      status: 'PENDING',
+      metadata: {
+        prompt,
+        aspectRatio,
+        imageSize: validImageSize,
+        requestId,
+        uploadContext: uploadContext || null
+      }
+    });
+
     if (isR2Configured()) {
       const r2UploadStart = Date.now();
-      const r2Url = await uploadBase64ToR2(uri, user.id, 'generated', 'direct');
+      const r2Url = await uploadBase64ToR2(uri, user.id, 'generated', 'direct', uploadContext);
       const r2UploadTime = ((Date.now() - r2UploadStart) / 1000).toFixed(2);
 
       if (r2Url) {
+        if (logId) {
+          await assetLogService.logUpdate(logId, { r2Url, status: 'SUCCESS' });
+        }
         console.log(`[Gemini Image] ✅ R2 服务端直传成功 (${r2UploadTime}s)`);
         return NextResponse.json({
           url: r2Url,
@@ -262,6 +299,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 回退：返回 Base64 Data URL
+    if (logId) {
+      await assetLogService.logUpdate(logId, { status: 'FAILED', error: 'R2 upload failed' });
+    }
     console.warn('[Gemini Image] ⚠️ R2 未配置或上传失败，回退 Base64');
     return NextResponse.json({ url: `data:image/png;base64,${uri}`, requestId, uploadedToR2: false });
   } catch (error: any) {

@@ -394,7 +394,13 @@ export class SoraOrchestrator {
                     // Upload to R2
                     const r2Url = await storageService.uploadBase64ToR2(
                         dataUri,
-                        `characters/${char.id}`,
+                        {
+                            projectId,
+                            scope: 'characters',
+                            entityId: char.id,
+                            assetType: 'video',
+                            model: 'sora'
+                        },
                         r2Filename,
                         userId
                     );

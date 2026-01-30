@@ -6,6 +6,7 @@ import { VolcanoEngineService } from '../volcanoEngineService';
 import { jimengService } from '../jimengService';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import { storageService } from '@/lib/storageService';
+import type { R2PathContext } from '@/lib/r2-path';
 import { dataService } from '@/lib/dataService';
 import { constructBaseShotPrompt } from '@/utils/promptConstruction';
 
@@ -93,8 +94,14 @@ export class GenerationTools {
             }, this.userId);
 
             const assistantMsgId = generateId();
-            const modelKey = model.toLowerCase().includes('seedream') ? 'seedream' :
-                (model.toLowerCase().includes('grid') ? 'gemini-grid' : 'gemini-direct');
+            const lowerModel = model.toLowerCase();
+            const modelKey = lowerModel.includes('seedream')
+                ? 'seedream'
+                : lowerModel.includes('jimeng')
+                    ? 'jimeng'
+                    : lowerModel.includes('grid')
+                        ? 'gemini-grid'
+                        : 'gemini-direct';
 
             const assistantMsg: any = {
                 id: assistantMsgId,
@@ -182,6 +189,12 @@ export class GenerationTools {
 
             const refs = await urlsToReferenceImages(referenceImageUrls);
             const aspectRatio = this.project.settings.aspectRatio as AspectRatio;
+            const uploadContextBase: R2PathContext = {
+                projectId: this.project.id,
+                scope: 'shots',
+                entityId: shotId,
+                model: mode
+            };
 
             let resultUrl: string;
             let finalResult: any = {};
@@ -194,14 +207,16 @@ export class GenerationTools {
                     cols,
                     aspectRatio,
                     '1024x1024' as ImageSize, // Default
-                    refs
+                    refs,
+                    [],
+                    { ...uploadContextBase, assetType: 'grid' }
                 );
 
                 // Upload to R2 (Full Grid & Slices)
                 let fullGridUrl = gridData.fullImage;
                 let sliceUrls = gridData.slices;
                 try {
-                    const folder = `projects/${this.project.id}/grids`;
+                    const folder = { ...uploadContextBase, assetType: 'grid' } as R2PathContext;
                     if (fullGridUrl.startsWith('data:')) {
                         const base64Data = fullGridUrl.split(',')[1];
                         fullGridUrl = await storageService.uploadBase64ToR2(base64Data, folder, `grid_full_${Date.now()}.png`, this.userId);
@@ -209,7 +224,7 @@ export class GenerationTools {
                     sliceUrls = await Promise.all(gridData.slices.map(async (slice, idx) => {
                         if (slice.startsWith('data:')) {
                             const base64Data = slice.split(',')[1];
-                            return await storageService.uploadBase64ToR2(base64Data, folder, `grid_slice_${Date.now()}_${idx}.png`, this.userId);
+                            return await storageService.uploadBase64ToR2(base64Data, { ...uploadContextBase, assetType: 'slice' }, `grid_slice_${Date.now()}_${idx}.png`, this.userId);
                         }
                         return slice;
                     }));
@@ -268,7 +283,8 @@ export class GenerationTools {
                     resultUrl = await VolcanoEngineService.getInstance().generateSingleImage(
                         enrichedPrompt,
                         aspectRatio,
-                        referenceImageUrls
+                        referenceImageUrls,
+                        { ...uploadContextBase, assetType: 'image', model: 'seedream' }
                     );
                     finalResult = { imageUrl: resultUrl };
                 } else if (mode === 'jimeng') {
@@ -276,12 +292,20 @@ export class GenerationTools {
                     const sessionid = typeof window !== 'undefined'
                         ? localStorage.getItem('jimeng_session_id') || undefined
                         : process.env.JIMENG_SESSION_ID;
+                    const jimengContext: R2PathContext = {
+                        projectId: this.project.id,
+                        scope: 'shots',
+                        entityId: shotId,
+                        assetType: 'image',
+                        model: 'jimeng'
+                    };
 
                     const genResult = await jimengService.generateImage({
                         prompt: enrichedPrompt,
                         aspectRatio,
                         imageUrls: referenceImageUrls,
                         sessionid,
+                        uploadContext: jimengContext,
                     });
 
                     if (!genResult.historyId) {
@@ -289,7 +313,7 @@ export class GenerationTools {
                     }
 
                     // 客户端轮询等待完成（避免服务端长阻塞）
-                    const pollResult = await jimengService.pollTaskClient(genResult.historyId, sessionid);
+                    const pollResult = await jimengService.pollTaskClient(genResult.historyId, sessionid, 120, jimengContext);
                     if (!pollResult.success || !pollResult.url) {
                         throw new Error('Jimeng 生成失败：轮询超时或无结果');
                     }
@@ -301,7 +325,9 @@ export class GenerationTools {
                     resultUrl = await generateSingleImage(
                         enrichedPrompt,
                         aspectRatio,
-                        refs
+                        refs,
+                        '2K',
+                        { ...uploadContextBase, assetType: 'image' }
                     );
                     finalResult = { imageUrl: resultUrl };
                 }
@@ -312,7 +338,7 @@ export class GenerationTools {
                         const base64Data = resultUrl.split(',')[1];
                         const r2Url = await storageService.uploadBase64ToR2(
                             base64Data,
-                            `projects/shots/${this.userId || 'anonymous'}`,
+                            { ...uploadContextBase, assetType: 'image' },
                             `shot_gen_${shotId}_${Date.now()}.png`,
                             this.userId
                         );
@@ -423,13 +449,15 @@ export class GenerationTools {
                         cols,
                         aspectRatio,
                         '1024x1024' as ImageSize,
-                        refs
+                        refs,
+                        [],
+                        { projectId: this.project.id, scope: 'scenes', entityId: sceneId, assetType: 'grid', model: 'gemini-grid' }
                     );
 
                     // Upload logic
                     let fullGridUrl = gridData.fullImage;
                     let sliceUrls = gridData.slices;
-                    const folder = `projects/${this.project.id}/grids`;
+                    const folder = { projectId: this.project.id, scope: 'scenes', entityId: sceneId, assetType: 'grid', model: 'gemini-grid' } as R2PathContext;
                     try {
                         if (fullGridUrl.startsWith('data:')) {
                             const base64Data = fullGridUrl.split(',')[1];
@@ -438,7 +466,7 @@ export class GenerationTools {
                         sliceUrls = await Promise.all(gridData.slices.map(async (slice, idx) => {
                             if (slice.startsWith('data:')) {
                                 const base64Data = slice.split(',')[1];
-                                return await storageService.uploadBase64ToR2(base64Data, folder, `grid_slice_${Date.now()}_${chunkIndex}_${idx}.png`, this.userId);
+                                return await storageService.uploadBase64ToR2(base64Data, { projectId: this.project.id, scope: 'scenes', entityId: sceneId, assetType: 'slice', model: 'gemini-grid' }, `grid_slice_${Date.now()}_${chunkIndex}_${idx}.png`, this.userId);
                             }
                             return slice;
                         }));

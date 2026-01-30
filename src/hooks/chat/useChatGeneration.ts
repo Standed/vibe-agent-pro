@@ -5,6 +5,7 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { generateMessageId } from '@/lib/utils';
 import { storageService } from '@/lib/storageService';
+import type { R2PathContext } from '@/lib/r2-path';
 import { dataService } from '@/lib/dataService';
 import {
     generateSimpleGrid,
@@ -40,7 +41,7 @@ interface UseChatGenerationProps {
  */
 const uploadWithRetry = async (
     base64DataUrl: string,
-    folder: string,
+    folder: string | R2PathContext,
     userId: string,
     maxRetries = 5
 ): Promise<string> => {
@@ -49,7 +50,7 @@ const uploadWithRetry = async (
         return base64DataUrl;
     }
 
-    const base64Data = base64DataUrl.split(',')[1];
+    const base64Data = base64DataUrl;
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -141,7 +142,13 @@ export function useChatGeneration({
         let uploadedUrls: string[] = [];
         if (uploadedImages.length > 0) {
             try {
-                const uploadPathBase = `chat-uploads/${user.id}/${Date.now()}`;
+                const baseScope: R2PathContext = {
+                    projectId: project.id,
+                    scope: selectedShotId ? 'shots' : currentSceneIdCaptured ? 'scenes' : 'project',
+                    entityId: selectedShotId || currentSceneIdCaptured || project.id,
+                    assetType: 'reference',
+                    model: 'upload'
+                };
 
                 const uploadPromises = uploadedImages.map(async (file, idx) => {
                     try {
@@ -152,12 +159,10 @@ export function useChatGeneration({
                         const matches = compressedDataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
 
                         if (matches && matches.length === 3) {
-                            const mimeType = matches[1];
-                            const base64Data = matches[2];
-                            const filePath = `${uploadPathBase}_${idx}.jpg`; // Compressed is JPEG
+                            const filePath = `upload_${Date.now()}_${idx}.jpg`; // Compressed is JPEG
 
-                            // 3. Upload Compressed
-                            return await storageService.uploadBase64ToR2(base64Data, filePath, mimeType, user.id);
+                            // 3. Upload Compressed (keep data URL to preserve MIME)
+                            return await storageService.uploadBase64ToR2(compressedDataUrl, baseScope, filePath, user.id);
                         }
 
                         // Fallback
@@ -165,7 +170,7 @@ export function useChatGeneration({
                     } catch (err) {
                         console.warn(`Compression failed for ${file.name}, uploading original`, err);
                         // Fallback to original upload
-                        const res = await storageService.uploadFile(file, `chat-uploads/${user.id}/${Date.now()}`, user.id);
+                        const res = await storageService.uploadFile(file, baseScope, user.id);
                         return res.url;
                     }
                 });
@@ -221,12 +226,25 @@ export function useChatGeneration({
             let resultImages: string[] = []; // Base64 or URL
             let gridData: ChatPanelMessage['gridData'] | undefined;
 
+            const baseContext: R2PathContext = {
+                projectId: project.id,
+                scope: selectedShotId ? 'shots' : currentSceneIdCaptured ? 'scenes' : 'project',
+                entityId: selectedShotId || currentSceneIdCaptured || project.id
+            };
+
             if (selectedModel === 'gemini-grid') {
                 const rows = gridSize === '3x3' ? 3 : 2;
                 const cols = gridSize === '3x3' ? 3 : 2;
                 const projectAspectRatio = project.settings?.aspectRatio || AspectRatio.WIDE;
 
-                const res = await generateSimpleGrid(enrichedPrompt, rows, cols, projectAspectRatio, referenceImagesData);
+                const res = await generateSimpleGrid(
+                    enrichedPrompt,
+                    rows,
+                    cols,
+                    projectAspectRatio,
+                    referenceImagesData,
+                    { ...baseContext, assetType: 'grid', model: 'gemini-grid' }
+                );
 
                 // Logic Split: Shot vs Scene
                 if (selectedShotId) {
@@ -248,8 +266,23 @@ export function useChatGeneration({
                     };
                 }
             } else if (selectedModel === 'gemini-direct') {
-                const res = await generateSingleImage(enrichedPrompt, project.settings?.aspectRatio || AspectRatio.WIDE, referenceImagesData, geminiImageSize);
+                const res = await generateSingleImage(
+                    enrichedPrompt,
+                    project.settings?.aspectRatio || AspectRatio.WIDE,
+                    referenceImagesData,
+                    geminiImageSize,
+                    { ...baseContext, assetType: 'image', model: 'gemini-direct' }
+                );
                 resultImages = [res];
+            } else if (selectedModel === 'seedream') {
+                const { VolcanoEngineService } = await import('@/services/volcanoEngineService');
+                const seedreamUrl = await VolcanoEngineService.getInstance().generateSingleImage(
+                    enrichedPrompt,
+                    project.settings?.aspectRatio || AspectRatio.WIDE,
+                    allRefUrls,
+                    { ...baseContext, assetType: 'image', model: 'seedream' }
+                );
+                resultImages = [seedreamUrl];
             }
 
             // 7. Reference Handling (Optimistic Display + Background Upload)
@@ -277,7 +310,13 @@ export function useChatGeneration({
                 try {
                     // Parallel Upload: Result Images
                     const uploadedResultImages = await Promise.all(
-                        resultImages.map(img => uploadWithRetry(img, `generated/${user.id}`, user.id))
+                        resultImages.map(img =>
+                            uploadWithRetry(
+                                img,
+                                { ...baseContext, assetType: gridData ? 'grid' : 'image', model: selectedModel },
+                                user.id
+                            )
+                        )
                     );
 
                     // Update Grid Data if needed
@@ -292,7 +331,11 @@ export function useChatGeneration({
 
                         const uploadedSlices = await Promise.all(
                             gridData.slices.map(slice =>
-                                uploadWithRetry(slice, `generated/${user.id}/slices`, user.id)
+                                uploadWithRetry(
+                                    slice,
+                                    { ...baseContext, assetType: 'slice', model: selectedModel },
+                                    user.id
+                                )
                             )
                         );
 

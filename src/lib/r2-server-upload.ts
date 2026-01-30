@@ -7,6 +7,7 @@
 
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
+import { buildR2Folder, type R2PathContext } from './r2-path';
 
 // R2 配置
 const R2_ENDPOINT = process.env.R2_ENDPOINT;
@@ -72,7 +73,8 @@ export const uploadBufferToR2 = async (
     buffer: Buffer,
     userId: string,
     folder: string = 'generated',
-    suffix: string = ''
+    suffix: string = '',
+    context?: R2PathContext
 ): Promise<string | null> => {
     const client = getR2Client();
     if (!client || !R2_BUCKET_NAME || !R2_PUBLIC_URL) {
@@ -80,7 +82,8 @@ export const uploadBufferToR2 = async (
     }
 
     try {
-        const key = generateR2Key(userId, folder, suffix);
+        const resolvedFolder = context ? buildR2Folder(context, folder) : folder;
+        const key = generateR2Key(userId, resolvedFolder, suffix);
 
         await client.send(new PutObjectCommand({
             Bucket: R2_BUCKET_NAME,
@@ -110,11 +113,12 @@ export const uploadBase64ToR2 = async (
     base64Data: string,
     userId: string,
     folder: string = 'generated',
-    suffix: string = ''
+    suffix: string = '',
+    context?: R2PathContext
 ): Promise<string | null> => {
     try {
         const buffer = Buffer.from(base64Data, 'base64');
-        return uploadBufferToR2(buffer, userId, folder, suffix);
+        return uploadBufferToR2(buffer, userId, folder, suffix, context);
     } catch (error: any) {
         console.error('[R2 Upload] ❌ Base64 解码失败:', error.message);
         return null;
@@ -180,10 +184,11 @@ export const uploadBuffersToR2 = async (
     buffers: Buffer[],
     userId: string,
     folder: string = 'generated',
-    prefix: string = 'slice'
+    prefix: string = 'slice',
+    context?: R2PathContext
 ): Promise<(string | null)[]> => {
     return Promise.all(
-        buffers.map((buf, idx) => uploadBufferToR2(buf, userId, folder, `${prefix}_${idx}`))
+        buffers.map((buf, idx) => uploadBufferToR2(buf, userId, folder, `${prefix}_${idx}`, context))
     );
 };
 
@@ -200,7 +205,8 @@ export const processAndUploadGrid = async (
     base64Data: string,
     userId: string,
     rows: number,
-    cols: number
+    cols: number,
+    context?: R2PathContext
 ): Promise<{
     fullImageUrl: string | null;
     sliceUrls: (string | null)[];
@@ -215,11 +221,11 @@ export const processAndUploadGrid = async (
         // 并行：切片 + 上传原图
         const [sliceBuffers, fullImageUrl] = await Promise.all([
             sliceImageToBuffers(imageBuffer, rows, cols),
-            uploadBufferToR2(imageBuffer, userId, 'generated', 'full')
+            uploadBufferToR2(imageBuffer, userId, 'generated', 'full', context)
         ]);
 
         // 并行上传所有切片
-        const sliceUrls = await uploadBuffersToR2(sliceBuffers, userId, 'generated', 'slice');
+        const sliceUrls = await uploadBuffersToR2(sliceBuffers, userId, 'generated', 'slice', context);
 
         const uploadTime = ((Date.now() - startTime) / 1000).toFixed(2);
         const allSlicesUploaded = sliceUrls.every(url => url !== null);

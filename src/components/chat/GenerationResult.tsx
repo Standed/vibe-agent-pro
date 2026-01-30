@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import { useDrag } from 'react-dnd';
-import { Grid3x3, Download, Copy, RefreshCw, Image as ImageIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { Grid3x3, Download, RefreshCw, Image as ImageIcon, ChevronUp } from 'lucide-react';
 import { AspectRatio } from '@/types/project';
-import { toast } from 'sonner';
 import { IMAGE_TO_SHOT } from './dragTypes';
+import { downloadFile } from '@/utils/download';
 
 interface GenerationResultProps {
     images: string[];
@@ -104,6 +104,7 @@ function DraggableResultImage({
 
     // 是否使用自适应布局 (兜底情况)
     const isAutoFit = isSingle && ratio === undefined;
+    const filenameBase = isGrid ? `grid_${idx + 1}` : `image_${idx + 1}`;
 
     return (
         <div
@@ -140,6 +141,27 @@ function DraggableResultImage({
 
             {/* Hover Actions */}
             <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2">
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        // 确保使用 downloadFile 进行下载
+                        const filename = gridData ? `grid_slice_${idx + 1}` : `image_${idx + 1}`;
+                        downloadFile(img, filename).catch(() => {
+                            // 失败兜底
+                            const link = document.createElement('a');
+                            link.href = img;
+                            link.download = filename;
+                            link.target = '_blank';
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                        });
+                    }}
+                    className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm transition-colors"
+                    title="下载图片"
+                >
+                    <Download size={14} />
+                </button>
                 {onReuseImage && (
                     <button
                         onClick={(e) => { e.stopPropagation(); onReuseImage(img); }}

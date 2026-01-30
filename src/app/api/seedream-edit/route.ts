@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
+import { uploadBufferToR2 } from '@/lib/cloudflare-r2';
+import { assetLogService } from '@/lib/assetLogService';
+import { buildR2Folder, buildR2Key, inferExtFromMime } from '@/lib/r2-path';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { imageUrl, prompt, size = '2048x2048', model } = body || {};
+    const { imageUrl, prompt, size = '2048x2048', model, uploadContext } = body || {};
 
     if (!imageUrl || !prompt) {
       return NextResponse.json({ error: 'missing imageUrl or prompt' }, { status: 400 });
@@ -81,21 +84,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'missing image url' }, { status: 500 });
     }
 
-    // 🔥 下载图片并转换为 base64 data URL，避免客户端 CORS 和 URL 过期问题
+    const logId = await assetLogService.logStart({
+      userId: user.id,
+      operationType: 'seedream',
+      originalUrl: url,
+      status: 'PENDING',
+      metadata: {
+        prompt,
+        model: seedreamModelId,
+        size,
+        editSource: imageUrl,
+        uploadContext: uploadContext || null
+      }
+    });
+
     try {
       const imageResp = await fetch(url);
       if (!imageResp.ok) {
-        console.warn('Failed to download edited image, returning original URL:', imageResp.statusText);
-        return NextResponse.json({ url });
+        throw new Error(`Failed to download edited image: ${imageResp.statusText}`);
       }
 
-      const blob = await imageResp.blob();
-      const mimeType = blob.type || 'image/png';
-      const arrayBuffer = await blob.arrayBuffer();
-      const base64 = Buffer.from(arrayBuffer).toString('base64');
-      const dataUrl = `data:${mimeType};base64,${base64}`;
+      const arrayBuffer = await imageResp.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const mimeType = imageResp.headers.get('content-type') || 'image/png';
+      const ext = inferExtFromMime(mimeType);
+      const folder = buildR2Folder(uploadContext, `generated/seedream`);
+      const key = buildR2Key({
+        userId: user.id,
+        folder,
+        ext,
+        prefix: 'seedream_edit'
+      });
 
-      console.log('✅ SeeDream 编辑图片已转换为 base64 data URL');
+      const r2Url = await uploadBufferToR2({
+        buffer,
+        key,
+        contentType: mimeType
+      });
+
+      if (logId) {
+        await assetLogService.logUpdate(logId, { r2Url, status: 'SUCCESS' });
+      }
 
       // 4. 消耗积分
       const consumeResult = await consumeCredits(
@@ -115,14 +144,13 @@ export async function POST(request: NextRequest) {
 
       console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
 
-      return NextResponse.json({ url: dataUrl, requestId });
+      return NextResponse.json({ url: r2Url, requestId, uploadedToR2: true });
     } catch (downloadError: any) {
-      console.warn('Failed to convert edited image to base64, returning original URL:', downloadError);
-
-      // 即使下载失败也消耗积分,因为API调用已成功
-      await consumeCredits(user.id, requiredCredits, 'edit-image', operationDesc);
-
-      return NextResponse.json({ url, requestId });
+      if (logId) {
+        await assetLogService.logUpdate(logId, { status: 'FAILED', error: downloadError.message });
+      }
+      console.error('[Seedream Edit] ❌ R2 upload failed:', downloadError);
+      return NextResponse.json({ error: '图片持久化失败，请稍后重试', requestId }, { status: 500 });
     }
   } catch (error: any) {
     console.error(`[${requestId}] ❌ SeeDream Edit failed:`, error);

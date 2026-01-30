@@ -16,6 +16,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { CanvasUserWidget } from '@/components/layout/CanvasUserWidget';
 import { ShotEditor } from '@/components/layout/sidebar/ShotEditor';
 import { batchDownloadAssets } from '@/utils/batchDownload';
+import { downloadFile } from '@/utils/download';
 import { SHOT_TO_CHAT, IMAGE_TO_SHOT } from '@/components/chat/dragTypes';
 import { dataService } from '@/lib/dataService';
 import DraggableCanvasShotCard from '@/components/canvas/DraggableCanvasShotCard';
@@ -174,6 +175,16 @@ export default function InfiniteCanvas() {
   const [isDragging, setIsDragging] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
   const [draggedScene, setDraggedScene] = useState<string | null>(null);
+
+  // Drag State: store initial capture points to avoid drift
+  // initialMouse: where the mouse was on screen at drag start
+  // initialScenePos: where the scene was in canvas coordinates at drag start
+  const dragStartRef = useRef<{
+    initialMouse: { x: number, y: number },
+    initialScenePos: { x: number, y: number }
+  } | null>(null);
+
+  // Use ref for dragOffset to allow sync updates during drag without re-render lag
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -315,21 +326,36 @@ export default function InfiniteCanvas() {
     if (e.button !== 0) return; // Only left click
     e.stopPropagation(); // Prevent canvas pan
     e.preventDefault(); // Prevent text selection
+
+    const scene = project?.scenes.find(s => s.id === sceneId);
+    if (!scene) return;
+
     setDraggedScene(sceneId);
     setDragOffset({ x: 0, y: 0 });
-    setLastMousePos({ x: e.clientX, y: e.clientY });
+
+    // Capture precise initial state
+    dragStartRef.current = {
+      initialMouse: { x: e.clientX, y: e.clientY },
+      initialScenePos: { x: scene.position.x, y: scene.position.y }
+    };
   };
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (draggedScene) {
-      const deltaX = (e.clientX - lastMousePos.x) / scale;
-      const deltaY = (e.clientY - lastMousePos.y) / scale;
+    if (draggedScene && dragStartRef.current) {
+      // Logic: NewScenePos = InitialScenePos + (CurrentMouse - InitialMouse) / Scale
+      // We are updating 'dragOffset', so DragOffset = (CurrentMouse - InitialMouse) / Scale
+      const { initialMouse } = dragStartRef.current;
 
-      setDragOffset(prev => ({
-        x: prev.x + deltaX,
-        y: prev.y + deltaY
-      }));
-      setLastMousePos({ x: e.clientX, y: e.clientY });
+      const deltaScreenX = e.clientX - initialMouse.x;
+      const deltaScreenY = e.clientY - initialMouse.y;
+
+      const deltaCanvasX = deltaScreenX / scale;
+      const deltaCanvasY = deltaScreenY / scale;
+
+      setDragOffset({
+        x: deltaCanvasX,
+        y: deltaCanvasY
+      });
     } else if (isDragging) {
       const deltaX = e.clientX - lastMousePos.x;
       const deltaY = e.clientY - lastMousePos.y;
@@ -343,10 +369,10 @@ export default function InfiniteCanvas() {
   }, [draggedScene, isDragging, lastMousePos, scale]);
 
   const handleMouseUp = () => {
-    if (draggedScene) {
+    if (draggedScene && dragStartRef.current) {
       const scene = project?.scenes.find(s => s.id === draggedScene);
       if (scene) {
-        // Commit the final position
+        // Commit final position
         updateScene(draggedScene, {
           position: {
             x: scene.position.x + dragOffset.x,
@@ -356,6 +382,7 @@ export default function InfiniteCanvas() {
       }
       setDragOffset({ x: 0, y: 0 });
       setDraggedScene(null);
+      dragStartRef.current = null;
     } else {
       setIsDragging(false);
     }
@@ -368,14 +395,13 @@ export default function InfiniteCanvas() {
     setImagePreview(imageUrl);
   }, []);
 
-  const handleDownload = useCallback((imageUrl: string, shotOrder: number, e: React.MouseEvent) => {
+  const handleDownload = useCallback(async (imageUrl: string, shotOrder: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    const link = document.createElement('a');
-    link.href = imageUrl;
-    link.download = `shot_${shotOrder}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      await downloadFile(imageUrl, `shot_${shotOrder}`);
+    } catch (error) {
+      toast.error('图片下载失败');
+    }
   }, []);
 
   const handleGenerate = useCallback((shotId: string, e: React.MouseEvent) => {
@@ -540,7 +566,16 @@ export default function InfiniteCanvas() {
           status: 'success' as const,
         };
         const newHistory = [...(shot.generationHistory || []), historyItem];
-        useProjectStore.getState().updateShot(shotId, { generationHistory: newHistory });
+
+        // 自动应用到分镜
+        useProjectStore.getState().updateShot(shotId, {
+          referenceImage: imageUrl,
+          generationHistory: newHistory,
+          status: 'done' // 标记为完成
+        });
+
+        // 立即触发保存（跳过防抖，确保重要数据不丢）
+        useProjectStore.getState().saveProject().catch(console.error);
       }
 
       toast.success('图片上传成功');
