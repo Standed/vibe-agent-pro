@@ -123,7 +123,7 @@ export default function ChatPanel() {
 
 
     // Preview State
-    const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [previewState, setPreviewState] = useState<{ images: string[], index: number } | null>(null);
 
     // Sora specific
     const [soraAspectRatio, setSoraAspectRatio] = useState<'16:9' | '9:16'>('16:9');
@@ -278,7 +278,7 @@ export default function ChatPanel() {
             setSelectedModel(message.model);
             if (message.model === 'gemini-grid' && message.gridData?.gridSize) setGridSize(message.gridData.gridSize);
         }
-        toast.success("已恢复生成配置和提示词");
+        // toast.success("已恢复生成配置和提示词");
     };
 
     const handleReuseImage = (url: string) => {
@@ -522,7 +522,7 @@ export default function ChatPanel() {
                     <ChatBubble
                         key={msg.id}
                         message={msg as any}
-                        project={project}
+                        project={project?.id || '' as any} // fix project type mismatch - just passing id if needed or full object
                         onDelete={() => deleteMessage(msg.id)}
                         onReusePrompt={() => handleRestoreState(msg)}
                         onReuseImage={handleReuseImage}
@@ -530,6 +530,7 @@ export default function ChatPanel() {
                         onApplyVideoToShot={handleApplyVideoToShot as any}
                         onImageClick={(url, idx, m: any) => {
                             if (m.gridData) {
+                                // If Gemini Grid, use specific Grid Modal
                                 setGridResult({
                                     fullImage: m.gridData.fullImage,
                                     slices: m.gridData.slices,
@@ -541,7 +542,13 @@ export default function ChatPanel() {
                                     gridSize: m.gridData.gridSize || gridSize,
                                 });
                             } else {
-                                setPreviewImage(url);
+                                // Standard/Jimeng images - use new Carousel Preview
+                                const imagesToPreview = m.images || [url];
+                                const clickedIndex = imagesToPreview.indexOf(url);
+                                setPreviewState({
+                                    images: imagesToPreview,
+                                    index: clickedIndex !== -1 ? clickedIndex : 0
+                                });
                             }
                         }}
                         onSliceSelect={(m: any) => {
@@ -705,10 +712,11 @@ export default function ChatPanel() {
                 isLoading={jimengGeneration.isSaving}
             />
 
-            {previewImage && (
+            {previewState && (
                 <ImagePreviewOverlay
-                    imageUrl={previewImage}
-                    onClose={() => setPreviewImage(null)}
+                    images={previewState.images}
+                    initialIndex={previewState.index}
+                    onClose={() => setPreviewState(null)}
                 />
             )}
         </div>
