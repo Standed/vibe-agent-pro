@@ -223,6 +223,9 @@ export function GenerationResult({
     const displayImages = isExpanded || !shouldCollapse ? allImages : allImages.slice(0, MAX_VISIBLE);
     const hiddenCount = allImages.length - MAX_VISIBLE;
 
+    // Resolve effective aspect ratio
+    const activeRatio = gridData?.aspectRatio ?? defaultAspectRatio;
+
     // Grid Layout Classes
     let gridLayoutClass = "";
     if (is3x3) {
@@ -236,9 +239,9 @@ export function GenerationResult({
     return (
         <div className="space-y-3">
             {/* Images Grid */}
-            <div className={`grid gap-2 ${gridLayoutClass} ${(allImages.length === 1 && (defaultAspectRatio === AspectRatio.MOBILE || defaultAspectRatio === AspectRatio.PORTRAIT || gridData?.aspectRatio === AspectRatio.MOBILE || gridData?.aspectRatio === AspectRatio.PORTRAIT))
-                ? 'w-fit' // 单张竖图自适应宽度
-                : 'w-full' // 多张或横图占满
+            <div className={`grid gap-2 ${gridLayoutClass} ${(allImages.length === 1 && (activeRatio === AspectRatio.MOBILE || activeRatio === AspectRatio.PORTRAIT))
+                    ? 'w-fit' // 单张竖图自适应宽度
+                    : 'w-full' // 多张或横图占满
                 }`}>
                 {displayImages.map((img, idx) => {
                     const isSingle = allImages.length === 1;
