@@ -153,15 +153,6 @@ export function ChatBubble({
 
                                                 {/* Hover Actions Overlay (Standardized with GenerationResult) */}
                                                 <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover/image:opacity-100 transition-opacity flex justify-end gap-1.5 pt-6">
-                                                    {onReuseImage && (
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); onReuseImage(img); }}
-                                                            className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm transition-colors shadow-sm"
-                                                            title="使用此图作为参考"
-                                                        >
-                                                            <ImageIcon size={12} />
-                                                        </button>
-                                                    )}
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -172,6 +163,15 @@ export function ChatBubble({
                                                     >
                                                         <Download size={12} />
                                                     </button>
+                                                    {onReuseImage && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onReuseImage(img); }}
+                                                            className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm transition-colors shadow-sm"
+                                                            title="使用此图作为参考"
+                                                        >
+                                                            <ImageIcon size={12} />
+                                                        </button>
+                                                    )}
                                                     {onApplyToShot && (
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); onApplyToShot(img); }}
