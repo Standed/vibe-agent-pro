@@ -141,8 +141,8 @@ export function useJimengGeneration({
             ...mentionedAssets.characters.flatMap(c => c.referenceImages || []),
             ...mentionedAssets.locations.flatMap(l => l.referenceImages || []),
         ];
-        // Combine manual uploads + asset refs + extra uploaded images
-        const allReferenceUrls = Array.from(new Set([...referenceImageUrls, ...mentionedImageUrls, ...manualReferenceUrls, ...extraImageUrls]));
+        // Combine manual uploads + manual history + asset refs (Order matches UI: Files -> History -> Auto)
+        const allReferenceUrls = Array.from(new Set([...extraImageUrls, ...manualReferenceUrls, ...referenceImageUrls, ...mentionedImageUrls]));
 
         // 显示使用的资源提示
         if (allReferenceUrls.length > 0) {
