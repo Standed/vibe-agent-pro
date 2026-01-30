@@ -3,6 +3,7 @@ import { BaseToolParams, generateId } from './baseTool';
 import { Location, AspectRatio } from '@/types/project';
 import { generateSingleImage } from '../geminiService';
 import { storageService } from '@/lib/storageService';
+import type { R2PathContext } from '@/lib/r2-path';
 
 export class LocationTools {
     private params: BaseToolParams;
@@ -114,12 +115,15 @@ export class LocationTools {
                 const prompt = `${location.name}, ${location.description}. Cinematic concept art, high quality, detailed lighting. Art Style: ${this.project.metadata.artStyle || 'Cinematic'}`;
                 const base64Url = await generateSingleImage(
                     prompt,
-                    AspectRatio.WIDE // Default to wide for locations
+                    AspectRatio.WIDE, // Default to wide for locations
+                    [],
+                    '2K',
+                    { projectId: this.project.id, scope: 'locations', entityId: id, assetType: 'image', model: 'gemini-direct' }
                 );
 
                 // Upload to R2
                 let resultUrl = base64Url;
-                const folder = `projects/locations/${this.userId || 'anonymous'}`;
+                const folder: R2PathContext = { projectId: this.project.id, scope: 'locations', entityId: id, assetType: 'reference', model: 'gemini-direct' };
                 try {
                     if (base64Url.startsWith('data:')) {
                         const base64Data = base64Url.split(',')[1];

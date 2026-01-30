@@ -3,6 +3,7 @@ import { BaseToolParams, generateId } from './baseTool';
 import { Character } from '@/types/project';
 import { generateCharacterThreeView, urlsToReferenceImages } from '../geminiService';
 import { storageService } from '@/lib/storageService';
+import type { R2PathContext } from '@/lib/r2-path';
 
 export class CharacterTools {
     private params: BaseToolParams;
@@ -90,7 +91,13 @@ export class CharacterTools {
 
             // Upload to R2
             let resultUrl = base64Url;
-            const folder = `projects/characters/${this.userId || 'anonymous'}`;
+            const folder: R2PathContext = {
+                projectId: this.project.id,
+                scope: 'characters',
+                entityId: characterId,
+                assetType: 'reference',
+                model: 'gemini-direct'
+            };
             try {
                 if (base64Url.startsWith('data:')) {
                     const base64Data = base64Url.split(',')[1];

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { storageService } from '@/lib/storageService';
+import type { R2PathContext } from '@/lib/r2-path';
 import { JimengModel } from '@/components/jimeng/JimengOptions';
 
 interface UseThreeViewGenerationProps {
@@ -9,6 +10,8 @@ interface UseThreeViewGenerationProps {
     description: string;
     appearance: string;
     userId?: string;
+    projectId?: string;
+    characterId?: string;
     setReferenceImages: React.Dispatch<React.SetStateAction<string[]>>;
     setPreviewImage: (url: string | null) => void;
     setSoraStatus: (status: any) => void;
@@ -33,6 +36,8 @@ export function useThreeViewGeneration({
     description,
     appearance,
     userId,
+    projectId,
+    characterId,
     setReferenceImages,
     setPreviewImage,
     setSoraStatus,
@@ -67,13 +72,26 @@ export function useThreeViewGeneration({
 
         setIsGenerating(true);
         try {
-            let base64Url = '';
-            // Use a temp folder for generated assets so they can be cleaned up if not used
-            const folder = `projects/temp/characters/${userId || 'anonymous'}`;
+            const uploadContext: R2PathContext = {
+                projectId,
+                scope: 'characters',
+                entityId: characterId || 'character',
+                assetType: 'reference',
+                model: genMode
+            };
 
             if (genMode === 'seedream') {
                 const volcanoService = VolcanoEngineService.getInstance();
-                base64Url = await volcanoService.generateSingleImage(prompt, aspectRatio);
+                const imageUrl = await volcanoService.generateSingleImage(prompt, aspectRatio, [], uploadContext);
+                let finalUrl = imageUrl;
+                if (finalUrl.startsWith('data:')) {
+                    finalUrl = await storageService.uploadBase64ToR2(finalUrl, uploadContext, `three_view_${Date.now()}.png`, userId || 'anonymous');
+                }
+                setReferenceImages(prev => [finalUrl, ...prev]);
+                setPreviewImage(finalUrl);
+                setSoraStatus('none');
+                setSelectedRefIndex(0);
+                toast.success('三视图生成成功！');
             } else if (genMode === 'jimeng') {
                 const { jimengService } = await import('@/services/jimengService');
                 const sessionid = localStorage.getItem('jimeng_session_id');
@@ -83,40 +101,20 @@ export function useThreeViewGeneration({
                     prompt,
                     model: jimengModel,
                     aspectRatio,
-                    sessionid
+                    sessionid,
+                    uploadContext
                 });
 
                 const historyId = genResult.data?.aigc_data?.history_record_id;
                 if (!historyId) throw new Error('即梦任务提交失败');
 
-                const pollResult = await jimengService.pollTask(historyId, sessionid);
+                const pollResult = await jimengService.pollTask(historyId, sessionid, 60, uploadContext);
                 const imageUrl = pollResult.url || (pollResult.urls && pollResult.urls[0]);
                 if (!imageUrl) throw new Error('即梦未返回图片');
 
-                const proxyResp = await fetch('/api/image-proxy', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: imageUrl }),
-                });
-
-                if (!proxyResp.ok) throw new Error('图片下载失败');
-                const { data: base64Data, mimeType } = await proxyResp.json();
-                base64Url = `data:${mimeType};base64,${base64Data}`;
-
-                // Upload generated image to R2 so we hava a persistent URL
-                // Convert Base64 to Blob/File
-                const res = await fetch(base64Url);
-                const blob = await res.blob();
-                const file = new File([blob], `generated_ref_${Date.now()}.png`, { type: mimeType });
-
-                const { url: persistentUrl } = await storageService.uploadFile(file, folder, userId || 'anonymous');
-
-                setReferenceImages(prev => [persistentUrl, ...prev]);
-                setPreviewImage(persistentUrl);
+                setReferenceImages(prev => [imageUrl, ...prev]);
+                setPreviewImage(imageUrl);
                 setSoraStatus('none');
-                // setSelectedRefIndex logic: if it was empty, select 0. 
-                // Since we prepend, the new image is at 0.
-                // We can safely set it to 0.
                 setSelectedRefIndex(0);
 
                 toast.success(`三视图生成成功并保存！`);
@@ -127,15 +125,13 @@ export function useThreeViewGeneration({
                 const imageUrl = await generateCharacterThreeView(prompt, 'Anime', [], aspectRatio);
                 if (!imageUrl) throw new Error('Gemini 未返回图片');
 
-                base64Url = imageUrl;
+                let finalUrl = imageUrl;
+                if (finalUrl.startsWith('data:')) {
+                    finalUrl = await storageService.uploadBase64ToR2(finalUrl, uploadContext, `three_view_${Date.now()}.png`, userId || 'anonymous');
+                }
 
-                const res = await fetch(base64Url);
-                const blob = await res.blob();
-                const file = new File([blob], `generated_ref_${Date.now()}.png`, { type: 'image/png' });
-                const { url: persistentUrl } = await storageService.uploadFile(file, folder, userId || 'anonymous');
-
-                setReferenceImages(prev => [persistentUrl, ...prev]);
-                setPreviewImage(persistentUrl);
+                setReferenceImages(prev => [finalUrl, ...prev]);
+                setPreviewImage(finalUrl);
                 setSoraStatus('none');
                 setSelectedRefIndex(0);
 
@@ -148,7 +144,7 @@ export function useThreeViewGeneration({
         } finally {
             setIsGenerating(false);
         }
-    }, [name, generationPrompt, genMode, jimengModel, aspectRatio, userId, setReferenceImages, setPreviewImage, setSoraStatus, setSelectedRefIndex]);
+    }, [name, generationPrompt, genMode, jimengModel, aspectRatio, userId, projectId, characterId, setReferenceImages, setPreviewImage, setSoraStatus, setSelectedRefIndex]);
 
     return {
         generationPrompt,

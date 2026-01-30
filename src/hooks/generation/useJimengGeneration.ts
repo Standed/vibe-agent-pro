@@ -6,6 +6,7 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { storageService } from '@/lib/storageService';
 import { dataService } from '@/lib/dataService';
+import type { R2PathContext } from '@/lib/r2-path';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import { AspectRatio, GenerationHistoryItem } from '@/types/project';
 
@@ -67,11 +68,21 @@ export function useJimengGeneration({
         if (!user) throw new Error('User not authenticated');
 
         // 如果已经是 R2 链接，直接返回
+        const r2PublicUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || '';
+        if (r2PublicUrl && url.startsWith(r2PublicUrl)) {
+            return url;
+        }
         if (url.includes('r2.dev') || url.includes('r2.cloudflarestorage')) {
             return url;
         }
 
-        const folder = `projects/${project?.id}/shots/${shotId}`;
+        const folder: R2PathContext = {
+            projectId: project?.id,
+            scope: 'shots',
+            entityId: shotId,
+            assetType: 'image',
+            model: 'jimeng'
+        };
         let blob: Blob;
 
         try {
@@ -115,6 +126,13 @@ export function useJimengGeneration({
 
         const { enrichedPrompt: promptForModel, referenceImageUrls, usedCharacters, usedLocations } = enrichPromptWithAssets(prompt, project, undefined, options);
         const projectAspectRatio = project?.settings.aspectRatio || AspectRatio.WIDE;
+        const uploadContext: R2PathContext = {
+            projectId: project.id,
+            scope: capturedShotId ? 'shots' : capturedSceneId ? 'scenes' : 'project',
+            entityId: capturedShotId || capturedSceneId || project.id,
+            assetType: 'image',
+            model: 'jimeng'
+        };
 
         // 收集所有参考图
         const mentionedImageUrls: string[] = [
@@ -156,7 +174,8 @@ export function useJimengGeneration({
             aspectRatio: projectAspectRatio,
             sessionid,
             imageUrls: allReferenceUrls,
-            resolutionType: resolution
+            resolutionType: resolution,
+            uploadContext
         }).then(async (genResult) => {
             const historyId = genResult.data?.aigc_data?.history_record_id;
             if (!historyId) {
@@ -164,7 +183,7 @@ export function useJimengGeneration({
             }
 
             // 轮询
-            const pollResult = await jimengService.pollTask(historyId, sessionid);
+            const pollResult = await jimengService.pollTask(historyId, sessionid, 60, uploadContext);
             const urls = pollResult.urls || [pollResult.url];
 
             if (urls.length > 0) {

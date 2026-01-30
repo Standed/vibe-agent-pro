@@ -2,6 +2,7 @@
 // Based on long_video_gen/app_250911.py
 
 import { authenticatedFetch } from '@/lib/api-client';
+import type { R2PathContext } from '@/lib/r2-path';
 
 export interface StoryboardScene {
   order_index: number;
@@ -168,12 +169,13 @@ export class VolcanoEngineService {
   /**
    * Generate single image using SeeDream model
    * 根据项目画面比例生成单图
-   * 🔥 通过 API 路由生成，服务器端自动转换为 base64 避免 URL 过期
+   * 🔥 通过 API 路由生成，服务器端上传 R2 返回持久化 URL
    */
   async generateSingleImage(
     prompt: string,
     aspectRatio?: string, // '16:9', '9:16', '1:1', '4:3', '3:4', '21:9'
-    referenceImages: string[] = [] // Added parameter for reference images
+    referenceImages: string[] = [], // Added parameter for reference images
+    uploadContext?: R2PathContext
   ): Promise<string> {
     // 根据画面比例计算尺寸 - 满足 SeeDream API 最小像素要求（3,686,400 像素）
     const sizeMap: Record<string, string> = {
@@ -187,7 +189,7 @@ export class VolcanoEngineService {
 
     const size = aspectRatio && sizeMap[aspectRatio] ? sizeMap[aspectRatio] : '2048x2048';
 
-    // 调用 API 路由，由服务器端处理下载和 base64 转换（使用认证）
+    // 调用 API 路由，由服务器端下载并上传 R2（使用认证）
     const response = await authenticatedFetch('/api/seedream', {
       method: 'POST',
       body: JSON.stringify({
@@ -195,6 +197,7 @@ export class VolcanoEngineService {
         size,
         model: this.seedreamModelId,
         imageUrls: referenceImages, // Pass reference images
+        uploadContext
       }),
     });
 
@@ -209,19 +212,20 @@ export class VolcanoEngineService {
       throw new Error('SeeDream 返回数据格式错误');
     }
 
-    // API 路由已经返回 base64 data URL
+    // API 路由返回持久化后的 R2 URL
     return data.url;
   }
 
   /**
    * 图片编辑 (Image-to-Image)
    * 根据原图和新提示词生成编辑后的图片
-   * 🔥 通过 API 路由生成，服务器端自动转换为 base64 避免 URL 过期
+   * 🔥 通过 API 路由生成，服务器端上传 R2 返回持久化 URL
    */
   async editImage(
     imageUrl: string,
     prompt: string,
-    aspectRatio?: string
+    aspectRatio?: string,
+    uploadContext?: R2PathContext
   ): Promise<string> {
     // 根据画面比例计算尺寸 - 与 generateSingleImage 保持一致，满足 3,686,400 像素最小要求
     const sizeMap: Record<string, string> = {
@@ -235,7 +239,7 @@ export class VolcanoEngineService {
 
     const size = aspectRatio && sizeMap[aspectRatio] ? sizeMap[aspectRatio] : '2048x2048';
 
-    // 调用 API 路由，由服务器端处理下载和 base64 转换（使用认证）
+    // 调用 API 路由，由服务器端下载并上传 R2（使用认证）
     const response = await authenticatedFetch('/api/seedream-edit', {
       method: 'POST',
       body: JSON.stringify({
@@ -243,6 +247,7 @@ export class VolcanoEngineService {
         prompt,
         size,
         model: this.seedreamModelId,
+        uploadContext
       }),
     });
 
@@ -257,7 +262,7 @@ export class VolcanoEngineService {
       throw new Error('返回数据格式错误');
     }
 
-    // API 路由已经返回 base64 data URL
+    // API 路由返回持久化后的 R2 URL
     return data.url;
   }
 

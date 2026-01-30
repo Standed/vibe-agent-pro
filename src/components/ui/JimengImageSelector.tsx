@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { toast } from 'sonner';
 import { storageService } from '@/lib/storageService';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { useProjectStore } from '@/store/useProjectStore';
 
 interface JimengImageSelectorProps {
     images: string[]; // 即梦返回的所有图片 URL
@@ -28,6 +29,7 @@ export function JimengImageSelector({
     onClose,
 }: JimengImageSelectorProps) {
     const { user } = useAuth();
+    const project = useProjectStore((state) => state.project);
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [mounted, setMounted] = useState(false);
@@ -68,7 +70,13 @@ export function JimengImageSelector({
             // 上传到 R2
             const timestamp = Date.now();
             const filename = `jimeng_${timestamp}_${selectedIndex}.webp`;
-            const folder = shotId ? `shots/${shotId}` : sceneId ? `scenes/${sceneId}` : 'jimeng';
+            const folder = {
+                projectId: project?.id,
+                scope: shotId ? 'shots' : sceneId ? 'scenes' : 'project',
+                entityId: shotId || sceneId || project?.id,
+                assetType: 'image',
+                model: 'jimeng'
+            };
 
             const r2Url = await storageService.uploadBase64ToR2(
                 `data:${mimeType};base64,${base64Data}`,

@@ -48,6 +48,9 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     });
   };
 
+  const characterIdRef = useRef(initialCharacter?.id || generateUuid());
+  const resolvedProjectId = projectId || initialCharacter?.projectId || undefined;
+
   // ===== 通用角色信息状态 =====
   const [name, setName] = useState(initialCharacter?.name || '');
   const [description, setDescription] = useState(initialCharacter?.description || '');
@@ -79,7 +82,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     appearance,
     referenceImages,
     userId: user?.id,
-    projectId: projectId || initialCharacter?.projectId || undefined,
+    projectId: resolvedProjectId,
     persistCharacter: async () => {
       // 提供一个简化的持久化函数供 hook 使用
       const result = await persistCharacter({ closeAfter: false, showToast: false });
@@ -117,6 +120,8 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     description,
     appearance,
     userId: user?.id,
+    projectId: resolvedProjectId,
+    characterId: characterIdRef.current,
     setReferenceImages,
     setPreviewImage,
     setSoraStatus,
@@ -279,7 +284,13 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
       uploadPromises.push(
         (async () => {
           try {
-            const folder = `projects/characters/${user?.id || 'anonymous'}`;
+            const folder = {
+              projectId: resolvedProjectId,
+              scope: 'characters',
+              entityId: characterIdRef.current,
+              assetType: 'reference',
+              model: 'upload'
+            };
             // Upload to R2 (or fallback)
             const { url } = await storageService.uploadFile(file, folder, user?.id || 'anonymous');
             return url;
@@ -353,7 +364,13 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     const uploadingToast = toast.loading('正在上传 Sora 参考视频...');
 
     try {
-      const folder = `projects/characters/${user?.id || 'anonymous'}/videos`;
+      const folder = {
+        projectId: resolvedProjectId,
+        scope: 'characters',
+        entityId: characterIdRef.current,
+        assetType: 'video',
+        model: 'upload'
+      };
       const { url } = await storageService.uploadFile(file, folder, user?.id || 'anonymous');
       setSoraReferenceVideoUrl(url);
       toast.success('Sora 参考视频上传成功！');
@@ -408,7 +425,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     const finalSoraIdentity = getSoraIdentityForSave();
     const normalizedSoraUsername = soraUsername.trim();
 
-    const candidateId = savedCharacterId || initialCharacter?.id;
+    const candidateId = savedCharacterId || initialCharacter?.id || characterIdRef.current;
     const characterId = isValidUuid(candidateId) ? candidateId! : generateUuid();
     const character: Character = {
       id: characterId,

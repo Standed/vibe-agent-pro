@@ -10,6 +10,7 @@
 import { supabase } from './supabase/client';
 import { getCurrentUser } from './supabase/auth';
 import { r2Service } from './cloudflare-r2';
+import { buildR2Folder, type R2PathContext } from './r2-path';
 
 export type StorageType = 'r2' | 'supabase' | 'local';
 export type FileCategory = 'image' | 'video' | 'audio' | 'other';
@@ -18,6 +19,13 @@ interface UploadResult {
   url: string;
   path?: string;
 }
+
+type FolderInput = string | R2PathContext;
+
+const resolveFolder = (folder: FolderInput): string => {
+  if (typeof folder === 'string') return folder;
+  return buildR2Folder(folder);
+};
 
 const SUPABASE_STORAGE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET;
 
@@ -59,7 +67,7 @@ class StorageService {
    * @param folder 文件夹路径（例如: 'projects/xxx/images'）
    * @returns 文件 URL
    */
-  async uploadFile(file: File, folder: string, userId?: string): Promise<UploadResult> {
+  async uploadFile(file: File, folder: FolderInput, userId?: string): Promise<UploadResult> {
     // 如果提供了 userId，直接使用；否则尝试获取当前用户
     const user = userId ? { id: userId } : await getCurrentUser();
 
@@ -72,10 +80,10 @@ class StorageService {
     // 已登录：根据文件类型选择存储方式
     if (this.shouldUseR2(file)) {
       // 图片/视频 → Cloudflare R2
-      return await this.uploadToR2(file, folder, user.id);
+      return await this.uploadToR2(file, resolveFolder(folder), user.id);
     } else {
       // 音频/其他 → Supabase Storage
-      return await this.uploadToSupabase(file, folder, user.id);
+      return await this.uploadToSupabase(file, resolveFolder(folder), user.id);
     }
   }
 
@@ -214,7 +222,7 @@ class StorageService {
   /**
    * 批量上传文件
    */
-  async uploadFiles(files: File[], folder: string): Promise<UploadResult[]> {
+  async uploadFiles(files: File[], folder: FolderInput): Promise<UploadResult[]> {
     const results = await Promise.all(
       files.map((file) => this.uploadFile(file, folder))
     );
@@ -283,7 +291,7 @@ class StorageService {
    */
   async uploadBase64ToR2(
     base64: string,
-    folder: string,
+    folder: FolderInput,
     filename?: string,
     userId?: string
   ): Promise<string> {
@@ -333,7 +341,7 @@ class StorageService {
 
       // console.log('[storageService] 开始调用 uploadToR2...');
       // 上传到 R2
-      const result = await this.uploadToR2(file, folder, userId);
+      const result = await this.uploadToR2(file, resolveFolder(folder), userId);
       // console.log('[storageService] ✅ uploadToR2 完成，URL:', result.url.substring(0, 50) + '...');
       return result.url;
     } catch (error: any) {
@@ -351,7 +359,7 @@ class StorageService {
    */
   async uploadBase64ArrayToR2(
     base64Array: string[],
-    folder: string,
+    folder: FolderInput,
     userId?: string
   ): Promise<string[]> {
     const results = await Promise.all(

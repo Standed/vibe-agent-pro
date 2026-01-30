@@ -58,17 +58,38 @@ export async function middleware(req: NextRequest) {
 
         if (data.session && !error) {
           console.log('[Middleware] Token refreshed successfully');
-          // 更新 Response Cookie (7天有效)
+
           const newSession = {
             access_token: data.session.access_token,
             refresh_token: data.session.refresh_token,
           };
 
-          res.cookies.set('supabase-session', encodeURIComponent(JSON.stringify(newSession)), {
+          const newCookieValue = encodeURIComponent(JSON.stringify(newSession));
+
+          // 关键修复：将刷新的 Token 同步到下游请求 Request 中
+          // 避免 API 路由再次使用旧 Token 触发二次刷新导致冲突
+          const requestHeaders = new Headers(req.headers);
+          requestHeaders.set('Authorization', `Bearer ${newSession.access_token}`);
+
+          // 更新请求中的 Cookie (这样 API 路由读取 cookie 也是新的)
+          // 注意：我们需要重新构建 Cookie 字符串，这比较麻烦，但 Next.js 允许在 NextResponse.next 配置 request
+          // 但这里直接覆盖 Authorization 头是最稳健的，因为 auth-middleware 优先读 Header
+
+          // 使用新的 Headers 创建 Response 对象，将新状态传递给下游
+          const nextRes = NextResponse.next({
+            request: {
+              headers: requestHeaders,
+            },
+          });
+
+          // 同时设置 Response Set-Cookie 通知客户端更新
+          nextRes.cookies.set('supabase-session', newCookieValue, {
             maxAge: 60 * 60 * 24 * 7,
             path: '/',
             sameSite: 'lax',
           });
+
+          return nextRes;
         } else {
           console.warn('[Middleware] Refresh failed:', error?.message);
           hasAuthCookie = false;

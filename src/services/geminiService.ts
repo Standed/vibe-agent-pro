@@ -2,6 +2,7 @@
 
 import { AspectRatio, ImageSize } from '@/types/project';
 import { authenticatedFetch } from '@/lib/api-client';
+import type { R2PathContext } from '@/lib/r2-path';
 
 const parseTimeout = (val: string | undefined, fallback: number) => {
   const n = Number(val);
@@ -210,7 +211,8 @@ export const generateMultiViewGrid = async (
   aspectRatio: AspectRatio,
   imageSize: ImageSize,
   referenceImages: ReferenceImageData[] = [],
-  referenceImageCaptions: string[] = []
+  referenceImageCaptions: string[] = [],
+  uploadContext?: R2PathContext
 ): Promise<{ fullImage: string; slices: string[] }> => {
   // 过多参考图会触发 FUNCTION_PAYLOAD_TOO_LARGE 错误，限制数量；压缩处理在 optimizeDataUrl
   const MAX_REF_IMAGES = 10;
@@ -301,7 +303,8 @@ ${prompt}
       gridRows,
       gridCols,
       aspectRatio,
-      referenceImages: safeReferenceImages
+      referenceImages: safeReferenceImages,
+      uploadContext
     });
     // console.log('[geminiService Grid Debug] ✅ API 请求成功');
     // console.log('[geminiService Grid Debug] fullImage 长度:', data.fullImage?.length || 0);
@@ -350,7 +353,8 @@ export const generateSimpleGrid = async (
   gridRows: number,
   gridCols: number,
   aspectRatio: AspectRatio,
-  referenceImages: ReferenceImageData[] = []
+  referenceImages: ReferenceImageData[] = [],
+  uploadContext?: R2PathContext
 ): Promise<{ fullImage: string; slices: string[] }> => {
   // 限制参考图数量
   const MAX_REF_IMAGES = 10;
@@ -395,7 +399,8 @@ STYLE:
       gridRows,
       gridCols,
       aspectRatio,
-      referenceImages: safeReferenceImages
+      referenceImages: safeReferenceImages,
+      uploadContext
     });
 
     const fullImageSource = data.fullImage;
@@ -456,7 +461,8 @@ export const generateSingleImage = async (
   prompt: string,
   aspectRatio: AspectRatio,
   referenceImages: ReferenceImageData[] = [],
-  imageSize: '2K' | '4K' = '2K'
+  imageSize: '2K' | '4K' = '2K',
+  uploadContext?: R2PathContext
 ): Promise<string> => {
   // 直接使用传入的 prompt，避免系统预设的模板干扰用户的编辑意图
   try {
@@ -464,7 +470,8 @@ export const generateSingleImage = async (
       prompt,
       referenceImages,
       aspectRatio,
-      imageSize
+      imageSize,
+      uploadContext
     });
     if (!data.url) {
       throw new Error('未能生成图片');
