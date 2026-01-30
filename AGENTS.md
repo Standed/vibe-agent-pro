@@ -219,6 +219,7 @@ Agent 通过 Function Calling 调用以下工具操作项目（共 27 个工具�
 | **参考图限制** | 最多 10 张，每张最大 10MB，压缩后每张 4MB 预算 |
 | **不影响 Agent** | Agent 模式仍使用 `generateMultiViewGrid`（完整分镜描述） |
 | **Grid 历史记录** | 分镜级别 Grid 生成历史自动保存，支持刷新后查看 |
+| **自适应比例** | 生成的 Grid 及单图严格遵循项目设置的全局画面比例（Aspect Ratio），无需手动调整 |
 
 ### Pro 模式拖拽交互 (v3.8+)
 
