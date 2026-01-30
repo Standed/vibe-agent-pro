@@ -54,9 +54,16 @@ export function ChatBubble({
     const hasImages = message.images && message.images.length > 0;
     const hasVideo = !!message.videoUrl;
 
+    // Detect if content is a Grid (2x2 or 3x3) to expand container width
+    const isGridContent = (message.gridData?.slices?.length && message.gridData.slices.length >= 4) || (message.images && message.images.length >= 4);
+
+    // Use wider layout for grids to ensure images are large enough
+    const containerMaxWidth = isGridContent ? "max-w-full md:max-w-[95%]" : "max-w-[90%] md:max-w-[85%]";
+    const contentMaxWidth = isGridContent ? "max-w-full w-full" : "max-w-[85%]";
+
     return (
         <div className={cn("flex w-full mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300 group/message", isUser ? "justify-end" : "justify-start")}>
-            <div className={cn("flex max-w-[90%] md:max-w-[85%] gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
+            <div className={cn("flex gap-3", containerMaxWidth, isUser ? "flex-row-reverse" : "flex-row")}>
 
                 {/* Avatar */}
                 <div className={cn(
@@ -72,7 +79,8 @@ export function ChatBubble({
 
                 {/* Content Bubble */}
                 <div className={cn(
-                    "flex flex-col gap-1 min-w-0 max-w-[85%]",
+                    "flex flex-col gap-1 min-w-0",
+                    contentMaxWidth,
                     isUser ? "items-end" : "items-start"
                 )}>
                     {/* Text Content */}
@@ -131,8 +139,9 @@ export function ChatBubble({
                     {/* Images (User or Assistant) */}
                     {hasImages && (
                         <div className={cn(
-                            "max-w-[360px] w-auto transition-all duration-300 mt-1",
-                            isUser ? "rounded-2xl overflow-hidden" : "rounded-2xl overflow-hidden"
+                            isGridContent ? "max-w-full w-full" : "max-w-[360px] w-auto",
+                            "transition-all duration-300 mt-1",
+                            "rounded-2xl overflow-hidden"
                         )}>
                             {isUser ? (
                                 <div className="flex flex-wrap gap-2 max-w-[300px] justify-end">

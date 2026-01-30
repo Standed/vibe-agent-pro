@@ -89,16 +89,16 @@ function DraggableResultImage({
     }
 
     if (isSingle) {
-        // 单图模式下，如果是特定竖屏比例，限制最大宽度以免太大
+        // Single image mode
         if (ratio === AspectRatio.MOBILE) {
-            containerClass += ` w-[200px] ${aspectClass}`;
+            containerClass += ` w-[280px] ${aspectClass}`; // Increased size
         } else if (ratio === AspectRatio.PORTRAIT) {
-            containerClass += ` w-[270px] ${aspectClass}`;
+            containerClass += ` w-[360px] ${aspectClass}`; // Increased size
         } else {
             containerClass += ` w-full ${aspectClass}`;
         }
     } else {
-        // 多图 Grid 模式下，直接 fill 容器（由父级 grid 控制宽度），但保持比例
+        // Grid mode
         containerClass += ` w-full ${aspectClass}`;
     }
 
@@ -140,46 +140,49 @@ function DraggableResultImage({
             )}
 
             {/* Hover Actions */}
-            <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2">
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        // 确保使用 downloadFile 进行下载
-                        const filename = gridData ? `grid_slice_${idx + 1}` : `image_${idx + 1}`;
-                        downloadFile(img, filename).catch(() => {
-                            // 失败兜底
-                            const link = document.createElement('a');
-                            link.href = img;
-                            link.download = filename;
-                            link.target = '_blank';
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
-                        });
-                    }}
-                    className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm transition-colors"
-                    title="下载图片"
-                >
-                    <Download size={14} />
-                </button>
-                {onReuseImage && (
+            <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end items-end z-20">
+                {/* Right: Actions */}
+                <div className="flex items-center gap-2">
                     <button
-                        onClick={(e) => { e.stopPropagation(); onReuseImage(img); }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            // 确保使用 downloadFile 进行下载
+                            const filename = gridData ? `grid_slice_${idx + 1}` : `image_${idx + 1}`;
+                            downloadFile(img, filename).catch(() => {
+                                // 失败兜底
+                                const link = document.createElement('a');
+                                link.href = img;
+                                link.download = filename;
+                                link.target = '_blank';
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                            });
+                        }}
                         className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm transition-colors"
-                        title="使用此图作为参考"
+                        title="下载图片"
                     >
-                        <ImageIcon size={14} />
+                        <Download size={14} />
                     </button>
-                )}
-                {onApplyToShot && (
-                    <button
-                        onClick={(e) => { e.stopPropagation(); onApplyToShot(img); }}
-                        className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm transition-colors"
-                        title="应用到当前分镜"
-                    >
-                        <Grid3x3 size={14} />
-                    </button>
-                )}
+                    {onReuseImage && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onReuseImage(img); }}
+                            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm transition-colors"
+                            title="使用此图作为参考"
+                        >
+                            <ImageIcon size={14} />
+                        </button>
+                    )}
+                    {onApplyToShot && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onApplyToShot(img); }}
+                            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm transition-colors"
+                            title="应用到当前分镜"
+                        >
+                            <Grid3x3 size={14} />
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -213,15 +216,27 @@ export function GenerationResult({
     if (allImages.length === 0) return null;
 
     // Logic for collapsing
-    const MAX_VISIBLE = 4;
+    const is3x3 = allImages.length === 9;
+    const showGrid = allImages.length > 1;
+    const MAX_VISIBLE = is3x3 ? 9 : 4;
     const shouldCollapse = allImages.length > MAX_VISIBLE;
     const displayImages = isExpanded || !shouldCollapse ? allImages : allImages.slice(0, MAX_VISIBLE);
     const hiddenCount = allImages.length - MAX_VISIBLE;
 
+    // Grid Layout Classes
+    let gridLayoutClass = "";
+    if (is3x3) {
+        gridLayoutClass = "grid-cols-3 min-w-[600px]";
+    } else if (showGrid) {
+        gridLayoutClass = "grid-cols-2 min-w-[400px]";
+    } else {
+        gridLayoutClass = "grid-cols-1 min-w-[300px]";
+    }
+
     return (
         <div className="space-y-3">
             {/* Images Grid */}
-            <div className={`grid gap-2 ${allImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} ${(allImages.length === 1 && (defaultAspectRatio === AspectRatio.MOBILE || defaultAspectRatio === AspectRatio.PORTRAIT || gridData?.aspectRatio === AspectRatio.MOBILE || gridData?.aspectRatio === AspectRatio.PORTRAIT))
+            <div className={`grid gap-2 ${gridLayoutClass} ${(allImages.length === 1 && (defaultAspectRatio === AspectRatio.MOBILE || defaultAspectRatio === AspectRatio.PORTRAIT || gridData?.aspectRatio === AspectRatio.MOBILE || gridData?.aspectRatio === AspectRatio.PORTRAIT))
                 ? 'w-fit' // 单张竖图自适应宽度
                 : 'w-full' // 多张或横图占满
                 }`}>
@@ -247,7 +262,7 @@ export function GenerationResult({
                             {/* "Show More" Overlay */}
                             {isLastVisible && (
                                 <div
-                                    className="absolute inset-0 z-10 bg-black/60 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-black/70 transition-colors"
+                                    className="absolute inset-0 z-30 bg-black/60 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-black/70 transition-colors"
                                     onClick={() => setIsExpanded(true)}
                                 >
                                     <span className="text-white font-bold text-lg">+{hiddenCount}</span>
@@ -293,7 +308,26 @@ export function GenerationResult({
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {onReusePrompt && (
+                    {allImages.length > 1 && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                allImages.forEach((img, idx) => {
+                                    // Stagger downloads slightly to avoid browser blocking
+                                    setTimeout(() => {
+                                        const filename = gridData ? `grid_slice_${idx + 1}` : `image_${idx + 1}`;
+                                        downloadFile(img, filename);
+                                    }, idx * 300);
+                                });
+                            }}
+                            className="flex items-center gap-1.5 text-[10px] text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors px-2 py-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
+                            title="下载所有图片"
+                        >
+                            <Download size={12} />
+                            全部下载
+                        </button>
+                    )}
+                    {/* {onReusePrompt && (
                         <button
                             onClick={onReusePrompt}
                             className="flex items-center gap-1.5 text-[10px] text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors px-2 py-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
@@ -301,7 +335,7 @@ export function GenerationResult({
                             <RefreshCw size={12} />
                             复用提示词
                         </button>
-                    )}
+                    )} */}
                 </div>
             </div>
         </div>

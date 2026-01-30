@@ -393,6 +393,9 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Jimeng Pro Mode Upgrade** - Consolidated multi-image generations into a single "Grid-like" message (2x2), removing the need for manual refresh.
 - ✅ **Critical Login Fix** - Resolved infinite login loop on `/auth/login` by strictly enforcing server-side session validation.
 - ✅ **User UX** - Added download button for user-uploaded reference images in Pro mode chat history.
+- ✅ **Grid Layout Optimization** - Fixed layout issues for 3x3 Grids, ensuring full visibility and adaptive width for all grid sizes (Single/2x2/3x3).
+- ✅ **Image Preview Enhancements** - Image preview overlay now supports keyboard navigation (Arrow Left/Right) with auto-focus support.
+- ✅ **Download Positioning** - Relocated the download button in Grid images to the right-side action group for better usability.
 
 ### v3.9.0 (2026-01-30)
 - ✅ **Grid Instant Apply** - Applying a Grid image or slice to a shot (via drag, click, or new canvas button) now **immediately** marks the shot as 'Done' and persists to the database, ensuring "what you see is what you get".
