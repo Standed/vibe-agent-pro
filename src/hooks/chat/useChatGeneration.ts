@@ -96,8 +96,9 @@ export function useChatGeneration({
 
     const handleSend = async (
         inputText: string,
-        uploadedImages: File[],
-        activeReferences: ActiveReference[],
+        // Refactored: Accept single ordered list to preserve mix of files/urls
+        orderedReferences: ActiveReference[],
+        _deprecated_Files: File[] = [], // Kept for signature compat if needed, but unused
         selectedModel: GenerationModel,
         gridSize: '2x2' | '3x3',
         geminiImageSize: '2K' | '4K',
@@ -105,14 +106,17 @@ export function useChatGeneration({
         soraHandler?: (allRefUrls: string[]) => Promise<void>,
         jimengHandler?: (allRefUrls: string[], contextKey: string) => Promise<void>
     ) => {
-        if ((!inputText.trim() && uploadedImages.length === 0) || isGenerating || !user || !project) return;
+        // Collect files to upload from the ordered list
+        const filesToUpload = orderedReferences.filter(r => r.file).map(r => r.file!);
+
+        if ((!inputText.trim() && filesToUpload.length === 0 && orderedReferences.length === 0) || isGenerating || !user || !project) return;
 
         const currentShot = project.shots.find(s => s.id === selectedShotId);
         const currentSceneIdCaptured = currentSceneId || (currentShot ? currentShot.sceneId : null);
         const contextKey = selectedShotId ? `pro-chat:${project.id}:shot:${selectedShotId}` : currentSceneIdCaptured ? `pro-chat:${project.id}:scene:${currentSceneIdCaptured}` : `pro-chat:${project.id}:global`;
 
-        // 1. Capture Active References
-        const activeRefUrls = activeReferences.map(r => r.url);
+        // 1. Capture Active References (URLs only for now) - incomplete until upload
+        // We will construct the final list later.
 
         // 2. Optimistic User Message
         const userMsgId = generateMessageId();
@@ -121,10 +125,7 @@ export function useChatGeneration({
             role: 'user',
             content: inputText,
             timestamp: new Date(),
-            images: [
-                ...uploadedImages.map(f => URL.createObjectURL(f)),
-                ...activeRefUrls
-            ],
+            images: orderedReferences.map(r => r.file ? URL.createObjectURL(r.file) : r.url),
             shotId: selectedShotId || undefined,
             sceneId: currentSceneIdCaptured || undefined,
         };
@@ -139,8 +140,10 @@ export function useChatGeneration({
         setIsGenerating(true);
 
         // 3. Pre-upload Local Images to R2 (Concurrent) - With Compression
-        let uploadedUrls: string[] = [];
-        if (uploadedImages.length > 0) {
+        // Map file -> uploaded URL
+        const fileUrlMap = new Map<File, string>();
+
+        if (filesToUpload.length > 0) {
             try {
                 const baseScope: R2PathContext = {
                     projectId: project.id,
@@ -150,32 +153,26 @@ export function useChatGeneration({
                     model: 'upload'
                 };
 
-                const uploadPromises = uploadedImages.map(async (file, idx) => {
+                const uploadPromises = filesToUpload.map(async (file, idx) => {
                     try {
-                        // 1. Compress Image
                         const compressedDataUrl = await compressFileToBase64(file);
-
-                        // 2. Parse Base64
                         const matches = compressedDataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-
                         if (matches && matches.length === 3) {
-                            const filePath = `upload_${Date.now()}_${idx}.jpg`; // Compressed is JPEG
-
-                            // 3. Upload Compressed (keep data URL to preserve MIME)
-                            return await storageService.uploadBase64ToR2(compressedDataUrl, baseScope, filePath, user.id);
+                            const filePath = `upload_${Date.now()}_${idx}.jpg`;
+                            const url = await storageService.uploadBase64ToR2(compressedDataUrl, baseScope, filePath, user.id);
+                            fileUrlMap.set(file, url);
+                            return url;
                         }
-
-                        // Fallback
-                        throw new Error("Invalid base64 format");
+                        throw new Error("Invalid base64");
                     } catch (err) {
                         console.warn(`Compression failed for ${file.name}, uploading original`, err);
-                        // Fallback to original upload
                         const res = await storageService.uploadFile(file, baseScope, user.id);
+                        fileUrlMap.set(file, res.url);
                         return res.url;
                     }
                 });
 
-                uploadedUrls = await Promise.all(uploadPromises);
+                await Promise.all(uploadPromises);
             } catch (error) {
                 console.error("Failed to upload images", error);
                 toast.error("图片上传失败，请重试");
@@ -184,7 +181,16 @@ export function useChatGeneration({
             }
         }
 
-        const allRefUrls = [...activeRefUrls, ...uploadedUrls];
+        // Reconstruct ALl Ref URLs preserving exact order from orderedReferences
+        const allRefUrls = orderedReferences.map(r => {
+            if (r.file && fileUrlMap.has(r.file)) {
+                return fileUrlMap.get(r.file)!;
+            }
+            return r.url;
+        });
+
+        // Use 'filesToUpload' for checks instead of deprecated arg
+        const uploadedImages = filesToUpload;
 
         // 4. Persist User Message (Background)
         dataService.saveChatMessage({
@@ -217,7 +223,7 @@ export function useChatGeneration({
             // 6. Gemini Generation Logic (Grid / Direct)
 
             // Smart Enrichment
-            const hasBaseImage = activeReferences.some(r => r.source === 'manual_upload' || r.source === 'history_ref') || uploadedImages.length > 0;
+            const hasBaseImage = orderedReferences.some(r => r.source === 'manual_upload' || r.source === 'history_ref') || orderedReferences.some(r => !!r.file);
             const { enrichedPrompt } = enrichPromptWithAssets(userMessage.content, project, currentShot?.description, { onlyExtractRefs: hasBaseImage });
 
             // IMPORTANT: Pass URLs directly to service to avoid body limits

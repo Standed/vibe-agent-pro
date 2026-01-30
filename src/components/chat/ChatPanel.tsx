@@ -593,14 +593,10 @@ export default function ChatPanel() {
                 inputText={inputText}
                 setInputText={setInputText}
                 onSend={() => {
-                    // Extract Files and Clean URLs from unified reference list
-                    const filesToSend = activeReferences.filter(r => r.file).map(r => r.file!);
-                    const pureRefs = activeReferences.filter(r => !r.file);
-
                     handleSend(
                         inputText,
-                        filesToSend,
-                        pureRefs,
+                        activeReferences, // Pass full ordered list
+                        [], // Deprecated files arg
                         selectedModel,
                         gridSize,
                         geminiImageSize,
