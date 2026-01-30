@@ -247,10 +247,10 @@ export interface GridData {
   slices: string[]; // 所有切片 URL
   sceneId?: string; // 关联的场景 ID（场景级 Grid）
   shotId?: string; // 关联的镜头 ID（单镜头 Grid）
-  gridRows: number; // Grid 行数
-  gridCols: number; // Grid 列数
-  gridSize: '2x2' | '3x3'; // Grid 大小
-  prompt: string; // 生成提示词
+  gridRows?: number; // Grid 行数
+  gridCols?: number; // Grid 列数
+  gridSize?: '2x2' | '3x3'; // Grid 大小
+  prompt?: string; // 生成提示词
   aspectRatio: string; // 画面比例
   assignments?: Record<string, number>; // 切片分配记录：shotId -> sliceIndex
 }

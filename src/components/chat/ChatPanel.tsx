@@ -522,14 +522,14 @@ export default function ChatPanel() {
                     <ChatBubble
                         key={msg.id}
                         message={msg as any}
-                        project={project?.id || '' as any} // fix project type mismatch - just passing id if needed or full object
+                        project={project as any} // fix project type mismatch - passing full object
                         onDelete={() => deleteMessage(msg.id)}
                         onReusePrompt={() => handleRestoreState(msg)}
                         onReuseImage={handleReuseImage}
                         onApplyToShot={handleApplyToShot}
                         onApplyVideoToShot={handleApplyVideoToShot as any}
                         onImageClick={(url, idx, m: any) => {
-                            if (m.gridData) {
+                            if (m.gridData && m.model === 'gemini-grid') {
                                 // If Gemini Grid, use specific Grid Modal
                                 setGridResult({
                                     fullImage: m.gridData.fullImage,

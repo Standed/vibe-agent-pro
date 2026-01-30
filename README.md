@@ -402,6 +402,13 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Proxy Download System** - Introduced `/api/proxy-download` to handle cross-origin R2 file downloads reliably, forcing file download instead of browser preview.
 - ✅ **Canvas Interaction** - Fixed missing Download/Edit actions in Grid state.
 - ✅ **Reference Image Fix** - Resolved issue where reusing history reference images failed in production by disabling fetch caching and adding proper User-Agent headers.
+- ✅ **Frontend & UI Experience Optimizations**:
+    - **Compact Grid Layout**: Optimized 3x3 and 2x2 grid display for better screen utilization.
+    - **Smart Interaction**: Separated click logic for Slice Selection (Grid) vs Image Preview (Single/Jimeng).
+    - **Aspect Ratio Fidelity**: strict metadata persistence for vertical/mobile aspect ratios across all models.
+- ✅ **Backend & AI Integration**:
+    - **Multi-Model Support**: Gemini, Jimeng, SeeDream integrated.
+    - **Robust Asset Pipeline**: R2 storage, proxy downloads, and automatic history tracking.
 
 ### v3.8.9 (2026-01-29)
 - ✅ **Canvas Flicker Fix** - Completely resolved canvas flickering during zoom/pan by refactoring grid rendering to CSS background and implementing memoized scene components.

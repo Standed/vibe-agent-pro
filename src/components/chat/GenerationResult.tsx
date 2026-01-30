@@ -36,7 +36,8 @@ function DraggableResultImage({
     onImageClick,
     onReuseImage,
     onApplyToShot,
-    defaultAspectRatio
+    defaultAspectRatio,
+    model
 }: {
     img: string;
     idx: number;
@@ -46,6 +47,7 @@ function DraggableResultImage({
     onReuseImage?: (url: string) => void;
     onApplyToShot?: (url: string) => void;
     defaultAspectRatio?: AspectRatio;
+    model?: string;
 }) {
     const [{ isDragging }, drag] = useDrag(() => ({
         type: IMAGE_TO_SHOT,
@@ -91,9 +93,9 @@ function DraggableResultImage({
     if (isSingle) {
         // Single image mode
         if (ratio === AspectRatio.MOBILE) {
-            containerClass += ` w-[280px] ${aspectClass}`; // Increased size
+            containerClass += ` w-[180px] ${aspectClass}`; // Reduced size
         } else if (ratio === AspectRatio.PORTRAIT) {
-            containerClass += ` w-[360px] ${aspectClass}`; // Increased size
+            containerClass += ` w-[220px] ${aspectClass}`; // Reduced size
         } else {
             containerClass += ` w-full ${aspectClass}`;
         }
@@ -116,7 +118,7 @@ function DraggableResultImage({
                 <img
                     src={img}
                     alt={`Result ${idx + 1}`}
-                    className="w-auto h-auto max-w-full max-h-[360px] object-contain transition-transform duration-500 group-hover:scale-105"
+                    className="w-auto h-auto max-w-full max-h-[280px] object-contain transition-transform duration-500 group-hover:scale-105"
                     onClick={() => onImageClick?.(img, idx)}
                 />
             ) : (
@@ -132,7 +134,7 @@ function DraggableResultImage({
             )}
 
             {/* Grid Badge */}
-            {isGrid && (
+            {isGrid && model === 'gemini-grid' && (gridData.gridRows || gridData.gridSize) && (
                 <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md text-white text-[10px] px-2 py-1 rounded-md flex items-center gap-1 font-medium">
                     <Grid3x3 size={12} />
                     Grid {gridData.gridRows && gridData.gridCols ? `${gridData.gridRows}x${gridData.gridCols}` : gridData.gridSize}
@@ -229,19 +231,19 @@ export function GenerationResult({
     // Grid Layout Classes
     let gridLayoutClass = "";
     if (is3x3) {
-        gridLayoutClass = "grid-cols-3 min-w-[600px]";
+        gridLayoutClass = "grid-cols-3 min-w-[360px] max-w-[480px]";
     } else if (showGrid) {
-        gridLayoutClass = "grid-cols-2 min-w-[400px]";
+        gridLayoutClass = "grid-cols-2 min-w-[240px] max-w-[360px]";
     } else {
-        gridLayoutClass = "grid-cols-1 min-w-[300px]";
+        gridLayoutClass = "grid-cols-1 min-w-[200px]";
     }
 
     return (
         <div className="space-y-3">
             {/* Images Grid */}
             <div className={`grid gap-2 ${gridLayoutClass} ${(allImages.length === 1 && (activeRatio === AspectRatio.MOBILE || activeRatio === AspectRatio.PORTRAIT))
-                    ? 'w-fit' // 单张竖图自适应宽度
-                    : 'w-full' // 多张或横图占满
+                ? 'w-fit' // 单张竖图自适应宽度
+                : 'w-full' // 多张或横图占满
                 }`}>
                 {displayImages.map((img, idx) => {
                     const isSingle = allImages.length === 1;
@@ -260,6 +262,7 @@ export function GenerationResult({
                                 onReuseImage={onReuseImage}
                                 onApplyToShot={onApplyToShot}
                                 defaultAspectRatio={defaultAspectRatio}
+                                model={model}
                             />
 
                             {/* "Show More" Overlay */}
@@ -273,8 +276,8 @@ export function GenerationResult({
                                 </div>
                             )}
 
-                            {/* Grid Slice Button - remains outside the draggable container */}
-                            {isGrid && gridData?.slices && gridData.slices.length > 0 && onSliceSelect && !isLastVisible && (
+                            {/* Grid Slice Button - Only for Gemini Grid, NOT in Pro Mode (Shot Bound) */}
+                            {isGrid && gridData?.slices && gridData.slices.length > 0 && onSliceSelect && !isLastVisible && model === 'gemini-grid' && !onApplyToShot && (
                                 <button
                                     onClick={onSliceSelect}
                                     className="w-full px-3 py-2 text-xs font-medium bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-lg hover:bg-zinc-50 dark:hover:bg-white/10 hover:border-zinc-300 dark:hover:border-white/20 transition-all flex items-center justify-center gap-2 text-zinc-700 dark:text-zinc-300"
