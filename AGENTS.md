@@ -68,6 +68,7 @@ AI 驱动的视频分镜生成与编辑工具 | Next.js 15.1 + React 19 + TypeSc
 | **Kaponai 服务** | `src/services/KaponaiService.ts` | Sora API 底层封装 |
 | **角色一致性** | `src/services/CharacterConsistencyService.ts` | 角色注册与参考视频生成 |
 | **Sora Prompt** | `src/services/SoraPromptService.ts` | Sora 专用提示词生成 |
+| **Jimeng 服务** | `src/services/JimengService.ts` | 即梦 AI 集成 (图片生成、任务轮询) |
 | **R2 服务端上传** | `src/lib/r2-server-upload.ts` | 服务端 R2 上传工具 (切片、并行上传) |
 > ⚠️ **重要**: 本项目**不支持游客模式**，所有功能必须登录后使用。
 
@@ -100,6 +101,18 @@ GEMINI_TEXT/ANALYZE: 3 积分
 SEEDREAM_GENERATE: 3 积分
 VOLCANO_VIDEO: 50 积分
 ```
+
+### 🖥️ 前端核心特性 (Frontend Core)
+
+- **智能交互 (Smart Interaction)**:
+  - **Gemini Grid**: 点击图片 -> 触发切片选择器 (Grid Slicer)，支持 9 宫格拆分存入分镜。
+  - **Jimeng/Other**: 点击图片 -> 触发大图预览 (Carousel Preview)，支持高清沉浸式查看。
+- **比例保真 (Aspect Ratio Fidelity)**:
+  - 采用**双重元数据保障机制** (Image Metadata + Project Settings Fallback)。
+  - 完美支持 9:16 (Mobile) 和 3:4 (Portrait) 竖屏显示，杜绝 16:9 变形。
+- **自适应布局 (Adaptive Layout)**:
+  - 自动识别 Grid (3x3/2x2) 与单张图片，动态调整容器尺寸。
+  - 紧凑型设计，大幅减少屏幕占用，提升内容密度。
 
 ---
 
