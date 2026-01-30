@@ -226,7 +226,13 @@ export function useJimengGeneration({
                             jimengModel: model,
                             jimengResolution: resolution,
                             referenceImages: allReferenceUrls,
-                            images: r2Urls
+                            images: r2Urls,
+                            gridData: {
+                                aspectRatio: projectAspectRatio,
+                                gridSize: r2Urls.length > 1 ? '2x2' : undefined,
+                                slices: r2Urls,
+                                fullImage: r2Urls[0]
+                            },
                         }
                     };
 

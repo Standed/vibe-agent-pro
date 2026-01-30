@@ -280,6 +280,16 @@ export function useChatGeneration({
                     { ...baseContext, assetType: 'image', model: 'gemini-direct' }
                 );
                 resultImages = [res];
+                gridData = {
+                    fullImage: res,
+                    slices: [],
+                    aspectRatio: project.settings?.aspectRatio || AspectRatio.WIDE,
+                    sceneId: currentSceneIdCaptured || undefined,
+                    prompt: enrichedPrompt,
+                    gridRows: undefined,
+                    gridCols: undefined,
+                    gridSize: undefined
+                };
             } else if (selectedModel === 'seedream') {
                 const { VolcanoEngineService } = await import('@/services/volcanoEngineService');
                 const seedreamUrl = await VolcanoEngineService.getInstance().generateSingleImage(
@@ -289,6 +299,16 @@ export function useChatGeneration({
                     { ...baseContext, assetType: 'image', model: 'seedream' }
                 );
                 resultImages = [seedreamUrl];
+                gridData = {
+                    fullImage: seedreamUrl,
+                    slices: [],
+                    aspectRatio: project.settings?.aspectRatio || AspectRatio.WIDE,
+                    sceneId: currentSceneIdCaptured || undefined,
+                    prompt: enrichedPrompt,
+                    gridRows: undefined,
+                    gridCols: undefined,
+                    gridSize: undefined
+                };
             }
 
             // 7. Reference Handling (Optimistic Display + Background Upload)
@@ -393,15 +413,15 @@ export function useChatGeneration({
                     });
 
                     // Save to Scene History (if Scene Mode Grid)
-                    if (!selectedShotId && currentSceneIdCaptured && uploadedGridData) {
+                    if (!selectedShotId && currentSceneIdCaptured && uploadedGridData && uploadedGridData.gridRows) {
                         // We are in Scene Mode + Grid
                         addGridHistory(currentSceneIdCaptured, {
                             id: `grid_${Date.now()}`,
                             timestamp: new Date(),
                             fullGridUrl: uploadedGridData.fullImage,
                             slices: uploadedGridData.slices,
-                            gridSize: uploadedGridData.gridSize,
-                            prompt: uploadedGridData.prompt,
+                            gridSize: uploadedGridData.gridSize!,
+                            prompt: uploadedGridData.prompt || '',
                             aspectRatio: uploadedGridData.aspectRatio as AspectRatio,
                             // assignments will be empty initially
                         });
