@@ -146,18 +146,16 @@ export function ChatBubble({
                             {isUser ? (
                                 <div className="flex flex-wrap gap-2 max-w-[300px] justify-end">
                                     {message.images!.map((img, idx) => {
-                                        const ratio = project?.settings?.aspectRatio || '16:9';
                                         return (
                                             <div
                                                 key={idx}
-                                                className="relative group/image rounded-lg overflow-hidden border border-black/5 dark:border-white/10 shadow-sm w-24 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-light-accent dark:hover:ring-cine-accent transition-all"
-                                                style={{ aspectRatio: ratio.replace(':', '/') }}
+                                                className="relative group/image rounded-lg overflow-hidden border border-black/5 dark:border-white/10 shadow-sm h-28 w-auto flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-light-accent dark:hover:ring-cine-accent transition-all"
                                                 onClick={() => onImageClick?.(img, idx, message)}
                                             >
                                                 <img
                                                     src={img}
                                                     alt={`User upload ${idx + 1}`}
-                                                    className="w-full h-full object-cover hover:scale-110 transition-transform duration-500"
+                                                    className="h-full w-auto object-cover hover:scale-110 transition-transform duration-500"
                                                 />
 
                                                 {/* Hover Actions Overlay (Standardized with GenerationResult) */}
