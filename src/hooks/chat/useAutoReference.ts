@@ -7,6 +7,7 @@ export type ActiveReference = {
     source: 'shot_ref' | 'auto_detect' | 'manual_upload' | 'history_ref';
     label?: string;
     entityName?: string;
+    file?: File;
 };
 
 export function useAutoReference(
@@ -43,9 +44,10 @@ export function useAutoReference(
             }
         });
 
-        // 2. Manual History Refs
+        // 2. Manual History Refs (Second Priority)
+        // Manual addition should override ignorance list
         manualReferenceUrls.forEach(url => {
-            if (!seenUrls.has(url) && !ignoredUrls.has(url)) {
+            if (!seenUrls.has(url)) {
                 newRefs.push({
                     url,
                     source: 'history_ref',

@@ -67,7 +67,7 @@ export default function ChatPanel() {
     // State
     const [inputText, setInputText] = useState('');
     const [selectedModel, setSelectedModel] = useState<GenerationModel>('gemini-grid');
-    const [uploadedImages, setUploadedImages] = useState<File[]>([]);
+    // Removed uploadedImages state - now managed within droppedReferences
 
     const [manualReferenceUrls, setManualReferenceUrls] = useState<string[]>([]);
     const [geminiImageSize, setGeminiImageSize] = useState<'2K' | '4K'>('2K');
@@ -115,7 +115,7 @@ export default function ChatPanel() {
         currentSceneId: currentSceneId || (selectedShot ? selectedShot.sceneId : null),
         setMessages,
         setInputText,
-        setUploadedImages,
+        setUploadedImages: () => { }, // No-op, managed via setDroppedReferences
         setManualReferenceUrls,
         setDroppedReferences
     });
@@ -145,7 +145,7 @@ export default function ChatPanel() {
         setMessages,
         setIsGenerating,
         setInputText,
-        setUploadedImages,
+        setUploadedImages: () => { }, // No-op
         setManualReferenceUrls
     });
 
@@ -218,8 +218,11 @@ export default function ChatPanel() {
             const MAX_IMAGES = 10;
             const MAX_SIZE_PER_IMAGE = 10 * 1024 * 1024;  // 10MB per image
 
+            // Count existing uploaded images in activeReferences
+            const currentUploadedCount = activeReferences.filter(r => r.source === 'manual_upload').length;
+
             // 检查数量限制
-            if (uploadedImages.length + files.length > MAX_IMAGES) {
+            if (currentUploadedCount + files.length > MAX_IMAGES) {
                 toast.error(`最多只能上传 ${MAX_IMAGES} 张参考图`);
                 return;
             }
@@ -237,7 +240,15 @@ export default function ChatPanel() {
             });
 
             if (validFiles.length > 0) {
-                setUploadedImages((prev) => [...prev, ...validFiles]);
+                const newRefs: ActiveReference[] = validFiles.map(file => ({
+                    url: URL.createObjectURL(file), // Create Blob URL for preview
+                    source: 'manual_upload',
+                    label: file.name,
+                    file: file // Store File object for upload
+                }));
+
+                // Add to droppedReferences which flows into activeReferences via useAutoReference hook
+                setDroppedReferences((prev) => [...prev, ...newRefs]);
             }
         }
     };
@@ -245,7 +256,7 @@ export default function ChatPanel() {
 
 
     const removeUploadedImage = (index: number) => {
-        setUploadedImages((prev) => prev.filter((_, i) => i !== index));
+        // Redundant with unified reference list, kept empty for interface compatibility if needed
     };
 
 
@@ -281,6 +292,7 @@ export default function ChatPanel() {
             if (prev.includes(url)) return prev;
             return [...prev, url];
         });
+        toast.success("图片已加入参考");
     };
 
     const handleApplyToShot = async (url: string) => {
@@ -418,8 +430,11 @@ export default function ChatPanel() {
                     const MAX_IMAGES = 10;
                     const MAX_SIZE_PER_IMAGE = 10 * 1024 * 1024;  // 10MB per image
 
+                    // Count existing
+                    const currentUploadedCount = activeReferences.filter(r => r.source === 'manual_upload').length;
+
                     // 检查数量限制
-                    if (uploadedImages.length + fileList.length > MAX_IMAGES) {
+                    if (currentUploadedCount + fileList.length > MAX_IMAGES) {
                         toast.error(`最多只能上传 ${MAX_IMAGES} 张参考图`);
                         return;
                     }
@@ -437,7 +452,13 @@ export default function ChatPanel() {
                     });
 
                     if (validFiles.length > 0) {
-                        setUploadedImages((prev) => [...prev, ...validFiles]);
+                        const newRefs: ActiveReference[] = validFiles.map(file => ({
+                            url: URL.createObjectURL(file),
+                            source: 'manual_upload',
+                            label: file.name,
+                            file: file
+                        }));
+                        setDroppedReferences((prev) => [...prev, ...newRefs]);
                     }
                 }
             }
@@ -570,35 +591,41 @@ export default function ChatPanel() {
             <ChatInput
                 inputText={inputText}
                 setInputText={setInputText}
-                onSend={() => handleSend(
-                    inputText,
-                    uploadedImages,
-                    activeReferences,
-                    selectedModel,
-                    gridSize,
-                    geminiImageSize,
-                    (urls) => generateSoraVideo(
+                onSend={() => {
+                    // Extract Files and Clean URLs from unified reference list
+                    const filesToSend = activeReferences.filter(r => r.file).map(r => r.file!);
+                    const pureRefs = activeReferences.filter(r => !r.file);
+
+                    handleSend(
                         inputText,
-                        urls,
-                        [], // All refs in first arg
-                        selectedShotId || undefined,
-                        (currentSceneId || (selectedShot ? selectedShot.sceneId : null)) || undefined
-                    ),
-                    (urls, contextKey) => jimengGeneration.generateImage(
-                        inputText,
-                        selectedShotId,
-                        (currentSceneId || (selectedShot ? selectedShot.sceneId : null)),
-                        contextKey,
-                        urls,
-                        false,
-                        { onlyExtractRefs: false } // Already enriched
-                    )
-                )}
+                        filesToSend,
+                        pureRefs,
+                        selectedModel,
+                        gridSize,
+                        geminiImageSize,
+                        (urls) => generateSoraVideo(
+                            inputText,
+                            urls,
+                            [], // All refs in first arg
+                            selectedShotId || undefined,
+                            (currentSceneId || (selectedShot ? selectedShot.sceneId : null)) || undefined
+                        ),
+                        (urls, contextKey) => jimengGeneration.generateImage(
+                            inputText,
+                            selectedShotId,
+                            (currentSceneId || (selectedShot ? selectedShot.sceneId : null)),
+                            contextKey,
+                            urls,
+                            false,
+                            { onlyExtractRefs: false } // Already enriched
+                        )
+                    );
+                }}
                 onAssetSelected={handleAssetSelected}
                 isGenerating={isGenerating}
                 selectedModel={selectedModel}
                 setSelectedModel={setSelectedModel}
-                uploadedImages={uploadedImages}
+                uploadedImages={[]} // Use empty as managed in droppedReferences
                 onFileUpload={handleFileUpload}
                 onRemoveImage={removeUploadedImage}
                 onMention={handleMention}
