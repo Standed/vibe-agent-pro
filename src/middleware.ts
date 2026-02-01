@@ -93,8 +93,20 @@ export async function middleware(req: NextRequest) {
         } else {
           console.warn('[Middleware] Refresh failed:', error?.message);
           hasAuthCookie = false;
-          // 刷新失败，清除无效 Cookie
-          res.cookies.delete('supabase-session');
+
+          // 刷新失败，清除无效 Cookie 并重定向到登录页
+          const failRes = NextResponse.next();
+          failRes.cookies.delete('supabase-session');
+
+          // 非公开路径且非 API 路径，直接重定向到登录页
+          if (!isPublicPath && !path.startsWith('/api/')) {
+            const redirectUrl = new URL('/auth/login', req.url);
+            redirectUrl.searchParams.set('redirect', path);
+            redirectUrl.searchParams.set('reason', 'session_expired');
+            return NextResponse.redirect(redirectUrl);
+          }
+
+          return failRes;
         }
       }
     } catch (err) {

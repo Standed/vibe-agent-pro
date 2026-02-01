@@ -273,7 +273,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // 启动心跳检测：每分钟检查一次 Token 有效期
+    // 启动心跳检测：JWT 7 天有效期，30 分钟检查一次即可
     const heartbeatInterval = setInterval(async () => {
       if (!isMounted) return;
       const currentSession = await getCurrentSession(); // 使用官方 SDK 获取内存中的 session
@@ -283,8 +283,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const now = Math.floor(Date.now() / 1000);
         const timeLeft = currentSession.expires_at - now;
 
-        // 如果剩余时间少于 10 分钟 (600秒)，主动刷新
-        if (timeLeft < 600) {
+        // 如果剩余时间少于 30 分钟 (1800秒)，主动刷新
+        if (timeLeft < 1800) {
           console.log(`[AuthProvider] 💓 Token 即将过期 (剩余 ${timeLeft}s)，主动刷新...`);
           const { data, error } = await supabase.auth.refreshSession();
           if (error) {
@@ -296,7 +296,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
       }
-    }, 5 * 60 * 1000); // 5分钟检查一次 (仅在本地检查，不消耗网络请求，除非需要刷新)
+    }, 30 * 60 * 1000); // 30 分钟检查一次（JWT 7 天有效期，不需要频繁检测）
 
     return () => {
       isMounted = false;

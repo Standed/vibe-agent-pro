@@ -104,7 +104,8 @@ export function useChatGeneration({
         geminiImageSize: '2K' | '4K',
         // Optional specialized handlers
         soraHandler?: (allRefUrls: string[]) => Promise<void>,
-        jimengHandler?: (allRefUrls: string[], contextKey: string) => Promise<void>
+        jimengHandler?: (allRefUrls: string[], contextKey: string) => Promise<void>,
+        viduHandler?: (allRefUrls: string[], contextKey: string) => Promise<void>
     ) => {
         // Collect files to upload from the ordered list
         const filesToUpload = orderedReferences.filter(r => r.file).map(r => r.file!);
@@ -217,6 +218,11 @@ export function useChatGeneration({
 
             if (selectedModel === 'jimeng' && jimengHandler) {
                 await jimengHandler(allRefUrls, contextKey); // Jimeng handler
+                return;
+            }
+
+            if (selectedModel === 'vidu-video' && viduHandler) {
+                await viduHandler(allRefUrls, contextKey); // Vidu handler
                 return;
             }
 

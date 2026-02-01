@@ -31,6 +31,12 @@ const DEFAULT_CREDITS_CONFIG = {
   VOLCANO_GENERATE: 12,      // 可按需覆盖
   VOLCANO_VIDEO: 50,         // 视频生成
 
+  // Vidu 视频生成（基于时长和分辨率动态计算）
+  // 720p: 2 积分/秒，1080p: 4 积分/秒
+  // 示例：5s 720p = 10 积分，5s 1080p = 20 积分，10s 1080p = 40 积分
+  VIDU_VIDEO_720P_PER_SECOND: 2,     // 720p 每秒积分
+  VIDU_VIDEO_1080P_PER_SECOND: 4,    // 1080p 每秒积分
+
   // 其他操作
   UPLOAD_PROCESS: 1,         // 图片上传处理
   BATCH_OPERATION: 5,        // 批量操作基础费用
@@ -88,6 +94,8 @@ export const OPERATION_DESCRIPTIONS: Record<keyof typeof CREDITS_CONFIG, string>
   SEEDREAM_EDIT: 'SeeDream 图片编辑',
   VOLCANO_GENERATE: '火山引擎图片生成',
   VOLCANO_VIDEO: '视频生成',
+  VIDU_VIDEO_720P_PER_SECOND: 'Vidu 720p 视频生成（每秒）',
+  VIDU_VIDEO_1080P_PER_SECOND: 'Vidu 1080p 视频生成（每秒）',
   UPLOAD_PROCESS: '图片上传处理',
   BATCH_OPERATION: '批量操作',
 };

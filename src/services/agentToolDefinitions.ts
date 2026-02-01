@@ -555,6 +555,34 @@ export const AGENT_TOOLS: ToolDefinition[] = [
             required: ['locationId', 'updates']
         }
     },
+    {
+        name: 'generateViduVideo',
+        description: '使用 Vidu 为分镜生成视频。自动使用分镜的时长（1-10s，默认5s）和运镜提示词。需要分镜已有参考图。',
+        parameters: {
+            type: 'object',
+            properties: {
+                shotId: {
+                    type: 'string',
+                    description: '分镜的ID（必需）'
+                },
+                mode: {
+                    type: 'string',
+                    description: 'Vidu 生成模式（可选，默认 img2video）。img2video: 单图生视频；reference2video: 多图参考生成',
+                    enum: ['img2video', 'reference2video']
+                },
+                resolution: {
+                    type: 'string',
+                    description: '视频分辨率（可选，默认 1080p）',
+                    enum: ['720p', '1080p']
+                },
+                off_peak: {
+                    type: 'boolean',
+                    description: '是否使用错峰模式（可选，默认 false）'
+                }
+            },
+            required: ['shotId']
+        }
+    },
 ];
 
 export function formatToolsForPrompt(tools: ToolDefinition[]): string {

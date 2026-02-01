@@ -115,6 +115,8 @@ export class AgentToolExecutor {
           return this.generationTools.generateShotsVideo(args.sceneId, args.shotIds, args.shotIndexes, args.globalShotIndexes);
         case 'batchGenerateProjectVideosSora':
           return this.generationTools.batchGenerateProjectVideosSora(args.force);
+        case 'generateViduVideo':
+          return this.generationTools.generateViduVideo(args.shotId, args.mode, args.resolution, args.off_peak);
 
         default:
           return { tool: toolName, result: null, error: `Unknown tool: ${toolName}` };

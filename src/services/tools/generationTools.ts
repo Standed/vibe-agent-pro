@@ -733,4 +733,119 @@ export class GenerationTools {
     private async backfillSoraTasks(result: any) {
         // Placeholder for backfill logic
     }
+
+    /**
+     * Vidu 视频生成（Agent 模式）
+     * 根据分镜时长（1-10s，默认 5s）和运镜提示词生成视频
+     */
+    async generateViduVideo(
+        shotId: string,
+        mode?: 'img2video' | 'start-end2video' | 'reference2video',
+        resolution?: '720p' | '1080p',
+        off_peak?: boolean
+    ): Promise<ToolResult> {
+        if (!this.project) return { tool: 'generateViduVideo', result: null, success: false, error: 'Project not found' };
+
+        const shot = this.project.shots.find(s => s.id === shotId);
+        if (!shot) return { tool: 'generateViduVideo', result: null, success: false, error: 'Shot not found' };
+
+        try {
+            // 1. 根据分镜时长设置视频时长（1-10s，默认 5s）
+            let duration = shot.duration || 5;
+            if (duration < 1 || duration > 10) {
+                console.warn(`[Vidu] Shot duration ${duration}s 超出范围，使用默认值 5s`);
+                duration = 5;
+            }
+
+            // 2. 使用 constructBaseShotPrompt 构建提示词（包含运镜信息）
+            const promptParts = constructBaseShotPrompt(this.project, shot);
+
+            // 添加运镜信息（cameraMovement 的中文描述）
+            if (shot.cameraMovement && shot.cameraMovement !== 'Static') {
+                const cameraMovementMap: Record<string, string> = {
+                    'Static': '静止镜头',
+                    'Pan': '摇镜',
+                    'Pan Left': '向左摇镜',
+                    'Pan Right': '向右摇镜',
+                    'Tilt': '俯仰',
+                    'Tilt Up': '向上俯仰',
+                    'Tilt Down': '向下俯仰',
+                    'Dolly': '推拉',
+                    'Dolly In': '推进',
+                    'Dolly Out': '拉远',
+                    'Zoom': '变焦',
+                    'Zoom In': '拉近',
+                    'Zoom Out': '拉远',
+                    'Truck': '横移',
+                    'Truck Left': '向左横移',
+                    'Truck Right': '向右横移',
+                    'Pedestal': '升降',
+                    'Pedestal Up': '升高',
+                    'Pedestal Down': '降低',
+                    'Crane': '升降臂运动',
+                    'Tracking Shot': '跟踪镜头',
+                    'Steadicam': '斯坦尼康运动',
+                    'Handheld': '手持摄影',
+                    'Arc': '弧形运动',
+                    'Rack Focus': '焦点转移',
+                    'Whip Pan': '快速摇镜',
+                    'Push In': '推进',
+                    'Pull Out': '拉出',
+                    'Vertigo Effect': '眩晕效果'
+                };
+                const chineseCameraMovement = cameraMovementMap[shot.cameraMovement] || shot.cameraMovement;
+                promptParts.push(`运镜：${chineseCameraMovement}`);
+            }
+
+            const prompt = promptParts.filter(Boolean).join('，');
+
+            // 3. 准备图片（确保分镜有参考图）
+            if (!shot.referenceImage) {
+                return {
+                    tool: 'generateViduVideo',
+                    result: null,
+                    success: false,
+                    error: '分镜没有参考图，请先生成分镜图片'
+                };
+            }
+
+            // 4. 调用 API
+            const response = await fetch('/api/vidu/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: mode || 'img2video',
+                    images: [shot.referenceImage], // 使用数组格式
+                    prompt, // prompt 用于所有模式
+                    duration,
+                    resolution: resolution || '1080p',
+                    off_peak: off_peak || false,
+                    shotId,
+                    projectId: this.project.id
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Vidu 生成失败');
+            }
+
+            return {
+                tool: 'generateViduVideo',
+                result: {
+                    taskId: data.taskId,
+                    shotId,
+                    duration,
+                    resolution: resolution || '1080p',
+                    message: `Vidu 视频生成任务已提交，任务ID: ${data.taskId}`
+                },
+                success: true
+            };
+
+        } catch (e: any) {
+            return { tool: 'generateViduVideo', result: null, success: false, error: `Vidu 生成失败: ${e.message}` };
+        }
+    }
 }
+

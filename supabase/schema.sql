@@ -833,33 +833,37 @@ CREATE TRIGGER update_error_reports_updated_at BEFORE UPDATE ON public.error_rep
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- =============================================
--- 13. Sora 异步任务表
+-- 13. 视频生成任务表 (支持多提供商: Sora, Vidu, Jimeng 等)
 -- =============================================
 CREATE TABLE IF NOT EXISTS public.sora_tasks (
-  id TEXT PRIMARY KEY, -- 使用 Sora 任务 ID (例如 video_...)
+  id TEXT PRIMARY KEY, -- 任务ID，由各提供商返回（如 Sora: video_xxx, Vidu: task_xxx）
   user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
   project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
   scene_id UUID REFERENCES public.scenes(id) ON DELETE CASCADE,
   shot_id UUID REFERENCES public.shots(id) ON DELETE CASCADE,
-  shot_ids UUID[] DEFAULT NULL, -- 新增: 合并视频对应的分镜列表
-  shot_ranges JSONB DEFAULT NULL, -- 新增: 合并视频的分镜时间段映射
-  character_id UUID REFERENCES public.characters(id) ON DELETE SET NULL, -- 新增: 关联角色 (一致性工作流)
+  shot_ids UUID[] DEFAULT NULL, -- 批量任务：合并视频对应的分镜列表
+  shot_ranges JSONB DEFAULT NULL, -- 批量任务：分镜时间段映射
+  character_id UUID REFERENCES public.characters(id) ON DELETE SET NULL, -- Sora 角色一致性关联
   
-  -- 状态: queued, processing, completed, failed
-  status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'processing', 'completed', 'failed')),
+  -- 视频提供商: sora, vidu, jimeng, volcano, runway
+  provider TEXT DEFAULT 'sora' CHECK (provider IN ('sora', 'vidu', 'jimeng', 'volcano', 'runway')),
+  
+  -- 状态: queued, processing, generating, completed, failed, in_progress, registering, cancelled
+  status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'processing', 'generating', 'completed', 'failed', 'in_progress', 'registering', 'cancelled')),
   progress INTEGER DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
   
-  -- 类型: shot_generation, character_reference
+  -- 任务类型: shot_generation, scene_video, character_reference
   type TEXT DEFAULT 'shot_generation', 
 
-  -- 元数据
-  model TEXT DEFAULT 'sora-2',
+  -- 生成参数
+  model TEXT DEFAULT 'sora-2', -- 模型版本: sora-2, sora-2-pro, viduq2-pro-fast 等
   prompt TEXT,
-  target_duration INTEGER,
-  target_size TEXT,
+  target_duration INTEGER, -- 视频时长（秒）: Sora 10-25s, Vidu 1-10s
+  target_size TEXT, -- 分辨率: 720p, 1080p, 1280x720 等
+  generation_params JSONB DEFAULT '{}'::jsonb, -- 提供商特定参数
   
   -- 资源链接
-  kaponai_url TEXT, -- Kaponai 临时下载链接
+  kaponai_url TEXT, -- 提供商临时下载链接（可能24小时过期）
   r2_url TEXT,      -- 持久化后的 R2 链接
   
   -- 积分管理
@@ -877,6 +881,8 @@ CREATE TABLE IF NOT EXISTS public.sora_tasks (
 CREATE INDEX IF NOT EXISTS sora_tasks_project_id_idx ON public.sora_tasks(project_id);
 CREATE INDEX IF NOT EXISTS sora_tasks_user_id_idx ON public.sora_tasks(user_id);
 CREATE INDEX IF NOT EXISTS sora_tasks_status_idx ON public.sora_tasks(status);
+CREATE INDEX IF NOT EXISTS sora_tasks_provider_status_idx ON public.sora_tasks(provider, status);
+CREATE INDEX IF NOT EXISTS sora_tasks_provider_project_idx ON public.sora_tasks(provider, project_id);
 
 -- 添加更新时间触发器
 CREATE TRIGGER update_sora_tasks_updated_at BEFORE UPDATE ON public.sora_tasks
@@ -891,12 +897,19 @@ CREATE POLICY "Users can manage own sora tasks"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
--- Migration: add shot_ids and shot_ranges to sora_tasks (if missing)
+-- Migration: add provider and generation_params to sora_tasks (if missing)
+ALTER TABLE public.sora_tasks
+  ADD COLUMN IF NOT EXISTS provider TEXT DEFAULT 'sora';
+
+ALTER TABLE public.sora_tasks
+  ADD COLUMN IF NOT EXISTS generation_params JSONB DEFAULT '{}'::jsonb;
+
 ALTER TABLE public.sora_tasks
   ADD COLUMN IF NOT EXISTS shot_ids UUID[] DEFAULT NULL;
 
 ALTER TABLE public.sora_tasks
   ADD COLUMN IF NOT EXISTS shot_ranges JSONB DEFAULT NULL;
+
 
 -- =============================================
 -- 14. 触发器：新用户注册时自动创建 profile

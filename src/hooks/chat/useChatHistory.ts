@@ -1,10 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { dataService } from '@/lib/dataService';
 import { ChatPanelMessage, GenerationModel, AspectRatio } from '@/types/project';
 import { useSoraVideoMessages } from '@/hooks/sora/useSoraVideoMessages';
 import { constructBaseShotPrompt } from '@/utils/promptConstruction';
+
+// 分页配置
+const MESSAGES_PER_PAGE = 30;
+const INITIAL_LOAD_COUNT = 30;
 
 export function useChatHistory(
     projectId: string | undefined,
@@ -14,6 +18,9 @@ export function useChatHistory(
 ) {
     const { user } = useAuth();
     const [messages, setMessages] = useState<ChatPanelMessage[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
+    const loadedCountRef = useRef(0);
 
     // Load video messages from sora_tasks
     const { videoMessages } = useSoraVideoMessages(projectId, selectedShotId || undefined);
@@ -310,5 +317,11 @@ export function useChatHistory(
         }
     };
 
-    return { messages, setMessages, deleteMessage };
+    return {
+        messages,
+        setMessages,
+        deleteMessage,
+        isLoading,
+        hasMore,
+    };
 }

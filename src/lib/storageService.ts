@@ -220,12 +220,64 @@ class StorageService {
   }
 
   /**
-   * 批量上传文件
+   * 批量上传文件（带并发控制和重试机制）
+   * @param concurrency 最大并发数（默认 3）
+   * @param maxRetries 单个文件最大重试次数（默认 3）
    */
-  async uploadFiles(files: File[], folder: FolderInput): Promise<UploadResult[]> {
-    const results = await Promise.all(
-      files.map((file) => this.uploadFile(file, folder))
-    );
+  async uploadFiles(
+    files: File[],
+    folder: FolderInput,
+    concurrency: number = 3,
+    maxRetries: number = 3
+  ): Promise<UploadResult[]> {
+    // 并发控制：使用 Promise 队列限制同时上传数量
+    const results: UploadResult[] = new Array(files.length);
+    const errors: { index: number; error: Error }[] = [];
+    let index = 0;
+
+    const uploadWithRetry = async (file: File, fileIndex: number): Promise<UploadResult> => {
+      let lastError: Error | null = null;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          return await this.uploadFile(file, folder);
+        } catch (error: any) {
+          lastError = error;
+          console.warn(`[storageService] 文件 ${fileIndex} 上传失败 (第 ${attempt}/${maxRetries} 次):`, error.message);
+          if (attempt < maxRetries) {
+            // 指数退避：1s, 2s, 4s
+            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+          }
+        }
+      }
+      throw lastError || new Error('上传失败');
+    };
+
+    const runTask = async (): Promise<void> => {
+      while (index < files.length) {
+        const currentIndex = index++;
+        try {
+          results[currentIndex] = await uploadWithRetry(files[currentIndex], currentIndex);
+        } catch (error: any) {
+          errors.push({ index: currentIndex, error });
+          // 不中断其他上传，继续处理
+          console.error(`[storageService] 文件 ${currentIndex} 最终上传失败:`, error.message);
+        }
+      }
+    };
+
+    // 启动 concurrency 个工作线程
+    const workers = Array(Math.min(concurrency, files.length))
+      .fill(null)
+      .map(() => runTask());
+
+    await Promise.all(workers);
+
+    // 如果有失败的文件，抛出聚合错误
+    if (errors.length > 0) {
+      console.error(`[storageService] ${errors.length}/${files.length} 个文件上传失败`);
+      // 但仍返回成功的结果，让调用方决定如何处理
+    }
+
     return results;
   }
 
@@ -352,21 +404,73 @@ class StorageService {
   }
 
   /**
-   * 批量上传 base64 图片到 R2
+   * 批量上传 base64 图片到 R2（带并发控制和重试机制）
    * @param base64Array base64 图片数组
    * @param folder 文件夹路径
    * @param userId 用户ID（可选，避免重复调用 getCurrentUser）
+   * @param concurrency 最大并发数（默认 3）
+   * @param maxRetries 单个文件最大重试次数（默认 3）
    */
   async uploadBase64ArrayToR2(
     base64Array: string[],
     folder: FolderInput,
-    userId?: string
+    userId?: string,
+    concurrency: number = 3,
+    maxRetries: number = 3
   ): Promise<string[]> {
-    const results = await Promise.all(
-      base64Array.map((base64, index) =>
-        this.uploadBase64ToR2(base64, folder, `slice_${index}.png`, userId)
-      )
-    );
+    // 并发控制：使用 Promise 队列限制同时上传数量
+    const results: string[] = new Array(base64Array.length);
+    const errors: { index: number; error: Error }[] = [];
+    let index = 0;
+
+    const uploadWithRetry = async (base64: string, fileIndex: number): Promise<string> => {
+      let lastError: Error | null = null;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          return await this.uploadBase64ToR2(
+            base64,
+            folder,
+            `slice_${fileIndex}.png`,
+            userId
+          );
+        } catch (error: any) {
+          lastError = error;
+          console.warn(`[storageService] base64 ${fileIndex} 上传失败 (第 ${attempt}/${maxRetries} 次):`, error.message);
+          if (attempt < maxRetries) {
+            // 指数退避：1s, 2s, 4s
+            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+          }
+        }
+      }
+      throw lastError || new Error('上传失败');
+    };
+
+    const runTask = async (): Promise<void> => {
+      while (index < base64Array.length) {
+        const currentIndex = index++;
+        try {
+          results[currentIndex] = await uploadWithRetry(base64Array[currentIndex], currentIndex);
+        } catch (error: any) {
+          errors.push({ index: currentIndex, error });
+          // 保留 base64 作为回退
+          results[currentIndex] = base64Array[currentIndex];
+          console.error(`[storageService] base64 ${currentIndex} 最终上传失败，使用原始 base64`);
+        }
+      }
+    };
+
+    // 启动 concurrency 个工作线程
+    const workers = Array(Math.min(concurrency, base64Array.length))
+      .fill(null)
+      .map(() => runTask());
+
+    await Promise.all(workers);
+
+    // 如果有失败的文件，记录日志
+    if (errors.length > 0) {
+      console.error(`[storageService] ${errors.length}/${base64Array.length} 个 base64 图片上传失败`);
+    }
+
     return results;
   }
 

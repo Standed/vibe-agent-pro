@@ -449,6 +449,10 @@ export const useProjectStore = create<ProjectStore>()(
         const shot = state.project?.shots.find((s) => s.id === id);
         if (shot) {
           Object.assign(shot, updates);
+          // 触发深度更新以确保 React 检测到变化
+          if (state.project) {
+            state.project.shots = [...state.project.shots];
+          }
         }
       });
       // 自动保存
