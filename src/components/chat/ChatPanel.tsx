@@ -31,7 +31,8 @@ import { useSoraGeneration } from '@/hooks/sora/useSoraGeneration';
 // import { useSoraVideoMessages } from '@/hooks/useSoraVideoMessages'; // Moved to useChatHistory
 import { useChatHistory } from '@/hooks/chat/useChatHistory';
 import { useAutoReference, ActiveReference } from '@/hooks/chat/useAutoReference';
-import { useStartEndFrames } from '@/hooks/chat/useStartEndFrames';
+import { useStartEndFrames, FrameImage } from '@/hooks/chat/useStartEndFrames';
+import { useVideoReferences } from '@/hooks/chat/useVideoReferences';
 import { useViduGeneration } from '@/hooks/generation/useViduGeneration';
 import { ChatPanelMessage, GenerationModel } from '@/types/project';
 import { generateMessageId } from '@/lib/utils';
@@ -159,6 +160,9 @@ export default function ChatPanel() {
     // 首尾帧管理（通用，支持 Vidu、Runway 等）
     const startEndFrames = useStartEndFrames();
 
+    // 视频参考图状态管理（隔离各模式）
+    const videoRefs = useVideoReferences();
+
     // Jimeng Hook
     const jimengGeneration = useJimengGeneration({
         setMessages: setMessages as any, // Type compatibility
@@ -224,7 +228,7 @@ export default function ChatPanel() {
         setIsShotRefDeleted(false);
     }, [selectedShotId]);
 
-    // 自动填充逻辑：仅保留 Start-End 模式的初始化（因为它是独立状态，不会污染共享列表）
+    // 自动填充逻辑：切换模式/分镜时自动初始化参考图
     const prevShotIdRef = useRef<string | null>(null);
     const prevModeRef = useRef<string | null>(null);
     const prevModelRef = useRef<string | null>(null);
@@ -238,22 +242,75 @@ export default function ChatPanel() {
         prevModeRef.current = viduMode;
         prevModelRef.current = selectedModel;
 
-        if (selectedModel !== 'vidu-video' || !selectedShot?.referenceImage) return;
+        // 没有变化则不处理
+        if (!shotChanged && !modeChanged && !modelChanged) return;
 
-        if (shotChanged || modeChanged || modelChanged) {
-            // Start-End 模式：自动填充首帧
-            if (viduMode === 'start-end2video') {
-                if (!startEndFrames.frames.startFrame) {
-                    startEndFrames.setStartFrame({
-                        url: selectedShot.referenceImage,
+        const shotImage = selectedShot?.referenceImage;
+
+        // ========== Vidu 视频模式初始化 ==========
+        if (selectedModel === 'vidu-video') {
+            // 图生视频模式：初始化分镜图到独立状态
+            if (viduMode === 'img2video') {
+                // 仅在切换模式/分镜且当前为空时初始化
+                if ((shotChanged || modeChanged || modelChanged) && !videoRefs.viduImg2VideoRef && shotImage) {
+                    videoRefs.setViduImg2Video({
+                        url: shotImage,
                         source: 'shot_ref',
                         label: '分镜图'
                     });
                 }
             }
-            // Img2Video 模式改为使用下方 Derived State，不再在此处副作用修改
+
+            // 首尾帧模式：初始化首帧为分镜图
+            if (viduMode === 'start-end2video') {
+                if ((shotChanged || modeChanged || modelChanged) && !startEndFrames.frames.startFrame && shotImage) {
+                    startEndFrames.setStartFrame({
+                        url: shotImage,
+                        source: 'shot_ref',
+                        label: '分镜图'
+                    });
+                }
+            }
+
+            // 参考生视频模式：初始化分镜图 + 资产图
+            if (viduMode === 'reference2video') {
+                if ((shotChanged || modeChanged || modelChanged) && videoRefs.viduReferenceRefs.length === 0) {
+                    // 添加分镜图
+                    if (shotImage) {
+                        videoRefs.addViduReference({
+                            url: shotImage,
+                            source: 'shot_ref',
+                            label: '分镜图'
+                        });
+                    }
+                    // 添加提及的资产图（角色、场景）
+                    const allAssets = [...mentionedAssets.characters, ...mentionedAssets.locations];
+                    allAssets.forEach(asset => {
+                        const assetImage = asset.referenceImages?.[0];
+                        if (assetImage) {
+                            videoRefs.addViduReference({
+                                url: assetImage,
+                                source: 'auto_detect',
+                                label: asset.name,
+                                entityName: asset.name
+                            });
+                        }
+                    });
+                }
+            }
         }
-    }, [selectedShotId, viduMode, selectedModel, selectedShot]);
+
+        // ========== Sora 视频模式初始化 ==========
+        if (selectedModel === 'sora-video') {
+            if ((shotChanged || modelChanged) && !videoRefs.soraRef && shotImage) {
+                videoRefs.setSora({
+                    url: shotImage,
+                    source: 'shot_ref',
+                    label: '分镜图'
+                });
+            }
+        }
+    }, [selectedShotId, viduMode, selectedModel, selectedShot, videoRefs, startEndFrames, mentionedAssets]);
 
     // 计算最终参考图列表 (Derived State)
     // 如果是 Vidu Img2Video 且没被删除且没手动图 -> 注入分镜图
@@ -272,31 +329,64 @@ export default function ChatPanel() {
         // file is undefined, fine
     } : null;
 
-    // 合并列表：分镜图排在最前
+    // 合并列表：分镜图排在最前（仅用于图片生成模式）
     const baseReferences = shotRef ? [shotRef, ...activeReferences] : activeReferences;
 
-    // 最终显示列表 (应用过滤)
-    const finalDisplayReferences = baseReferences.filter(ref => {
-        if (selectedModel === 'sora-video') {
-            return ref.source !== 'auto_detect';
+    // ========== 根据模式选择参考图 ==========
+    const getDisplayReferences = (): ActiveReference[] => {
+        // Vidu 图生视频：使用独立状态
+        if (selectedModel === 'vidu-video' && viduMode === 'img2video') {
+            return videoRefs.viduImg2VideoRef ? [videoRefs.viduImg2VideoRef] : [];
         }
-        if (selectedModel === 'vidu-video') {
-            if (viduMode === 'reference2video') return true;
-            return ref.source !== 'auto_detect';
-        }
-        return true;
-    });
 
-    // 包装删除函数
+        // Vidu 首尾帧：不显示在参考图区域（由 StartEndFrameSelector 显示）
+        if (selectedModel === 'vidu-video' && viduMode === 'start-end2video') {
+            return [];
+        }
+
+        // Vidu 参考生视频：使用独立状态
+        if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
+            return videoRefs.viduReferenceRefs;
+        }
+
+        // Sora 视频：使用独立状态
+        if (selectedModel === 'sora-video') {
+            return videoRefs.soraRef ? [videoRefs.soraRef] : [];
+        }
+
+        // 图片生成模式：使用原有逻辑（activeReferences）
+        return baseReferences.filter(ref => true); // 保持原有过滤
+    };
+
+    const finalDisplayReferences = getDisplayReferences();
+
+    // 包装删除函数 - 根据模式删除对应状态
     const handleRemoveReference = useCallback((ref: ActiveReference) => {
+        // Vidu 图生视频
+        if (selectedModel === 'vidu-video' && viduMode === 'img2video') {
+            videoRefs.clearViduImg2Video();
+            return;
+        }
+
+        // Vidu 参考生视频
+        if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
+            videoRefs.removeViduReference(ref);
+            return;
+        }
+
+        // Sora
+        if (selectedModel === 'sora-video') {
+            videoRefs.clearSora();
+            return;
+        }
+
+        // 图片生成模式：原有逻辑
         if (ref.source === 'shot_ref') {
-            // 如果删除的是注入的分镜图，只设置标记位，不操作列表
             setIsShotRefDeleted(true);
         } else {
-            // 普通删除
             onRemoveReferenceFn(ref);
         }
-    }, [onRemoveReferenceFn]);
+    }, [selectedModel, viduMode, videoRefs, onRemoveReferenceFn]);
 
     // Handle Generation Request from other components (e.g. Storyboard)
     useEffect(() => {
@@ -331,24 +421,126 @@ export default function ChatPanel() {
             const MAX_IMAGES = 10;
             const MAX_SIZE_PER_IMAGE = 10 * 1024 * 1024;  // 10MB per image
 
-            // Sora 模式限制：最多 1 张参考图
-            if (selectedModel === 'sora-video') {
-                const currentImageCount = activeReferences.filter(r =>
-                    r.source === 'manual_upload' || r.source === 'history_ref'
-                ).length;
+            // Vidu 首尾帧模式：不在这里处理，由 StartEndFrameSelector 处理
+            if (selectedModel === 'vidu-video' && viduMode === 'start-end2video') {
+                toast.info('请点击首帧或尾帧区域上传图片');
+                return;
+            }
 
-                if (currentImageCount >= 1) {
-                    toast.error('Sora 视频生成最多只能添加 1 张参考图');
+            // Vidu 图生视频模式：单图替换
+            if (selectedModel === 'vidu-video' && viduMode === 'img2video') {
+                const file = files[0];
+                if (!file) return;
+
+                if (!file.type.startsWith('image/')) {
+                    toast.error('请上传图片文件');
+                    return;
+                }
+                if (file.size > MAX_SIZE_PER_IMAGE) {
+                    toast.error('图片大小不能超过 10MB');
                     return;
                 }
 
-                // 多文件时只取第一张
+                const hasExisting = droppedReferences.length > 0 ||
+                    activeReferences.some(r => r.source === 'manual_upload' || r.source === 'shot_ref');
+
+                setDroppedReferences([{
+                    url: URL.createObjectURL(file),
+                    source: 'manual_upload',
+                    label: file.name,
+                    file
+                }]);
+                setManualReferenceUrls([]);
+                setIsShotRefDeleted(false);
+
                 if (files.length > 1) {
-                    toast.warning('Sora 仅支持 1 张参考图，已自动选择第一张');
-                    files = [files[0]];
+                    toast.warning('Vidu 图生视频只支持 1 张图片，已选择第一张');
+                } else if (hasExisting) {
+                    toast.success('已替换参考图');
                 }
+                return;
             }
 
+            // Sora 视频模式：单图替换
+            if (selectedModel === 'sora-video') {
+                const file = files[0];
+                if (!file) return;
+
+                if (!file.type.startsWith('image/')) {
+                    toast.error('请上传图片文件');
+                    return;
+                }
+                if (file.size > MAX_SIZE_PER_IMAGE) {
+                    toast.error('图片大小不能超过 10MB');
+                    return;
+                }
+
+                const hasExisting = droppedReferences.length > 0 ||
+                    activeReferences.some(r => r.source === 'manual_upload' || r.source === 'history_ref');
+
+                setDroppedReferences([{
+                    url: URL.createObjectURL(file),
+                    source: 'manual_upload',
+                    label: file.name,
+                    file
+                }]);
+                setManualReferenceUrls([]);
+
+                if (files.length > 1) {
+                    toast.warning('Sora 仅支持 1 张参考图，已选择第一张');
+                } else if (hasExisting) {
+                    toast.success('已替换参考图');
+                }
+                return;
+            }
+
+            // Vidu 参考生视频模式：最多 7 张，递增添加
+            if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
+                const MAX_REF_IMAGES = 7;
+                const currentCount = activeReferences.length;
+                const remaining = MAX_REF_IMAGES - currentCount;
+
+                if (remaining <= 0) {
+                    toast.warning(`参考生视频最多支持 ${MAX_REF_IMAGES} 张参考图`);
+                    return;
+                }
+
+                const filesToAdd = files.slice(0, remaining);
+                const validFiles = filesToAdd.filter(file => {
+                    if (!file.type.startsWith('image/')) {
+                        toast.error(`文件 ${file.name} 不是图片`);
+                        return false;
+                    }
+                    if (file.size > MAX_SIZE_PER_IMAGE) {
+                        toast.error(`文件 ${file.name} 超过 10MB 限制`);
+                        return false;
+                    }
+                    // 检查是否已存在
+                    const url = URL.createObjectURL(file);
+                    if (activeReferences.some(r => r.url === url) || droppedReferences.some(r => r.url === url)) {
+                        return false;
+                    }
+                    return true;
+                });
+
+                if (validFiles.length > 0) {
+                    const newRefs: ActiveReference[] = validFiles.map(file => ({
+                        url: URL.createObjectURL(file),
+                        source: 'manual_upload',
+                        label: file.name,
+                        file
+                    }));
+                    setDroppedReferences(prev => [...prev, ...newRefs]);
+                    toast.success(`已添加 ${validFiles.length} 张参考图 (${currentCount + validFiles.length}/${MAX_REF_IMAGES})`);
+                }
+
+                if (files.length > remaining) {
+                    toast.warning(`已达到上限，忽略了 ${files.length - remaining} 张图片`);
+                }
+                return;
+            }
+
+            // 其他模式：多图上传
             // Count existing uploaded images in activeReferences
             const currentUploadedCount = activeReferences.filter(r => r.source === 'manual_upload').length;
 
@@ -372,13 +564,11 @@ export default function ChatPanel() {
 
             if (validFiles.length > 0) {
                 const newRefs: ActiveReference[] = validFiles.map(file => ({
-                    url: URL.createObjectURL(file), // Create Blob URL for preview
+                    url: URL.createObjectURL(file),
                     source: 'manual_upload',
                     label: file.name,
-                    file: file // Store File object for upload
+                    file: file
                 }));
-
-                // Add to droppedReferences which flows into activeReferences via useAutoReference hook
                 setDroppedReferences((prev) => [...prev, ...newRefs]);
             }
         }
@@ -529,6 +719,219 @@ export default function ChatPanel() {
         drop: (item: any, monitor) => {
             const itemType = monitor.getItemType();
 
+            // ========== Vidu Start-End 模式特殊处理 ==========
+            // 智能填充到空槽位：首帧优先，然后尾帧
+            if (selectedModel === 'vidu-video' && viduMode === 'start-end2video') {
+                const fillToEmptySlot = (url: string, source: 'shot_ref' | 'manual_upload', label: string, file?: File) => {
+                    const frame: FrameImage = { url, source, label, file };
+                    const { startFrame, endFrame } = startEndFrames.frames;
+
+                    if (!startFrame) {
+                        startEndFrames.setStartFrame(frame);
+                        toast.success('已设置为首帧');
+                    } else if (!endFrame) {
+                        startEndFrames.setEndFrame(frame);
+                        toast.success('已设置为尾帧');
+                    } else {
+                        toast.warning('首尾帧已满，请先删除再添加');
+                    }
+                };
+
+                if (itemType === NativeTypes.FILE) {
+                    const files = item.files;
+                    if (files && files.length >= 2) {
+                        // 多张图片：第一张->首帧，第二张->尾帧
+                        const processFile = (file: File): FrameImage | null => {
+                            if (!file.type.startsWith('image/')) return null;
+                            if (file.size > 10 * 1024 * 1024) return null;
+                            return {
+                                url: URL.createObjectURL(file),
+                                source: 'manual_upload' as const,
+                                label: file.name,
+                                file,
+                            };
+                        };
+                        const frame1 = processFile(files[0]);
+                        const frame2 = processFile(files[1]);
+                        if (frame1) startEndFrames.setStartFrame(frame1);
+                        if (frame2) startEndFrames.setEndFrame(frame2);
+                        if (frame1 || frame2) {
+                            toast.success('已自动设置首尾帧');
+                        }
+                        if (files.length > 2) {
+                            toast.warning('首尾帧模式最多 2 张图片，已忽略多余图片');
+                        }
+                        return;
+                    }
+                    // 单张图片：智能填充到空槽位
+                    if (files && files.length === 1) {
+                        const file = files[0];
+                        if (!file.type.startsWith('image/')) {
+                            toast.error('请上传图片文件');
+                            return;
+                        }
+                        if (file.size > 10 * 1024 * 1024) {
+                            toast.error('图片大小不能超过 10MB');
+                            return;
+                        }
+                        fillToEmptySlot(URL.createObjectURL(file), 'manual_upload', file.name, file);
+                        return;
+                    }
+                }
+                // Shot 拖拽：智能填充到空槽位
+                if (itemType === SHOT_TO_CHAT && item.imageUrl) {
+                    fillToEmptySlot(item.imageUrl, 'shot_ref', '分镜参考图');
+                    return;
+                }
+                return;
+            }
+
+            // ========== Vidu Img2Video 模式 - 单图替换 ==========
+            if (selectedModel === 'vidu-video' && viduMode === 'img2video') {
+                const processAndReplace = (url: string, source: 'shot_ref' | 'manual_upload', label: string, file?: File) => {
+                    const hasExisting = videoRefs.viduImg2VideoRef !== null;
+
+                    // 使用独立状态
+                    videoRefs.setViduImg2Video({ url, source, label, file });
+
+                    if (hasExisting) {
+                        toast.success('Vidu 图生视频只支持 1 张图片，已替换');
+                    }
+                };
+
+                if (itemType === SHOT_TO_CHAT && item.imageUrl) {
+                    processAndReplace(item.imageUrl, 'shot_ref', '分镜参考图');
+                    return;
+                }
+
+                if (itemType === NativeTypes.FILE) {
+                    const files = item.files;
+                    if (files && files.length > 0) {
+                        const file = files[0];
+                        if (!file.type.startsWith('image/')) {
+                            toast.error('请上传图片文件');
+                            return;
+                        }
+                        if (file.size > 10 * 1024 * 1024) {
+                            toast.error('图片大小不能超过 10MB');
+                            return;
+                        }
+                        if (files.length > 1) {
+                            toast.warning('Vidu 图生视频只支持 1 张图片，已选择第一张');
+                        }
+                        processAndReplace(URL.createObjectURL(file), 'manual_upload', file.name, file);
+                    }
+                }
+                return;
+            }
+
+            // ========== Vidu Reference2Video 模式 - 最多 7 张递增 ==========
+            if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
+                const MAX_REF_IMAGES = videoRefs.MAX_VIDU_REFS;
+
+                const addReference = (url: string, source: 'shot_ref' | 'manual_upload', label: string, file?: File): boolean => {
+                    // 检查是否已存在
+                    if (videoRefs.viduReferenceRefs.some(r => r.url === url)) {
+                        toast.warning('该图片已添加');
+                        return false;
+                    }
+
+                    if (!videoRefs.canAddViduReference()) {
+                        toast.warning(`参考生视频最多支持 ${MAX_REF_IMAGES} 张参考图`);
+                        return false;
+                    }
+
+                    videoRefs.addViduReference({ url, source, label, file });
+                    return true;
+                };
+
+                if (itemType === SHOT_TO_CHAT && item.imageUrl) {
+                    if (addReference(item.imageUrl, 'shot_ref', '分镜参考图')) {
+                        toast.success(`已添加参考图 (${videoRefs.getViduReferenceCount() + 1}/${MAX_REF_IMAGES})`);
+                    }
+                    return;
+                }
+
+                if (itemType === NativeTypes.FILE) {
+                    const files = item.files;
+                    if (files && files.length > 0) {
+                        const currentCount = videoRefs.getViduReferenceCount();
+                        const remaining = MAX_REF_IMAGES - currentCount;
+
+                        if (remaining <= 0) {
+                            toast.warning(`参考生视频最多支持 ${MAX_REF_IMAGES} 张参考图`);
+                            return;
+                        }
+
+                        let addedCount = 0;
+                        const filesToAdd = Array.from(files as FileList).slice(0, remaining);
+
+                        for (const file of filesToAdd) {
+                            if (!file.type.startsWith('image/')) {
+                                toast.error(`文件 ${file.name} 不是图片`);
+                                continue;
+                            }
+                            if (file.size > 10 * 1024 * 1024) {
+                                toast.error(`文件 ${file.name} 超过 10MB 限制`);
+                                continue;
+                            }
+                            const url = URL.createObjectURL(file);
+                            if (addReference(url, 'manual_upload', file.name, file)) {
+                                addedCount++;
+                            }
+                        }
+
+                        if (addedCount > 0) {
+                            toast.success(`已添加 ${addedCount} 张参考图`);
+                        }
+                        if (files.length > remaining) {
+                            toast.warning(`已达到上限，忽略了 ${files.length - remaining} 张图片`);
+                        }
+                    }
+                }
+                return;
+            }
+
+            // ========== Sora 视频模式 - 单图替换 ==========
+            if (selectedModel === 'sora-video') {
+                const processAndReplace = (url: string, source: 'shot_ref' | 'manual_upload', label: string, file?: File) => {
+                    const hasExisting = videoRefs.soraRef !== null;
+
+                    // 使用独立状态
+                    videoRefs.setSora({ url, source, label, file });
+
+                    if (hasExisting) {
+                        toast.success('Sora 视频生成只支持 1 张参考图，已替换');
+                    }
+                };
+
+                if (itemType === SHOT_TO_CHAT && item.imageUrl) {
+                    processAndReplace(item.imageUrl, 'shot_ref', '分镜参考图');
+                    return;
+                }
+
+                if (itemType === NativeTypes.FILE) {
+                    const files = item.files;
+                    if (files && files.length > 0) {
+                        const file = files[0];
+                        if (!file.type.startsWith('image/')) {
+                            toast.error('请上传图片文件');
+                            return;
+                        }
+                        if (file.size > 10 * 1024 * 1024) {
+                            toast.error('图片大小不能超过 10MB');
+                            return;
+                        }
+                        if (files.length > 1) {
+                            toast.warning('Sora 仅支持 1 张参考图，已选择第一张');
+                        }
+                        processAndReplace(URL.createObjectURL(file), 'manual_upload', file.name, file);
+                    }
+                }
+                return;
+            }
+
+            // ========== 默认处理 (其他模式) ==========
             // 1. Handle Shot Drop
             if (itemType === SHOT_TO_CHAT) {
                 console.log("Dropped Shot:", item);
@@ -557,27 +960,9 @@ export default function ChatPanel() {
             if (itemType === NativeTypes.FILE) {
                 const files = item.files;
                 if (files && files.length > 0) {
-                    let fileList = Array.from(files as FileList); // Cast to array
+                    let fileList = Array.from(files as FileList);
                     const MAX_IMAGES = 10;
                     const MAX_SIZE_PER_IMAGE = 10 * 1024 * 1024;  // 10MB per image
-
-                    // Sora 模式限制：最多 1 张参考图
-                    if (selectedModel === 'sora-video') {
-                        const currentImageCount = activeReferences.filter(r =>
-                            r.source === 'manual_upload' || r.source === 'history_ref'
-                        ).length;
-
-                        if (currentImageCount >= 1) {
-                            toast.error('Sora 视频生成最多只能添加 1 张参考图');
-                            return;
-                        }
-
-                        // 多文件时只取第一张
-                        if (fileList.length > 1) {
-                            toast.warning('Sora 仅支持 1 张参考图，已自动选择第一张');
-                            fileList = [fileList[0]];
-                        }
-                    }
 
                     // Count existing
                     const currentUploadedCount = activeReferences.filter(r => r.source === 'manual_upload').length;
@@ -683,6 +1068,70 @@ export default function ChatPanel() {
                         }
                     }}
                     onAddToReference={(url) => {
+                        // Vidu 首尾帧模式：智能填充到空槽位
+                        if (selectedModel === 'vidu-video' && viduMode === 'start-end2video') {
+                            const { startFrame, endFrame } = startEndFrames.frames;
+                            const frame: FrameImage = { url, source: 'history_ref', label: '历史引用' };
+
+                            if (!startFrame) {
+                                startEndFrames.setStartFrame(frame);
+                                toast.success('已设置为首帧');
+                            } else if (!endFrame) {
+                                startEndFrames.setEndFrame(frame);
+                                toast.success('已设置为尾帧');
+                            } else {
+                                toast.warning('首尾帧已满，请先删除再添加');
+                            }
+                            return;
+                        }
+
+                        // Vidu 图生视频模式：单图替换（使用独立状态）
+                        if (selectedModel === 'vidu-video' && viduMode === 'img2video') {
+                            const hasExisting = videoRefs.viduImg2VideoRef !== null;
+                            videoRefs.setViduImg2Video({ url, source: 'history_ref', label: '历史引用' });
+
+                            if (hasExisting) {
+                                toast.success('Vidu 图生视频只支持 1 张图片，已替换');
+                            } else {
+                                toast.success('已添加参考图');
+                            }
+                            return;
+                        }
+
+                        // Vidu 参考生视频模式：最多 7 张，递增添加（使用独立状态）
+                        if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
+                            const MAX_REF_IMAGES = videoRefs.MAX_VIDU_REFS;
+
+                            // 检查是否已存在相同图片
+                            if (videoRefs.viduReferenceRefs.some(r => r.url === url)) {
+                                toast.warning('该图片已添加');
+                                return;
+                            }
+
+                            if (!videoRefs.canAddViduReference()) {
+                                toast.warning(`参考生视频最多支持 ${MAX_REF_IMAGES} 张参考图`);
+                                return;
+                            }
+
+                            videoRefs.addViduReference({ url, source: 'history_ref', label: '历史引用' });
+                            toast.success(`已添加参考图 (${videoRefs.getViduReferenceCount() + 1}/${MAX_REF_IMAGES})`);
+                            return;
+                        }
+
+                        // Sora 视频模式：单图替换（使用独立状态）
+                        if (selectedModel === 'sora-video') {
+                            const hasExisting = videoRefs.soraRef !== null;
+                            videoRefs.setSora({ url, source: 'history_ref', label: '历史引用' });
+
+                            if (hasExisting) {
+                                toast.success('Sora 仅支持 1 张参考图，已替换');
+                            } else {
+                                toast.success('已添加参考图');
+                            }
+                            return;
+                        }
+
+                        // 其他模式（图片生成）：追加到原有状态
                         setManualReferenceUrls(prev => {
                             if (prev.includes(url)) return prev;
                             return [...prev, url];

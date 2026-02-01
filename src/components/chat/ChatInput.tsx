@@ -408,11 +408,13 @@ export function ChatInput({
                                     onChange={(e) => setViduDuration?.(Number(e.target.value))}
                                     className="px-2 py-1 text-[10px] font-medium rounded-lg bg-white dark:bg-white/10 text-black dark:text-white border border-zinc-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20 cursor-pointer"
                                 >
-                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((dur) => (
-                                        <option key={dur} value={dur}>
-                                            {dur}s
-                                        </option>
-                                    ))}
+                                    {([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const)
+                                        .filter(dur => viduMode === 'start-end2video' ? dur <= 8 : true)
+                                        .map((dur) => (
+                                            <option key={dur} value={dur}>
+                                                {dur}s
+                                            </option>
+                                        ))}
                                 </select>
                             </div>
                             {/* 分辨率选择 */}

@@ -257,6 +257,7 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
                     shotRanges: row.shot_ranges || undefined,
                     characterId: row.character_id || undefined,
                     type: row.type || undefined,
+                    provider: row.provider || 'sora',
                     status: row.status,
                     progress: row.progress ?? 0,
                     model: row.model || 'sora-2',
@@ -398,6 +399,7 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
                     shotRanges: row.shot_ranges || undefined,
                     characterId: row.character_id || undefined,
                     type: row.type || undefined,
+                    provider: row.provider || 'sora',
                     status: row.status,
                     progress: row.progress ?? 0,
                     model: row.model || 'sora-2',
@@ -511,6 +513,10 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
                 : (task.shotId ? [task.shotId] : []);
             if (targetShotIds.length === 0) return;
 
+            // 只有 Agent 模式生成的任务 (shot_generation) 才自动覆盖分镜
+            // Pro 模式生成的任务 (direct_generation) 只通知，不覆盖
+            const isAgentTask = task.type === 'shot_generation';
+
             // 通知逻辑保持不变
             if (!notifiedTaskIdsRef.current.has(task.id)) {
                 notifiedTaskIdsRef.current.add(task.id);
@@ -528,7 +534,8 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
                         const rangeStr = shotLabels.length === 1
                             ? String(shotLabels[0])
                             : `${shotLabels[0]}-${shotLabels[shotLabels.length - 1]}`;
-                        toast.success(`Sora视频已生成 (镜头 ${rangeStr})`, {
+                        const providerName = task.provider === 'vidu' ? 'Vidu' : 'Sora';
+                        toast.success(`${providerName}视频已生成 (镜头 ${rangeStr})`, {
                             id: `sora-complete-${task.id}`,
                             duration: 4000,
                         });
@@ -536,7 +543,9 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
                 }
             }
 
-            // 收集需要同步的分镜
+            // 收集需要同步的分镜（仅限 Agent 任务）
+            if (!isAgentTask) return; // Pro 模式任务不自动覆盖分镜
+
             const isNewTask = new Date(task.updatedAt).getTime() > Date.now() - 30000; // 30秒内视为新任务
             for (const shotId of targetShotIds) {
                 const syncKey = `${task.id}:${shotId}`;
@@ -580,14 +589,15 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
                         const existingHistory = currentShotData?.generationHistory || [];
                         const alreadyExists = existingHistory.some((h: any) => h.result === videoUrl);
 
+                        const providerName = task.provider === 'vidu' ? 'vidu' : 'sora';
                         const newHistory = alreadyExists ? existingHistory : [
                             {
-                                id: `sora_${task.id}_${Date.now()}_${shotId.slice(-4)}`,
+                                id: `${providerName}_${task.id}_${Date.now()}_${shotId.slice(-4)}`,
                                 type: 'video' as const,
                                 timestamp: new Date().toISOString(),
                                 result: videoUrl,
-                                prompt: typeof task.prompt === 'string' ? task.prompt : 'Sora Video Generation',
-                                parameters: { model: 'sora', taskId: task.id },
+                                prompt: typeof task.prompt === 'string' ? task.prompt : `${providerName.charAt(0).toUpperCase() + providerName.slice(1)} Video Generation`,
+                                parameters: { model: providerName, taskId: task.id, provider: task.provider },
                                 status: 'success' as const
                             },
                             ...existingHistory

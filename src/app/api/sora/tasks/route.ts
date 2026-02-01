@@ -63,22 +63,29 @@ export async function GET(request: NextRequest) {
         );
 
         // 转换为前端格式
-        const videoMessages = filteredTasks.map((task: any) => ({
-            id: `sora_task_${task.id}`,
-            role: 'assistant',
-            content: task.type === 'shot_generation' ? 'Agent 生成 Sora 视频完成' : 'Sora 视频生成完成',
-            timestamp: task.updated_at || task.created_at,
-            videoUrl: task.r2_url || task.kaponai_url,
-            shotId: shotId || task.shot_id,
-            metadata: {
-                type: 'sora_video_complete',
+        // 转换为前端格式
+        const videoMessages = filteredTasks.map((task: any) => {
+            const isVidu = task.provider === 'vidu' || (task.model && task.model.includes('vidu'));
+            const modelName = isVidu ? 'Vidu' : 'Sora';
+
+            return {
+                id: `sora_task_${task.id}`,
+                role: 'assistant',
+                content: `${modelName} 视频生成完成`,
+                timestamp: task.updated_at || task.created_at,
                 videoUrl: task.r2_url || task.kaponai_url,
-                taskId: task.id,
-                model: task.model || 'sora-2',
-                prompt: task.prompt || '',
-                source: task.type === 'shot_generation' ? 'agent' : 'pro'
-            }
-        }));
+                shotId: shotId || task.shot_id,
+                metadata: {
+                    type: 'sora_video_complete',
+                    videoUrl: task.r2_url || task.kaponai_url,
+                    taskId: task.id,
+                    model: task.model || (isVidu ? 'vidu-video' : 'sora-2'),
+                    provider: task.provider || (isVidu ? 'vidu' : 'sora'),
+                    prompt: task.prompt || '',
+                    source: task.type === 'shot_generation' ? 'agent' : 'pro'
+                }
+            };
+        });
 
         return NextResponse.json({ videoMessages });
     } catch (error) {

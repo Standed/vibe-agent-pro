@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KaponaiService } from '@/services/KaponaiService';
 import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
+import { ViduTaskManager } from '@/services/ViduTaskManager';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
@@ -72,6 +73,27 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized task access' }, { status: 403 });
       }
     }
+    // Vidu 任务处理逻辑
+    if (task.provider === 'vidu') {
+      const updatedTask = await ViduTaskManager.checkAndUpdateTask(taskId);
+      if (!updatedTask) {
+        return NextResponse.json({ error: 'Task check failed' }, { status: 500 });
+      }
+
+      const resolvedStatus = normalizeStatus(updatedTask.status);
+      const isFinal = resolvedStatus === 'completed' || resolvedStatus === 'failed';
+      const videoUrl = updatedTask.r2_url || updatedTask.kaponai_url || null;
+
+      return NextResponse.json({
+        status: resolvedStatus,
+        progress: updatedTask.progress,
+        videoUrl: videoUrl,
+        kaponaiUrl: updatedTask.kaponai_url,
+        r2Url: updatedTask.r2_url,
+        error: updatedTask.error_message,
+      });
+    }
+
     const kaponai = new KaponaiService();
     const isFinal = task.status === 'completed' || task.status === 'failed';
     let statusRes: any = null;

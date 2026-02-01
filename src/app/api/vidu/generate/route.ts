@@ -18,10 +18,10 @@ const supabase = createClient(supabaseUrl, supabaseKey);
  * Body:
  * - mode: 'img2video' | 'start-end2video' | 'reference2video' - 生成模式
  * - images: string[] - 图片 URL 数组（根据模式不同，1-7 张）
- * - prompt?: string - 提示词（仅 reference2video 模式需要）
- * - duration?: number - 视频时长（1-10s），默认 5s
+ * - prompt?: string - 提示词（仅 reference2video 模式需要，但建议都要有）
+ * - duration?: number - 视频时长（1-10s、但是首尾帧最多是 8s），默认 5s
  * - resolution?: '720p' | '1080p' - 分辨率，默认 1080p
- * - off_peak?: boolean - 错峰模式，默认 false
+ * - off_peak?: boolean - 错峰模式，默认 false，使用 true 只需要花费一半积分
  * - projectId?: string - 项目 ID（可选）
  * - shotId?: string - 分镜 ID（可选）
  */
@@ -42,11 +42,16 @@ export async function POST(req: NextRequest) {
             prompt,
             duration = 5,
             resolution = '1080p',
-            off_peak = false,
+            off_peak,
+            offPeak,
             projectId,
             shotId,
-            sceneId, // 添加 sceneId
+            sceneId,
+            aspect_ratio, // 添加 aspect_ratio
         } = body;
+
+        // 支持两种参数名
+        const isOffPeak = off_peak ?? offPeak ?? false;
 
         // 验证参数
         if (!mode || !['img2video', 'start-end2video', 'reference2video'].includes(mode)) {
@@ -93,10 +98,18 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // 验证 duration 范围（1-10s）
+        // 验证 duration 范围
+        // 基础范围 1-10s
         if (typeof duration !== 'number' || duration < 1 || duration > 10) {
             return NextResponse.json(
                 { error: 'Duration must be a number between 1 and 10 seconds' },
+                { status: 400 }
+            );
+        }
+        // 首尾帧模式特殊限制：最大 8s
+        if (mode === 'start-end2video' && duration > 8) {
+            return NextResponse.json(
+                { error: 'Start-End mode duration cannot exceed 8 seconds' },
                 { status: 400 }
             );
         }
@@ -109,8 +122,8 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // 计算积分消耗
-        const requiredCredits = calculateViduCredits(duration, resolution as '720p' | '1080p');
+        // 计算积分消耗 (支持错峰半价)
+        const requiredCredits = calculateViduCredits(duration, resolution as '720p' | '1080p', isOffPeak);
         console.log(`[Vidu] 生成需要 ${requiredCredits} 积分 (${duration}s ${resolution})`);
 
         // 检查积分余额
@@ -180,7 +193,7 @@ export async function POST(req: NextRequest) {
 
         // 根据模式调用对应方法
         let result;
-        const commonParams = { duration, resolution, off_peak };
+        const commonParams = { duration, resolution, off_peak: isOffPeak };
 
         if (mode === 'img2video') {
             result = await viduService.img2video({
@@ -196,6 +209,7 @@ export async function POST(req: NextRequest) {
             result = await viduService.reference2video({
                 images,
                 prompt,
+                aspect_ratio, // 传递比例
                 ...commonParams
             });
         }

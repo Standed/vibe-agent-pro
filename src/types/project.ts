@@ -482,6 +482,7 @@ export interface SoraTask {
   shotRanges?: Array<{ shotId: string; start: number; end: number }>;
   characterId?: string; // 关联的角色 ID
   type?: 'shot_generation' | 'character_reference' | 'direct_generation'; // 任务类型
+  provider?: 'sora' | 'vidu' | string; // 视频生成提供商
   status: 'queued' | 'processing' | 'generating' | 'completed' | 'failed' | 'in_progress';
   progress: number;
   model: string;

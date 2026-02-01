@@ -112,12 +112,16 @@ const GeneratingIndicator = memo(function GeneratingIndicator({
                     <div className="px-4 py-3 rounded-2xl shadow-sm border text-sm bg-white dark:bg-zinc-900/50 text-zinc-700 dark:text-zinc-200 border-black/5 dark:border-white/10 rounded-tl-sm backdrop-blur-sm">
                         <div className="flex items-center gap-2">
                             <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                            <span>正在生成图片，请稍候...</span>
+                            <span>
+                                {selectedModel.includes('video') ? '正在生成视频，请稍候...' : '正在生成图片，请稍候...'}
+                            </span>
                         </div>
                         <p className="text-xs text-zinc-400 mt-2">
                             {selectedModel === 'jimeng'
                                 ? '即梦 AI 正在绘制中，通常需要 15-30 秒'
-                                : 'AI 正在思考中...'}
+                                : selectedModel.includes('video')
+                                    ? 'AI 正在生成视频，通常需要 3-5 分钟'
+                                    : 'AI 正在思考中...'}
                         </p>
                     </div>
                 </div>
