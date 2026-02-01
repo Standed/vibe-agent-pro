@@ -30,6 +30,7 @@ src/components/chat/
 src/hooks/chat/
 ├── useAutoReference.ts        # 参考图自动检测
 ├── useChatHistory.ts          # 聊天历史管理
+├── useChatReferenceInteractions.ts # 拖拽/上传交互封装 (新增)
 ├── useStartEndFrames.ts       # 首尾帧状态管理
 ├── useVideoReferences.ts      # 视频模式参考图状态隔离 (新增)
 └── useReferenceCallbacks.ts   # 参考图操作回调解耦 (新增)
@@ -54,7 +55,7 @@ src/hooks/chat/
 ```typescript
 type ActiveReference = {
     url: string;
-    source: 'shot_ref' | 'manual_upload' | 'history_ref' | 'dropped' | 'auto_detect';
+    source: 'shot_ref' | 'manual_upload' | 'history_ref' | 'auto_detect';
     label?: string;
 };
 ```
@@ -64,7 +65,6 @@ type ActiveReference = {
 | `shot_ref` | 分镜图 | Vidu 模式下动态投影的分镜图 |
 | `manual_upload` | 手动上传 | 用户上传的图片 |
 | `history_ref` | 历史记录 | 从历史消息添加的图片 |
-| `dropped` | 拖拽添加 | 从画布拖拽过来的图片 |
 | `auto_detect` | 自动检测 | 从 Prompt 分析出的角色/资产图 |
 
 ---
@@ -106,6 +106,7 @@ POST /api/vidu/generate
 2. 如果首帧为空且分镜有图 -> 自动填入分镜图
 3. 移除旧版的 defaultStartFrameUrl 属性 -> 删除首帧后状态为真正的 Null (无虚影)
 4. 尾帧必须用户手动上传
+5. **发送时** 首尾帧会作为用户消息的参考图展示，确保聊天记录可回放
 
 API 调用：
 POST /api/vidu/generate
@@ -124,7 +125,8 @@ POST /api/vidu/generate
 逻辑：
 1. **允许** Prompt 自动检测的参考图 (auto_detect)
 2. **允许** 分镜图投影 (如果列表为空)
-3. 用于提供更丰富的参考上下文
+3. 手动上传优先，自动检测补齐
+4. 用于提供更丰富的参考上下文
 
 API 调用：
 POST /api/vidu/generate
@@ -145,6 +147,7 @@ POST /api/vidu/generate
 2. **屏蔽** Vidu 的分镜图投影
 3. **只显示** 用户显式手动上传或从历史添加的图片
 4. 确保 Sora 模式永远拥有纯净的操作空间
+5. **切换分镜时** 参考图会重置，避免跨分镜污染
 
 API 调用：
 POST /api/sora
@@ -184,6 +187,7 @@ POST /api/sora
 - 管理当前活跃的参考图列表
 - 支持拖拽排序
 - 支持手动上传
+ - 输出 `mentionedAssets`（角色/场景命中），供 Vidu reference2video 自动引用
 
 返回值：
 ```typescript
@@ -210,6 +214,22 @@ POST /api/sora
     setEndFrame: (frame) => void;
     clearFrames: () => void;
     getFrameUrls: () => [string, string] | null;
+}
+```
+
+### useChatReferenceInteractions (新增)
+位置：`src/hooks/chat/useChatReferenceInteractions.ts`
+
+功能：
+- 将拖拽/上传的复杂分支从 `ChatPanel` 中抽离
+- 按模式分别写入对应状态（Vidu/Sora/图片）
+
+返回值：
+```typescript
+{
+    handleFileUpload: (e) => void;
+    drop: (ref) => void;        // react-dnd drop ref
+    isOver: boolean;            // 是否拖拽悬停
 }
 ```
 

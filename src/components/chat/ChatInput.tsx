@@ -6,7 +6,6 @@ import { JimengOptions, JimengModel, JimengResolution } from '@/components/jimen
 import { cn } from '@/lib/utils';
 import { getCommandSuggestions, SLASH_COMMANDS, type SlashCommand } from '@/utils/slashCommands';
 import { GenerationModel, Character, Location } from '@/types/project';
-import type { FrameImage } from '@/hooks/chat/useStartEndFrames';
 
 interface ChatInputProps {
     inputText: string;
@@ -47,12 +46,6 @@ interface ChatInputProps {
     setViduResolution?: (res: '720p' | '1080p') => void;
     viduOffPeak?: boolean;
     setViduOffPeak?: (offPeak: boolean) => void;
-    // 首尾帧（通用，支持 Vidu、Runway 等）
-    startFrame?: FrameImage | null;
-    endFrame?: FrameImage | null;
-    onStartFrameChange?: (frame: FrameImage | null) => void;
-    onEndFrameChange?: (frame: FrameImage | null) => void;
-    defaultStartFrameUrl?: string; // 当前分镜图片
 }
 
 export function ChatInput({
@@ -88,11 +81,6 @@ export function ChatInput({
     setViduResolution,
     viduOffPeak = false,
     setViduOffPeak,
-    startFrame,
-    endFrame,
-    onStartFrameChange,
-    onEndFrameChange,
-    defaultStartFrameUrl,
     onAssetSelected
 }: ChatInputProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);

@@ -67,6 +67,13 @@ const { controlMode, setControlMode } = useProjectStore();
 {controlMode === 'agent' ? <AgentPanel /> : <ChatPanel />}
 ```
 
+### Pro 模式参考图要点（更新）
+
+- **首尾帧**：进入 `start-end2video` 时自动把分镜图写入首帧状态（真实 state），删除后不再显示虚影。
+- **参考生视频**：手动参考图优先，`@角色/@场景` 自动检测补齐；列表为空时才投影分镜图。
+- **交互解耦**：拖拽/上传逻辑集中到 `useChatReferenceInteractions.ts`，`ChatPanel.tsx` 更专注编排。
+- **跨分镜隔离**：切换分镜会重置 Vidu/Sora 参考图状态，避免污染下一镜头。
+
 ---
 
 ## 🖼️ 故事构思视图 (Planning)
@@ -492,5 +499,5 @@ const results = await executor.execute(toolCalls);
 
 ---
 
-**最后更新**: 2026-01-31  
-**版本**: v3.9.2 (Vidu 集成 + 三视图架构文档 + 并行执行说明)
+**最后更新**: 2026-02-01  
+**版本**: v3.9.3 (Refactor: 状态隔离与交互解耦)

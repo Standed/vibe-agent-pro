@@ -90,7 +90,8 @@ const MessageItem = memo(function MessageItem({
         prevProps.message.id === nextProps.message.id &&
         prevProps.message.images === nextProps.message.images &&
         prevProps.message.content === nextProps.message.content &&
-        prevProps.selectedModel === nextProps.selectedModel
+        prevProps.selectedModel === nextProps.selectedModel &&
+        prevProps.onAddToReference === nextProps.onAddToReference
     );
 });
 
@@ -183,6 +184,7 @@ export const MessageList = memo(function MessageList({
     return (
         prevProps.messages === nextProps.messages &&
         prevProps.isGenerating === nextProps.isGenerating &&
-        prevProps.selectedModel === nextProps.selectedModel
+        prevProps.selectedModel === nextProps.selectedModel &&
+        prevProps.onAddToReference === nextProps.onAddToReference
     );
 });

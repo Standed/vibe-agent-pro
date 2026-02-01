@@ -1,15 +1,10 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { useDrop } from 'react-dnd';
-import { NativeTypes } from 'react-dnd-html5-backend';
-import { createPortal } from 'react-dom';
-import { SHOT_TO_CHAT } from './dragTypes';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useChatReferenceInteractions } from '@/hooks/chat/useChatReferenceInteractions';
 import { useProjectStore } from '@/store/useProjectStore';
-import { generateSimpleGrid, generateSingleImage, urlsToReferenceImages } from '@/services/geminiService';
-import { AspectRatio, Character, Location, GridData } from '@/types/project';
+import { AspectRatio } from '@/types/project';
 import { toast } from 'sonner';
-import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 import GridPreviewModal from '@/components/grid/GridPreviewModal';
 import { GridSliceSelector } from '@/components/ui/GridSliceSelector';
 import { useChatGeneration } from '@/hooks/chat/useChatGeneration';
@@ -17,16 +12,12 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { formatShotLabel } from '@/utils/shotOrder';
 import { ImagePreviewOverlay } from './ImagePreviewOverlay';
 import { dataService } from '@/lib/dataService';
-import { storageService } from '@/lib/storageService';
 import { useJimengGeneration } from '@/hooks/generation/useJimengGeneration';
 import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
-import { ChatBubble } from './ChatBubble';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
 import { ReferenceSection } from './ReferenceSection';
-import { Sparkles, Bug, Loader2, X } from 'lucide-react';
-import { compressImage, compressFileToBase64 } from '@/utils/imageCompression';
-import { replaceSoraCharacterCodes } from '@/utils/soraCharacterReplace';
+import { Sparkles, Bug, Loader2 } from 'lucide-react';
 import { useSoraGeneration } from '@/hooks/sora/useSoraGeneration';
 // import { useSoraVideoMessages } from '@/hooks/useSoraVideoMessages'; // Moved to useChatHistory
 import { useChatHistory } from '@/hooks/chat/useChatHistory';
@@ -36,7 +27,6 @@ import { useVideoReferences } from '@/hooks/chat/useVideoReferences';
 import { useReferenceCallbacks } from '@/hooks/chat/useReferenceCallbacks';
 import { useViduGeneration } from '@/hooks/generation/useViduGeneration';
 import { ChatPanelMessage, GenerationModel } from '@/types/project';
-import { generateMessageId } from '@/lib/utils';
 
 // Types
 
@@ -89,7 +79,6 @@ export default function ChatPanel() {
     // Use Auto Reference Hook
     const {
         activeReferences,
-        setActiveReferences,
         ignoredUrls,
         setIgnoredUrls,
         mentionedAssets,
@@ -166,6 +155,7 @@ export default function ChatPanel() {
 
     // 分镜图删除状态（提前定义供 useReferenceCallbacks 使用）
     const [isShotRefDeleted, setIsShotRefDeleted] = useState(false);
+    const [isViduRefShotDeleted, setIsViduRefShotDeleted] = useState(false);
 
     // 参考图操作回调（解耦自 ChatPanel 的复杂逻辑）
     const referenceCallbacks = useReferenceCallbacks({
@@ -177,6 +167,17 @@ export default function ChatPanel() {
         setDroppedReferences,
         setIsShotRefDeleted: (deleted: boolean) => setIsShotRefDeleted(deleted),
         setIgnoredUrls
+    });
+
+    const { handleFileUpload, drop, isOver } = useChatReferenceInteractions({
+        selectedModel,
+        viduMode,
+        activeReferences,
+        setDroppedReferences,
+        setIgnoredUrls,
+        setIsShotRefDeleted,
+        videoRefs,
+        startEndFrames
     });
 
     // Jimeng Hook
@@ -201,17 +202,6 @@ export default function ChatPanel() {
 
     // Refs
     const messagesEndRef = useRef<HTMLDivElement>(null);
-
-    // Handlers for Reference Dragging
-    const moveReferenceFn = useCallback((dragIndex: number, hoverIndex: number) => {
-        if (dragIndex === hoverIndex) return;
-        setActiveReferences((prevRefs) => {
-            const newRefs = [...prevRefs];
-            const [dragItem] = newRefs.splice(dragIndex, 1);
-            newRefs.splice(hoverIndex, 0, dragItem);
-            return newRefs;
-        });
-    }, [setActiveReferences]);
 
     const onRemoveReferenceFn = useCallback((ref: any) => {
         setDroppedReferences(prev => prev.filter(r => r.url !== ref.url));
@@ -241,6 +231,7 @@ export default function ChatPanel() {
     // 重置逻辑：切换分镜时，恢复显示默认分镜图
     useEffect(() => {
         setIsShotRefDeleted(false);
+        setIsViduRefShotDeleted(false);
     }, [selectedShotId]);
 
     // 自动填充逻辑：切换模式/分镜时自动初始化参考图
@@ -262,10 +253,20 @@ export default function ChatPanel() {
 
         const shotImage = selectedShot?.referenceImage;
 
+        if (shotChanged) {
+            videoRefs.clearViduImg2Video();
+            videoRefs.clearViduReferences();
+            videoRefs.clearSora();
+            startEndFrames.clearFrames();
+            setIsShotRefDeleted(false);
+            setIsViduRefShotDeleted(false);
+        }
+
         // ========== Vidu 视频模式初始化 ==========
         if (selectedModel === 'vidu-video') {
             // 图生视频模式：初始化分镜图到独立状态
             if (viduMode === 'img2video') {
+                setIsShotRefDeleted(false);
                 // 仅在切换模式/分镜且当前为空时初始化
                 if ((shotChanged || modeChanged || modelChanged) && !videoRefs.viduImg2VideoRef && shotImage) {
                     videoRefs.setViduImg2Video({
@@ -276,9 +277,10 @@ export default function ChatPanel() {
                 }
             }
 
-            // 首尾帧模式：初始化首帧为分镜图
+            // 首尾帧模式：进入模式/切换分镜时重置并初始化首帧为分镜图
             if (viduMode === 'start-end2video') {
-                if ((shotChanged || modeChanged || modelChanged) && !startEndFrames.frames.startFrame && shotImage) {
+                startEndFrames.clearFrames();
+                if (shotImage) {
                     startEndFrames.setStartFrame({
                         url: shotImage,
                         source: 'shot_ref',
@@ -287,23 +289,9 @@ export default function ChatPanel() {
                 }
             }
 
-            // 参考生视频模式：初始化资产图（不包含分镜图）
+            // 参考生视频模式：清空分镜投影删除状态
             if (viduMode === 'reference2video') {
-                if ((shotChanged || modeChanged || modelChanged) && videoRefs.viduReferenceRefs.length === 0) {
-                    // 只添加提及的资产图（角色、场景），不添加分镜图
-                    const allAssets = [...mentionedAssets.characters, ...mentionedAssets.locations];
-                    allAssets.forEach(asset => {
-                        const assetImage = asset.referenceImages?.[0];
-                        if (assetImage) {
-                            videoRefs.addViduReference({
-                                url: assetImage,
-                                source: 'auto_detect',
-                                label: asset.name,
-                                entityName: asset.name
-                            });
-                        }
-                    });
-                }
+                setIsViduRefShotDeleted(false);
             }
         }
 
@@ -317,7 +305,7 @@ export default function ChatPanel() {
                 });
             }
         }
-    }, [selectedShotId, viduMode, selectedModel, selectedShot, videoRefs, startEndFrames, mentionedAssets]);
+    }, [selectedShotId, viduMode, selectedModel, selectedShot, videoRefs, startEndFrames, setIsShotRefDeleted, setIsViduRefShotDeleted]);
 
     // 计算最终参考图列表 (Derived State)
     // 如果是 Vidu Img2Video 且没被删除且没手动图 -> 注入分镜图
@@ -339,6 +327,55 @@ export default function ChatPanel() {
     // 合并列表：分镜图排在最前（仅用于图片生成模式）
     const baseReferences = shotRef ? [shotRef, ...activeReferences] : activeReferences;
 
+    // Vidu Reference2Video auto-detect refs (角色/场景)
+    const autoDetectedViduRefs = useMemo(() => {
+        const refs: ActiveReference[] = [];
+        const seen = new Set<string>();
+        const pushRef = (url: string | undefined, name: string, type: 'character' | 'location') => {
+            if (!url || seen.has(url) || ignoredUrls.has(url)) return;
+            refs.push({
+                url,
+                source: 'auto_detect',
+                label: `${type === 'character' ? '角色' : '场景'}: ${name}`,
+                entityName: name
+            });
+            seen.add(url);
+        };
+
+        mentionedAssets.characters.forEach((character) => {
+            const url = character.referenceImages?.[0];
+            pushRef(url, character.name, 'character');
+        });
+        mentionedAssets.locations.forEach((location) => {
+            const url = location.referenceImages?.[0];
+            pushRef(url, location.name, 'location');
+        });
+
+        return refs;
+    }, [mentionedAssets, ignoredUrls]);
+
+    const mergeViduReferences = useCallback((manualRefs: ActiveReference[], autoRefs: ActiveReference[], max: number) => {
+        const merged: ActiveReference[] = [];
+        const seen = new Set<string>();
+
+        manualRefs.forEach(ref => {
+            if (!seen.has(ref.url)) {
+                merged.push(ref);
+                seen.add(ref.url);
+            }
+        });
+
+        for (const ref of autoRefs) {
+            if (merged.length >= max) break;
+            if (!seen.has(ref.url)) {
+                merged.push(ref);
+                seen.add(ref.url);
+            }
+        }
+
+        return merged;
+    }, []);
+
     // ========== 根据模式选择参考图 ==========
     const getDisplayReferences = (): ActiveReference[] => {
         // Vidu 图生视频：使用独立状态
@@ -351,9 +388,23 @@ export default function ChatPanel() {
             return [];
         }
 
-        // Vidu 参考生视频：使用独立状态
+        // Vidu 参考生视频：手动 + 自动检测，必要时投影分镜图
         if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
-            return videoRefs.viduReferenceRefs;
+            const merged = mergeViduReferences(
+                videoRefs.viduReferenceRefs,
+                autoDetectedViduRefs,
+                videoRefs.MAX_VIDU_REFS
+            );
+
+            if (merged.length === 0 && selectedShot?.referenceImage && !isViduRefShotDeleted) {
+                return [{
+                    url: selectedShot.referenceImage,
+                    source: 'shot_ref',
+                    label: '分镜图'
+                }];
+            }
+
+            return merged;
         }
 
         // Sora 视频：使用独立状态
@@ -367,6 +418,38 @@ export default function ChatPanel() {
 
     const finalDisplayReferences = getDisplayReferences();
 
+    const sendReferences = useMemo(() => {
+        if (selectedModel === 'vidu-video' && viduMode === 'start-end2video') {
+            const frames: ActiveReference[] = [];
+            const mapFrame = (frame: FrameImage | null, fallbackLabel: string) => {
+                if (!frame) return;
+                frames.push({
+                    url: frame.url,
+                    source: frame.source === 'manual_upload'
+                        ? 'manual_upload'
+                        : frame.source === 'history_ref'
+                            ? 'history_ref'
+                            : 'shot_ref',
+                    label: frame.label || fallbackLabel,
+                    file: frame.file
+                });
+            };
+            mapFrame(startEndFrames.frames.startFrame, '首帧');
+            mapFrame(startEndFrames.frames.endFrame, '尾帧');
+            return frames;
+        }
+        return finalDisplayReferences;
+    }, [selectedModel, viduMode, finalDisplayReferences, startEndFrames.frames.startFrame, startEndFrames.frames.endFrame]);
+
+    const handleMoveReference = useCallback((dragIndex: number, hoverIndex: number) => {
+        const fromRef = finalDisplayReferences[dragIndex];
+        const toRef = finalDisplayReferences[hoverIndex];
+        if (!fromRef || !toRef) return;
+        if (fromRef.source === 'auto_detect' || fromRef.source === 'shot_ref') return;
+        if (toRef.source === 'auto_detect' || toRef.source === 'shot_ref') return;
+        referenceCallbacks.handleMoveReference(dragIndex, hoverIndex);
+    }, [finalDisplayReferences, referenceCallbacks.handleMoveReference]);
+
     // 包装删除函数 - 根据模式删除对应状态
     const handleRemoveReference = useCallback((ref: ActiveReference) => {
         // Vidu 图生视频
@@ -377,6 +460,14 @@ export default function ChatPanel() {
 
         // Vidu 参考生视频
         if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
+            if (ref.source === 'shot_ref') {
+                setIsViduRefShotDeleted(true);
+                return;
+            }
+            if (ref.source === 'auto_detect') {
+                onRemoveReferenceFn(ref);
+                return;
+            }
             videoRefs.removeViduReference(ref);
             return;
         }
@@ -393,7 +484,7 @@ export default function ChatPanel() {
         } else {
             onRemoveReferenceFn(ref);
         }
-    }, [selectedModel, viduMode, videoRefs, onRemoveReferenceFn]);
+    }, [selectedModel, viduMode, videoRefs, onRemoveReferenceFn, setIsViduRefShotDeleted]);
 
     // Handle Generation Request from other components (e.g. Storyboard)
     useEffect(() => {
@@ -422,166 +513,6 @@ export default function ChatPanel() {
     }, [messages]);
 
     // Handlers
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) {
-            let files = Array.from(e.target.files);
-            const MAX_IMAGES = 10;
-            const MAX_SIZE_PER_IMAGE = 10 * 1024 * 1024;  // 10MB per image
-
-            // Vidu 首尾帧模式：不在这里处理，由 StartEndFrameSelector 处理
-            if (selectedModel === 'vidu-video' && viduMode === 'start-end2video') {
-                toast.info('请点击首帧或尾帧区域上传图片');
-                return;
-            }
-
-            // Vidu 图生视频模式：单图替换
-            if (selectedModel === 'vidu-video' && viduMode === 'img2video') {
-                const file = files[0];
-                if (!file) return;
-
-                if (!file.type.startsWith('image/')) {
-                    toast.error('请上传图片文件');
-                    return;
-                }
-                if (file.size > MAX_SIZE_PER_IMAGE) {
-                    toast.error('图片大小不能超过 10MB');
-                    return;
-                }
-
-                const hasExisting = droppedReferences.length > 0 ||
-                    activeReferences.some(r => r.source === 'manual_upload' || r.source === 'shot_ref');
-
-                setDroppedReferences([{
-                    url: URL.createObjectURL(file),
-                    source: 'manual_upload',
-                    label: file.name,
-                    file
-                }]);
-                setManualReferenceUrls([]);
-                setIsShotRefDeleted(false);
-
-                if (files.length > 1) {
-                    toast.warning('Vidu 图生视频只支持 1 张图片，已选择第一张');
-                } else if (hasExisting) {
-                    toast.success('已替换参考图');
-                }
-                return;
-            }
-
-            // Sora 视频模式：单图替换
-            if (selectedModel === 'sora-video') {
-                const file = files[0];
-                if (!file) return;
-
-                if (!file.type.startsWith('image/')) {
-                    toast.error('请上传图片文件');
-                    return;
-                }
-                if (file.size > MAX_SIZE_PER_IMAGE) {
-                    toast.error('图片大小不能超过 10MB');
-                    return;
-                }
-
-                const hasExisting = droppedReferences.length > 0 ||
-                    activeReferences.some(r => r.source === 'manual_upload' || r.source === 'history_ref');
-
-                setDroppedReferences([{
-                    url: URL.createObjectURL(file),
-                    source: 'manual_upload',
-                    label: file.name,
-                    file
-                }]);
-                setManualReferenceUrls([]);
-
-                if (files.length > 1) {
-                    toast.warning('Sora 仅支持 1 张参考图，已选择第一张');
-                } else if (hasExisting) {
-                    toast.success('已替换参考图');
-                }
-                return;
-            }
-
-            // Vidu 参考生视频模式：最多 7 张，递增添加
-            if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
-                const MAX_REF_IMAGES = 7;
-                const currentCount = activeReferences.length;
-                const remaining = MAX_REF_IMAGES - currentCount;
-
-                if (remaining <= 0) {
-                    toast.warning(`参考生视频最多支持 ${MAX_REF_IMAGES} 张参考图`);
-                    return;
-                }
-
-                const filesToAdd = files.slice(0, remaining);
-                const validFiles = filesToAdd.filter(file => {
-                    if (!file.type.startsWith('image/')) {
-                        toast.error(`文件 ${file.name} 不是图片`);
-                        return false;
-                    }
-                    if (file.size > MAX_SIZE_PER_IMAGE) {
-                        toast.error(`文件 ${file.name} 超过 10MB 限制`);
-                        return false;
-                    }
-                    // 检查是否已存在
-                    const url = URL.createObjectURL(file);
-                    if (activeReferences.some(r => r.url === url) || droppedReferences.some(r => r.url === url)) {
-                        return false;
-                    }
-                    return true;
-                });
-
-                if (validFiles.length > 0) {
-                    const newRefs: ActiveReference[] = validFiles.map(file => ({
-                        url: URL.createObjectURL(file),
-                        source: 'manual_upload',
-                        label: file.name,
-                        file
-                    }));
-                    setDroppedReferences(prev => [...prev, ...newRefs]);
-                    toast.success(`已添加 ${validFiles.length} 张参考图 (${currentCount + validFiles.length}/${MAX_REF_IMAGES})`);
-                }
-
-                if (files.length > remaining) {
-                    toast.warning(`已达到上限，忽略了 ${files.length - remaining} 张图片`);
-                }
-                return;
-            }
-
-            // 其他模式：多图上传
-            // Count existing uploaded images in activeReferences
-            const currentUploadedCount = activeReferences.filter(r => r.source === 'manual_upload').length;
-
-            // 检查数量限制
-            if (currentUploadedCount + files.length > MAX_IMAGES) {
-                toast.error(`最多只能上传 ${MAX_IMAGES} 张参考图`);
-                return;
-            }
-
-            const validFiles = files.filter(file => {
-                if (!file.type.startsWith('image/')) {
-                    toast.error(`文件 ${file.name} 不是图片`);
-                    return false;
-                }
-                if (file.size > MAX_SIZE_PER_IMAGE) {
-                    toast.error(`文件 ${file.name} 超过 10MB 限制`);
-                    return false;
-                }
-                return true;
-            });
-
-            if (validFiles.length > 0) {
-                const newRefs: ActiveReference[] = validFiles.map(file => ({
-                    url: URL.createObjectURL(file),
-                    source: 'manual_upload',
-                    label: file.name,
-                    file: file
-                }));
-                setDroppedReferences((prev) => [...prev, ...newRefs]);
-            }
-        }
-    };
-
-
 
     const removeUploadedImage = (index: number) => {
         // Redundant with unified reference list, kept empty for interface compatibility if needed
@@ -720,295 +651,6 @@ export default function ChatPanel() {
         if (content?.trim()) toast.success('反馈已提交');
     };
 
-    // P6: Storyboard -> Pro Drag Drop AND File Drop
-    const [{ isOver }, drop] = useDrop({
-        accept: [SHOT_TO_CHAT, NativeTypes.FILE],
-        drop: (item: any, monitor) => {
-            const itemType = monitor.getItemType();
-
-            // ========== Vidu Start-End 模式特殊处理 ==========
-            // 智能填充到空槽位：首帧优先，然后尾帧
-            if (selectedModel === 'vidu-video' && viduMode === 'start-end2video') {
-                const fillToEmptySlot = (url: string, source: 'shot_ref' | 'manual_upload', label: string, file?: File) => {
-                    const frame: FrameImage = { url, source, label, file };
-                    const { startFrame, endFrame } = startEndFrames.frames;
-
-                    if (!startFrame) {
-                        startEndFrames.setStartFrame(frame);
-                        toast.success('已设置为首帧');
-                    } else if (!endFrame) {
-                        startEndFrames.setEndFrame(frame);
-                        toast.success('已设置为尾帧');
-                    } else {
-                        toast.warning('首尾帧已满，请先删除再添加');
-                    }
-                };
-
-                if (itemType === NativeTypes.FILE) {
-                    const files = item.files;
-                    if (files && files.length >= 2) {
-                        // 多张图片：第一张->首帧，第二张->尾帧
-                        const processFile = (file: File): FrameImage | null => {
-                            if (!file.type.startsWith('image/')) return null;
-                            if (file.size > 10 * 1024 * 1024) return null;
-                            return {
-                                url: URL.createObjectURL(file),
-                                source: 'manual_upload' as const,
-                                label: file.name,
-                                file,
-                            };
-                        };
-                        const frame1 = processFile(files[0]);
-                        const frame2 = processFile(files[1]);
-                        if (frame1) startEndFrames.setStartFrame(frame1);
-                        if (frame2) startEndFrames.setEndFrame(frame2);
-                        if (frame1 || frame2) {
-                            toast.success('已自动设置首尾帧');
-                        }
-                        if (files.length > 2) {
-                            toast.warning('首尾帧模式最多 2 张图片，已忽略多余图片');
-                        }
-                        return;
-                    }
-                    // 单张图片：智能填充到空槽位
-                    if (files && files.length === 1) {
-                        const file = files[0];
-                        if (!file.type.startsWith('image/')) {
-                            toast.error('请上传图片文件');
-                            return;
-                        }
-                        if (file.size > 10 * 1024 * 1024) {
-                            toast.error('图片大小不能超过 10MB');
-                            return;
-                        }
-                        fillToEmptySlot(URL.createObjectURL(file), 'manual_upload', file.name, file);
-                        return;
-                    }
-                }
-                // Shot 拖拽：智能填充到空槽位
-                if (itemType === SHOT_TO_CHAT && item.imageUrl) {
-                    fillToEmptySlot(item.imageUrl, 'shot_ref', '分镜参考图');
-                    return;
-                }
-                return;
-            }
-
-            // ========== Vidu Img2Video 模式 - 单图替换 ==========
-            if (selectedModel === 'vidu-video' && viduMode === 'img2video') {
-                const processAndReplace = (url: string, source: 'shot_ref' | 'manual_upload', label: string, file?: File) => {
-                    const hasExisting = videoRefs.viduImg2VideoRef !== null;
-
-                    // 使用独立状态
-                    videoRefs.setViduImg2Video({ url, source, label, file });
-
-                    if (hasExisting) {
-                        toast.success('Vidu 图生视频只支持 1 张图片，已替换');
-                    }
-                };
-
-                if (itemType === SHOT_TO_CHAT && item.imageUrl) {
-                    processAndReplace(item.imageUrl, 'shot_ref', '分镜参考图');
-                    return;
-                }
-
-                if (itemType === NativeTypes.FILE) {
-                    const files = item.files;
-                    if (files && files.length > 0) {
-                        const file = files[0];
-                        if (!file.type.startsWith('image/')) {
-                            toast.error('请上传图片文件');
-                            return;
-                        }
-                        if (file.size > 10 * 1024 * 1024) {
-                            toast.error('图片大小不能超过 10MB');
-                            return;
-                        }
-                        if (files.length > 1) {
-                            toast.warning('Vidu 图生视频只支持 1 张图片，已选择第一张');
-                        }
-                        processAndReplace(URL.createObjectURL(file), 'manual_upload', file.name, file);
-                    }
-                }
-                return;
-            }
-
-            // ========== Vidu Reference2Video 模式 - 最多 7 张递增 ==========
-            if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
-                const MAX_REF_IMAGES = videoRefs.MAX_VIDU_REFS;
-
-                const addReference = (url: string, source: 'shot_ref' | 'manual_upload', label: string, file?: File): boolean => {
-                    // 检查是否已存在
-                    if (videoRefs.viduReferenceRefs.some(r => r.url === url)) {
-                        toast.warning('该图片已添加');
-                        return false;
-                    }
-
-                    if (!videoRefs.canAddViduReference()) {
-                        toast.warning(`参考生视频最多支持 ${MAX_REF_IMAGES} 张参考图`);
-                        return false;
-                    }
-
-                    videoRefs.addViduReference({ url, source, label, file });
-                    return true;
-                };
-
-                if (itemType === SHOT_TO_CHAT && item.imageUrl) {
-                    if (addReference(item.imageUrl, 'shot_ref', '分镜参考图')) {
-                        toast.success(`已添加参考图 (${videoRefs.getViduReferenceCount() + 1}/${MAX_REF_IMAGES})`);
-                    }
-                    return;
-                }
-
-                if (itemType === NativeTypes.FILE) {
-                    const files = item.files;
-                    if (files && files.length > 0) {
-                        const currentCount = videoRefs.getViduReferenceCount();
-                        const remaining = MAX_REF_IMAGES - currentCount;
-
-                        if (remaining <= 0) {
-                            toast.warning(`参考生视频最多支持 ${MAX_REF_IMAGES} 张参考图`);
-                            return;
-                        }
-
-                        let addedCount = 0;
-                        const filesToAdd = Array.from(files as FileList).slice(0, remaining);
-
-                        for (const file of filesToAdd) {
-                            if (!file.type.startsWith('image/')) {
-                                toast.error(`文件 ${file.name} 不是图片`);
-                                continue;
-                            }
-                            if (file.size > 10 * 1024 * 1024) {
-                                toast.error(`文件 ${file.name} 超过 10MB 限制`);
-                                continue;
-                            }
-                            const url = URL.createObjectURL(file);
-                            if (addReference(url, 'manual_upload', file.name, file)) {
-                                addedCount++;
-                            }
-                        }
-
-                        if (addedCount > 0) {
-                            toast.success(`已添加 ${addedCount} 张参考图`);
-                        }
-                        if (files.length > remaining) {
-                            toast.warning(`已达到上限，忽略了 ${files.length - remaining} 张图片`);
-                        }
-                    }
-                }
-                return;
-            }
-
-            // ========== Sora 视频模式 - 单图替换 ==========
-            if (selectedModel === 'sora-video') {
-                const processAndReplace = (url: string, source: 'shot_ref' | 'manual_upload', label: string, file?: File) => {
-                    const hasExisting = videoRefs.soraRef !== null;
-
-                    // 使用独立状态
-                    videoRefs.setSora({ url, source, label, file });
-
-                    if (hasExisting) {
-                        toast.success('Sora 视频生成只支持 1 张参考图，已替换');
-                    }
-                };
-
-                if (itemType === SHOT_TO_CHAT && item.imageUrl) {
-                    processAndReplace(item.imageUrl, 'shot_ref', '分镜参考图');
-                    return;
-                }
-
-                if (itemType === NativeTypes.FILE) {
-                    const files = item.files;
-                    if (files && files.length > 0) {
-                        const file = files[0];
-                        if (!file.type.startsWith('image/')) {
-                            toast.error('请上传图片文件');
-                            return;
-                        }
-                        if (file.size > 10 * 1024 * 1024) {
-                            toast.error('图片大小不能超过 10MB');
-                            return;
-                        }
-                        if (files.length > 1) {
-                            toast.warning('Sora 仅支持 1 张参考图，已选择第一张');
-                        }
-                        processAndReplace(URL.createObjectURL(file), 'manual_upload', file.name, file);
-                    }
-                }
-                return;
-            }
-
-            // ========== 默认处理 (其他模式) ==========
-            // 1. Handle Shot Drop
-            if (itemType === SHOT_TO_CHAT) {
-                console.log("Dropped Shot:", item);
-                if (!item.imageUrl) return;
-
-                // FIX: Remove from ignoredUrls if it was previously removed
-                setIgnoredUrls(prev => {
-                    const next = new Set(prev);
-                    next.delete(item.imageUrl);
-                    return next;
-                });
-
-                setDroppedReferences(prev => {
-                    if (prev.some(r => r.url === item.imageUrl)) return prev;
-                    return [...prev, {
-                        url: item.imageUrl,
-                        source: 'shot_ref',
-                        label: '分镜参考图',
-                        entityName: 'Shot Reference'
-                    }];
-                });
-                return;
-            }
-
-            // 2. Handle Native File Drop
-            if (itemType === NativeTypes.FILE) {
-                const files = item.files;
-                if (files && files.length > 0) {
-                    let fileList = Array.from(files as FileList);
-                    const MAX_IMAGES = 10;
-                    const MAX_SIZE_PER_IMAGE = 10 * 1024 * 1024;  // 10MB per image
-
-                    // Count existing
-                    const currentUploadedCount = activeReferences.filter(r => r.source === 'manual_upload').length;
-
-                    // 检查数量限制
-                    if (currentUploadedCount + fileList.length > MAX_IMAGES) {
-                        toast.error(`最多只能上传 ${MAX_IMAGES} 张参考图`);
-                        return;
-                    }
-
-                    const validFiles = fileList.filter(file => {
-                        if (!file.type.startsWith('image/')) {
-                            toast.error(`文件 ${file.name} 不是图片`);
-                            return false;
-                        }
-                        if (file.size > MAX_SIZE_PER_IMAGE) {
-                            toast.error(`文件 ${file.name} 超过 10MB 限制`);
-                            return false;
-                        }
-                        return true;
-                    });
-
-                    if (validFiles.length > 0) {
-                        const newRefs: ActiveReference[] = validFiles.map(file => ({
-                            url: URL.createObjectURL(file),
-                            source: 'manual_upload',
-                            label: file.name,
-                            file: file
-                        }));
-                        setDroppedReferences((prev) => [...prev, ...newRefs]);
-                    }
-                }
-            }
-        },
-        collect: (monitor) => ({
-            isOver: monitor.isOver(),
-        }),
-    });
-
     return (
         <div id="chat-panel-container" ref={drop as any} className={`h-full flex flex-col bg-zinc-50 dark:bg-black relative ${isOver ? 'ring-2 ring-light-accent dark:ring-cine-accent' : ''}`}>
             {isOver && (
@@ -1090,7 +732,7 @@ export default function ChatPanel() {
                 endFrame={startEndFrames.frames.endFrame}
                 onStartFrameChange={startEndFrames.setStartFrame}
                 onEndFrameChange={startEndFrames.setEndFrame}
-                onMoveReference={moveReferenceFn}
+                onMoveReference={handleMoveReference}
                 onRemoveReference={handleRemoveReference}
                 onPreview={(url) => setPreviewState({ images: [url], index: 0 })}
             />
@@ -1101,7 +743,7 @@ export default function ChatPanel() {
                 onSend={() => {
                     handleSend(
                         inputText,
-                        finalDisplayReferences, // Pass full ordered list
+                        sendReferences, // Pass full ordered list
                         [], // Deprecated files arg
                         selectedModel,
                         gridSize,
@@ -1161,11 +803,6 @@ export default function ChatPanel() {
                 setViduResolution={setViduResolution}
                 viduOffPeak={viduOffPeak}
                 setViduOffPeak={setViduOffPeak}
-                startFrame={startEndFrames.frames.startFrame}
-                endFrame={startEndFrames.frames.endFrame}
-                onStartFrameChange={startEndFrames.setStartFrame}
-                onEndFrameChange={startEndFrames.setEndFrame}
-                defaultStartFrameUrl={selectedShot?.referenceImage}
             />
 
             {gridResult && (

@@ -9,7 +9,6 @@ import { StartEndFrameSelector } from './StartEndFrameSelector';
 import type { ActiveReference } from '@/hooks/chat/useAutoReference';
 import type { FrameImage } from '@/hooks/chat/useStartEndFrames';
 
-import { X } from 'lucide-react'; // 引入图标
 
 interface ReferenceSectionProps {
     selectedModel: string;
@@ -22,8 +21,6 @@ interface ReferenceSectionProps {
     onMoveReference: (dragIndex: number, hoverIndex: number) => void;
     onRemoveReference: (ref: ActiveReference) => void;
     onPreview: (url: string) => void;
-    // 移除复杂的 shotRef props
-    defaultStartFrameUrl?: string;
 }
 
 /**
@@ -40,7 +37,6 @@ export const ReferenceSection = memo(function ReferenceSection({
     onMoveReference,
     onRemoveReference,
     onPreview,
-    defaultStartFrameUrl
 }: ReferenceSectionProps) {
 
     // 1. Vidu 首尾帧模式
@@ -53,7 +49,6 @@ export const ReferenceSection = memo(function ReferenceSection({
                     onStartFrameChange={onStartFrameChange}
                     onEndFrameChange={onEndFrameChange}
                     onPreview={onPreview}
-                    defaultStartFrameUrl={defaultStartFrameUrl}
                 />
             </div>
         );
