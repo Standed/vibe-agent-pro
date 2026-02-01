@@ -3,6 +3,7 @@ import { useDrop } from 'react-dnd';
 import { NativeTypes } from 'react-dnd-html5-backend';
 import { toast } from 'sonner';
 import { SHOT_TO_CHAT } from '@/components/chat/dragTypes';
+import { validateImageFile } from '@/utils/fileValidation';
 import type { ActiveReference } from './useAutoReference';
 import type { FrameImage } from './useStartEndFrames';
 import type { VideoReferencesHook } from './useVideoReferences';
@@ -50,14 +51,7 @@ export function useChatReferenceInteractions({
                 const file = files[0];
                 if (!file) return;
 
-                if (!file.type.startsWith('image/')) {
-                    toast.error('请上传图片文件');
-                    return;
-                }
-                if (file.size > MAX_SIZE_PER_IMAGE) {
-                    toast.error('图片大小不能超过 10MB');
-                    return;
-                }
+                if (!validateImageFile(file)) return;
 
                 const hasExisting = videoRefs.viduImg2VideoRef !== null;
 
@@ -82,14 +76,7 @@ export function useChatReferenceInteractions({
                 const file = files[0];
                 if (!file) return;
 
-                if (!file.type.startsWith('image/')) {
-                    toast.error('请上传图片文件');
-                    return;
-                }
-                if (file.size > MAX_SIZE_PER_IMAGE) {
-                    toast.error('图片大小不能超过 10MB');
-                    return;
-                }
+                if (!validateImageFile(file)) return;
 
                 const hasExisting = videoRefs.soraRef !== null;
 
@@ -120,17 +107,7 @@ export function useChatReferenceInteractions({
                 }
 
                 const filesToAdd = files.slice(0, remaining);
-                const validFiles = filesToAdd.filter(file => {
-                    if (!file.type.startsWith('image/')) {
-                        toast.error(`文件 ${file.name} 不是图片`);
-                        return false;
-                    }
-                    if (file.size > MAX_SIZE_PER_IMAGE) {
-                        toast.error(`文件 ${file.name} 超过 10MB 限制`);
-                        return false;
-                    }
-                    return true;
-                });
+                const validFiles = filesToAdd.filter(file => validateImageFile(file));
 
                 if (validFiles.length > 0) {
                     let addedCount = 0;
@@ -162,17 +139,7 @@ export function useChatReferenceInteractions({
                 return;
             }
 
-            const validFiles = files.filter(file => {
-                if (!file.type.startsWith('image/')) {
-                    toast.error(`文件 ${file.name} 不是图片`);
-                    return false;
-                }
-                if (file.size > MAX_SIZE_PER_IMAGE) {
-                    toast.error(`文件 ${file.name} 超过 10MB 限制`);
-                    return false;
-                }
-                return true;
-            });
+            const validFiles = files.filter(file => validateImageFile(file));
 
             if (validFiles.length > 0) {
                 const newRefs: ActiveReference[] = validFiles.map(file => ({
@@ -221,8 +188,7 @@ export function useChatReferenceInteractions({
                     if (files && files.length >= 2) {
                         // 多张图片：第一张->首帧，第二张->尾帧
                         const processFile = (file: File): FrameImage | null => {
-                            if (!file.type.startsWith('image/')) return null;
-                            if (file.size > 10 * 1024 * 1024) return null;
+                            if (!validateImageFile(file)) return null;
                             return {
                                 url: URL.createObjectURL(file),
                                 source: 'manual_upload' as const,
@@ -245,14 +211,7 @@ export function useChatReferenceInteractions({
                     // 单张图片：智能填充到空槽位
                     if (files && files.length === 1) {
                         const file = files[0];
-                        if (!file.type.startsWith('image/')) {
-                            toast.error('请上传图片文件');
-                            return;
-                        }
-                        if (file.size > 10 * 1024 * 1024) {
-                            toast.error('图片大小不能超过 10MB');
-                            return;
-                        }
+                        if (!validateImageFile(file)) return;
                         fillToEmptySlot(URL.createObjectURL(file), 'manual_upload', file.name, file);
                         return;
                     }
@@ -287,14 +246,7 @@ export function useChatReferenceInteractions({
                     const files = item.files;
                     if (files && files.length > 0) {
                         const file = files[0];
-                        if (!file.type.startsWith('image/')) {
-                            toast.error('请上传图片文件');
-                            return;
-                        }
-                        if (file.size > 10 * 1024 * 1024) {
-                            toast.error('图片大小不能超过 10MB');
-                            return;
-                        }
+                        if (!validateImageFile(file)) return;
                         if (files.length > 1) {
                             toast.warning('Vidu 图生视频只支持 1 张图片，已选择第一张');
                         }
@@ -346,14 +298,7 @@ export function useChatReferenceInteractions({
                         const filesToAdd = Array.from(files as FileList).slice(0, remaining);
 
                         for (const file of filesToAdd) {
-                            if (!file.type.startsWith('image/')) {
-                                toast.error(`文件 ${file.name} 不是图片`);
-                                continue;
-                            }
-                            if (file.size > 10 * 1024 * 1024) {
-                                toast.error(`文件 ${file.name} 超过 10MB 限制`);
-                                continue;
-                            }
+                            if (!validateImageFile(file)) continue;
                             const url = URL.createObjectURL(file);
                             if (addReference(url, 'manual_upload', file.name, file)) {
                                 addedCount++;
@@ -393,14 +338,7 @@ export function useChatReferenceInteractions({
                     const files = item.files;
                     if (files && files.length > 0) {
                         const file = files[0];
-                        if (!file.type.startsWith('image/')) {
-                            toast.error('请上传图片文件');
-                            return;
-                        }
-                        if (file.size > 10 * 1024 * 1024) {
-                            toast.error('图片大小不能超过 10MB');
-                            return;
-                        }
+                        if (!validateImageFile(file)) return;
                         if (files.length > 1) {
                             toast.warning('Sora 仅支持 1 张参考图，已选择第一张');
                         }
@@ -451,17 +389,7 @@ export function useChatReferenceInteractions({
                         return;
                     }
 
-                    const validFiles = fileList.filter(file => {
-                        if (!file.type.startsWith('image/')) {
-                            toast.error(`文件 ${file.name} 不是图片`);
-                            return false;
-                        }
-                        if (file.size > MAX_SIZE_PER_IMAGE) {
-                            toast.error(`文件 ${file.name} 超过 10MB 限制`);
-                            return false;
-                        }
-                        return true;
-                    });
+                    const validFiles = fileList.filter(file => validateImageFile(file));
 
                     if (validFiles.length > 0) {
                         const newRefs: ActiveReference[] = validFiles.map(file => ({
