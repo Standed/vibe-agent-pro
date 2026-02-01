@@ -58,7 +58,20 @@ export function useAutoReference(
         });
 
         // 3. Auto Detect from Prompt (Lowest Priority)
-        const { referenceImageMap } = enrichPromptWithAssets(inputText, project, undefined);
+        const { referenceImageMap, usedCharacters, usedLocations } = enrichPromptWithAssets(inputText, project, undefined);
+
+        // Sync mentioned assets for downstream consumers (e.g., Vidu reference2video)
+        setMentionedAssets(prev => {
+            const next = { characters: usedCharacters, locations: usedLocations };
+            if (prev.characters === next.characters && prev.locations === next.locations) return prev;
+            const sameLength = prev.characters.length === next.characters.length && prev.locations.length === next.locations.length;
+            if (sameLength) {
+                const sameChars = prev.characters.every((c, idx) => c.id === next.characters[idx]?.id);
+                const sameLocs = prev.locations.every((l, idx) => l.id === next.locations[idx]?.id);
+                if (sameChars && sameLocs) return prev;
+            }
+            return next;
+        });
 
         let newText = inputText;
         let textChanged = false;
@@ -108,7 +121,7 @@ export function useAutoReference(
             return result;
         });
 
-    }, [inputText, selectedShotId, project, manualReferenceUrls, droppedReferences, ignoredUrls, setInputText]);
+    }, [inputText, selectedShotId, project, manualReferenceUrls, droppedReferences, ignoredUrls, setInputText, setMentionedAssets]);
 
     const handleMention = async (query: string) => {
         if (!project) return [];

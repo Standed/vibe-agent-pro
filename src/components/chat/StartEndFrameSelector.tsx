@@ -13,7 +13,6 @@ interface StartEndFrameSelectorProps {
     onEndFrameChange: (frame: FrameImage | null) => void;
     onSwapFrames?: () => void;
     onPreview?: (url: string) => void;
-    defaultStartFrameUrl?: string;
     className?: string;
 }
 
@@ -29,7 +28,6 @@ export function StartEndFrameSelector({
     onEndFrameChange,
     onSwapFrames,
     onPreview,
-    defaultStartFrameUrl,
     className = '',
 }: StartEndFrameSelectorProps) {
     const startFrameInputRef = useRef<HTMLInputElement>(null);
@@ -44,7 +42,7 @@ export function StartEndFrameSelector({
             onStartFrameChange(endFrame);
             onEndFrameChange(tempStart);
         }
-        toast.success('已切换首尾帧');
+        // toast.success('已切换首尾帧');
     };
 
     const canSwap = startFrame || endFrame;
@@ -57,7 +55,6 @@ export function StartEndFrameSelector({
                 frame={startFrame}
                 onFrameChange={onStartFrameChange}
                 onPreview={onPreview}
-                defaultUrl={defaultStartFrameUrl}
                 inputRef={startFrameInputRef}
             />
 
@@ -97,7 +94,6 @@ interface FrameDropZoneProps {
     frame: FrameImage | null;
     onFrameChange: (frame: FrameImage | null) => void;
     onPreview?: (url: string) => void;
-    defaultUrl?: string;
     inputRef: React.RefObject<HTMLInputElement | null>;
 }
 
@@ -109,7 +105,6 @@ function FrameDropZone({
     frame,
     onFrameChange,
     onPreview,
-    defaultUrl,
     inputRef,
 }: FrameDropZoneProps) {
     const handleFileDrop = (file: File) => {
@@ -200,29 +195,6 @@ function FrameDropZone({
                             <X size={12} />
                         </button>
                     </>
-                ) : defaultUrl && position === 'start' ? (
-                    // 首帧有默认分镜图：显示预览和使用按钮
-                    <div className="relative">
-                        <img
-                            src={defaultUrl}
-                            alt="分镜图（点击使用）"
-                            className={`w-16 h-16 object-cover rounded-lg border-2 border-dashed border-blue-400/50 opacity-60 cursor-pointer hover:opacity-100 hover:border-blue-500 transition-all ${isActive ? 'opacity-100 border-indigo-500' : ''
-                                }`}
-                            onClick={() => {
-                                onFrameChange({
-                                    url: defaultUrl,
-                                    source: 'shot_ref',
-                                    label: '分镜图',
-                                });
-                            }}
-                            title="点击使用分镜图 或 拖拽图片到此处"
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <span className="text-[8px] text-blue-500 font-medium bg-white/80 dark:bg-black/60 px-1 rounded">
-                                {isActive ? '放开' : '使用'}
-                            </span>
-                        </div>
-                    </div>
                 ) : (
                     // 空状态：显示上传/拖拽区域
                     <div

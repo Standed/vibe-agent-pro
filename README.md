@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-3.9.2-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-3.9.3-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -86,11 +86,12 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 
 ### 🆕 Vidu Video Generation
 - **Image-to-Video** - Convert storyboard images to video
+- **Start-End Frames** - Use start/end frames for transition videos
 - **Reference-based Generation** - Use reference images for style consistency
 - **Flexible Duration** - 1-10 seconds video generation
 - **Resolution Options** - 720p and 1080p support
-- **R2 Persistence** - Automatic upload to Cloudflare R2
-- **Agent Integration** - Available as Agent tool for AI conversations
+- **Pro Mode Integration** - Mode-specific reference management (img2video / start-end / reference2video)
+- **Agent Tool** - Shot-level Vidu generation via tool calling
 
 ### 🎵 Audio Asset Management
 - Upload audio files (all formats)
@@ -399,6 +400,11 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 ---
 
 ## 📝 Changelog
+
+### v3.9.3 (2026-02-01)
+- ✅ **Reference Logic Decoupling** - Completely refactored `ChatPanel` to use isolated state hooks (`useVideoReferences`) for Vidu/Sora modes, preventing state pollution.
+- ✅ **Interaction Encapsulation** - Moved drag-and-drop and file upload logic to `useChatReferenceInteractions`, significantly improving code maintainability.
+- ✅ **Start-End Frame Optimization** - "Ghost" projection removed; start frame is now a real state initialized from shot reference, allowing clear deletion.
 
 ### v3.9.2 (2026-01-31)
 - ✅ **Vidu Video Integration** - Added Vidu video generation support with img2video and reference2video modes.

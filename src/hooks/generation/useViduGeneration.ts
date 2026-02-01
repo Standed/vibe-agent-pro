@@ -56,14 +56,22 @@ export function useViduGeneration({
                 }
             } else if (viduMode === 'start-end2video') {
                 // 首尾帧
-                if (!startEndFrames.startFrame || !startEndFrames.endFrame) {
+                if (referenceUrls.length >= 2) {
+                    viduImages = referenceUrls.slice(0, 2);
+                } else if (!startEndFrames.startFrame || !startEndFrames.endFrame) {
                     toast.error('请设置首帧和尾帧');
                     setIsGenerating(false);
                     return;
+                } else {
+                    viduImages = [startEndFrames.startFrame.url, startEndFrames.endFrame.url];
                 }
-                viduImages = [startEndFrames.startFrame.url, startEndFrames.endFrame.url];
             } else if (viduMode === 'reference2video') {
                 // 参考生视频
+                if (!prompt || !prompt.trim()) {
+                    toast.error('参考生视频模式需要提示词');
+                    setIsGenerating(false);
+                    return;
+                }
                 if (referenceUrls.length === 0) {
                     toast.error('参考生视频模式需要至少一张参考图');
                     setIsGenerating(false);
@@ -85,7 +93,7 @@ export function useViduGeneration({
                     images: viduImages,
                     duration: viduDuration,
                     resolution: viduResolution,
-                    offPeak: viduOffPeak,
+                    off_peak: viduOffPeak,
                     projectId: project.id,
                     shotId: selectedShotId || undefined,
                     sceneId: currentSceneId || undefined,
