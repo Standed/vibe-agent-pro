@@ -6,6 +6,7 @@ import { JimengOptions, JimengModel, JimengResolution } from '@/components/jimen
 import { cn } from '@/lib/utils';
 import { getCommandSuggestions, SLASH_COMMANDS, type SlashCommand } from '@/utils/slashCommands';
 import { GenerationModel, Character, Location } from '@/types/project';
+import type { FrameImage } from '@/hooks/chat/useStartEndFrames';
 
 interface ChatInputProps {
     inputText: string;
@@ -37,6 +38,21 @@ interface ChatInputProps {
     setSoraAspectRatio?: (ratio: '16:9' | '9:16') => void;
     soraDuration?: 10 | 15;
     setSoraDuration?: (duration: 10 | 15) => void;
+    // Vidu specific
+    viduMode?: 'img2video' | 'start-end2video' | 'reference2video';
+    setViduMode?: (mode: 'img2video' | 'start-end2video' | 'reference2video') => void;
+    viduDuration?: number; // 1-10s
+    setViduDuration?: (duration: number) => void;
+    viduResolution?: '720p' | '1080p';
+    setViduResolution?: (res: '720p' | '1080p') => void;
+    viduOffPeak?: boolean;
+    setViduOffPeak?: (offPeak: boolean) => void;
+    // 首尾帧（通用，支持 Vidu、Runway 等）
+    startFrame?: FrameImage | null;
+    endFrame?: FrameImage | null;
+    onStartFrameChange?: (frame: FrameImage | null) => void;
+    onEndFrameChange?: (frame: FrameImage | null) => void;
+    defaultStartFrameUrl?: string; // 当前分镜图片
 }
 
 export function ChatInput({
@@ -64,6 +80,19 @@ export function ChatInput({
     setSoraAspectRatio,
     soraDuration = 10,
     setSoraDuration,
+    viduMode = 'img2video',
+    setViduMode,
+    viduDuration = 5,
+    setViduDuration,
+    viduResolution = '1080p',
+    setViduResolution,
+    viduOffPeak = false,
+    setViduOffPeak,
+    startFrame,
+    endFrame,
+    onStartFrameChange,
+    onEndFrameChange,
+    defaultStartFrameUrl,
     onAssetSelected
 }: ChatInputProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -150,7 +179,8 @@ export function ChatInput({
         { id: 'gemini-direct', label: 'Gemini', category: 'image' },
         { id: 'seedream', label: 'SeeDream', category: 'image' },
         { id: 'jimeng', label: '即梦', category: 'image' },
-        { id: 'sora-video', label: 'Sora视频', category: 'video' },
+        { id: 'vidu-video', label: 'Vidu', category: 'video' },
+        { id: 'sora-video', label: 'Sora', category: 'video' },
     ];
 
     return (
@@ -344,6 +374,82 @@ export function ChatInput({
                                 onModelChange={setJimengModel}
                                 onResolutionChange={setJimengResolution}
                             />
+                        </div>
+                    )}
+
+                    {/* Vidu Video Options Panel */}
+                    {selectedModel === 'vidu-video' && (
+                        <div className="animate-in fade-in slide-in-from-top-2 flex items-center gap-3 flex-wrap">
+                            {/* 模式选择 */}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-zinc-500">模式:</span>
+                                <div className="flex p-0.5 bg-zinc-100 dark:bg-white/5 rounded-lg">
+                                    {(['img2video', 'start-end2video', 'reference2video'] as const).map((mode) => (
+                                        <button
+                                            key={mode}
+                                            onClick={() => setViduMode?.(mode)}
+                                            className={cn(
+                                                "px-2 py-1 text-[10px] font-medium rounded transition-all whitespace-nowrap",
+                                                viduMode === mode
+                                                    ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
+                                                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                            )}
+                                        >
+                                            {mode === 'img2video' ? '图生视频' : mode === 'start-end2video' ? '首尾帧' : '参考生视频'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {/* 时长选择 */}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-zinc-500">时长:</span>
+                                <select
+                                    value={viduDuration}
+                                    onChange={(e) => setViduDuration?.(Number(e.target.value))}
+                                    className="px-2 py-1 text-[10px] font-medium rounded-lg bg-white dark:bg-white/10 text-black dark:text-white border border-zinc-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20 cursor-pointer"
+                                >
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((dur) => (
+                                        <option key={dur} value={dur}>
+                                            {dur}s
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            {/* 分辨率选择 */}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-zinc-500">分辨率:</span>
+                                <div className="flex p-0.5 bg-zinc-100 dark:bg-white/5 rounded-lg">
+                                    {(['720p', '1080p'] as const).map((res) => (
+                                        <button
+                                            key={res}
+                                            onClick={() => setViduResolution?.(res)}
+                                            className={cn(
+                                                "px-2 py-1 text-[10px] font-medium rounded transition-all",
+                                                viduResolution === res
+                                                    ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
+                                                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                            )}
+                                        >
+                                            {res}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {/* 错峰模式 */}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-zinc-500">错峰:</span>
+                                <button
+                                    onClick={() => setViduOffPeak?.(!viduOffPeak)}
+                                    className={cn(
+                                        "px-2 py-1 text-[10px] font-medium rounded-lg transition-all",
+                                        viduOffPeak
+                                            ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
+                                            : "bg-zinc-100 dark:bg-white/5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                    )}
+                                >
+                                    {viduOffPeak ? '开' : '关'}
+                                </button>
+                            </div>
                         </div>
                     )}
 

@@ -22,7 +22,8 @@ import { useJimengGeneration } from '@/hooks/generation/useJimengGeneration';
 import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
 import { ChatBubble } from './ChatBubble';
 import { ChatInput } from './ChatInput';
-import { DraggableReference } from './DraggableReference';
+import { MessageList } from './MessageList';
+import { ReferenceSection } from './ReferenceSection';
 import { Sparkles, Bug, Loader2, X } from 'lucide-react';
 import { compressImage, compressFileToBase64 } from '@/utils/imageCompression';
 import { replaceSoraCharacterCodes } from '@/utils/soraCharacterReplace';
@@ -30,6 +31,8 @@ import { useSoraGeneration } from '@/hooks/sora/useSoraGeneration';
 // import { useSoraVideoMessages } from '@/hooks/useSoraVideoMessages'; // Moved to useChatHistory
 import { useChatHistory } from '@/hooks/chat/useChatHistory';
 import { useAutoReference, ActiveReference } from '@/hooks/chat/useAutoReference';
+import { useStartEndFrames } from '@/hooks/chat/useStartEndFrames';
+import { useViduGeneration } from '@/hooks/generation/useViduGeneration';
 import { ChatPanelMessage, GenerationModel } from '@/types/project';
 import { generateMessageId } from '@/lib/utils';
 
@@ -129,6 +132,33 @@ export default function ChatPanel() {
     const [soraAspectRatio, setSoraAspectRatio] = useState<'16:9' | '9:16'>('16:9');
     const [soraDuration, setSoraDuration] = useState<10 | 15>(10);
 
+
+
+    // Vidu Hook
+    const {
+        viduMode,
+        setViduMode,
+        viduDuration,
+        setViduDuration,
+        viduResolution,
+        setViduResolution,
+        viduOffPeak,
+        setViduOffPeak,
+        generateViduVideo
+    } = useViduGeneration({
+        project,
+        user,
+        selectedShotId,
+        currentSceneId: currentSceneId || (selectedShot ? selectedShot.sceneId : null),
+        setMessages,
+        setInputText,
+        setDroppedReferences,
+        setIsGenerating
+    });
+
+    // 首尾帧管理（通用，支持 Vidu、Runway 等）
+    const startEndFrames = useStartEndFrames();
+
     // Jimeng Hook
     const jimengGeneration = useJimengGeneration({
         setMessages: setMessages as any, // Type compatibility
@@ -145,7 +175,7 @@ export default function ChatPanel() {
         setMessages,
         setIsGenerating,
         setInputText,
-        setUploadedImages: () => { }, // No-op
+        setUploadedImages: () => { }, // No-op, managed via setDroppedReferences
         setManualReferenceUrls
     });
 
@@ -185,6 +215,88 @@ export default function ChatPanel() {
 
 
 
+    // Vidu Auto-Fill Logic
+    // --- Vidu Derived State Logic ---
+    const [isShotRefDeleted, setIsShotRefDeleted] = useState(false);
+
+    // 重置逻辑：切换分镜时，恢复显示默认分镜图
+    useEffect(() => {
+        setIsShotRefDeleted(false);
+    }, [selectedShotId]);
+
+    // 自动填充逻辑：仅保留 Start-End 模式的初始化（因为它是独立状态，不会污染共享列表）
+    const prevShotIdRef = useRef<string | null>(null);
+    const prevModeRef = useRef<string | null>(null);
+    const prevModelRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        const shotChanged = selectedShotId !== prevShotIdRef.current;
+        const modeChanged = viduMode !== prevModeRef.current;
+        const modelChanged = selectedModel !== prevModelRef.current;
+
+        prevShotIdRef.current = selectedShotId;
+        prevModeRef.current = viduMode;
+        prevModelRef.current = selectedModel;
+
+        if (selectedModel !== 'vidu-video' || !selectedShot?.referenceImage) return;
+
+        if (shotChanged || modeChanged || modelChanged) {
+            // Start-End 模式：自动填充首帧
+            if (viduMode === 'start-end2video') {
+                if (!startEndFrames.frames.startFrame) {
+                    startEndFrames.setStartFrame({
+                        url: selectedShot.referenceImage,
+                        source: 'shot_ref',
+                        label: '分镜图'
+                    });
+                }
+            }
+            // Img2Video 模式改为使用下方 Derived State，不再在此处副作用修改
+        }
+    }, [selectedShotId, viduMode, selectedModel, selectedShot]);
+
+    // 计算最终参考图列表 (Derived State)
+    // 如果是 Vidu Img2Video 且没被删除且没手动图 -> 注入分镜图
+    const shouldInjectShotRef =
+        selectedModel === 'vidu-video' &&
+        viduMode === 'img2video' &&
+        manualReferenceUrls.length === 0 &&
+        droppedReferences.length === 0 &&
+        !isShotRefDeleted &&
+        selectedShot?.referenceImage;
+
+    const shotRef: ActiveReference | null = shouldInjectShotRef ? {
+        url: selectedShot!.referenceImage!,
+        source: 'shot_ref',
+        label: '分镜图'
+        // file is undefined, fine
+    } : null;
+
+    // 合并列表：分镜图排在最前
+    const baseReferences = shotRef ? [shotRef, ...activeReferences] : activeReferences;
+
+    // 最终显示列表 (应用过滤)
+    const finalDisplayReferences = baseReferences.filter(ref => {
+        if (selectedModel === 'sora-video') {
+            return ref.source !== 'auto_detect';
+        }
+        if (selectedModel === 'vidu-video') {
+            if (viduMode === 'reference2video') return true;
+            return ref.source !== 'auto_detect';
+        }
+        return true;
+    });
+
+    // 包装删除函数
+    const handleRemoveReference = useCallback((ref: ActiveReference) => {
+        if (ref.source === 'shot_ref') {
+            // 如果删除的是注入的分镜图，只设置标记位，不操作列表
+            setIsShotRefDeleted(true);
+        } else {
+            // 普通删除
+            onRemoveReferenceFn(ref);
+        }
+    }, [onRemoveReferenceFn]);
 
     // Handle Generation Request from other components (e.g. Storyboard)
     useEffect(() => {
@@ -215,9 +327,27 @@ export default function ChatPanel() {
     // Handlers
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
-            const files = Array.from(e.target.files);
+            let files = Array.from(e.target.files);
             const MAX_IMAGES = 10;
             const MAX_SIZE_PER_IMAGE = 10 * 1024 * 1024;  // 10MB per image
+
+            // Sora 模式限制：最多 1 张参考图
+            if (selectedModel === 'sora-video') {
+                const currentImageCount = activeReferences.filter(r =>
+                    r.source === 'manual_upload' || r.source === 'history_ref'
+                ).length;
+
+                if (currentImageCount >= 1) {
+                    toast.error('Sora 视频生成最多只能添加 1 张参考图');
+                    return;
+                }
+
+                // 多文件时只取第一张
+                if (files.length > 1) {
+                    toast.warning('Sora 仅支持 1 张参考图，已自动选择第一张');
+                    files = [files[0]];
+                }
+            }
 
             // Count existing uploaded images in activeReferences
             const currentUploadedCount = activeReferences.filter(r => r.source === 'manual_upload').length;
@@ -427,9 +557,27 @@ export default function ChatPanel() {
             if (itemType === NativeTypes.FILE) {
                 const files = item.files;
                 if (files && files.length > 0) {
-                    const fileList = Array.from(files as FileList); // Cast to array
+                    let fileList = Array.from(files as FileList); // Cast to array
                     const MAX_IMAGES = 10;
                     const MAX_SIZE_PER_IMAGE = 10 * 1024 * 1024;  // 10MB per image
+
+                    // Sora 模式限制：最多 1 张参考图
+                    if (selectedModel === 'sora-video') {
+                        const currentImageCount = activeReferences.filter(r =>
+                            r.source === 'manual_upload' || r.source === 'history_ref'
+                        ).length;
+
+                        if (currentImageCount >= 1) {
+                            toast.error('Sora 视频生成最多只能添加 1 张参考图');
+                            return;
+                        }
+
+                        // 多文件时只取第一张
+                        if (fileList.length > 1) {
+                            toast.warning('Sora 仅支持 1 张参考图，已自动选择第一张');
+                            fileList = [fileList[0]];
+                        }
+                    }
 
                     // Count existing
                     const currentUploadedCount = activeReferences.filter(r => r.source === 'manual_upload').length;
@@ -511,90 +659,55 @@ export default function ChatPanel() {
                 )}
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6">
+            {/* Messages Area - Flex Grow */}
+            <div className="flex-1 overflow-y-auto min-h-0 relative custom-scrollbar space-y-6 p-4">
                 {messages.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-center opacity-50">
                         <Sparkles size={48} className="text-zinc-300 dark:text-zinc-700 mb-4" />
                         <p className="text-sm text-zinc-500 dark:text-zinc-400">开始您的创作之旅...</p>
                     </div>
                 )}
-                {messages.map((msg) => (
-                    <ChatBubble
-                        key={msg.id}
-                        message={msg as any}
-                        project={project as any} // fix project type mismatch - passing full object
-                        onDelete={() => deleteMessage(msg.id)}
-                        onReusePrompt={() => handleRestoreState(msg)}
-                        onReuseImage={handleReuseImage}
-                        onApplyToShot={handleApplyToShot}
-                        onApplyVideoToShot={handleApplyVideoToShot as any}
-                        onImageClick={(url, idx, m: any) => {
-                            if (m.gridData && m.model === 'gemini-grid') {
-                                // If Gemini Grid, use specific Grid Modal
-                                setGridResult({
-                                    fullImage: m.gridData.fullImage,
-                                    slices: m.gridData.slices,
-                                    sceneId: m.gridData.sceneId || currentSceneId || '',
-                                    gridRows: m.gridData.gridRows || 2,
-                                    gridCols: m.gridData.gridCols || 2,
-                                    prompt: m.gridData.prompt || '',
-                                    aspectRatio: m.gridData.aspectRatio || AspectRatio.WIDE,
-                                    gridSize: m.gridData.gridSize || gridSize,
-                                });
-                            } else {
-                                // Standard/Jimeng images - use new Carousel Preview
-                                const imagesToPreview = m.images || [url];
-                                const clickedIndex = imagesToPreview.indexOf(url);
-                                setPreviewState({
-                                    images: imagesToPreview,
-                                    index: clickedIndex !== -1 ? clickedIndex : 0
-                                });
-                            }
-                        }}
-                        onSliceSelect={(m: any) => {
-                            if (m.gridData && m.shotId) {
-                                setSliceSelectorData({ gridData: m.gridData, shotId: m.shotId });
-                            } else {
-                                toast.error("此 Grid 未关联镜头，无法选择切片");
-                            }
-                        }}
-                    />
-                ))}
-                {isGenerating && (
-                    <div className="flex w-full mb-6 justify-start animate-pulse">
-                        <div className="flex max-w-[90%] md:max-w-[85%] gap-3 flex-row">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-sm border border-black/5 dark:border-white/10 bg-zinc-900 dark:bg-white">
-                                <Sparkles size={14} className="text-white dark:text-black" />
-                            </div>
-                            <div className="flex flex-col gap-2 min-w-0 items-start">
-                                <div className="px-4 py-3 rounded-2xl shadow-sm border text-sm bg-white dark:bg-zinc-900/50 text-zinc-700 dark:text-zinc-200 border-black/5 dark:border-white/10 rounded-tl-sm backdrop-blur-sm">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                                        <span>正在生成图片，请稍候...</span>
-                                    </div>
-                                    <p className="text-xs text-zinc-400 mt-2">{selectedModel === 'jimeng' ? '即梦 AI 正在绘制中，通常需要 15-30 秒' : 'AI 正在思考中...'}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <MessageList
+                    messages={messages}
+                    isGenerating={isGenerating}
+                    selectedModel={selectedModel}
+                    onDelete={deleteMessage}
+                    onSetSlicerData={(data) => {
+                        setSliceSelectorData(data);
+                    }}
+                    onPreview={(images, index) => setPreviewState({ images, index })}
+                    onApplyToShot={async (url) => {
+                        if (selectedShotId) {
+                            updateShot(selectedShotId, { referenceImage: url });
+                            toast.success('已应用到分镜');
+                        }
+                    }}
+                    onAddToReference={(url) => {
+                        setManualReferenceUrls(prev => {
+                            if (prev.includes(url)) return prev;
+                            return [...prev, url];
+                        });
+                        toast.success('已添加到参考图');
+                    }}
+                    onReusePrompt={(prompt) => setInputText(prompt)}
+                />
                 <div ref={messagesEndRef} />
             </div>
 
+
             {/* Active References UI */}
-            {activeReferences.length > 0 && (
-                <div className="px-4 py-2 border-t border-white/5 flex gap-2 overflow-x-auto custom-scrollbar">
-                    {activeReferences.map((ref, index) => (
-                        <DraggableReference
-                            key={ref.url}
-                            index={index}
-                            refItem={ref}
-                            moveReference={moveReferenceFn}
-                            onRemove={onRemoveReferenceFn}
-                        />
-                    ))}
-                </div>
-            )}
+            <ReferenceSection
+                selectedModel={selectedModel}
+                viduMode={viduMode}
+                activeReferences={finalDisplayReferences}
+                startFrame={startEndFrames.frames.startFrame}
+                endFrame={startEndFrames.frames.endFrame}
+                onStartFrameChange={startEndFrames.setStartFrame}
+                onEndFrameChange={startEndFrames.setEndFrame}
+                onMoveReference={moveReferenceFn}
+                onRemoveReference={handleRemoveReference}
+                onPreview={(url) => setPreviewState({ images: [url], index: 0 })}
+            />
 
             <ChatInput
                 inputText={inputText}
@@ -602,11 +715,12 @@ export default function ChatPanel() {
                 onSend={() => {
                     handleSend(
                         inputText,
-                        activeReferences, // Pass full ordered list
+                        finalDisplayReferences, // Pass full ordered list
                         [], // Deprecated files arg
                         selectedModel,
                         gridSize,
                         geminiImageSize,
+
                         (urls) => generateSoraVideo(
                             inputText,
                             urls,
@@ -616,12 +730,18 @@ export default function ChatPanel() {
                         ),
                         (urls, contextKey) => jimengGeneration.generateImage(
                             inputText,
-                            selectedShotId,
-                            (currentSceneId || (selectedShot ? selectedShot.sceneId : null)),
+                            selectedShotId || null,
+                            (currentSceneId || (selectedShot ? selectedShot.sceneId : null)) || null,
                             contextKey,
                             urls,
                             false,
-                            { onlyExtractRefs: false } // Already enriched
+                            { onlyExtractRefs: false }
+                        ),
+                        (urls) => generateViduVideo(
+                            inputText,
+                            urls,
+                            startEndFrames.frames,
+                            selectedShot
                         )
                     );
                 }}
@@ -647,6 +767,19 @@ export default function ChatPanel() {
                 setSoraAspectRatio={setSoraAspectRatio}
                 soraDuration={soraDuration}
                 setSoraDuration={setSoraDuration}
+                viduMode={viduMode}
+                setViduMode={setViduMode}
+                viduDuration={viduDuration}
+                setViduDuration={setViduDuration}
+                viduResolution={viduResolution}
+                setViduResolution={setViduResolution}
+                viduOffPeak={viduOffPeak}
+                setViduOffPeak={setViduOffPeak}
+                startFrame={startEndFrames.frames.startFrame}
+                endFrame={startEndFrames.frames.endFrame}
+                onStartFrameChange={startEndFrames.setStartFrame}
+                onEndFrameChange={startEndFrames.setEndFrame}
+                defaultStartFrameUrl={selectedShot?.referenceImage}
             />
 
             {gridResult && (

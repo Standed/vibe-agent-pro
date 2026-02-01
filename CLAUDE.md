@@ -215,6 +215,10 @@ src/app/api/
 │       ├── register/    # Register character
 │       ├── status/      # Query registration status
 │       └── latest-video/# Get latest reference video
+├── vidu/                # Vidu video generation (NEW)
+│   ├── generate/        # Submit Vidu task
+│   ├── status/          # Query task status (with ownership check)
+│   └── cancel/          # Cancel task
 ├── supabase/            # Unified Supabase gateway
 ├── upload-r2/           # File upload to R2
 └── projects/            # Project CRUD operations
@@ -232,6 +236,8 @@ src/services/
 ├── KaponaiService.ts            # Sora API 底层封装
 ├── CharacterConsistencyService.ts # 角色参考视频生成与注册
 ├── SoraPromptService.ts         # Sora 专用提示词生成
+├── ViduService.ts               # Vidu 视频生成 API 封装 (NEW)
+├── ViduTaskManager.ts           # Vidu 任务管理、R2 转存 (NEW)
 ├── StoryboardService.ts         # 剧本解析与分镜生成
 └── jimengService.ts             # 即梦 API 集成
 ```

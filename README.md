@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-3.9.1-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-3.9.2-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -19,7 +19,7 @@
 
 ## 🎬 Introduction
 
-Video Agent Pro is an AI-powered video storyboard generation and editing tool built with Next.js 15 and multiple AI models (Gemini + Volcano Engine + Sora). It provides both conversational AI (Agent Mode) and fine-grained control (Pro Mode) to help creators produce videos from script to final cut.
+Video Agent Pro is an AI-powered video storyboard generation and editing tool built with Next.js 15 and multiple AI models (Gemini + Volcano Engine + Sora + Vidu). It provides both conversational AI (Agent Mode) and fine-grained control (Pro Mode) to help creators produce videos from script to final cut.
 
 > ⚠️ **Note**: This project requires user authentication. All data is stored in the cloud (Supabase + Cloudflare R2).
 
@@ -76,13 +76,21 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 - Playhead indicator
 - Preview and export buttons (UI ready)
 
-### 🆕 Sora Video Generation (NEW)
+### 🆕 Sora Video Generation
 - **Sora Orchestrator** - Automated video generation pipeline
 - **Character Registration** - @username-based character consistency
 - **Dynamic Aspect Ratio** - Auto-detect image ratio for optimal output
 - **Smart Scene Splitting** - >15s scenes auto-split into chunks
 - **Quality Control** - Mandated prompts for high-quality output
 - **R2 Persistence** - Automatic upload to Cloudflare R2
+
+### 🆕 Vidu Video Generation
+- **Image-to-Video** - Convert storyboard images to video
+- **Reference-based Generation** - Use reference images for style consistency
+- **Flexible Duration** - 1-10 seconds video generation
+- **Resolution Options** - 720p and 1080p support
+- **R2 Persistence** - Automatic upload to Cloudflare R2
+- **Agent Integration** - Available as Agent tool for AI conversations
 
 ### 🎵 Audio Asset Management
 - Upload audio files (all formats)
@@ -253,6 +261,7 @@ Visit [http://localhost:3000](http://localhost:3000)
   - Volcano Engine SeeDream 4.0 (Image generation)
   - Volcano Engine SeeDance 1.0 Pro (Video generation)
   - **Sora 2** via Kaponai API (Professional video with character consistency)
+  - **Vidu** via Kaponai API (Fast image-to-video generation)
   - **Jimeng** (Chinese-optimized image generation)
 
 ---
@@ -287,10 +296,12 @@ src/
 │   └── sora/                         # Sora video hooks
 ├── services/                         # Business services (19+ files)
 │   ├── agentService.ts               # Agent core (Function Calling)
-│   ├── agentToolDefinitions.ts       # 28 Agent tools
+│   ├── agentToolDefinitions.ts       # 28+ Agent tools
 │   ├── geminiService.ts              # Gemini Grid generation
 │   ├── SoraOrchestrator.ts           # Sora video orchestration
 │   ├── KaponaiService.ts             # Sora API wrapper
+│   ├── ViduService.ts                # Vidu video API wrapper
+│   ├── ViduTaskManager.ts            # Vidu task management
 │   └── jimengService.ts              # Jimeng integration
 ├── lib/                              # Core libraries
 │   ├── dataService.ts                # Unified data service
@@ -389,6 +400,14 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 
 ## 📝 Changelog
 
+### v3.9.2 (2026-01-31)
+- ✅ **Vidu Video Integration** - Added Vidu video generation support with img2video and reference2video modes.
+- ✅ **Unified Video Task Table** - Extended `sora_tasks` table with `provider` field to support multiple video providers (Sora, Vidu, Jimeng, etc.).
+- ✅ **Agent Tool Support** - Added `generateViduVideo` tool for AI-driven video generation.
+- ✅ **Task Management** - Implemented `ViduTaskManager` for task creation, status tracking, and R2 persistence.
+- ✅ **Ownership Validation** - All video task APIs now validate user ownership before operations.
+- ✅ **Credits Integration** - Vidu video generation uses unified credits system (720p: 2 credits/sec, 1080p: 4 credits/sec).
+
 ### v3.9.1 (2026-01-30)
 - ✅ **Jimeng Pro Mode Upgrade** - Consolidated multi-image generations into a single "Grid-like" message (2x2), removing the need for manual refresh.
 - ✅ **Critical Login Fix** - Resolved infinite login loop on `/auth/login` by strictly enforcing server-side session validation.
@@ -396,6 +415,7 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Grid Layout Optimization** - Fixed layout issues for 3x3 Grids, ensuring full visibility and adaptive width for all grid sizes (Single/2x2/3x3).
 - ✅ **Image Preview Enhancements** - Image preview overlay now supports keyboard navigation (Arrow Left/Right) with auto-focus support.
 - ✅ **Download Positioning** - Relocated the download button in Grid images to the right-side action group for better usability.
+
 
 ### v3.9.0 (2026-01-30)
 - ✅ **Grid Instant Apply** - Applying a Grid image or slice to a shot (via drag, click, or new canvas button) now **immediately** marks the shot as 'Done' and persists to the database, ensuring "what you see is what you get".

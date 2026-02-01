@@ -496,7 +496,7 @@ export interface SoraTask {
   updatedAt: Date;
 }
 
-export type GenerationModel = 'seedream' | 'gemini-direct' | 'gemini-grid' | 'jimeng' | 'sora-video';
+export type GenerationModel = 'seedream' | 'gemini-direct' | 'gemini-grid' | 'jimeng' | 'sora-video' | 'vidu-video';
 
 export interface ChatPanelMessage {
   id: string;
