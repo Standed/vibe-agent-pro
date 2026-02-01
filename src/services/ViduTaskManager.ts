@@ -71,7 +71,7 @@ export class ViduTaskManager {
             provider: 'vidu',
             status: 'queued',
             progress: 0,
-            type: 'shot_generation',  // 匹配 sora_tasks
+            type: 'direct_generation',  // Pro 模式手动生成，不自动覆盖分镜
             model: 'viduq2-pro-fast',
             prompt,
             target_duration: duration,  // 匹配 sora_tasks

@@ -19,13 +19,15 @@ export class ViduService {
     private baseUrl: string;
 
     constructor(apiKey?: string, baseUrl?: string) {
-        // 复用 KAPONAI_API_KEY 环境变量
+        // 复用 KAPONAI_API_KEY 环境变量，默认使用 Kaponai 网关
         const envApiKey = apiKey || process.env.KAPONAI_API_KEY;
         if (!envApiKey) {
             throw new Error('KAPONAI_API_KEY is required for Vidu service. Please set it in environment variables.');
         }
         this.apiKey = envApiKey;
-        this.baseUrl = baseUrl || 'https://api.vidu.cn/ent/v2';
+        // 根据 Kaponai 文档: https://models.kapon.cloud/vidu/ent/v2/{action}
+        // 注意：构造函数中 baseUrl 若传入则优先，否则默认 Kaponai 地址
+        this.baseUrl = baseUrl || 'https://models.kapon.cloud/vidu/ent/v2';
     }
 
     /**
@@ -48,12 +50,12 @@ export class ViduService {
             images: params.images,
             duration: params.duration || 5,
             resolution: params.resolution || '1080p',
-            movement_amplitude: params.movement_amplitude,
             off_peak: params.off_peak || false,
-            watermark: params.watermark,
+            watermark: params.watermark ?? false,
             wm_position: params.wm_position,
             wm_url: params.wm_url,
-            callback_url: params.callback_url
+            callback_url: params.callback_url,
+            prompt: params.prompt ? params.prompt.substring(0, 2000) : undefined
         };
 
         return this.makeRequest('/img2video', requestBody);
@@ -79,12 +81,12 @@ export class ViduService {
             images: params.images,
             duration: params.duration || 5,
             resolution: params.resolution || '1080p',
-            movement_amplitude: params.movement_amplitude,
             off_peak: params.off_peak || false,
-            watermark: params.watermark,
+            watermark: params.watermark ?? false,
             wm_position: params.wm_position,
             wm_url: params.wm_url,
-            callback_url: params.callback_url
+            callback_url: params.callback_url,
+            prompt: params.prompt ? params.prompt.substring(0, 2000) : undefined
         };
 
         return this.makeRequest('/start-end2video', requestBody);
@@ -101,12 +103,12 @@ export class ViduService {
         const requestBody = {
             model: params.model || 'viduq2-pro-fast',
             images: params.images,
-            prompt: params.prompt,
+            prompt: params.prompt ? params.prompt.substring(0, 2000) : '',
+            aspect_ratio: params.aspect_ratio, // 透传比例参数
             duration: params.duration || 5,
             resolution: params.resolution || '1080p',
-            movement_amplitude: params.movement_amplitude,
             off_peak: params.off_peak || false,
-            watermark: params.watermark,
+            watermark: params.watermark ?? false,
             wm_position: params.wm_position,
             wm_url: params.wm_url,
             callback_url: params.callback_url

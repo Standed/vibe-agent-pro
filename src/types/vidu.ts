@@ -20,6 +20,7 @@ export interface ViduCommonParams {
     wm_position?: string;            // 水印位置
     wm_url?: string;                 // 水印图片 URL
     callback_url?: string;           // 回调地址
+    prompt?: string;                 // 提示词（可选）
 }
 
 // ==================== 图生视频参数 ====================
@@ -36,6 +37,7 @@ export interface ViduStartEnd2VideoParams extends ViduCommonParams {
 export interface ViduReference2VideoParams extends ViduCommonParams {
     images: string[];  // 1-7 张参考图 URL
     prompt: string;    // 提示词，最长 2000 字符
+    aspect_ratio?: string; // 视频比例，如 16:9
 }
 
 // ==================== 创建任务响应 ====================
@@ -69,7 +71,7 @@ export interface ViduCancelResponse {
  * 计算 Vidu 视频生成所需积分
  * 从 CREDITS_CONFIG 读取配置（可通过环境变量覆盖）
  */
-export function calculateViduCredits(duration: number, resolution: '720p' | '1080p'): number {
+export function calculateViduCredits(duration: number, resolution: '720p' | '1080p', offPeak: boolean = false): number {
     // 动态导入避免循环依赖（如果需要）
     // 这里可以直接使用，因为 credits.ts 不依赖 vidu.ts
     const { CREDITS_CONFIG } = require('@/config/credits');
@@ -78,5 +80,12 @@ export function calculateViduCredits(duration: number, resolution: '720p' | '108
         ? CREDITS_CONFIG.VIDU_VIDEO_720P_PER_SECOND
         : CREDITS_CONFIG.VIDU_VIDEO_1080P_PER_SECOND;
 
-    return duration * perSecondCredits;
+    let total = duration * perSecondCredits;
+
+    // 错峰模式半价
+    if (offPeak) {
+        total = Math.floor(total / 2);
+    }
+
+    return total;
 }

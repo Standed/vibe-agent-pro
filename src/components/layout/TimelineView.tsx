@@ -406,6 +406,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
     }, [currentShotIndex, isPlaying, hasVideo, currentVideoUrl]);
 
     const getTaskLabel = useCallback((task: SoraTask) => {
+        const providerTag = task.provider === 'vidu' ? '[Vidu]' : '[Sora]';
         if (task.characterId) {
             const character = charactersById.get(task.characterId);
             return character ? `角色 · ${character.name}` : `角色任务 · ${task.id.slice(-6)}`;
@@ -413,13 +414,13 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
         if (task.shotId) {
             const shot = shotsById.get(task.shotId);
             const shotLabel = shot?.globalOrder ?? shot?.order ?? task.shotId.slice(-6);
-            return `镜头 · ${shotLabel}`;
+            return `${providerTag} 镜头 · ${shotLabel}`;
         }
         if (task.sceneId) {
             const scene = scenesById.get(task.sceneId);
-            return scene ? `场景 · ${scene.name}` : `场景任务 · ${task.id.slice(-6)}`;
+            return scene ? `${providerTag} 场景 · ${scene.name}` : `${providerTag} 场景任务 · ${task.id.slice(-6)}`;
         }
-        return `任务 · ${task.id.slice(-6)}`;
+        return `${providerTag} 任务 · ${task.id.slice(-6)}`;
     }, [shotsById, scenesById, charactersById]);
     const getTaskShotCoverage = useCallback((task: SoraTask) => {
         const shotIds = task.shotIds?.length ? task.shotIds : (task.shotId ? [task.shotId] : []);
@@ -742,7 +743,7 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
                     {showQueuePanel && (
                         <div className="absolute right-4 top-14 w-[360px] max-h-[70vh] bg-white dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl shadow-lg z-30 overflow-hidden">
                             <div className="flex items-center justify-between px-3 py-2 border-b border-light-border dark:border-cine-border">
-                                <div className="text-sm font-semibold text-light-text dark:text-white">Sora 任务队列</div>
+                                <div className="text-sm font-semibold text-light-text dark:text-white">视频任务队列</div>
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={refreshAllTasks}

@@ -87,8 +87,9 @@ export function useViduGeneration({
                     resolution: viduResolution,
                     offPeak: viduOffPeak,
                     projectId: project.id,
-                    contextShotId: selectedShotId || undefined,
-                    contextSceneId: currentSceneId || undefined,
+                    shotId: selectedShotId || undefined,
+                    sceneId: currentSceneId || undefined,
+                    aspect_ratio: project.settings?.aspectRatio || '16:9',
                 }),
             });
 
