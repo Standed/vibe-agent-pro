@@ -21,11 +21,18 @@ src/components/chat/
 ├── ChatInput.tsx              # 输入框组件
 ├── ChatBubble.tsx             # 消息气泡组件
 ├── DraggableReference.tsx     # 可拖拽参考图组件
-├── StartEndFrameSelector.tsx  # 首尾帧选择器
+├── StartEndFrameSelector.tsx  # 首尾帧选择器（含 ↔️ 切换按钮）
 ├── ImagePreviewOverlay.tsx    # 图片预览遮罩
 ├── ReferenceSection.tsx       # 参考图区域组件（纯展示）
 ├── MessageList.tsx            # 消息列表组件（性能优化）
 └── dragTypes.ts               # 拖拽类型定义
+
+src/hooks/chat/
+├── useAutoReference.ts        # 参考图自动检测
+├── useChatHistory.ts          # 聊天历史管理
+├── useStartEndFrames.ts       # 首尾帧状态管理
+├── useVideoReferences.ts      # 视频模式参考图状态隔离 (新增)
+└── useReferenceCallbacks.ts   # 参考图操作回调解耦 (新增)
 ```
 
 ---
@@ -220,6 +227,52 @@ POST /api/sora
 - 处理 Sora 视频生成
 - 轮询任务状态
 - 保存视频结果
+
+### useVideoReferences (新增)
+位置：`src/hooks/chat/useVideoReferences.ts`
+
+功能：
+- **状态隔离**：为不同视频模式提供独立的参考图状态
+- 避免跨模式数据污染
+
+返回值：
+```typescript
+{
+    // Vidu 图生视频（单图）
+    viduImg2VideoRef: ActiveReference | null;
+    setViduImg2Video: (ref) => void;
+    clearViduImg2Video: () => void;
+    
+    // Vidu 参考生视频（最多 7 张）
+    viduReferenceRefs: ActiveReference[];
+    addViduReference: (ref) => boolean;
+    removeViduReference: (ref) => void;
+    moveViduReference: (from, to) => void;
+    replaceViduReferences: (refs) => void;
+    
+    // Sora（单图）
+    soraRef: ActiveReference | null;
+    setSora: (ref) => void;
+    clearSora: () => void;
+}
+```
+
+### useReferenceCallbacks (新增)
+位置：`src/hooks/chat/useReferenceCallbacks.ts`
+
+功能：
+- **解耦回调**：将参考图操作回调从 ChatPanel 中提取
+- 统一管理添加、删除、移动参考图的逻辑
+- 修复闭包问题
+
+返回值：
+```typescript
+{
+    handleAddToReference: (url: string) => void;  // 从历史/外部添加参考图
+    handleRemoveReference: (ref) => void;         // 删除参考图
+    handleMoveReference: (from, to) => void;      // 拖拽排序
+}
+```
 
 ---
 
