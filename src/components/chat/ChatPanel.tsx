@@ -33,6 +33,7 @@ import { useChatHistory } from '@/hooks/chat/useChatHistory';
 import { useAutoReference, ActiveReference } from '@/hooks/chat/useAutoReference';
 import { useStartEndFrames, FrameImage } from '@/hooks/chat/useStartEndFrames';
 import { useVideoReferences } from '@/hooks/chat/useVideoReferences';
+import { useReferenceCallbacks } from '@/hooks/chat/useReferenceCallbacks';
 import { useViduGeneration } from '@/hooks/generation/useViduGeneration';
 import { ChatPanelMessage, GenerationModel } from '@/types/project';
 import { generateMessageId } from '@/lib/utils';
@@ -163,6 +164,21 @@ export default function ChatPanel() {
     // 视频参考图状态管理（隔离各模式）
     const videoRefs = useVideoReferences();
 
+    // 分镜图删除状态（提前定义供 useReferenceCallbacks 使用）
+    const [isShotRefDeleted, setIsShotRefDeleted] = useState(false);
+
+    // 参考图操作回调（解耦自 ChatPanel 的复杂逻辑）
+    const referenceCallbacks = useReferenceCallbacks({
+        selectedModel,
+        viduMode,
+        videoRefs,
+        startEndFrames,
+        setManualReferenceUrls,
+        setDroppedReferences,
+        setIsShotRefDeleted: (deleted: boolean) => setIsShotRefDeleted(deleted),
+        setIgnoredUrls
+    });
+
     // Jimeng Hook
     const jimengGeneration = useJimengGeneration({
         setMessages: setMessages as any, // Type compatibility
@@ -218,10 +234,9 @@ export default function ChatPanel() {
 
 
 
-
     // Vidu Auto-Fill Logic
     // --- Vidu Derived State Logic ---
-    const [isShotRefDeleted, setIsShotRefDeleted] = useState(false);
+    // isShotRefDeleted 已在上方定义
 
     // 重置逻辑：切换分镜时，恢复显示默认分镜图
     useEffect(() => {
@@ -272,18 +287,10 @@ export default function ChatPanel() {
                 }
             }
 
-            // 参考生视频模式：初始化分镜图 + 资产图
+            // 参考生视频模式：初始化资产图（不包含分镜图）
             if (viduMode === 'reference2video') {
                 if ((shotChanged || modeChanged || modelChanged) && videoRefs.viduReferenceRefs.length === 0) {
-                    // 添加分镜图
-                    if (shotImage) {
-                        videoRefs.addViduReference({
-                            url: shotImage,
-                            source: 'shot_ref',
-                            label: '分镜图'
-                        });
-                    }
-                    // 添加提及的资产图（角色、场景）
+                    // 只添加提及的资产图（角色、场景），不添加分镜图
                     const allAssets = [...mentionedAssets.characters, ...mentionedAssets.locations];
                     allAssets.forEach(asset => {
                         const assetImage = asset.referenceImages?.[0];
@@ -1067,77 +1074,7 @@ export default function ChatPanel() {
                             toast.success('已应用到分镜');
                         }
                     }}
-                    onAddToReference={(url) => {
-                        // Vidu 首尾帧模式：智能填充到空槽位
-                        if (selectedModel === 'vidu-video' && viduMode === 'start-end2video') {
-                            const { startFrame, endFrame } = startEndFrames.frames;
-                            const frame: FrameImage = { url, source: 'history_ref', label: '历史引用' };
-
-                            if (!startFrame) {
-                                startEndFrames.setStartFrame(frame);
-                                toast.success('已设置为首帧');
-                            } else if (!endFrame) {
-                                startEndFrames.setEndFrame(frame);
-                                toast.success('已设置为尾帧');
-                            } else {
-                                toast.warning('首尾帧已满，请先删除再添加');
-                            }
-                            return;
-                        }
-
-                        // Vidu 图生视频模式：单图替换（使用独立状态）
-                        if (selectedModel === 'vidu-video' && viduMode === 'img2video') {
-                            const hasExisting = videoRefs.viduImg2VideoRef !== null;
-                            videoRefs.setViduImg2Video({ url, source: 'history_ref', label: '历史引用' });
-
-                            if (hasExisting) {
-                                toast.success('Vidu 图生视频只支持 1 张图片，已替换');
-                            } else {
-                                toast.success('已添加参考图');
-                            }
-                            return;
-                        }
-
-                        // Vidu 参考生视频模式：最多 7 张，递增添加（使用独立状态）
-                        if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
-                            const MAX_REF_IMAGES = videoRefs.MAX_VIDU_REFS;
-
-                            // 检查是否已存在相同图片
-                            if (videoRefs.viduReferenceRefs.some(r => r.url === url)) {
-                                toast.warning('该图片已添加');
-                                return;
-                            }
-
-                            if (!videoRefs.canAddViduReference()) {
-                                toast.warning(`参考生视频最多支持 ${MAX_REF_IMAGES} 张参考图`);
-                                return;
-                            }
-
-                            videoRefs.addViduReference({ url, source: 'history_ref', label: '历史引用' });
-                            toast.success(`已添加参考图 (${videoRefs.getViduReferenceCount() + 1}/${MAX_REF_IMAGES})`);
-                            return;
-                        }
-
-                        // Sora 视频模式：单图替换（使用独立状态）
-                        if (selectedModel === 'sora-video') {
-                            const hasExisting = videoRefs.soraRef !== null;
-                            videoRefs.setSora({ url, source: 'history_ref', label: '历史引用' });
-
-                            if (hasExisting) {
-                                toast.success('Sora 仅支持 1 张参考图，已替换');
-                            } else {
-                                toast.success('已添加参考图');
-                            }
-                            return;
-                        }
-
-                        // 其他模式（图片生成）：追加到原有状态
-                        setManualReferenceUrls(prev => {
-                            if (prev.includes(url)) return prev;
-                            return [...prev, url];
-                        });
-                        toast.success('已添加到参考图');
-                    }}
+                    onAddToReference={referenceCallbacks.handleAddToReference}
                     onReusePrompt={(prompt) => setInputText(prompt)}
                 />
                 <div ref={messagesEndRef} />
