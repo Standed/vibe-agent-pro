@@ -3,7 +3,7 @@
  * 支持懒加载和 React.memo 优化
  */
 
-import React, { memo } from 'react';
+import React, { memo, useEffect, useRef } from 'react';
 import { Sparkles } from 'lucide-react';
 import { ChatPanelMessage } from '@/types/project';
 import { ChatBubble } from './ChatBubble';
@@ -12,6 +12,11 @@ interface MessageListProps {
     messages: ChatPanelMessage[];
     isGenerating: boolean;
     selectedModel: string;
+    scrollParentRef?: React.RefObject<HTMLDivElement | null>;
+    hasMore?: boolean;
+    isLoadingMore?: boolean;
+    onLoadMore?: () => Promise<void> | void;
+    onMediaLoaded?: () => void;
     onDelete: (messageId: string) => void;
     onSetSlicerData: (data: {
         gridData: ChatPanelMessage['gridData'];
@@ -20,6 +25,7 @@ interface MessageListProps {
     }) => void;
     onPreview: (images: string[], index: number) => void;
     onApplyToShot: (imageUrl: string) => void;
+    onApplyVideoToShot?: (message: ChatPanelMessage) => void;
     onAddToReference: (imageUrl: string) => void;
     onReusePrompt: (prompt: string) => void; // 新增
 }
@@ -34,8 +40,10 @@ const MessageItem = memo(function MessageItem({
     onSetSlicerData,
     onPreview,
     onApplyToShot,
+    onApplyVideoToShot,
     onAddToReference,
     onReusePrompt, // 新增
+    onMediaLoaded,
 }: {
     message: ChatPanelMessage;
     selectedModel: string;
@@ -47,8 +55,10 @@ const MessageItem = memo(function MessageItem({
     }) => void;
     onPreview: (images: string[], index: number) => void;
     onApplyToShot: (imageUrl: string) => void;
+    onApplyVideoToShot?: (message: ChatPanelMessage) => void;
     onAddToReference: (imageUrl: string) => void;
     onReusePrompt: (prompt: string) => void; // 新增
+    onMediaLoaded?: () => void;
 }) {
     return (
         <ChatBubble
@@ -61,9 +71,12 @@ const MessageItem = memo(function MessageItem({
                 model: message.model,
                 shotId: message.shotId,
                 videoUrl: message.videoUrl,
+                metadata: message.metadata,
                 gridData: message.gridData as any, // 类型兼容处理
             }}
             onDelete={onDelete}
+            onApplyVideoToShot={onApplyVideoToShot}
+            onMediaLoaded={onMediaLoaded}
             onSliceSelect={(msg) => {
                 if (msg.gridData) {
                     onSetSlicerData({
@@ -155,15 +168,44 @@ export const MessageList = memo(function MessageList({
     messages,
     isGenerating,
     selectedModel,
+    scrollParentRef,
+    hasMore,
+    isLoadingMore,
+    onLoadMore,
+    onMediaLoaded,
     onDelete,
     onSetSlicerData,
     onPreview,
     onApplyToShot,
+    onApplyVideoToShot,
     onAddToReference,
     onReusePrompt, // 新增
 }: MessageListProps) {
+    const loadMoreLock = useRef(false);
+    useEffect(() => {
+        const parent = scrollParentRef?.current;
+        if (!parent || !onLoadMore) return;
+
+        const onScroll = () => {
+            if (loadMoreLock.current) return;
+            if (isLoadingMore) return;
+            if (!hasMore) return;
+            if (parent.scrollTop <= 120) {
+                loadMoreLock.current = true;
+                Promise.resolve(onLoadMore()).finally(() => {
+                    loadMoreLock.current = false;
+                });
+            }
+        };
+
+        parent.addEventListener('scroll', onScroll);
+        return () => {
+            parent.removeEventListener('scroll', onScroll);
+        };
+    }, [scrollParentRef, onLoadMore, hasMore, isLoadingMore]);
+
     return (
-        <>
+        <div className="space-y-6">
             {messages.map((message) => (
                 <MessageItem
                     key={message.id}
@@ -173,18 +215,22 @@ export const MessageList = memo(function MessageList({
                     onSetSlicerData={onSetSlicerData}
                     onPreview={onPreview}
                     onApplyToShot={onApplyToShot}
+                    onApplyVideoToShot={onApplyVideoToShot}
                     onAddToReference={onAddToReference}
                     onReusePrompt={onReusePrompt}
+                    onMediaLoaded={onMediaLoaded}
                 />
             ))}
             {isGenerating && <GeneratingIndicator selectedModel={selectedModel} />}
-        </>
+        </div>
     );
 }, (prevProps, nextProps) => {
     return (
         prevProps.messages === nextProps.messages &&
         prevProps.isGenerating === nextProps.isGenerating &&
         prevProps.selectedModel === nextProps.selectedModel &&
-        prevProps.onAddToReference === nextProps.onAddToReference
+        prevProps.onAddToReference === nextProps.onAddToReference &&
+        prevProps.onApplyVideoToShot === nextProps.onApplyVideoToShot &&
+        prevProps.scrollParentRef === nextProps.scrollParentRef
     );
 });

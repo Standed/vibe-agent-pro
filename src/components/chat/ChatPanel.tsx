@@ -19,8 +19,8 @@ import { MessageList } from './MessageList';
 import { ReferenceSection } from './ReferenceSection';
 import { Sparkles, Bug, Loader2 } from 'lucide-react';
 import { useSoraGeneration } from '@/hooks/sora/useSoraGeneration';
-// import { useSoraVideoMessages } from '@/hooks/useSoraVideoMessages'; // Moved to useChatHistory
 import { useChatHistory } from '@/hooks/chat/useChatHistory';
+import { useChatScroll } from '@/hooks/chat/useChatScroll';
 import { useAutoReference, ActiveReference } from '@/hooks/chat/useAutoReference';
 import { useStartEndFrames, FrameImage } from '@/hooks/chat/useStartEndFrames';
 import { useVideoReferences } from '@/hooks/chat/useVideoReferences';
@@ -67,9 +67,10 @@ export default function ChatPanel() {
     const [manualReferenceUrls, setManualReferenceUrls] = useState<string[]>([]);
     const [geminiImageSize, setGeminiImageSize] = useState<'2K' | '4K'>('2K');
     const [droppedReferences, setDroppedReferences] = useState<ActiveReference[]>([]);
+    const [viduReferenceOrder, setViduReferenceOrder] = useState<string[]>([]);
 
     // Use Custom Hook for Chat History Logic
-    const { messages, setMessages, deleteMessage } = useChatHistory(
+    const { messages, setMessages, deleteMessage, isLoading, hasMore, loadMore } = useChatHistory(
         project?.id,
         selectedShotId,
         currentSceneId,
@@ -120,8 +121,18 @@ export default function ChatPanel() {
     const [previewState, setPreviewState] = useState<{ images: string[], index: number } | null>(null);
 
     // Sora specific
+    const [soraModel, setSoraModel] = useState<'sora-2' | 'sora-2-pro'>('sora-2');
     const [soraAspectRatio, setSoraAspectRatio] = useState<'16:9' | '9:16'>('16:9');
-    const [soraDuration, setSoraDuration] = useState<10 | 15>(10);
+    const [soraDuration, setSoraDuration] = useState<10 | 15 | 25>(10);
+
+    useEffect(() => {
+        if (soraModel === 'sora-2-pro' && soraDuration === 10) {
+            setSoraDuration(15);
+        }
+        if (soraModel === 'sora-2' && soraDuration === 25) {
+            setSoraDuration(15);
+        }
+    }, [soraModel, soraDuration]);
 
 
 
@@ -191,6 +202,7 @@ export default function ChatPanel() {
         project,
         user,
         selectedModel,
+        soraModel,
         soraAspectRatio,
         soraDuration,
         setMessages,
@@ -200,8 +212,8 @@ export default function ChatPanel() {
         setManualReferenceUrls
     });
 
-    // Refs
-    const messagesEndRef = useRef<HTMLDivElement>(null);
+    // 加载更多时的锁定标记
+    const isLoadingMoreRef = useRef(false);
 
     const onRemoveReferenceFn = useCallback((ref: any) => {
         setDroppedReferences(prev => prev.filter(r => r.url !== ref.url));
@@ -260,6 +272,7 @@ export default function ChatPanel() {
             startEndFrames.clearFrames();
             setIsShotRefDeleted(false);
             setIsViduRefShotDeleted(false);
+            setViduReferenceOrder([]);
         }
 
         // ========== Vidu 视频模式初始化 ==========
@@ -376,6 +389,52 @@ export default function ChatPanel() {
         return merged;
     }, []);
 
+    const applyReferenceOrder = useCallback((refs: ActiveReference[], order: string[]) => {
+        if (!order.length) return refs;
+        const refMap = new Map(refs.map(ref => [ref.url, ref]));
+        const ordered: ActiveReference[] = [];
+        order.forEach((url) => {
+            const ref = refMap.get(url);
+            if (ref) {
+                ordered.push(ref);
+                refMap.delete(url);
+            }
+        });
+        refs.forEach(ref => {
+            if (refMap.has(ref.url)) {
+                ordered.push(ref);
+            }
+        });
+        return ordered;
+    }, []);
+
+    const viduMergedRefs = useMemo(() => {
+        if (selectedModel !== 'vidu-video' || viduMode !== 'reference2video') return [];
+        return mergeViduReferences(
+            videoRefs.viduReferenceRefs,
+            autoDetectedViduRefs,
+            videoRefs.MAX_VIDU_REFS
+        );
+    }, [selectedModel, viduMode, mergeViduReferences, videoRefs.viduReferenceRefs, autoDetectedViduRefs, videoRefs.MAX_VIDU_REFS]);
+
+    useEffect(() => {
+        if (selectedModel !== 'vidu-video' || viduMode !== 'reference2video') return;
+        const mergedUrls = viduMergedRefs.map(ref => ref.url);
+        setViduReferenceOrder(prev => {
+            if (prev.length === 0) return mergedUrls;
+            let changed = false;
+            const next = prev.filter(url => mergedUrls.includes(url));
+            mergedUrls.forEach(url => {
+                if (!next.includes(url)) {
+                    next.push(url);
+                    changed = true;
+                }
+            });
+            if (changed || next.length !== prev.length) return next;
+            return prev;
+        });
+    }, [selectedModel, viduMode, viduMergedRefs]);
+
     // ========== 根据模式选择参考图 ==========
     const getDisplayReferences = (): ActiveReference[] => {
         // Vidu 图生视频：使用独立状态
@@ -390,13 +449,9 @@ export default function ChatPanel() {
 
         // Vidu 参考生视频：手动 + 自动检测，必要时投影分镜图
         if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
-            const merged = mergeViduReferences(
-                videoRefs.viduReferenceRefs,
-                autoDetectedViduRefs,
-                videoRefs.MAX_VIDU_REFS
-            );
+            const orderedMerged = applyReferenceOrder(viduMergedRefs, viduReferenceOrder);
 
-            if (merged.length === 0 && selectedShot?.referenceImage && !isViduRefShotDeleted) {
+            if (orderedMerged.length === 0 && selectedShot?.referenceImage && !isViduRefShotDeleted) {
                 return [{
                     url: selectedShot.referenceImage,
                     source: 'shot_ref',
@@ -404,7 +459,7 @@ export default function ChatPanel() {
                 }];
             }
 
-            return merged;
+            return orderedMerged;
         }
 
         // Sora 视频：使用独立状态
@@ -445,10 +500,65 @@ export default function ChatPanel() {
         const fromRef = finalDisplayReferences[dragIndex];
         const toRef = finalDisplayReferences[hoverIndex];
         if (!fromRef || !toRef) return;
-        if (fromRef.source === 'auto_detect' || fromRef.source === 'shot_ref') return;
-        if (toRef.source === 'auto_detect' || toRef.source === 'shot_ref') return;
-        referenceCallbacks.handleMoveReference(dragIndex, hoverIndex);
-    }, [finalDisplayReferences, referenceCallbacks.handleMoveReference]);
+        if (fromRef.source === 'shot_ref' || toRef.source === 'shot_ref') return;
+
+        // Vidu reference2video: map indices to manual refs list
+        if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
+            const orderBase = viduReferenceOrder.length ? viduReferenceOrder : finalDisplayReferences.map(ref => ref.url);
+            const fromOrderIndex = orderBase.indexOf(fromRef.url);
+            const toOrderIndex = orderBase.indexOf(toRef.url);
+            if (fromOrderIndex === -1 || toOrderIndex === -1) return;
+
+            const nextOrder = [...orderBase];
+            const [moved] = nextOrder.splice(fromOrderIndex, 1);
+            nextOrder.splice(toOrderIndex, 0, moved);
+            setViduReferenceOrder(nextOrder);
+
+            if (fromRef.source !== 'auto_detect' && toRef.source !== 'auto_detect') {
+                const manualRefs = videoRefs.viduReferenceRefs;
+                const fromManualIndex = manualRefs.findIndex(ref => ref.url === fromRef.url);
+                const toManualIndex = manualRefs.findIndex(ref => ref.url === toRef.url);
+                if (fromManualIndex !== -1 && toManualIndex !== -1) {
+                    referenceCallbacks.handleMoveReference(fromManualIndex, toManualIndex);
+                }
+            }
+            return;
+        }
+
+        // Other video modes do not support reordering
+        if (selectedModel === 'vidu-video' || selectedModel === 'sora-video') {
+            return;
+        }
+
+        // Image generation: reorder manual + history references together
+        if (fromRef.source === 'auto_detect' || toRef.source === 'auto_detect') return;
+        const sortableRefs = finalDisplayReferences.filter(ref => ref.source !== 'auto_detect');
+        const fromSortableIndex = sortableRefs.findIndex(ref => ref.url === fromRef.url);
+        const toSortableIndex = sortableRefs.findIndex(ref => ref.url === toRef.url);
+        if (fromSortableIndex === -1 || toSortableIndex === -1) return;
+
+        const nextSortable = [...sortableRefs];
+        const [moved] = nextSortable.splice(fromSortableIndex, 1);
+        nextSortable.splice(toSortableIndex, 0, moved);
+
+        const nextDropped = nextSortable.filter(ref => ref.source !== 'history_ref');
+        const nextManualUrls = nextSortable
+            .filter(ref => ref.source === 'history_ref')
+            .map(ref => ref.url);
+
+        setDroppedReferences(nextDropped);
+        setManualReferenceUrls(nextManualUrls);
+    }, [
+        finalDisplayReferences,
+        selectedModel,
+        viduMode,
+        videoRefs.viduReferenceRefs,
+        viduReferenceOrder,
+        setViduReferenceOrder,
+        referenceCallbacks.handleMoveReference,
+        setDroppedReferences,
+        setManualReferenceUrls
+    ]);
 
     // 包装删除函数 - 根据模式删除对应状态
     const handleRemoveReference = useCallback((ref: ActiveReference) => {
@@ -460,6 +570,7 @@ export default function ChatPanel() {
 
         // Vidu 参考生视频
         if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
+            setViduReferenceOrder(prev => prev.filter(url => url !== ref.url));
             if (ref.source === 'shot_ref') {
                 setIsViduRefShotDeleted(true);
                 return;
@@ -507,10 +618,29 @@ export default function ChatPanel() {
         }
     }, [generationRequest, jimengGeneration, setGenerationRequest]);
 
-    // Scroll to bottom
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+    // 使用统一的滚动管理 Hook
+    const {
+        containerRef: messagesContainerRef,
+        endRef: messagesEndRef,
+        handleMediaLoaded,
+        beforeLoadMore,
+        afterLoadMore,
+    } = useChatScroll({
+        messages,
+        shotId: selectedShotId,
+        sceneId: currentSceneId,
+        isLoading,
+        isLoadingMore: isLoadingMoreRef.current,
+    });
+
+    const handleLoadMore = useCallback(async () => {
+        if (isLoadingMoreRef.current || isLoading || !hasMore) return;
+        isLoadingMoreRef.current = true;
+        beforeLoadMore();
+        await loadMore();
+        afterLoadMore();
+        isLoadingMoreRef.current = false;
+    }, [isLoading, hasMore, loadMore, beforeLoadMore, afterLoadMore]);
 
     // Handlers
 
@@ -565,7 +695,7 @@ export default function ChatPanel() {
 
     const handleApplyVideoToShot = async (message: ChatPanelMessage) => {
         const videoUrl = message.videoUrl || message.metadata?.videoUrl;
-        const taskId = message.metadata?.taskId;
+        const taskId = message.metadata?.taskId || message.metadata?.viduTaskId || message.metadata?.soraTaskId;
         if (!selectedShotId) {
             toast.error("请先选择一个分镜");
             return;
@@ -694,7 +824,7 @@ export default function ChatPanel() {
             </div>
 
             {/* Messages Area - Flex Grow */}
-            <div className="flex-1 overflow-y-auto min-h-0 relative custom-scrollbar space-y-6 p-4">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto min-h-0 relative custom-scrollbar p-4">
                 {messages.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-center opacity-50">
                         <Sparkles size={48} className="text-zinc-300 dark:text-zinc-700 mb-4" />
@@ -705,6 +835,11 @@ export default function ChatPanel() {
                     messages={messages}
                     isGenerating={isGenerating}
                     selectedModel={selectedModel}
+                    scrollParentRef={messagesContainerRef}
+                    hasMore={hasMore}
+                    isLoadingMore={isLoading}
+                    onLoadMore={handleLoadMore}
+                    onMediaLoaded={handleMediaLoaded}
                     onDelete={deleteMessage}
                     onSetSlicerData={(data) => {
                         setSliceSelectorData(data);
@@ -716,6 +851,7 @@ export default function ChatPanel() {
                             toast.success('已应用到分镜');
                         }
                     }}
+                    onApplyVideoToShot={handleApplyVideoToShot}
                     onAddToReference={referenceCallbacks.handleAddToReference}
                     onReusePrompt={(prompt) => setInputText(prompt)}
                 />
@@ -795,6 +931,8 @@ export default function ChatPanel() {
                 setSoraAspectRatio={setSoraAspectRatio}
                 soraDuration={soraDuration}
                 setSoraDuration={setSoraDuration}
+                soraModel={soraModel}
+                setSoraModel={setSoraModel}
                 viduMode={viduMode}
                 setViduMode={setViduMode}
                 viduDuration={viduDuration}

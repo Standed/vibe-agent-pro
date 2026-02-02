@@ -1,6 +1,6 @@
 # Pro 模式 (ChatPanel) 架构文档
 
-> 最后更新：2026-02-01
+> 最后更新：2026-02-02
 > 关联文档：[AGENTS.md](./AGENTS.md)
 
 ## 概述
@@ -30,10 +30,11 @@ src/components/chat/
 src/hooks/chat/
 ├── useAutoReference.ts        # 参考图自动检测
 ├── useChatHistory.ts          # 聊天历史管理
-├── useChatReferenceInteractions.ts # 拖拽/上传交互封装 (新增)
+├── useChatScroll.ts           # 聊天滚动管理（首次加载/媒体加载/加载更多）
+├── useChatReferenceInteractions.ts # 拖拽/上传交互封装
 ├── useStartEndFrames.ts       # 首尾帧状态管理
-├── useVideoReferences.ts      # 视频模式参考图状态隔离 (新增)
-└── useReferenceCallbacks.ts   # 参考图操作回调解耦 (新增)
+├── useVideoReferences.ts      # 视频模式参考图状态隔离
+└── useReferenceCallbacks.ts   # 参考图操作回调解耦
 ```
 
 ---
@@ -66,6 +67,7 @@ type ActiveReference = {
 | `manual_upload` | 手动上传 | 用户上传的图片 |
 | `history_ref` | 历史记录 | 从历史消息添加的图片 |
 | `auto_detect` | 自动检测 | 从 Prompt 分析出的角色/资产图 |
+| `external_url` | 外部拖拽链接 | 浏览器/系统拖拽 URL 进入参考图（支持 URL/TEXT） |
 
 ---
 
@@ -126,6 +128,7 @@ POST /api/vidu/generate
 1. **允许** Prompt 自动检测的参考图 (auto_detect)
 2. **允许** 分镜图投影 (如果列表为空)
 3. 手动上传优先，自动检测补齐
+4. **支持拖拽排序**（包含 auto_detect）
 4. 用于提供更丰富的参考上下文
 
 API 调用：
@@ -136,6 +139,14 @@ POST /api/vidu/generate
     ...
 }
 ```
+
+### Vidu 状态轮询与 R2 转存
+
+- Pro 模式提交 Vidu 任务后会通过 `/api/sora/status?taskId=...` 轮询状态。
+- `/api/sora/status` 内部会调用 `ViduTaskManager.checkAndUpdateTask`：
+  - 成功后写入 `kaponai_url` → 触发 `transferToR2` → 更新 `r2_url`。
+  - 如果有 `shotId`，会同步 `shots.video_clip`。
+- 转存失败会写入 `asset_logs`（operationType: `vidu_video`）用于后台追踪。
 
 ### 4. Sora 视频 (`sora-video`)
 
@@ -155,6 +166,13 @@ POST /api/sora
     "referenceImages": [手动上传列表],
     ...
 }
+
+### Sora 2 / Sora 2 Pro
+
+- `sora-2`：10s / 15s
+- `sora-2-pro`：15s / 25s
+- 竖屏/横屏分别使用 1024x1792 / 1792x1024
+- 转存失败会写入 `asset_logs`（operationType: `sora_video`）
 ```
 
 ---
@@ -168,6 +186,8 @@ POST /api/sora
 - 加载分镜的聊天历史
 - 支持分页加载
 - 合并 Sora 视频消息
+- 默认只加载最近 30 条，向上滚动加载更多
+- 首次进入自动滚到底部（由 ChatPanel 触发）
 
 返回值：
 ```typescript
@@ -177,6 +197,27 @@ POST /api/sora
     deleteMessage: (id: string) => void;
     isLoading: boolean;
     hasMore: boolean;
+}
+```
+
+### useChatScroll
+位置：`src/hooks/chat/useChatScroll.ts`
+
+功能：
+- **首次加载滚动**：切换分镜时自动滚动到消息列表底部
+- **媒体加载补偿**：图片/视频加载完成后触发滚动补偿
+- **加载更多保持**：向上滚动加载历史时保持滚动位置
+- **智能跟随**：新消息到达时，仅在用户靠近底部时自动滚动
+
+返回值：
+```typescript
+{
+    containerRef: React.RefObject<HTMLDivElement>;  // 消息容器 ref
+    endRef: React.RefObject<HTMLDivElement>;        // 底部锚点 ref
+    handleMediaLoaded: () => void;                  // 媒体加载回调
+    beforeLoadMore: () => void;                     // 加载更多前调用
+    afterLoadMore: () => void;                      // 加载更多后调用
+    scrollToBottom: (behavior?: ScrollBehavior) => void;  // 强制滚动
 }
 ```
 
