@@ -27,11 +27,13 @@ import { useVideoReferences } from '@/hooks/chat/useVideoReferences';
 import { useReferenceCallbacks } from '@/hooks/chat/useReferenceCallbacks';
 import { useViduGeneration } from '@/hooks/generation/useViduGeneration';
 import { ChatPanelMessage, GenerationModel } from '@/types/project';
+// 新增解耦 Hook
+import { useSoraConfig } from '@/hooks/sora/useSoraConfig';
+import { useApplyVideoToShot } from '@/hooks/chat/useApplyVideoToShot';
+import { useChatActions } from '@/hooks/chat/useChatActions';
+import { useChatModals } from '@/hooks/chat/useChatModals';
+import { useVideoModeReferences } from '@/hooks/chat/useVideoModeReferences';
 
-// Types
-
-// Types
-// ActiveReference imported from useAutoReference
 
 export default function ChatPanel() {
     const {
