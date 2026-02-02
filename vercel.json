@@ -69,7 +69,7 @@
     },
     {
       "path": "/api/cron/retry-transfers",
-      "schedule": "0 * * * *"
+      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/admin/scan-assets?mode=cron",
