@@ -289,7 +289,7 @@ src/
 │   ├── asset/                        # Asset management (characters, locations)
 │   ├── auth/                         # Authentication (AuthProvider)
 │   ├── canvas/                       # Infinite canvas
-│   ├── chat/                         # Chat interface + Pro mode components (16 files)
+│   ├── chat/                         # Chat interface + Pro mode (16 files)
 │   ├── director/                     # Director/Planning mode
 │   ├── grid/                         # Grid generation UI
 │   ├── jimeng/                       # Jimeng integration
@@ -297,30 +297,35 @@ src/
 │   ├── project/                      # Project dialogs
 │   ├── providers/                    # React Context providers
 │   ├── shot/                         # Shot components
-│   └── ui/                           # Shared UI components
-├── hooks/                            # Custom hooks (18 files)
+│   └── ui/                           # Shared UI components (StatusComponents)
+├── hooks/                            # Custom hooks (22 files)
 │   ├── agent/                        # Agent-related hooks
-│   ├── chat/                         # Chat panel hooks (8 files)
-│   │   ├── useChatHistory.ts         # Message history & caching
-│   │   ├── useChatScroll.ts          # Scroll behavior management
+│   ├── chat/                         # Chat panel hooks (12 files)
 │   │   ├── useChatGeneration.ts      # Core generation logic
+│   │   ├── useChatHistory.ts         # Message history & pagination
+│   │   ├── useChatScroll.ts          # Scroll behavior
+│   │   ├── useChatActions.ts         # Restore/reuse callbacks
+│   │   ├── useChatModals.ts          # Modal state
+│   │   ├── useChatReferenceInteractions.ts  # Drag/upload interactions
+│   │   ├── useApplyVideoToShot.ts    # Video-to-shot logic
 │   │   ├── useAutoReference.ts       # @mention detection
-│   │   ├── useVideoReferences.ts     # Vidu/Sora reference state
+│   │   ├── useVideoModeReferences.ts # Video mode reference state
 │   │   ├── useStartEndFrames.ts      # Start-end frame management
-│   │   ├── useReferenceCallbacks.ts  # Reference operation callbacks
-│   │   └── useChatReferenceInteractions.ts  # Drag/upload interactions
+│   │   ├── useVideoReferences.ts     # Per-mode reference isolation
+│   │   └── useReferenceCallbacks.ts  # Reference callbacks
 │   ├── generation/                   # AI generation hooks (5 files)
 │   │   ├── useViduGeneration.ts      # Vidu video generation
 │   │   ├── useJimengGeneration.ts    # Jimeng image generation
 │   │   ├── useAIStoryboard.ts        # Script to storyboard
-│   │   ├── useAssetGeneration.ts     # Asset generation
+│   │   ├── useAssetGeneration.ts     # Asset batch generation
 │   │   └── useThreeViewGeneration.ts # Character turnaround
-│   └── sora/                         # Sora video hooks (4 files)
-│       ├── useSoraTaskManager.ts     # Task state management
+│   └── sora/                         # Sora video hooks (5 files)
+│       ├── useSoraConfig.ts          # Sora parameters
 │       ├── useSoraGeneration.ts      # Video generation
+│       ├── useSoraTaskManager.ts     # Task polling & sync
 │       ├── useSoraCharacter.ts       # Character consistency
 │       └── useSoraVideoMessages.ts   # Video message handling
-├── services/                         # Business services (28 files)
+├── services/                         # Business services (22+ files)
 │   ├── agentService.ts               # Agent core (Function Calling)
 │   ├── agentToolDefinitions.ts       # 28+ Agent tools
 │   ├── geminiService.ts              # Gemini Grid generation
@@ -329,14 +334,17 @@ src/
 │   ├── ViduService.ts                # Vidu video API wrapper
 │   ├── ViduTaskManager.ts            # Vidu task management
 │   ├── jimengService.ts              # Jimeng integration
+│   ├── TaskQueueService.ts           # Concurrency control
 │   └── tools/                        # Tool implementations (7 files)
-├── lib/                              # Core libraries (15 files)
+├── lib/                              # Core libraries (16 files)
 │   ├── dataService.ts                # Unified data service (97 methods)
 │   ├── storageService.ts             # R2 file upload
 │   ├── auth-middleware.ts            # Authentication middleware
+│   ├── api-response.ts               # Standardized API response
 │   ├── video-transfer.ts             # Video transfer utility
 │   ├── assetLogService.ts            # Asset logging service
-│   └── cloudflare-r2.ts              # R2 client
+│   ├── cloudflare-r2.ts              # R2 client
+│   └── supabase/transactions.ts      # Supabase atomic operations
 ├── utils/                            # Utility functions
 │   ├── uploadQueue.ts                # Concurrent upload control
 │   └── fileValidation.ts             # File validation

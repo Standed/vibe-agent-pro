@@ -1,4 +1,4 @@
-# Sora 视频生成 - 架构与流程文档 (v3.1)
+# Sora 视频生成 - 架构与流程文档 (v4.0)
 
 本项目已成功集成 Sora2 视频生成能力。当前版本采用**简化纯文本提示词格式**，提升角色一致性与镜头质感，并支持**单任务覆盖多分镜**、**跨场景分镜并行处理**以及**Pro模式独立创作**。
 
@@ -8,13 +8,23 @@
 
 | 服务 | 文件路径 | 职责 |
 |------|----------|------|
-| **SoraOrchestrator** | `src/services/SoraOrchestrator.ts` | 总导演：角色注册、场景拆分、任务编排、**并行任务提交** |
+| **SoraOrchestrator** | `src/services/SoraOrchestrator.ts` | 总导演：角色注册、场景拆分、任务编排、并行任务提交 |
 | **KaponaiService** | `src/services/KaponaiService.ts` | Sora API 底层封装 (创建视频、查询状态、下载) |
 | **CharacterConsistencyService** | `src/services/CharacterConsistencyService.ts` | 角色参考视频生成与注册 |
 | **SoraPromptService** | `src/services/SoraPromptService.ts` | Sora 专用提示词生成与角色码注入 |
-| **useSoraTaskManager** | `src/hooks/useSoraTaskManager.ts` | **[New v2.6]** 统一任务管理 Hook |
-| **ParallelExecutor** | `src/services/parallelExecutor.ts` | **[Updated v2.6]** Agent 工具并行执行引擎 |
-| **generationTools** | `src/services/tools/generationTools.ts` | **[Updated v2.6]** 支持全局分镜序号转换 |
+| **BatchSoraService** | `src/services/BatchSoraService.ts` | 批量 Sora 视频生成 |
+| **ParallelExecutor** | `src/services/parallelExecutor.ts` | Agent 工具并行执行引擎 |
+| **generationTools** | `src/services/tools/generationTools.ts` | 支持全局分镜序号转换 |
+
+### Sora 相关 Hook (5)
+
+| Hook | 文件 | 职责 |
+|------|------|------|
+| **useSoraConfig** | `src/hooks/sora/useSoraConfig.ts` | Sora 参数状态（模型/时长/比例），自动校正 |
+| **useSoraGeneration** | `src/hooks/sora/useSoraGeneration.ts` | Sora 生成流程封装 |
+| **useSoraTaskManager** | `src/hooks/sora/useSoraTaskManager.ts` | 任务轮询、状态同步、R2 转存 |
+| **useSoraCharacter** | `src/hooks/sora/useSoraCharacter.ts` | 角色注册与一致性管理 |
+| **useSoraVideoMessages** | `src/hooks/sora/useSoraVideoMessages.ts` | 视频消息处理 |
 
 ---
 
