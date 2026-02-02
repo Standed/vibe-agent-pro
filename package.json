@@ -36,6 +36,7 @@
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "@tanstack/react-virtual": "^3.10.8",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.5.5",
     "undici": "^7.16.0",

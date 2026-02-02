@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { KaponaiService } from '@/services/KaponaiService';
 import { createClient } from '@supabase/supabase-js';
 import { authenticateRequest, checkCredits, checkWhitelist, consumeCredits } from '@/lib/auth-middleware';
-import { calculateCredits, getOperationDescription } from '@/config/credits';
+import { calculateCredits, calculateSoraCredits, getOperationDescription } from '@/config/credits';
 
 export const maxDuration = 60;
 
@@ -31,9 +31,6 @@ export async function POST(req: NextRequest) {
 
         const whitelistCheck = checkWhitelist(user);
         if ('error' in whitelistCheck) return whitelistCheck.error;
-
-        const requiredCredits = calculateCredits('VOLCANO_VIDEO', user.role);
-        const operationDesc = getOperationDescription('VOLCANO_VIDEO');
 
         const body = await req.json();
         const {
@@ -116,6 +113,49 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: 'Unauthorized project access' }, { status: 403 });
             }
         }
+
+        const validModels = new Set(['sora-2', 'sora-2-pro']);
+        if (!validModels.has(model)) {
+            return NextResponse.json(
+                { error: 'Invalid model. Must be sora-2 or sora-2-pro' },
+                { status: 400 }
+            );
+        }
+
+        if (model === 'sora-2') {
+            if (![10, 15].includes(seconds)) {
+                return NextResponse.json(
+                    { error: 'sora-2 only supports 10s or 15s' },
+                    { status: 400 }
+                );
+            }
+            if (!['1280x720', '720x1280'].includes(size)) {
+                return NextResponse.json(
+                    { error: 'sora-2 only supports 1280x720 or 720x1280' },
+                    { status: 400 }
+                );
+            }
+        }
+
+        if (model === 'sora-2-pro') {
+            if (![15, 25].includes(seconds)) {
+                return NextResponse.json(
+                    { error: 'sora-2-pro only supports 15s or 25s' },
+                    { status: 400 }
+                );
+            }
+            if (!['1792x1024', '1024x1792'].includes(size)) {
+                return NextResponse.json(
+                    { error: 'sora-2-pro only supports 1792x1024 or 1024x1792' },
+                    { status: 400 }
+                );
+            }
+        }
+
+        const requiredCredits = calculateSoraCredits(model, seconds, user.role);
+        const operationDesc = model === 'sora-2-pro'
+            ? getOperationDescription(seconds === 25 ? 'SORA2_PRO_25S' : 'SORA2_PRO_15S')
+            : getOperationDescription('VOLCANO_VIDEO');
 
         const creditsCheck = checkCredits(user, requiredCredits);
         if ('error' in creditsCheck) return creditsCheck.error;

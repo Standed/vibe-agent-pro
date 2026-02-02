@@ -11,7 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { AuthenticatedUser, consumeCredits } from '@/lib/auth-middleware';
-import { calculateCredits, getOperationDescription } from '@/config/credits';
+import { calculateCredits, calculateSoraCredits, getOperationDescription } from '@/config/credits';
 
 // sizeOf 同步调用在脚本/后端环境下更稳定且无兼容性问题
 
@@ -37,7 +37,12 @@ export class SoraOrchestrator {
      * 核心功能：为特定场景生成连贯视频 (支持长场景自动拆分)
      * @param user 当前用户对象 (用于鉴权和扣费)
      */
-    async generateSceneVideo(project: Project, sceneId: string, user: AuthenticatedUser): Promise<string[]> {
+    async generateSceneVideo(
+        project: Project,
+        sceneId: string,
+        user: AuthenticatedUser,
+        options?: { model?: 'sora-2' | 'sora-2-pro' }
+    ): Promise<string[]> {
         // Init DB Service
         await this.dataService.initialize(user.id);
 
@@ -47,13 +52,19 @@ export class SoraOrchestrator {
         const shots = project.shots.filter(s => s.sceneId === sceneId).sort((a, b) => a.order - b.order);
         if (shots.length === 0) throw new Error(`No shots in scene ${sceneId}`);
 
-        return await this.generateVideoForShots(project, scene, shots, user, { appendToScene: false });
+        return await this.generateVideoForShots(project, scene, shots, user, { appendToScene: false, model: options?.model });
     }
 
     /**
      * 核心功能：为指定分镜生成视频 (支持跨场景并行处理)
      */
-    async generateShotsVideo(project: Project, sceneId: string, shotIds: string[], user: AuthenticatedUser): Promise<string[]> {
+    async generateShotsVideo(
+        project: Project,
+        sceneId: string,
+        shotIds: string[],
+        user: AuthenticatedUser,
+        options?: { model?: 'sora-2' | 'sora-2-pro' }
+    ): Promise<string[]> {
         await this.dataService.initialize(user.id);
 
         const uniqueIds = Array.from(new Set((shotIds || []).filter(Boolean)));
@@ -98,7 +109,7 @@ export class SoraOrchestrator {
 
             // 每个场景独立生成（并行）
             scenePromises.push(
-                this.generateVideoForShots(project, scene, shots, user, { appendToScene: true })
+                this.generateVideoForShots(project, scene, shots, user, { appendToScene: true, model: options?.model })
             );
         }
 
@@ -112,7 +123,7 @@ export class SoraOrchestrator {
         scene: Scene,
         shots: Shot[],
         user: AuthenticatedUser,
-        options: { appendToScene: boolean }
+        options: { appendToScene: boolean; model?: 'sora-2' | 'sora-2-pro' }
     ): Promise<string[]> {
         // 1. 识别并注册角色
         const involvedCharacters = this.identifyCharactersInScene(project, shots);
@@ -132,17 +143,18 @@ export class SoraOrchestrator {
             // 时长计算
             const chunkDuration = chunkShots.reduce((sum, s) => sum + (s.duration || 5), 0);
 
-            // 策略调整 (User Request): 视频时长以 15s 为主，极个别短镜头使用 10s
-            let requestSeconds = 15;
+            const model = options.model || 'sora-2';
+            // 策略调整：根据模型选择时长
+            let requestSeconds = model === 'sora-2-pro' ? 25 : 15;
             const rawDuration = chunkDuration + 1; // 1s buffer for more content
 
-            // 只有当总时长很短且分镜极少时，才使用 10s
-            if (rawDuration < 8 && chunkShots.length <= 1) {
-                requestSeconds = 10;
+            // 只有当总时长很短且分镜极少时，才使用短时长
+            if (rawDuration < (model === 'sora-2-pro' ? 12 : 8) && chunkShots.length <= 1) {
+                requestSeconds = model === 'sora-2-pro' ? 15 : 10;
             }
 
             // 智能分辨率
-            const targetSize = this.determineResolution(project.settings.aspectRatio);
+            const targetSize = this.determineResolution(project.settings.aspectRatio, model);
 
             console.log(`[SoraOrchestrator] Submitting Task ${i + 1}/${chunks.length}: ${requestSeconds}s (Raw: ${rawDuration.toFixed(1)}), ${targetSize}`);
 
@@ -165,8 +177,10 @@ export class SoraOrchestrator {
 
             // 扣除积分 (在调用 Sora 之前)
             // 注意：因为是并行执行，这里会产生多次积分扣除
-            const requiredCredits = calculateCredits('VOLCANO_VIDEO', user.role);
-            const operationDesc = getOperationDescription('VOLCANO_VIDEO');
+            const requiredCredits = calculateSoraCredits(model, requestSeconds, user.role);
+            const operationDesc = model === 'sora-2-pro'
+                ? getOperationDescription(requestSeconds === 25 ? 'SORA2_PRO_25S' : 'SORA2_PRO_15S')
+                : getOperationDescription('VOLCANO_VIDEO');
 
             // 尝试扣除积分
             const consumeResult = await consumeCredits(
@@ -187,7 +201,7 @@ export class SoraOrchestrator {
 
             // 提交任务到 Kaponai（耗时操作，并行执行提升效率）
             const task = await this.kaponai.createVideo({
-                model: 'sora-2', // User requested cost saving
+                model,
                 prompt: promptText,  // ✅ 使用简化的纯文本提示词
                 seconds: requestSeconds,
                 size: targetSize,
@@ -214,7 +228,7 @@ export class SoraOrchestrator {
                 }, [] as Array<{ shotId: string; start: number; end: number }>),
                 status: task.status as any || 'queued',
                 progress: task.progress ?? 0,
-                model: task.model || 'sora-2',
+                model: task.model || model,
                 prompt: promptText,  // ✅ 保存简化的提示词文本
                 targetDuration: requestSeconds,
                 targetSize: targetSize,
@@ -291,8 +305,11 @@ export class SoraOrchestrator {
     /**
      * 辅助：分辨率决策
      */
-    private determineResolution(aspectRatio: string): string {
+    private determineResolution(aspectRatio: string, model: 'sora-2' | 'sora-2-pro' = 'sora-2'): string {
         const isPortrait = aspectRatio === '9:16' || aspectRatio === '3:4';
+        if (model === 'sora-2-pro') {
+            return isPortrait ? '1024x1792' : '1792x1024';
+        }
         return isPortrait ? '720x1280' : '1280x720';
     }
 
@@ -749,7 +766,8 @@ export class SoraOrchestrator {
         project: Project,
         force: boolean,
         user: AuthenticatedUser,
-        onProgress?: (progress: any) => void
+        onProgress?: (progress: any) => void,
+        options?: { model?: 'sora-2' | 'sora-2-pro' }
     ): Promise<any> {
         // Init DB Service
         await this.dataService.initialize(user.id);
@@ -816,7 +834,7 @@ export class SoraOrchestrator {
         const scenePromises = targetScenes.map(async (scene) => {
             try {
                 // Note: generateSceneVideo 内部已经处理了分镜的拆分和并行提交
-                const taskIds = await this.generateSceneVideo(project, scene.id, user);
+                const taskIds = await this.generateSceneVideo(project, scene.id, user, { model: options?.model });
 
                 completedCount++;
                 if (onProgress) onProgress({

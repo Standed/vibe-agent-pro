@@ -151,6 +151,7 @@ export function useChatReferenceInteractions({
                 setDroppedReferences((prev) => [...prev, ...newRefs]);
             }
         }
+        e.target.value = '';
     }, [
         activeReferences,
         selectedModel,
@@ -160,10 +161,25 @@ export function useChatReferenceInteractions({
         videoRefs
     ]);
 
+    const extractUrlFromItem = (item: any, itemType: symbol | string) => {
+        if (itemType === NativeTypes.URL) {
+            const url = item?.url || (Array.isArray(item?.urls) ? item.urls[0] : undefined);
+            return typeof url === 'string' ? url : null;
+        }
+        if (itemType === NativeTypes.TEXT) {
+            const text = item?.text || '';
+            const match = typeof text === 'string' ? text.match(/https?:\/\/\S+/) : null;
+            return match ? match[0] : null;
+        }
+        return null;
+    };
+
     const [{ isOver }, drop] = useDrop({
-        accept: [SHOT_TO_CHAT, NativeTypes.FILE],
+        accept: [SHOT_TO_CHAT, NativeTypes.FILE, NativeTypes.URL, NativeTypes.TEXT],
         drop: (item: any, monitor) => {
+            if (monitor.didDrop()) return;
             const itemType = monitor.getItemType();
+            const externalUrl = extractUrlFromItem(item, itemType);
 
             // ========== Vidu Start-End 模式特殊处理 ==========
             // 智能填充到空槽位：首帧优先，然后尾帧
@@ -221,6 +237,10 @@ export function useChatReferenceInteractions({
                     fillToEmptySlot(item.imageUrl, 'shot_ref', '分镜参考图');
                     return;
                 }
+                if (externalUrl) {
+                    fillToEmptySlot(externalUrl, 'manual_upload', '外部链接');
+                    return;
+                }
                 return;
             }
 
@@ -252,6 +272,9 @@ export function useChatReferenceInteractions({
                         }
                         processAndReplace(URL.createObjectURL(file), 'manual_upload', file.name, file);
                     }
+                }
+                if (externalUrl) {
+                    processAndReplace(externalUrl, 'manual_upload', '外部链接');
                 }
                 return;
             }
@@ -313,6 +336,11 @@ export function useChatReferenceInteractions({
                         }
                     }
                 }
+                if (externalUrl) {
+                    if (addReference(externalUrl, 'manual_upload', '外部链接')) {
+                        toast.success(`已添加参考图 (${videoRefs.getViduReferenceCount() + 1}/${MAX_REF_IMAGES})`);
+                    }
+                }
                 return;
             }
 
@@ -344,6 +372,9 @@ export function useChatReferenceInteractions({
                         }
                         processAndReplace(URL.createObjectURL(file), 'manual_upload', file.name, file);
                     }
+                }
+                if (externalUrl) {
+                    processAndReplace(externalUrl, 'manual_upload', '外部链接');
                 }
                 return;
             }
@@ -401,6 +432,23 @@ export function useChatReferenceInteractions({
                         setDroppedReferences((prev) => [...prev, ...newRefs]);
                     }
                 }
+            }
+
+            // 3. Handle External URL/Text Drop
+            if (externalUrl) {
+                setIgnoredUrls(prev => {
+                    const next = new Set(prev);
+                    next.delete(externalUrl);
+                    return next;
+                });
+                setDroppedReferences(prev => {
+                    if (prev.some(r => r.url === externalUrl)) return prev;
+                    return [...prev, {
+                        url: externalUrl,
+                        source: 'manual_upload',
+                        label: '外部链接'
+                    }];
+                });
             }
         },
         collect: (monitor) => ({

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KaponaiService } from '@/services/KaponaiService';
-import { uploadBufferToR2 } from '@/lib/cloudflare-r2';
+import { ViduTaskManager } from '@/services/ViduTaskManager';
+import { transferVideoToR2 } from '@/lib/video-transfer';
 import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
+import { assetLogService } from '@/lib/assetLogService';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
@@ -88,10 +90,13 @@ export async function POST(req: NextRequest) {
     }
 
     const kaponai = new KaponaiService();
-    try {
-      await kaponai.assertReachable();
-    } catch (error: any) {
-      return NextResponse.json({ error: error.message || 'Kaponai unreachable' }, { status: 503 });
+    const hasNonViduTasks = taskRows.some((task: any) => task.provider !== 'vidu' && !(task.model && String(task.model).includes('vidu')));
+    if (hasNonViduTasks) {
+      try {
+        await kaponai.assertReachable();
+      } catch (error: any) {
+        return NextResponse.json({ error: error.message || 'Kaponai unreachable' }, { status: 503 });
+      }
     }
 
     const runWithConcurrency = async <T, R>(
@@ -119,6 +124,25 @@ export async function POST(req: NextRequest) {
     };
 
     const results = await runWithConcurrency(taskRows, concurrency, async (task: any) => {
+      const isVidu = task.provider === 'vidu' || (task.model && String(task.model).includes('vidu'));
+      if (isVidu) {
+        const updatedTask = await ViduTaskManager.checkAndUpdateTask(task.id);
+        const resolvedStatus = normalizeStatus(updatedTask?.status || task.status);
+        const resolvedProgress = updatedTask?.progress ?? task.progress ?? 0;
+        const resolvedKaponaiUrl = updatedTask?.kaponai_url || task.kaponai_url || null;
+        const resolvedR2Url = updatedTask?.r2_url || task.r2_url || null;
+        const resolvedVideoUrl = resolvedR2Url || resolvedKaponaiUrl || null;
+
+        return {
+          id: task.id,
+          status: resolvedStatus,
+          progress: resolvedProgress,
+          videoUrl: resolvedVideoUrl,
+          kaponaiUrl: resolvedKaponaiUrl,
+          r2Url: resolvedR2Url,
+          error: updatedTask?.error_message || null,
+        };
+      }
       const isFinal = task.status === 'completed' || task.status === 'failed';
       let statusRes: any = null;
 
@@ -165,24 +189,28 @@ export async function POST(req: NextRequest) {
         resolvedStatus === 'completed' &&
         !resolvedR2Url &&
         resolvedKaponaiUrl &&
-        task.type === 'shot_generation'
+        (task.type === 'shot_generation' || task.type === 'direct_generation')
       ) {
         try {
-          const vidRes = await fetch(resolvedKaponaiUrl);
-          if (!vidRes.ok) throw new Error('Failed to download video from Kaponai');
-          const vidBuffer = Buffer.from(await vidRes.arrayBuffer());
-          const filename = `sora_${task.id}_${Date.now()}.mp4`;
-          const baseFolder = task.shot_id ? `shots/${task.shot_id}` : `scenes/${task.scene_id || 'unknown'}`;
-          const key = `${task.user_id}/${baseFolder}/${filename}`;
-          resolvedR2Url = await uploadBufferToR2({
-            buffer: vidBuffer,
-            key,
-            contentType: 'video/mp4'
+          const { r2Url } = await transferVideoToR2({
+            providerUrl: resolvedKaponaiUrl,
+            task: {
+              id: task.id,
+              user_id: task.user_id,
+              project_id: task.project_id,
+              scene_id: task.scene_id,
+              shot_id: task.shot_id,
+              provider: task.provider,
+              model: task.model,
+            },
+            model: task.provider || task.model || 'sora',
+            maxRetries: 4,
           });
+          resolvedR2Url = r2Url;
           resolvedVideoUrl = resolvedR2Url;
           await supabase.from('sora_tasks').update({ r2_url: resolvedR2Url }).eq('id', task.id);
 
-          if (task.shot_id) {
+          if (task.type === 'shot_generation' && task.shot_id) {
             const { data: shotData } = await supabase
               .from('shots')
               .select('metadata')
@@ -200,6 +228,111 @@ export async function POST(req: NextRequest) {
           }
         } catch (uploadErr: any) {
           console.error(`[SoraStatusBatch] R2 upload failed for task ${task.id}:`, uploadErr);
+          await supabase.from('sora_tasks').update({
+            error_message: `R2 transfer failed: ${uploadErr?.message || 'unknown'}`
+          }).eq('id', task.id);
+          await assetLogService.logComplete({
+            userId: task.user_id,
+            operationType: 'sora_video',
+            originalUrl: resolvedKaponaiUrl,
+            status: 'FAILED',
+            metadata: {
+              taskId: task.id,
+              provider: task.provider,
+              model: task.model,
+              context: 'sora_status_batch_transfer_to_r2',
+              error: uploadErr?.message || 'unknown'
+            }
+          });
+        }
+      }
+
+      if (resolvedStatus === 'completed' && resolvedVideoUrl && task.type === 'direct_generation') {
+        const targetShotIds = task.shot_ids || (task.shot_id ? [task.shot_id] : []);
+        if (targetShotIds.length > 0) {
+          const { data: shotsData } = await supabase
+            .from('shots')
+            .select('id, generation_history')
+            .in('id', targetShotIds);
+
+          if (shotsData && shotsData.length > 0) {
+            for (const shotData of shotsData) {
+              const currentHistory = shotData.generation_history || [];
+              const alreadyExists = currentHistory.some((item: any) => item?.parameters?.taskId === task.id);
+              if (alreadyExists) continue;
+
+              const newHistoryItem = {
+                id: `sora_${task.id}_${Date.now()}`,
+                type: 'video',
+                timestamp: new Date().toISOString(),
+                result: resolvedVideoUrl,
+                prompt: task.prompt || 'Sora Video Generation',
+                parameters: {
+                  model: task.model || task.provider || 'sora',
+                  taskId: task.id,
+                  source: 'pro',
+                  isMultiShot: targetShotIds.length > 1,
+                  coveredShots: targetShotIds
+                },
+                status: 'success'
+              };
+
+              const updatedHistory = [newHistoryItem, ...currentHistory];
+
+              await supabase.from('shots').update({
+                generation_history: updatedHistory
+              }).eq('id', shotData.id);
+            }
+          }
+        }
+
+        if (task.project_id) {
+          const baseChatMessage = {
+            user_id: task.user_id,
+            project_id: task.project_id,
+            role: 'assistant',
+            content: 'Sora 视频生成完成！',
+            metadata: {
+              type: 'sora_video_complete',
+              videoUrl: resolvedVideoUrl,
+              taskId: task.id,
+              model: task.model || task.provider || 'sora-2',
+              prompt: task.prompt || '',
+              source: 'pro',
+              isMultiShot: targetShotIds.length > 1,
+              coveredShots: targetShotIds
+            },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+          if (targetShotIds.length > 0) {
+            for (const shotId of targetShotIds) {
+              await supabase.from('chat_messages').upsert({
+                id: `sora_complete_${task.id}_${shotId}`,
+                ...baseChatMessage,
+                scope: 'shot',
+                scene_id: task.scene_id || null,
+                shot_id: shotId
+              }, { onConflict: 'id' });
+            }
+          } else if (task.scene_id) {
+            await supabase.from('chat_messages').upsert({
+              id: `sora_complete_${task.id}_scene`,
+              ...baseChatMessage,
+              scope: 'scene',
+              scene_id: task.scene_id,
+              shot_id: null
+            }, { onConflict: 'id' });
+          } else {
+            await supabase.from('chat_messages').upsert({
+              id: `sora_complete_${task.id}_project`,
+              ...baseChatMessage,
+              scope: 'project',
+              scene_id: null,
+              shot_id: null
+            }, { onConflict: 'id' });
+          }
         }
       }
 

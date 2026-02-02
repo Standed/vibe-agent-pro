@@ -458,19 +458,15 @@ export default function TimelineView({ onClose }: TimelineViewProps) {
      */
     type TaskApplicationStatus = 'full' | 'partial' | 'history' | 'pending';
 
-    // 归一化 URL：统一提取纯文件名进行比较
+    // 归一化 URL：去掉 query/hash，保留 host + pathname
     const normalizeVideoUrl = useCallback((url: string | undefined | null): string => {
         if (!url) return '';
         try {
-            // 移除协议、查询参数和 hash
             const cleaned = url.split('?')[0].split('#')[0];
-            // 提取纯文件名（最后一个 / 之后的内容）
-            const parts = cleaned.split('/');
-            const filename = parts[parts.length - 1] || '';
-            // 返回纯文件名，不保留路径（避免 R2 URL 和普通 URL 路径不一致的问题）
-            return filename;
+            const parsed = new URL(cleaned);
+            return `${parsed.hostname}${parsed.pathname}`;
         } catch {
-            return '';
+            return url.split('?')[0].split('#')[0] || '';
         }
     }, []);
 

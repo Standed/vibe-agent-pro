@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 
         switch (tool) {
             case 'generateSceneVideo':
-                const taskIds = await orchestrator.generateSceneVideo(project as Project, args.sceneId, user);
+                const taskIds = await orchestrator.generateSceneVideo(project as Project, args.sceneId, user, { model: args.model });
                 result = {
                     taskIds: taskIds,
                     message: `Sora 视频生成任务已提交，共拆分为 ${taskIds.length} 个子任务`
@@ -65,7 +65,8 @@ export async function POST(req: NextRequest) {
                     project as Project,
                     args.sceneId,
                     args.shotIds,
-                    user
+                    user,
+                    { model: args.model }
                 );
                 result = {
                     taskIds: shotTaskIds,
@@ -81,7 +82,9 @@ export async function POST(req: NextRequest) {
                 result = await orchestrator.batchGenerateProjectVideos(
                     project as Project,
                     args.force,
-                    user
+                    user,
+                    undefined,
+                    { model: args.model }
                     // No progress callback for API mode currently
                 );
                 break;

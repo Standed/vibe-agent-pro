@@ -22,7 +22,7 @@ export interface VideoMessage {
  * 从 sora_tasks 表加载已完成的视频任务，转换为消息格式
  * 通过 API 路由获取数据，确保正确的权限验证
  */
-export function useSoraVideoMessages(projectId?: string, shotId?: string) {
+export function useSoraVideoMessages(projectId?: string, shotId?: string, includePending: boolean = false) {
     const [videoMessages, setVideoMessages] = useState<VideoMessage[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<Error | null>(null);
@@ -37,7 +37,7 @@ export function useSoraVideoMessages(projectId?: string, shotId?: string) {
         setError(null);
 
         try {
-            const url = `/api/sora/tasks?projectId=${projectId}&shotId=${shotId}`;
+            const url = `/api/sora/tasks?projectId=${projectId}&shotId=${shotId}${includePending ? '&includePending=1' : ''}`;
             const response = await authenticatedFetch(url);
 
             if (!response.ok) {

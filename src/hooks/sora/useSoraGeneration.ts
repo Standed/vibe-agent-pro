@@ -8,6 +8,7 @@ interface UseSoraGenerationProps {
     project: Project | null;
     user: any;
     selectedModel: string;
+    soraModel: 'sora-2' | 'sora-2-pro';
     soraAspectRatio: string;
     soraDuration: number;
     setMessages: React.Dispatch<React.SetStateAction<ChatPanelMessage[]>>;
@@ -33,6 +34,7 @@ export function useSoraGeneration({
     project,
     user,
     selectedModel,
+    soraModel,
     soraAspectRatio,
     soraDuration,
     setMessages,
@@ -70,7 +72,9 @@ export function useSoraGeneration({
     ) => {
         if (selectedModel !== 'sora-video') return;
 
-        const resolution = soraAspectRatio === '16:9' ? '1280x720' : '720x1280';
+        const resolution = soraModel === 'sora-2-pro'
+            ? (soraAspectRatio === '16:9' ? '1792x1024' : '1024x1792')
+            : (soraAspectRatio === '16:9' ? '1280x720' : '720x1280');
 
         // 角色@提及替换
         const characters = project?.characters || [];
@@ -90,7 +94,7 @@ export function useSoraGeneration({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt: processedPrompt,
-                    model: 'sora-2',
+                    model: soraModel,
                     seconds: soraDuration,
                     size: resolution,
                     input_reference: [...(uploadedUrls.length > 0 ? uploadedUrls : []), ...manualReferenceUrls],
@@ -118,7 +122,12 @@ export function useSoraGeneration({
                 model: selectedModel,
                 shotId: currentShotId || undefined,
                 sceneId: currentSceneIdCaptured || undefined,
-                metadata: { soraTaskId: taskId },
+                metadata: {
+                    taskId,
+                    soraTaskId: taskId,
+                    model: soraModel,
+                    provider: 'sora'
+                },
             };
             setMessages(prev => [...prev, assistantMessage]);
             toast.success('Sora 视频任务已提交，预计需要2-5分钟');
@@ -237,8 +246,7 @@ export function useSoraGeneration({
             toast.error(`Sora 生成失败: ${soraError.message}`);
             setIsGenerating(false);
         }
-    }, [project, selectedModel, soraAspectRatio, soraDuration, setMessages, setIsGenerating, setInputText, setUploadedImages, setManualReferenceUrls]);
+    }, [project, selectedModel, soraModel, soraAspectRatio, soraDuration, setMessages, setIsGenerating, setInputText, setUploadedImages, setManualReferenceUrls]);
 
     return { generateSoraVideo, cancelPolling };
 }
-

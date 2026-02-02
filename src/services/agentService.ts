@@ -383,7 +383,10 @@ export function estimateCredits(toolCalls: ToolCall[], userRole: 'user' | 'admin
       case 'generateSceneVideo': {
         // 估算：假设平均每个场景 5 个镜头，合并后产生 2-3 个视频段
         // VOLCANO_VIDEO 是单次生成费用
-        const videoCost = calculateCredits('VOLCANO_VIDEO', userRole);
+        const model = tc.arguments.model === 'sora-2-pro' ? 'sora-2-pro' : 'sora-2';
+        const videoCost = model === 'sora-2-pro'
+          ? calculateCredits('SORA2_PRO_25S', userRole)
+          : calculateCredits('VOLCANO_VIDEO', userRole);
         total += videoCost * 3;
         break;
       }
@@ -392,14 +395,20 @@ export function estimateCredits(toolCalls: ToolCall[], userRole: 'user' | 'admin
         const shotIds = tc.arguments.shotIds;
         const count = Array.isArray(shotIds) ? shotIds.length : 1;
         // 假设智能合并比率 0.5 (每2个镜头合成一段)
-        const videoCost = calculateCredits('VOLCANO_VIDEO', userRole);
+        const model = tc.arguments.model === 'sora-2-pro' ? 'sora-2-pro' : 'sora-2';
+        const videoCost = model === 'sora-2-pro'
+          ? calculateCredits('SORA2_PRO_25S', userRole)
+          : calculateCredits('VOLCANO_VIDEO', userRole);
         total += Math.ceil(count * 0.5) * videoCost;
         break;
       }
       case 'batchGenerateProjectVideosSora': {
         const shotCount = context?.shotCount || 21; // Default to multiple of 3 for cleaner calc
         // 估算：Sora 逻辑会将连续镜头合并 (平均每 3 个镜头生成一段 15s 视频)
-        const videoCost = calculateCredits('VOLCANO_VIDEO', userRole);
+        const model = tc.arguments.model === 'sora-2-pro' ? 'sora-2-pro' : 'sora-2';
+        const videoCost = model === 'sora-2-pro'
+          ? calculateCredits('SORA2_PRO_25S', userRole)
+          : calculateCredits('VOLCANO_VIDEO', userRole);
         total += Math.ceil(shotCount / 3.0) * videoCost;
         break;
       }

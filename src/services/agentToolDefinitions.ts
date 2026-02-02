@@ -44,6 +44,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                 sceneId: {
                     type: 'string',
                     description: '场景的ID'
+                },
+                model: {
+                    type: 'string',
+                    enum: ['sora-2', 'sora-2-pro'],
+                    description: 'Sora 模型（可选，默认 sora-2）'
                 }
             },
             required: ['sceneId']
@@ -285,6 +290,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                     type: 'array',
                     items: { type: 'number' },
                     description: '全局分镜序号（从 1 开始，基于 globalOrder）'
+                },
+                model: {
+                    type: 'string',
+                    enum: ['sora-2', 'sora-2-pro'],
+                    description: 'Sora 模型（可选，默认 sora-2）'
                 }
             },
             required: []
@@ -299,6 +309,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                 force: {
                     type: 'boolean',
                     description: '是否强制重新生成已有的视频（默认 false）'
+                },
+                model: {
+                    type: 'string',
+                    enum: ['sora-2', 'sora-2-pro'],
+                    description: 'Sora 模型（可选，默认 sora-2）'
                 }
             },
             required: []

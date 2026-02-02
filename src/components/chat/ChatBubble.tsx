@@ -15,6 +15,7 @@ export interface ChatMessage {
     model?: any;
     shotId?: string;
     videoUrl?: string;  // Sora生成的视频URL
+    metadata?: any;
     gridData?: {
         fullImage: string;
         slices: string[];
@@ -35,6 +36,7 @@ interface ChatBubbleProps {
     onReuseImage?: (url: string) => void;
     onApplyToShot?: (url: string) => void;
     onApplyVideoToShot?: (message: ChatMessage) => void;  // 应用视频到分镜
+    onMediaLoaded?: () => void;
     onDelete?: () => void;
     project?: any; // Project type imported
 }
@@ -47,12 +49,30 @@ export function ChatBubble({
     onReuseImage,
     onApplyToShot,
     onApplyVideoToShot,
+    onMediaLoaded,
     onDelete,
     project
 }: ChatBubbleProps) {
     const isUser = message.role === 'user';
     const hasImages = message.images && message.images.length > 0;
     const hasVideo = !!message.videoUrl;
+    const videoMeta = message.metadata || {};
+
+    const getVideoLabel = () => {
+        const provider = videoMeta.provider || (String(videoMeta.model || '').includes('vidu') ? 'vidu' : String(videoMeta.model || '').includes('sora') ? 'sora' : '');
+        if (provider === 'vidu') {
+            const mode = videoMeta.mode;
+            const modeLabel = mode === 'img2video' ? '图生视频' : mode === 'start-end2video' ? '首尾帧视频' : mode === 'reference2video' ? '参考生视频' : '';
+            return modeLabel ? `Vidu · ${modeLabel}` : 'Vidu';
+        }
+        if (provider === 'sora') {
+            const modelName = videoMeta.model || message.model;
+            if (modelName === 'sora-2-pro') return 'Sora 2 Pro';
+            if (modelName === 'sora-2') return 'Sora 2';
+            return 'Sora';
+        }
+        return '';
+    };
 
     // Detect if content is a Grid (2x2 or 3x3) to expand container width
     const isGridContent = (message.gridData?.slices?.length && message.gridData.slices.length >= 4) || (message.images && message.images.length >= 4);
@@ -62,7 +82,7 @@ export function ChatBubble({
     const contentMaxWidth = isGridContent ? "max-w-full w-full" : "max-w-[85%]";
 
     return (
-        <div className={cn("flex w-full mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300 group/message", isUser ? "justify-end" : "justify-start")}>
+        <div className={cn("flex w-full animate-in fade-in slide-in-from-bottom-2 duration-300 group/message", isUser ? "justify-end" : "justify-start")}>
             <div className={cn("flex gap-3", containerMaxWidth, isUser ? "flex-row-reverse" : "flex-row")}>
 
                 {/* Avatar */}
@@ -118,6 +138,7 @@ export function ChatBubble({
                                     src={message.videoUrl}
                                     controls
                                     className="w-auto h-auto max-w-full max-h-[280px] object-contain"
+                                    onLoadedMetadata={onMediaLoaded}
                                 />
                                 {/* 操作按钮 */}
                                 <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 via-black/30 to-transparent opacity-0 group-hover/video:opacity-100 transition-opacity flex justify-end gap-2 pointer-events-none">
@@ -133,6 +154,13 @@ export function ChatBubble({
                                     )}
                                 </div>
                             </div>
+                            {getVideoLabel() && (
+                                <div className="mt-1 flex items-center gap-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+                                    <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                                        {getVideoLabel()}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -156,6 +184,7 @@ export function ChatBubble({
                                                     src={img}
                                                     alt={`User upload ${idx + 1}`}
                                                     className="h-full w-auto object-cover hover:scale-110 transition-transform duration-500"
+                                                    onLoad={onMediaLoaded}
                                                 />
 
                                                 {/* Hover Actions Overlay (Standardized with GenerationResult) */}
@@ -204,6 +233,7 @@ export function ChatBubble({
                                     onReuseImage={onReuseImage}
                                     onApplyToShot={onApplyToShot}
                                     defaultAspectRatio={project?.settings?.aspectRatio}
+                                    onMediaLoaded={onMediaLoaded}
                                 />
                             )}
                         </div>

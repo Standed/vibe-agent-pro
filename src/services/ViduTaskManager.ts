@@ -10,7 +10,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { ViduService } from '@/services/ViduService';
-import { storageService } from '@/lib/storageService';
+import { transferVideoToR2 } from '@/lib/video-transfer';
+import { assetLogService } from '@/lib/assetLogService';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -105,8 +106,18 @@ export class ViduTaskManager {
             return null;
         }
 
-        // 如果已完成或失败，直接返回
+        // 如果已完成或失败，直接返回（但要补齐 R2）
         if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
+            if (task.status === 'completed' && task.kaponai_url && !task.r2_url) {
+                const applyToShot = task.type === 'shot_generation';
+                this.transferToR2({
+                    task: task as ViduTaskRecord,
+                    viduUrl: task.kaponai_url,
+                    applyToShot
+                }).catch(err => {
+                    console.error('[ViduTaskManager] 已完成任务补转存失败:', err);
+                });
+            }
             return task as ViduTaskRecord;
         }
 
@@ -163,7 +174,13 @@ export class ViduTaskManager {
 
             // 4. 如果任务完成，触发 R2 转存
             if (updates.status === 'completed' && updates.kaponai_url && !task.r2_url) {
-                this.transferToR2(taskId, updates.kaponai_url, task.project_id, task.shot_id).catch(err => {
+                const transferTask = (updatedTask as ViduTaskRecord) || (task as ViduTaskRecord);
+                const applyToShot = transferTask?.type === 'shot_generation';
+                this.transferToR2({
+                    task: transferTask,
+                    viduUrl: updates.kaponai_url,
+                    applyToShot
+                }).catch(err => {
                     console.error('[ViduTaskManager] R2 转存失败（后台异步）:', err);
                 });
             }
@@ -188,40 +205,28 @@ export class ViduTaskManager {
     /**
      * 将视频从 Vidu 临时 URL 转存到 R2
      */
-    static async transferToR2(
-        taskId: string,
-        viduUrl: string,
-        projectId: string,
-        shotId?: string | null
-    ): Promise<string> {
-        console.log(`[ViduTaskManager] 开始 R2 转存: ${taskId}`);
+    static async transferToR2(params: {
+        task: ViduTaskRecord;
+        viduUrl: string;
+        applyToShot?: boolean;
+    }): Promise<string> {
+        const { task, viduUrl, applyToShot = false } = params;
+        console.log(`[ViduTaskManager] 开始 R2 转存: ${task.id}`);
 
         try {
-            // 1. 下载视频
-            const response = await fetch(viduUrl);
-            if (!response.ok) {
-                throw new Error(`Failed to download video: ${response.statusText}`);
-            }
-
-            const videoBuffer = await response.arrayBuffer();
-
-            // 2. 上传到 R2
-            const r2Context = {
-                projectId,
-                scope: (shotId ? 'shots' : 'project') as 'shots' | 'project',
-                entityId: shotId || projectId,
-                assetType: 'video' as const,
-                model: 'vidu' as const,
-            };
-
-            // 转换为 base64
-            const base64 = `data:video/mp4;base64,${Buffer.from(videoBuffer).toString('base64')}`;
-            const fileName = `vidu_${taskId}_${Date.now()}.mp4`;
-            const r2Url = await storageService.uploadBase64ToR2(
-                base64,
-                r2Context,
-                fileName
-            );
+            const { r2Url } = await transferVideoToR2({
+                providerUrl: viduUrl,
+                task: {
+                    id: task.id,
+                    user_id: task.user_id,
+                    project_id: task.project_id,
+                    scene_id: task.scene_id,
+                    shot_id: task.shot_id,
+                    provider: task.provider,
+                    model: task.model,
+                },
+                model: 'vidu',
+            });
 
             console.log(`[ViduTaskManager] R2 转存成功: ${r2Url}`);
 
@@ -229,16 +234,16 @@ export class ViduTaskManager {
             await supabase
                 .from('sora_tasks')
                 .update({ r2_url: r2Url })
-                .eq('id', taskId);
+                .eq('id', task.id);
 
             // 4. 更新分镜表（如果有 shotId）
-            if (shotId) {
+            if (applyToShot && task.shot_id) {
                 await supabase
                     .from('shots')
                     .update({ video_clip: r2Url })
-                    .eq('id', shotId);
+                    .eq('id', task.shot_id);
 
-                console.log(`[ViduTaskManager] 分镜视频已更新: ${shotId}`);
+                console.log(`[ViduTaskManager] 分镜视频已更新: ${task.shot_id}`);
             }
 
             return r2Url;
@@ -250,7 +255,21 @@ export class ViduTaskManager {
                 .update({
                     error_message: `R2 transfer failed: ${error.message}`,
                 })
-                .eq('id', taskId);
+                .eq('id', task.id);
+
+            await assetLogService.logComplete({
+                userId: task.user_id,
+                operationType: 'vidu_video',
+                originalUrl: viduUrl,
+                status: 'FAILED',
+                metadata: {
+                    taskId: task.id,
+                    provider: task.provider,
+                    model: task.model,
+                    context: 'vidu_transfer_to_r2',
+                    error: error?.message || 'unknown'
+                }
+            });
 
             throw error;
         }
