@@ -4,9 +4,10 @@
  */
 
 import React, { memo, useEffect, useRef } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, MessageCircle } from 'lucide-react';
 import { ChatPanelMessage } from '@/types/project';
 import { ChatBubble } from './ChatBubble';
+import { EmptyState } from '@/components/ui/StatusComponents';
 
 interface MessageListProps {
     messages: ChatPanelMessage[];
@@ -206,6 +207,16 @@ export const MessageList = memo(function MessageList({
 
     return (
         <div className="space-y-6">
+            {/* 空状态 */}
+            {messages.length === 0 && !isGenerating && (
+                <EmptyState
+                    icon={<MessageCircle className="w-12 h-12" />}
+                    title="开始创作"
+                    description="输入提示词开始生成图片或视频，也可以 @ 角色和场景作为参考"
+                    className="py-16"
+                />
+            )}
+
             {messages.map((message) => (
                 <MessageItem
                     key={message.id}

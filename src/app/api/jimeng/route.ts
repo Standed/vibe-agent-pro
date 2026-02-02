@@ -878,8 +878,7 @@ export async function POST(request: NextRequest) {
                     );
                     return NextResponse.json({
                         ...result,
-                        imageUrls: persisted,
-                        url: persisted[0] || result.url
+                        imageUrls: persisted
                     });
                 } catch (err: any) {
                     return NextResponse.json({ error: '图片持久化失败，请稍后重试' }, { status: 500 });
@@ -902,8 +901,7 @@ export async function POST(request: NextRequest) {
                     );
                     return NextResponse.json({
                         ...result,
-                        imageUrls: persisted,
-                        url: persisted[0] || result.url
+                        imageUrls: persisted
                     });
                 } catch (err: any) {
                     return NextResponse.json({ error: '图片持久化失败，请稍后重试' }, { status: 500 });

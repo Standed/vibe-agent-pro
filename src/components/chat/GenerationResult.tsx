@@ -2,23 +2,14 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import { useDrag } from 'react-dnd';
 import { Grid3x3, Download, RefreshCw, Image as ImageIcon, ChevronUp } from 'lucide-react';
-import { AspectRatio } from '@/types/project';
+import { AspectRatio, GridData } from '@/types/project';
 import { IMAGE_TO_SHOT } from './dragTypes';
 import { downloadFile } from '@/utils/download';
 
 interface GenerationResultProps {
     images: string[];
     model?: string;
-    gridData?: {
-        fullImage: string;
-        slices: string[];
-        gridRows?: number;
-        gridCols?: number;
-        prompt?: string;
-        aspectRatio?: AspectRatio;
-        gridSize?: '2x2' | '3x3';
-        sceneId?: string;
-    };
+    gridData?: GridData;
     onImageClick?: (url: string, index: number) => void;
     onSliceSelect?: () => void;
     onReusePrompt?: () => void;

@@ -34,7 +34,7 @@ export function useChatHistory(
     const { videoMessages } = useSoraVideoMessages(projectId, selectedShotId || undefined, true);
 
     // Initial Load Logic
-    const convertChatMessages = useCallback((loadedMessages: Awaited<ReturnType<typeof dataService.getChatMessages>>) => {
+    const convertChatMessages = useCallback((loadedMessages: Awaited<ReturnType<typeof dataService.getChatMessages>>): ChatPanelMessage[] => {
         const filteredMessages = loadedMessages.filter(msg => msg.metadata?.channel !== 'planning');
         return filteredMessages.map((msg) => ({
             id: msg.id,
@@ -94,8 +94,7 @@ export function useChatHistory(
                 const loadedMessages = await dataService.getChatMessages({
                     ...filters,
                     limit: pageLimit,
-                    offset: 0,
-                    orderBy: { column: 'created_at', ascending: false }
+                    offset: 0
                 });
                 const converted = convertChatMessages(loadedMessages).reverse();
 
@@ -108,8 +107,8 @@ export function useChatHistory(
 
                             if (h.type === 'video') {
                                 const existingVideoMsg = converted.find(m =>
-                                    m.videoUrl === h.result ||
-                                    m.metadata?.videoUrl === h.result
+                                    (m as any).videoUrl === h.result ||
+                                    (m.metadata as any)?.videoUrl === h.result
                                 );
                                 if (existingVideoMsg) return null;
 
@@ -333,8 +332,7 @@ export function useChatHistory(
         const loadedMessages = await dataService.getChatMessages({
             ...filters,
             limit: MESSAGES_PER_PAGE,
-            offset,
-            orderBy: { column: 'created_at', ascending: false }
+            offset
         });
         const converted = convertChatMessages(loadedMessages).reverse();
         const nextHasMore = loadedMessages.length >= MESSAGES_PER_PAGE;

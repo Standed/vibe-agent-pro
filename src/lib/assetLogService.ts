@@ -93,5 +93,82 @@ export const assetLogService = {
      */
     async logComplete(entry: AssetLogEntry) {
         await this.logStart(entry);
+    },
+
+    /**
+     * 获取需要重试的失败任务
+     * @param limit 最大返回数量
+     * @param maxRetries 最大重试次数
+     */
+    async getFailedTasks(limit = 20, maxRetries = 3): Promise<Array<{
+        id: string;
+        user_id: string;
+        operation_type: string;
+        original_url: string;
+        metadata: any;
+    }>> {
+        try {
+            const { data, error } = await supabaseAdmin
+                .from('asset_logs')
+                .select('id, user_id, operation_type, original_url, metadata')
+                .eq('status', 'FAILED')
+                .or(`metadata->retry_count.is.null,metadata->retry_count.lt.${maxRetries}`)
+                .limit(limit)
+                .order('created_at', { ascending: true });
+
+            if (error) {
+                console.error('[AssetLog] Failed to get failed tasks:', error);
+                return [];
+            }
+
+            return data || [];
+        } catch (err) {
+            console.error('[AssetLog] Exception in getFailedTasks:', err);
+            return [];
+        }
+    },
+
+    /**
+     * 标记任务重试次数
+     */
+    async incrementRetryCount(logId: string): Promise<void> {
+        try {
+            const { data: current } = await supabaseAdmin
+                .from('asset_logs')
+                .select('metadata')
+                .eq('id', logId)
+                .single();
+
+            const currentRetries = (current?.metadata as any)?.retry_count || 0;
+            const newMeta = {
+                ...(current?.metadata as object || {}),
+                retry_count: currentRetries + 1,
+                last_retry_at: new Date().toISOString()
+            };
+
+            await supabaseAdmin
+                .from('asset_logs')
+                .update({ metadata: newMeta })
+                .eq('id', logId);
+        } catch (err) {
+            console.error('[AssetLog] Exception in incrementRetryCount:', err);
+        }
+    },
+
+    /**
+     * 标记任务重试成功
+     */
+    async markRetrySuccess(logId: string, r2Url: string): Promise<void> {
+        try {
+            await supabaseAdmin
+                .from('asset_logs')
+                .update({
+                    status: 'SUCCESS',
+                    r2_url: r2Url,
+                })
+                .eq('id', logId);
+        } catch (err) {
+            console.error('[AssetLog] Exception in markRetrySuccess:', err);
+        }
     }
 };

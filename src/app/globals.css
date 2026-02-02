@@ -145,3 +145,138 @@ body {
   background-color: #181818 !important;
   color: white !important;
 }
+
+/* ========== 增强暗色模式对比度 ========== */
+.dark {
+  /* 增强文本对比度 */
+  --foreground-rgb: 250, 250, 250;
+  
+  /* 边框增强 */
+  --border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* 暗色模式下的交互元素增强 */
+.dark .glass-button:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.dark .glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* ========== 统一加载状态组件 ========== */
+@layer components {
+  /* 骨架屏加载效果 */
+  .skeleton {
+    @apply animate-pulse bg-gradient-to-r from-zinc-200 via-zinc-100 to-zinc-200 dark:from-zinc-800 dark:via-zinc-700 dark:to-zinc-800 rounded-lg;
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s infinite;
+  }
+
+  @keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* 加载旋转器 */
+  .spinner {
+    @apply w-5 h-5 border-2 border-zinc-300 dark:border-zinc-600 border-t-zinc-800 dark:border-t-zinc-200 rounded-full animate-spin;
+  }
+
+  .spinner-sm {
+    @apply w-4 h-4;
+  }
+
+  .spinner-lg {
+    @apply w-8 h-8;
+  }
+
+  /* ========== 空状态组件 ========== */
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-12 px-6 text-center;
+  }
+
+  .empty-state-icon {
+    @apply w-16 h-16 mb-4 text-zinc-300 dark:text-zinc-600 opacity-80;
+  }
+
+  .empty-state-title {
+    @apply text-lg font-medium text-zinc-600 dark:text-zinc-400 mb-2;
+  }
+
+  .empty-state-description {
+    @apply text-sm text-zinc-400 dark:text-zinc-500 max-w-xs;
+  }
+
+  .empty-state-action {
+    @apply mt-6;
+  }
+
+  /* ========== 状态徽章 ========== */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400;
+  }
+
+  .badge-warning {
+    @apply bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400;
+  }
+
+  .badge-error {
+    @apply bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400;
+  }
+
+  .badge-info {
+    @apply bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400;
+  }
+
+  .badge-neutral {
+    @apply bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400;
+  }
+
+  /* ========== 微动画效果 ========== */
+  .hover-lift {
+    @apply transition-transform duration-200;
+  }
+
+  .hover-lift:hover {
+    @apply -translate-y-0.5;
+  }
+
+  .hover-glow {
+    @apply transition-shadow duration-200;
+  }
+
+  .hover-glow:hover {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+  }
+
+  .dark .hover-glow:hover {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.25);
+  }
+
+  /* 渐入动画 */
+  .fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* 缩放弹入 */
+  .scale-in {
+    animation: scaleIn 0.2s ease-out;
+  }
+
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+}

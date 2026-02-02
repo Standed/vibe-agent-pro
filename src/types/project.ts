@@ -251,7 +251,7 @@ export interface GridData {
   gridCols?: number; // Grid 列数
   gridSize?: '2x2' | '3x3'; // Grid 大小
   prompt?: string; // 生成提示词
-  aspectRatio: string; // 画面比例
+  aspectRatio?: string; // 画面比例（改为可选）
   assignments?: Record<string, number>; // 切片分配记录：shotId -> sliceIndex
 }
 

@@ -11,6 +11,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { JimengModel } from '@/components/jimeng/JimengOptions';
 import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
 import { cn } from '@/lib/utils';
+import { R2AssetScope, R2AssetType } from '@/lib/r2-path';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useProjectStore } from '@/store/useProjectStore';
 
@@ -81,9 +82,9 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
           try {
             const folder = {
               projectId: project?.id,
-              scope: 'locations',
+              scope: 'locations' as R2AssetScope,
               entityId: locationIdRef.current,
-              assetType: 'reference',
+              assetType: 'reference' as R2AssetType,
               model: 'upload'
             };
             // Upload to R2 (or fallback)
@@ -214,9 +215,9 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
         setReferenceImages(prev => [...prev, base64Url]);
         const folder = {
           projectId: project?.id,
-          scope: 'locations',
+          scope: 'locations' as R2AssetScope,
           entityId: locationIdRef.current,
-          assetType: 'reference',
+          assetType: 'reference' as R2AssetType,
           model: genMode
         };
         storageService.uploadBase64ToR2(base64Url, folder, `loc_${Date.now()}.png`, user?.id || 'anonymous')
@@ -257,9 +258,9 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
 
       const folder = {
         projectId: project?.id,
-        scope: 'locations',
+        scope: 'locations' as R2AssetScope,
         entityId: locationIdRef.current,
-        assetType: 'reference',
+        assetType: 'reference' as R2AssetType,
         model: 'jimeng'
       };
       const r2Url = await storageService.uploadBase64ToR2(base64Url, folder, `loc_${Date.now()}.png`, user?.id || 'anonymous');
