@@ -843,6 +843,7 @@ export default function ChatPanel() {
                     onLoadMore={handleLoadMore}
                     onMediaLoaded={handleMediaLoaded}
                     onDelete={deleteMessage}
+                    project={project}
                     onSetSlicerData={(data) => {
                         setSliceSelectorData(data);
                     }}

@@ -62,38 +62,29 @@ export async function GET(request: NextRequest) {
         // 如果指定了 shotId，上面已在 SQL 侧过滤
         let filteredTasks = tasks || [];
 
-        // 兜底：当 includePending=1 时，尝试刷新少量 Vidu 待处理任务
+        // 后台异步刷新：不阻塞响应，限制最多 3 个任务
         if (includePending) {
             const pendingVidu = filteredTasks
                 .filter((task: any) => {
                     const isVidu = task.provider === 'vidu' || (task.model && String(task.model).includes('vidu'));
                     return isVidu && (task.status === 'queued' || task.status === 'processing');
                 })
-                .slice(0, 5);
+                .slice(0, 3); // 减少到 3 个
 
             const completedMissingR2 = filteredTasks
                 .filter((task: any) => {
                     const isVidu = task.provider === 'vidu' || (task.model && String(task.model).includes('vidu'));
                     return isVidu && task.status === 'completed' && !task.r2_url && task.kaponai_url;
                 })
-                .slice(0, 5);
+                .slice(0, 3); // 减少到 3 个
 
             const needRefresh = [...pendingVidu, ...completedMissingR2];
 
+            // 后台异步刷新，不等待完成
             if (needRefresh.length > 0) {
-                await Promise.allSettled(
+                Promise.allSettled(
                     needRefresh.map((task: any) => ViduTaskManager.checkAndUpdateTask(task.id))
-                );
-
-                const { data: refreshed, error: refreshError } = await supabase
-                    .from('sora_tasks')
-                    .select('id, provider, model, prompt, status, type, shot_id, shot_ids, r2_url, kaponai_url, generation_params, created_at, updated_at')
-                    .in('id', needRefresh.map((t: any) => t.id));
-
-                if (!refreshError && refreshed?.length) {
-                    const refreshedMap = new Map(refreshed.map((t: any) => [t.id, t]));
-                    filteredTasks = filteredTasks.map((t: any) => refreshedMap.get(t.id) || t);
-                }
+                ).catch(err => console.error('[API sora/tasks] Background refresh error:', err));
             }
         }
 
