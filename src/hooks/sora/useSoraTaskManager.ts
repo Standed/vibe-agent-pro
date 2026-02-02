@@ -64,6 +64,8 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
     // 用于防止重复同步
     const syncedTaskIdsRef = useRef(new Set<string>());
     const notifiedTaskIdsRef = useRef(new Set<string>());
+    const missCountsRef = useRef<Map<string, number>>(new Map());
+    const lastFallbackAtRef = useRef<Map<string, number>>(new Map());
 
     // 辅助索引：shotId -> taskIds
     const tasksByShotId = useMemo(() => {
@@ -150,16 +152,31 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
     // 应用状态更新
     const applyStatusUpdate = useCallback(async (task: SoraTask, data: any, notify: boolean) => {
         const remoteStatus = data.status;
-        const videoUrl = data.videoUrl || data.r2Url || data.kaponaiUrl;
+        const incomingR2Url = data.r2Url ?? null;
+        const incomingKaponaiUrl = data.kaponaiUrl ?? null;
 
         if (remoteStatus === 'completed') {
-            const isTransition = task.status !== 'completed';
+            const nextR2Url = incomingR2Url || task.r2Url;
+            const nextKaponaiUrl = incomingKaponaiUrl || task.kaponaiUrl;
+            const needsUpdate =
+                task.status !== 'completed' ||
+                task.progress !== 100 ||
+                nextR2Url !== task.r2Url ||
+                nextKaponaiUrl !== task.kaponaiUrl;
+
+            if (!needsUpdate) {
+                if (notify) {
+                    toast.success('视频生成成功！');
+                }
+                return;
+            }
+
             const updatedTask: SoraTask = {
                 ...task,
                 status: 'completed',
                 progress: 100,
-                kaponaiUrl: data.kaponaiUrl || task.kaponaiUrl || videoUrl,
-                r2Url: data.r2Url || task.r2Url,
+                kaponaiUrl: nextKaponaiUrl,
+                r2Url: nextR2Url,
                 updatedAt: new Date(),
             };
             // 始终使用 task.id 作为键
@@ -191,11 +208,20 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
 
         const nextStatus = remoteStatus === 'generating' ? 'processing' : remoteStatus;
         const nextProgress = typeof data.progress === 'number' ? data.progress : task.progress;
-        if (nextStatus !== task.status || nextProgress !== task.progress) {
+        const nextR2Url = incomingR2Url || task.r2Url;
+        const nextKaponaiUrl = incomingKaponaiUrl || task.kaponaiUrl;
+        if (
+            nextStatus !== task.status ||
+            nextProgress !== task.progress ||
+            nextR2Url !== task.r2Url ||
+            nextKaponaiUrl !== task.kaponaiUrl
+        ) {
             const updatedTask: SoraTask = {
                 ...task,
                 status: nextStatus,
                 progress: nextProgress,
+                kaponaiUrl: nextKaponaiUrl,
+                r2Url: nextR2Url,
                 updatedAt: new Date(),
             };
             setSoraTasks((prev) => new Map(prev).set(task.id, updatedTask));
@@ -469,15 +495,68 @@ export function useSoraTaskManager(options: UseSoraTaskManagerOptions = {}): Use
 
             if (processingTasks.length === 0) return;
 
-            for (const task of processingTasks) {
-                try {
-                    const res = await fetch(`/api/sora/status?taskId=${task.id}`);
+            try {
+                const chunkSize = 60;
+                const tasksToPoll = processingTasks;
+
+                for (let i = 0; i < tasksToPoll.length; i += chunkSize) {
+                    const chunk = tasksToPoll.slice(i, i + chunkSize);
+                    if (chunk.length === 0) continue;
+
+                    const res = await fetch('/api/sora/status/batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            taskIds: chunk.map((t) => t.id),
+                        }),
+                    });
+
                     if (!res.ok) continue;
+
                     const data = await res.json();
-                    await applyStatusUpdate(task, data, false);
-                } catch (error) {
-                    console.error('Error polling sora task:', error);
+                    const results = Array.isArray(data.results) ? data.results : [];
+                    const resultMap = new Map<string, any>(results.map((r: any) => [r.id, r]));
+
+                    for (const task of chunk) {
+                        const result = resultMap.get(task.id);
+                        if (result) {
+                            const updateData = {
+                                status: result.status,
+                                progress: result.progress,
+                                kaponaiUrl: result.kaponaiUrl,
+                                r2Url: result.r2Url,
+                                videoUrl: result.videoUrl,
+                                error: result.error
+                            };
+                            await applyStatusUpdate(task, updateData, false);
+                            missCountsRef.current.delete(task.id);
+                        } else {
+                            const nextMiss = (missCountsRef.current.get(task.id) || 0) + 1;
+                            missCountsRef.current.set(task.id, nextMiss);
+                            // Fallback: after 3 misses, single query with cooldown
+                            if (nextMiss >= 3) {
+                                const now = Date.now();
+                                const lastFallbackAt = lastFallbackAtRef.current.get(task.id) || 0;
+                                if (now - lastFallbackAt < 30000) {
+                                    continue;
+                                }
+                                lastFallbackAtRef.current.set(task.id, now);
+                                try {
+                                    const singleRes = await fetch(`/api/sora/status?taskId=${task.id}`);
+                                    if (!singleRes.ok) continue;
+                                    const singleData = await singleRes.json();
+                                    await applyStatusUpdate(task, singleData, false);
+                                    missCountsRef.current.delete(task.id);
+                                    lastFallbackAtRef.current.delete(task.id);
+                                } catch (err) {
+                                    console.error('Error polling missing task:', err);
+                                }
+                            }
+                        }
+                    }
                 }
+            } catch (error) {
+                console.error('Error polling sora tasks batch:', error);
             }
         }, pollingInterval);
 

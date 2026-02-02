@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { authenticatedFetch } from '@/lib/api-client';
 
 export interface VideoMessage {
@@ -27,18 +27,28 @@ export function useSoraVideoMessages(projectId?: string, shotId?: string, includ
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<Error | null>(null);
 
+    const abortControllerRef = useRef<AbortController | null>(null);
+
     const loadVideoMessages = useCallback(async () => {
         if (!projectId || !shotId) {
             setVideoMessages([]);
             return;
         }
 
+        // 取消上一次未完成的请求
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        // 创建新的控制器
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         setLoading(true);
         setError(null);
 
         try {
             const url = `/api/sora/tasks?projectId=${projectId}&shotId=${shotId}${includePending ? '&includePending=1' : ''}`;
-            const response = await authenticatedFetch(url);
+            const response = await authenticatedFetch(url, { signal: controller.signal });
 
             if (!response.ok) {
                 throw new Error(`Failed to fetch video tasks: ${response.status}`);
@@ -56,16 +66,29 @@ export function useSoraVideoMessages(projectId?: string, shotId?: string, includ
             messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
             setVideoMessages(messages);
-        } catch (err) {
+        } catch (err: any) {
+            if (err.name === 'AbortError') {
+                console.log('[useSoraVideoMessages] Request aborted');
+                return;
+            }
             console.error('[useSoraVideoMessages] Failed to load video tasks:', err);
             setError(err instanceof Error ? err : new Error('Failed to load video tasks'));
         } finally {
-            setLoading(false);
+            // 只有当前控制器的请求结束时才关闭 loading
+            if (abortControllerRef.current === controller) {
+                setLoading(false);
+            }
         }
-    }, [projectId, shotId]);
+    }, [projectId, shotId, includePending]);
 
     useEffect(() => {
         loadVideoMessages();
+        // 组件卸载时取消请求
+        return () => {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
     }, [loadVideoMessages]);
 
     return {

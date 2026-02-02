@@ -126,12 +126,48 @@ export async function POST(req: NextRequest) {
     const results = await runWithConcurrency(taskRows, concurrency, async (task: any) => {
       const isVidu = task.provider === 'vidu' || (task.model && String(task.model).includes('vidu'));
       if (isVidu) {
-        const updatedTask = await ViduTaskManager.checkAndUpdateTask(task.id);
+        const updatedTask = await ViduTaskManager.checkAndUpdateTask(task.id, { autoTransfer: false });
         const resolvedStatus = normalizeStatus(updatedTask?.status || task.status);
         const resolvedProgress = updatedTask?.progress ?? task.progress ?? 0;
         const resolvedKaponaiUrl = updatedTask?.kaponai_url || task.kaponai_url || null;
-        const resolvedR2Url = updatedTask?.r2_url || task.r2_url || null;
-        const resolvedVideoUrl = resolvedR2Url || resolvedKaponaiUrl || null;
+        let resolvedR2Url = updatedTask?.r2_url || task.r2_url || null;
+        let resolvedVideoUrl = resolvedR2Url || resolvedKaponaiUrl || null;
+
+        if (resolvedStatus === 'completed' && !resolvedR2Url && resolvedKaponaiUrl) {
+          try {
+            const { r2Url } = await transferVideoToR2({
+              providerUrl: resolvedKaponaiUrl,
+              task: {
+                id: task.id,
+                user_id: task.user_id,
+                project_id: task.project_id,
+                scene_id: task.scene_id,
+                shot_id: task.shot_id,
+                provider: task.provider,
+                model: task.model,
+              },
+              model: task.provider || task.model || 'vidu',
+              maxRetries: 4,
+            });
+            await supabase.from('sora_tasks').update({ r2_url: r2Url }).eq('id', task.id);
+            resolvedR2Url = r2Url;
+            resolvedVideoUrl = r2Url;
+          } catch (uploadErr: any) {
+            await assetLogService.logComplete({
+              userId: task.user_id,
+              operationType: 'vidu_video',
+              originalUrl: resolvedKaponaiUrl,
+              status: 'FAILED',
+              metadata: {
+                taskId: task.id,
+                provider: task.provider,
+                model: task.model,
+                context: 'vidu_status_batch_transfer_to_r2',
+                error: uploadErr?.message || 'unknown'
+              }
+            });
+          }
+        }
 
         return {
           id: task.id,

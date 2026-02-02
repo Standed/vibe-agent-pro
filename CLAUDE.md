@@ -125,6 +125,8 @@ When multiple valid approaches exist, choose based on:
 - **Hook 架构**: Chat 功能使用 12 个解耦 Hook，参见 `docs/PRO_MODE_ARCHITECTURE.md`.
 - **API 响应**: 使用 `lib/api-response.ts` 中的 `apiError`/`apiSuccess` 标准化响应格式.
 - **并发控制**: 使用 `TaskQueueService.ts` 管理 API 请求并发.
+- **性能优化**: 优先使用批量接口 (如 `/api/sora/status/batch`) 代替循环请求.
+- **Strict Mode**: React 开发模式下 Effect 会执行两次，需使用 `AbortController` 自动取消重复请求.
 
 ### Tooling
 

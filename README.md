@@ -84,6 +84,7 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 - **Quality Control** - Mandated prompts for high-quality output
 - **R2 Persistence** - Automatic upload to Cloudflare R2
 - **Sora 2 Pro** - 15s / 25s durations with 1024x1792 / 1792x1024
+- **Batch Polling** - Single API call to check status for 60+ tasks simultaneously
 
 ### 🆕 Vidu Video Generation
 - **Image-to-Video** - Convert storyboard images to video

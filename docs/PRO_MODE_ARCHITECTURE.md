@@ -162,8 +162,8 @@ POST /api/vidu/generate
 
 ### Vidu 状态轮询与 R2 转存
 
-- Pro 模式提交 Vidu 任务后会通过 `/api/sora/status?taskId=...` 轮询状态。
-- `/api/sora/status` 内部会调用 `ViduTaskManager.checkAndUpdateTask`：
+- Pro 模式提交 Vidu 任务后会通过 `useSoraTaskManager` 使用 `/api/sora/status/batch` 进行批量轮询（同时支持 Sora 和 Vidu）。
+- `/api/sora/status/batch` 内部调用 `ViduTaskManager` 并在服务端同步 R2 状态。
   - 成功后写入 `kaponai_url` → 触发 `transferToR2` → 更新 `r2_url`。
   - 如果有 `shotId`，会同步 `shots.video_clip`。
 - 转存失败会写入 `asset_logs`（operationType: `vidu_video`）用于后台追踪。

@@ -57,6 +57,7 @@ export function useChatHistory(
     }, []);
 
     useEffect(() => {
+        const controller = new AbortController();
         const loadHistory = async () => {
             const pendingRequestRef = useProjectStore.getState().generationRequest;
 
@@ -95,7 +96,7 @@ export function useChatHistory(
                     ...filters,
                     limit: pageLimit,
                     offset: 0
-                });
+                }, undefined, controller.signal);
                 const converted = convertChatMessages(loadedMessages).reverse();
 
                 // Inject Generation History if a shot is selected
@@ -243,15 +244,19 @@ export function useChatHistory(
                     }
                 }
 
-            } catch (error) {
+            } catch (error: any) {
+                if (error.name === 'AbortError') return;
                 console.error('[ChatPanel] Load history failed:', error);
                 setMessages([]);
             } finally {
-                setIsLoading(false);
+                if (!controller.signal.aborted) {
+                    setIsLoading(false);
+                }
             }
         };
 
         loadHistory();
+        return () => controller.abort();
     }, [projectId, selectedShotId, currentSceneId, user, setInputText, project, setChatCache, convertChatMessages]);
 
 

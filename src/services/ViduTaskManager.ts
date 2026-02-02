@@ -90,9 +90,11 @@ export class ViduTaskManager {
     }
 
     /**
-     * 查询任务状态并同步更新
+     * 检查并更新任务状态
+     * @param options.autoTransfer 是否自动触发 R2 转存（默认 true）
      */
-    static async checkAndUpdateTask(taskId: string): Promise<ViduTaskRecord | null> {
+    public static async checkAndUpdateTask(taskId: string, options: { autoTransfer?: boolean } = {}): Promise<ViduTaskRecord | null> {
+        const { autoTransfer = true } = options;
         // 1. 从数据库获取任务
         const { data: task, error } = await supabase
             .from('sora_tasks')
@@ -108,7 +110,7 @@ export class ViduTaskManager {
 
         // 如果已完成或失败，直接返回（但要补齐 R2）
         if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
-            if (task.status === 'completed' && task.kaponai_url && !task.r2_url) {
+            if (autoTransfer && task.status === 'completed' && task.kaponai_url && !task.r2_url) {
                 const applyToShot = task.type === 'shot_generation';
                 this.transferToR2({
                     task: task as ViduTaskRecord,
@@ -173,7 +175,7 @@ export class ViduTaskManager {
             console.log(`[ViduTaskManager] 任务状态已更新: ${taskId} -> ${updates.status}`);
 
             // 4. 如果任务完成，触发 R2 转存
-            if (updates.status === 'completed' && updates.kaponai_url && !task.r2_url) {
+            if (autoTransfer && updates.status === 'completed' && updates.kaponai_url && !task.r2_url) {
                 const transferTask = (updatedTask as ViduTaskRecord) || (task as ViduTaskRecord);
                 const applyToShot = transferTask?.type === 'shot_generation';
                 this.transferToR2({
