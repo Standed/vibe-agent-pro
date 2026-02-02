@@ -1,7 +1,7 @@
 # Pro 模式 (ChatPanel) 架构文档
 
 > 最后更新：2026-02-02
-> 关联文档：[AGENTS.md](./AGENTS.md)
+> 关联文档：[AGENTS.md](/AGENTS.md), [sora 在本项目中的架构.md](/docs/sora%20在本项目中的架构.md)
 
 ## 概述
 

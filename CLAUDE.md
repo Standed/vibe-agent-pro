@@ -116,6 +116,13 @@ When multiple valid approaches exist, choose based on:
 - Use same libraries/utilities when possible
 - Follow existing test patterns
 
+### Project-Specific Notes
+
+- **Chat history** defaults to loading the most recent 30 messages; older history loads on upward scroll.
+- **Chat scrolling** is managed by `useChatScroll` hook (initial load, media load, pagination).
+- **Media storage** must be R2 URLs only; never persist Base64 to Supabase.
+- **Video persistence**: Sora/Vidu completed tasks should transfer to R2; failures are logged to `asset_logs`.
+
 ### Tooling
 
 - Use project's existing build system
@@ -541,7 +548,7 @@ src/
 │   └── ui/           # 通用 UI 组件
 ├── hooks/             # 自定义 Hooks (按功能分组)
 │   ├── agent/        # Agent 相关 (useAgent)
-│   ├── chat/         # 聊天面板 (useChatHistory, useAutoReference)
+│   ├── chat/         # 聊天面板 (useChatHistory, useChatScroll, useAutoReference)
 │   ├── generation/   # AI 生成 (useAIStoryboard, useJimengGeneration...)
 │   └── sora/         # Sora 视频 (useSoraTaskManager, useSoraCharacter...)
 ├── services/          # 业务逻辑和 API 调用
@@ -556,6 +563,7 @@ src/
 - **UI 纯粹化**：组件本体主要负责 JSX 渲染和 Context 传递
 - **示例**：
   - `useChatGeneration` (v3.8.1): 核心生成逻辑 - 消息发送、参考图压缩上传、乐观更新、后台 R2 上传
+  - `useChatScroll` (v3.9.5): 聊天滚动管理 - 首次加载/媒体加载/分页滚动
   - `useChatHistory`: 管理消息列表、Sora 视频合并、历史记录加载
   - `useAutoReference`: 管理 `@` 提及、参考图自动检测、拖拽状态
 

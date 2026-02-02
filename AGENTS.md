@@ -73,6 +73,8 @@ const { controlMode, setControlMode } = useProjectStore();
 - **参考生视频**：手动参考图优先，`@角色/@场景` 自动检测补齐；列表为空时才投影分镜图。
 - **交互解耦**：拖拽/上传逻辑集中到 `useChatReferenceInteractions.ts`，`ChatPanel.tsx` 更专注编排。
 - **跨分镜隔离**：切换分镜会重置 Vidu/Sora 参考图状态，避免污染下一镜头。
+- **聊天历史加载**：默认加载最近 30 条，向上滚动加载更多；首次进入自动滚到底部。
+- **聊天滚动优化**：通过 `useChatScroll` hook 统一管理滚动行为（首次加载/媒体加载/分页）。
 
 ---
 
@@ -198,6 +200,7 @@ const { controlMode, setControlMode } = useProjectStore();
 | | 角色一致性 | `CharacterConsistencyService.ts` | 角色注册与参考视频 |
 | | Vidu 服务 | `ViduService.ts` | Vidu 视频 API 封装 |
 | | Vidu 任务 | `ViduTaskManager.ts` | 任务创建、状态查询、R2 转存 |
+| **转存工具** | 通用转存 | `src/lib/video-transfer.ts` | 统一将供应商视频转存到 R2（带重试） |
 | **Planning** | 意图分析 | `planningIntentService.ts` | 剧本分析、角色地点提取 |
 | | 剧本服务 | `storyboardService.ts` | 分镜生成与解析 |
 
@@ -238,6 +241,8 @@ if ('error' in authResult) return authResult.error;
 | `VOLCANO_VIDEO` | 50 | SeeDance 视频生成 |
 | `VIDU_720P` | 2/秒 | Vidu 720p 视频 |
 | `VIDU_1080P` | 4/秒 | Vidu 1080p 视频 |
+| `SORA2_PRO_15S` | 50 | Sora 2 Pro 15s |
+| `SORA2_PRO_25S` | 100 | Sora 2 Pro 25s |
 
 ---
 
@@ -349,6 +354,12 @@ const parallelizableByTarget = new Set([
 | **分辨率** | 720p (2分/秒)、1080p (4分/秒) |
 | **并行执行** | Agent 模式下支持多分镜并行生成 |
 
+### 🛠 管理端修复工具
+
+- `POST /api/admin/fix-direct-generation-history`
+  - 支持 `provider`/`providers` 过滤（如 `vidu`）
+  - 补转存 R2 + 补写历史 & 聊天记录
+
 ### 视频任务统一表 (sora_tasks)
 
 | 字段 | 说明 |
@@ -414,7 +425,7 @@ src/
 │   └── ...
 ├── hooks/
 │   ├── agent/                  # useAgent
-│   ├── chat/                   # useChatHistory, useChatGeneration, useAutoReference
+│   ├── chat/                   # useChatHistory, useChatScroll, useChatGeneration, useAutoReference
 │   ├── generation/             # useAIStoryboard, useJimengGeneration
 │   └── sora/                   # useSoraTaskManager, useSoraCharacter
 ├── services/                   # 22 个服务文件
@@ -499,5 +510,5 @@ const results = await executor.execute(toolCalls);
 
 ---
 
-**最后更新**: 2026-02-01  
-**版本**: v3.9.3 (Refactor: 状态隔离与交互解耦)
+**最后更新**: 2026-02-02  
+**版本**: v3.9.5 (Pro 模式聊天滚动优化)

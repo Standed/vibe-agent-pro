@@ -378,6 +378,7 @@ sequenceDiagram
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v3.2 | 2026-02-02 | **Pro 模式聊天滚动优化**：新增 `useChatScroll` hook，解决首次进入分镜/图片加载后滚动问题，支持加载更多时保持位置 |
 | v3.1 | 2026-01-21 | **同步性能优化**：批量处理 + 只对新任务（30s内）写数据库、Sora 视频总是覆盖、URL 归一化优化（纯文件名比较）、Session 自动刷新（Cookie丢失时从Supabase获取 + Token 即将过期时后台刷新）、Agent 请求超时延长至 90s |
 | v3.0 | 2026-01-21 | **Agent 工具选择优化**：明确 Sora 工具选择规则（特定分镜→generateShotsVideo + globalShotIndexes）、SSE 架构方案文档、通知去重与时间窗口优化 |
 | v2.9 | 2026-01-21 | **角色注册优化**：`register_direct` 改为同步模式（1-3秒返回）、`latest-video` API 改为纯读取（移除 R2 上传和自动注册）、认证中间件添加 refresh_token 刷新、修复 SmartRecovery 无限循环 |
@@ -389,6 +390,6 @@ sequenceDiagram
 
 ---
 
-**最后更新**: 2026-01-21
-**版本**: v3.1
+**最后更新**: 2026-02-02
+**版本**: v3.2
 

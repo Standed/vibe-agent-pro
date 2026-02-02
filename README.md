@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-3.9.3-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-3.9.5-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -83,6 +83,7 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 - **Smart Scene Splitting** - >15s scenes auto-split into chunks
 - **Quality Control** - Mandated prompts for high-quality output
 - **R2 Persistence** - Automatic upload to Cloudflare R2
+- **Sora 2 Pro** - 15s / 25s durations with 1024x1792 / 1792x1024
 
 ### 🆕 Vidu Video Generation
 - **Image-to-Video** - Convert storyboard images to video
@@ -92,6 +93,7 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 - **Resolution Options** - 720p and 1080p support
 - **Pro Mode Integration** - Mode-specific reference management (img2video / start-end / reference2video)
 - **Agent Tool** - Shot-level Vidu generation via tool calling
+- **R2 Persistence** - Vidu completion auto-transfer to Cloudflare R2
 
 ### 🎵 Audio Asset Management
 - Upload audio files (all formats)
@@ -118,6 +120,12 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 - **Project-based R2 Paths** - Assets stored under `projects/{projectId}/...` for traceability (legacy paths remain valid)
 - **Chat History Sync** - Three-level scope (project/scene/shot)
 - **Auto-sync** - Automatic data synchronization across devices
+- **Asset Logs** - Failed transfers (Sora/Vidu) are recorded for admin tracking
+
+### 🛠 Admin Repair Tools
+- **Fix direct_generation history** - `/api/admin/fix-direct-generation-history`
+  - Supports `provider` filter (e.g., `vidu`)
+  - Re-transfers to R2 and backfills chat/history
 - **Server-side R2 Persistence** - Gemini/SeeDream/Jimeng results are persisted to R2 before returning URLs
 
 > ⚠️ Guest mode is not supported. Login is required to use all features.
@@ -400,6 +408,16 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 ---
 
 ## 📝 Changelog
+
+### v3.9.5 (2026-02-02)
+- ✅ **Pro Mode Scroll Optimization** - Created `useChatScroll` hook to unify chat scrolling logic, fixing initial load scroll issues and media load compensation.
+- ✅ **Code Refactoring** - Reduced 120+ lines of scattered scroll logic in `ChatPanel.tsx` to a clean ~20 lines using the new hook.
+- ✅ **Scroll Position Preservation** - Properly maintains scroll position when loading more messages (pagination).
+
+### v3.9.4 (2026-02-01)
+- ✅ **Pro Mode History Loading** - Pro mode chat now loads last 30 messages by default, with scroll-up pagination for older history.
+- ✅ **Sora/Vidu R2 Persistence** - Unified video transfer pipeline to Cloudflare R2 for both Sora and Vidu providers.
+- ✅ **Sora 2 Pro Support** - Added 15s/25s duration options with 1024x1792 / 1792x1024 resolution.
 
 ### v3.9.3 (2026-02-01)
 - ✅ **Reference Logic Decoupling** - Completely refactored `ChatPanel` to use isolated state hooks (`useVideoReferences`) for Vidu/Sora modes, preventing state pollution.
