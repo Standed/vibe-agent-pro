@@ -10,6 +10,12 @@ import { constructBaseShotPrompt } from '@/utils/promptConstruction';
 const MESSAGES_PER_PAGE = 30;
 const INITIAL_LOAD_COUNT = 30;
 
+const buildCacheKey = (projectId: string, scope: 'shot' | 'scene' | 'project', shotId?: string | null, sceneId?: string | null) => {
+    if (scope === 'shot' && shotId) return `project:${projectId}:shot:${shotId}`;
+    if (scope === 'scene' && sceneId) return `project:${projectId}:scene:${sceneId}`;
+    return `project:${projectId}:global`;
+};
+
 export function useChatHistory(
     projectId: string | undefined,
     selectedShotId: string | null,
@@ -17,19 +23,42 @@ export function useChatHistory(
     setInputText: (text: string) => void
 ) {
     const { user } = useAuth();
+    const project = useProjectStore((state) => state.project);
+    const setChatCache = useProjectStore((state) => state.setChatCache);
     const [messages, setMessages] = useState<ChatPanelMessage[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const loadedCountRef = useRef(0);
 
     // Load video messages from sora_tasks
-    const { videoMessages } = useSoraVideoMessages(projectId, selectedShotId || undefined);
+    const { videoMessages } = useSoraVideoMessages(projectId, selectedShotId || undefined, true);
 
     // Initial Load Logic
+    const convertChatMessages = useCallback((loadedMessages: Awaited<ReturnType<typeof dataService.getChatMessages>>) => {
+        const filteredMessages = loadedMessages.filter(msg => msg.metadata?.channel !== 'planning');
+        return filteredMessages.map((msg) => ({
+            id: msg.id,
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+            timestamp: new Date(msg.createdAt),
+            images: msg.metadata?.images as string[] | undefined,
+            referenceImages: msg.metadata?.referenceImages as string[] | undefined,
+            model: msg.metadata?.model as GenerationModel | undefined,
+            shotId: msg.shotId,
+            sceneId: msg.sceneId,
+            gridData: msg.metadata?.gridData as ChatPanelMessage['gridData'] | undefined,
+            videoUrl: msg.metadata?.videoUrl as string | undefined,
+            metadata: {
+                ...msg.metadata,
+                prompt: msg.metadata?.prompt,
+                basePrompt: msg.metadata?.basePrompt
+            }
+        }));
+    }, []);
+
     useEffect(() => {
         const loadHistory = async () => {
             const pendingRequestRef = useProjectStore.getState().generationRequest;
-            const project = useProjectStore.getState().project;
 
             if (!project || !user) {
                 setMessages([]);
@@ -38,41 +67,41 @@ export function useChatHistory(
 
             try {
                 let filters: Parameters<typeof dataService.getChatMessages>[0];
+                let scope: 'shot' | 'scene' | 'project' = 'project';
 
                 if (selectedShotId) {
                     filters = { projectId: project.id, scope: 'shot', shotId: selectedShotId };
+                    scope = 'shot';
                 } else if (currentSceneId) {
                     filters = { projectId: project.id, scope: 'scene', sceneId: currentSceneId };
+                    scope = 'scene';
                 } else {
                     filters = { projectId: project.id, scope: 'project' };
                 }
 
-                const loadedMessages = await dataService.getChatMessages(filters, user?.id);
-                const filteredMessages = loadedMessages.filter(msg => msg.metadata?.channel !== 'planning');
+                const cacheKey = buildCacheKey(project.id, scope, selectedShotId, currentSceneId);
+                const cached = useProjectStore.getState().chatCache[cacheKey];
+                if (cached) {
+                    const slice = cached.messages.slice(-INITIAL_LOAD_COUNT);
+                    setMessages(slice);
+                    setHasMore(cached.hasMore || cached.messages.length > INITIAL_LOAD_COUNT);
+                    loadedCountRef.current = Math.min(cached.loadedCount || slice.length, INITIAL_LOAD_COUNT);
+                } else {
+                    setIsLoading(true);
+                }
 
-                const converted: ChatPanelMessage[] = filteredMessages.map((msg) => ({
-                    id: msg.id,
-                    role: msg.role as 'user' | 'assistant',
-                    content: msg.content,
-                    timestamp: new Date(msg.createdAt),
-                    images: msg.metadata?.images as string[] | undefined,
-                    referenceImages: msg.metadata?.referenceImages as string[] | undefined,
-                    model: msg.metadata?.model as GenerationModel | undefined,
-                    shotId: msg.shotId,
-                    sceneId: msg.sceneId,
-                    gridData: msg.metadata?.gridData as ChatPanelMessage['gridData'] | undefined,
-                    videoUrl: msg.metadata?.videoUrl as string | undefined,
-                    metadata: {
-                        ...msg.metadata,
-                        prompt: msg.metadata?.prompt,
-                        basePrompt: msg.metadata?.basePrompt
-                    }
-                }));
+                const pageLimit = INITIAL_LOAD_COUNT;
+                const loadedMessages = await dataService.getChatMessages({
+                    ...filters,
+                    limit: pageLimit,
+                    offset: 0,
+                    orderBy: { column: 'created_at', ascending: false }
+                });
+                const converted = convertChatMessages(loadedMessages).reverse();
 
                 // Inject Generation History if a shot is selected
                 if (selectedShotId) {
-                    const latestShot = await dataService.getShot(selectedShotId);
-                    const currentShot = latestShot || project?.shots?.find(s => s.id === selectedShotId);
+                    const currentShot = project?.shots?.find(s => s.id === selectedShotId);
                     if (currentShot && currentShot.generationHistory && currentShot.generationHistory.length > 0) {
                         const historyMessages: ChatPanelMessage[] = currentShot.generationHistory.map(h => {
                             const params = (h.parameters || {}) as any;
@@ -84,6 +113,7 @@ export function useChatHistory(
                                 );
                                 if (existingVideoMsg) return null;
 
+                                const providerFromParams = params.provider || (params.model && String(params.model).includes('vidu') ? 'vidu' : 'sora');
                                 return {
                                     id: h.id,
                                     role: 'assistant' as const,
@@ -95,7 +125,9 @@ export function useChatHistory(
                                         type: 'sora_video_complete',
                                         videoUrl: h.result,
                                         prompt: h.prompt || params.prompt || '',
-                                        model: 'sora',
+                                        model: params.model || 'sora-2',
+                                        provider: providerFromParams,
+                                        mode: params.mode,
                                         taskId: params.taskId,
                                         source: 'generation_history'
                                     }
@@ -142,7 +174,17 @@ export function useChatHistory(
                 }
 
                 converted.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-                setMessages(converted);
+                const initialSlice = converted.slice(-INITIAL_LOAD_COUNT);
+                setMessages(initialSlice);
+                const nextHasMore = loadedMessages.length >= pageLimit;
+                setHasMore(nextHasMore);
+                loadedCountRef.current = loadedMessages.length;
+                setChatCache(cacheKey, {
+                    messages: converted,
+                    updatedAt: Date.now(),
+                    hasMore: nextHasMore,
+                    loadedCount: loadedMessages.length
+                });
 
                 // Set Input Text
                 const currentRequest = useProjectStore.getState().generationRequest;
@@ -205,42 +247,119 @@ export function useChatHistory(
             } catch (error) {
                 console.error('[ChatPanel] Load history failed:', error);
                 setMessages([]);
+            } finally {
+                setIsLoading(false);
             }
         };
 
         loadHistory();
-    }, [projectId, selectedShotId, currentSceneId, user, setInputText]);
+    }, [projectId, selectedShotId, currentSceneId, user, setInputText, project, setChatCache, convertChatMessages]);
+
 
     // Merge Video Messages
     useEffect(() => {
         if (videoMessages.length === 0) return;
 
         setMessages(prev => {
-            const newVideoMessages = videoMessages.filter(vm => {
-                const msg = vm as unknown as ChatPanelMessage;
+            const next = [...prev];
+            let changed = false;
+
+            for (const vm of videoMessages as unknown as ChatPanelMessage[]) {
                 let isRelevant = false;
                 if (selectedShotId) {
-                    isRelevant = msg.shotId === selectedShotId;
+                    isRelevant = vm.shotId === selectedShotId;
                 } else if (currentSceneId) {
-                    isRelevant = msg.sceneId === currentSceneId;
+                    isRelevant = vm.sceneId === currentSceneId;
                 } else {
-                    isRelevant = !msg.shotId && !msg.sceneId;
+                    isRelevant = !vm.shotId && !vm.sceneId;
                 }
-                if (!isRelevant) return false;
+                if (!isRelevant) continue;
 
-                return !prev.some(m =>
-                    m.id === vm.id ||
-                    m.metadata?.taskId === vm.metadata.taskId ||
-                    m.videoUrl === vm.videoUrl
-                );
-            }) as ChatPanelMessage[];
+                const taskId = vm.metadata?.taskId;
+                const existingIndex = next.findIndex(m => {
+                    if (m.id === vm.id) return true;
+                    if (!taskId) return false;
+                    return (
+                        m.metadata?.taskId === taskId ||
+                        m.metadata?.viduTaskId === taskId ||
+                        m.metadata?.soraTaskId === taskId
+                    );
+                });
 
-            if (newVideoMessages.length === 0) return prev;
-            const merged = [...prev, ...newVideoMessages];
-            merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-            return merged;
+                if (existingIndex >= 0) {
+                    const existing = next[existingIndex];
+                    if (vm.videoUrl && vm.videoUrl !== existing.videoUrl) {
+                        next[existingIndex] = {
+                            ...existing,
+                            videoUrl: vm.videoUrl,
+                            metadata: {
+                                ...existing.metadata,
+                                videoUrl: vm.videoUrl
+                            }
+                        };
+                        changed = true;
+                    }
+                } else if (!next.some(m => m.videoUrl === vm.videoUrl)) {
+                    next.push(vm);
+                    changed = true;
+                }
+            }
+
+            if (!changed) return prev;
+            next.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+            return next;
         });
     }, [videoMessages, selectedShotId, currentSceneId]);
+
+    const loadMore = useCallback(async () => {
+        if (!project || !user) return;
+        if (!hasMore) return;
+
+        let filters: Parameters<typeof dataService.getChatMessages>[0];
+        let scope: 'shot' | 'scene' | 'project' = 'project';
+
+        if (selectedShotId) {
+            filters = { projectId: project.id, scope: 'shot', shotId: selectedShotId };
+            scope = 'shot';
+        } else if (currentSceneId) {
+            filters = { projectId: project.id, scope: 'scene', sceneId: currentSceneId };
+            scope = 'scene';
+        } else {
+            filters = { projectId: project.id, scope: 'project' };
+        }
+
+        const cacheKey = buildCacheKey(project.id, scope, selectedShotId, currentSceneId);
+        const offset = loadedCountRef.current;
+        const loadedMessages = await dataService.getChatMessages({
+            ...filters,
+            limit: MESSAGES_PER_PAGE,
+            offset,
+            orderBy: { column: 'created_at', ascending: false }
+        });
+        const converted = convertChatMessages(loadedMessages).reverse();
+        const nextHasMore = loadedMessages.length >= MESSAGES_PER_PAGE;
+
+        setMessages(prev => {
+            const merged = [...converted, ...prev];
+            const seen = new Set<string>();
+            const deduped = merged.filter(msg => {
+                if (seen.has(msg.id)) return false;
+                seen.add(msg.id);
+                return true;
+            });
+            deduped.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+            setChatCache(cacheKey, {
+                messages: deduped,
+                updatedAt: Date.now(),
+                hasMore: nextHasMore,
+                loadedCount: offset + loadedMessages.length
+            });
+            return deduped;
+        });
+
+        loadedCountRef.current = offset + loadedMessages.length;
+        setHasMore(nextHasMore);
+    }, [project, user, hasMore, selectedShotId, currentSceneId, convertChatMessages, setChatCache]);
 
     // Realtime Subscription
     useEffect(() => {
@@ -323,5 +442,6 @@ export function useChatHistory(
         deleteMessage,
         isLoading,
         hasMore,
+        loadMore,
     };
 }

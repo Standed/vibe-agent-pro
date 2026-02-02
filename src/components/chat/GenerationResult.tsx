@@ -25,6 +25,7 @@ interface GenerationResultProps {
     onReuseImage?: (url: string) => void;
     onApplyToShot?: (url: string) => void;
     defaultAspectRatio?: AspectRatio;
+    onMediaLoaded?: () => void;
 }
 
 // Sub-component for individual draggable images
@@ -37,7 +38,8 @@ function DraggableResultImage({
     onReuseImage,
     onApplyToShot,
     defaultAspectRatio,
-    model
+    model,
+    onMediaLoaded
 }: {
     img: string;
     idx: number;
@@ -48,6 +50,7 @@ function DraggableResultImage({
     onApplyToShot?: (url: string) => void;
     defaultAspectRatio?: AspectRatio;
     model?: string;
+    onMediaLoaded?: () => void;
 }) {
     const [{ isDragging }, drag] = useDrag(() => ({
         type: IMAGE_TO_SHOT,
@@ -130,6 +133,7 @@ function DraggableResultImage({
                     className="object-cover transition-transform duration-500 group-hover:scale-105"
                     unoptimized
                     onClick={() => onImageClick?.(img, idx)}
+                    onLoad={onMediaLoaded}
                 />
             )}
 
@@ -199,7 +203,8 @@ export function GenerationResult({
     onReusePrompt,
     onReuseImage,
     onApplyToShot,
-    defaultAspectRatio = AspectRatio.WIDE
+    defaultAspectRatio = AspectRatio.WIDE,
+    onMediaLoaded
 }: GenerationResultProps) {
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -263,6 +268,7 @@ export function GenerationResult({
                                 onApplyToShot={onApplyToShot}
                                 defaultAspectRatio={defaultAspectRatio}
                                 model={model}
+                                onMediaLoaded={onMediaLoaded}
                             />
 
                             {/* "Show More" Overlay */}

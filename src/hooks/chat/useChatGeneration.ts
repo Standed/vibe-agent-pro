@@ -76,6 +76,14 @@ const uploadWithRetry = async (
     return base64DataUrl;
 };
 
+const isBase64DataUrl = (value?: string | null) => {
+    return typeof value === 'string' && value.startsWith('data:');
+};
+
+const filterPersistableUrls = (urls: string[]) => {
+    return urls.filter(url => !isBase64DataUrl(url));
+};
+
 export function useChatGeneration({
     project,
     user,
@@ -390,7 +398,17 @@ export function useChatGeneration({
                         return m;
                     }));
 
-                    // Persist to Database
+                    const persistableImages = filterPersistableUrls(uploadedResultImages);
+                    const persistableGridData = uploadedGridData ? {
+                        ...uploadedGridData,
+                        fullImage: uploadedGridData.fullImage,
+                        slices: filterPersistableUrls(uploadedGridData.slices || []),
+                    } : undefined;
+                    const hasPersistableGrid = persistableGridData
+                        && persistableGridData.fullImage
+                        && !isBase64DataUrl(persistableGridData.fullImage);
+
+                    // Persist to Database (never store Base64)
                     await dataService.saveChatMessage({
                         id: assistantMsgId,
                         userId: user.id,
@@ -402,15 +420,15 @@ export function useChatGeneration({
                         content: assistantMessage.content,
                         timestamp: assistantMessage.timestamp,
                         metadata: {
-                            images: uploadedResultImages,
+                            images: persistableImages,
                             model: selectedModel,
-                            gridData: uploadedGridData ? {
-                                ...uploadedGridData,
-                                gridRows: uploadedGridData.gridRows || 2,
-                                gridCols: uploadedGridData.gridCols || 2,
-                                gridSize: uploadedGridData.gridSize || '2x2',
-                                prompt: uploadedGridData.prompt || '',
-                                aspectRatio: uploadedGridData.aspectRatio || AspectRatio.WIDE,
+                            gridData: hasPersistableGrid ? {
+                                ...persistableGridData,
+                                gridRows: persistableGridData.gridRows || 2,
+                                gridCols: persistableGridData.gridCols || 2,
+                                gridSize: persistableGridData.gridSize || '2x2',
+                                prompt: persistableGridData.prompt || '',
+                                aspectRatio: persistableGridData.aspectRatio || AspectRatio.WIDE,
                             } : undefined,
                             referenceImages: allRefUrls
                         },
@@ -419,16 +437,16 @@ export function useChatGeneration({
                     });
 
                     // Save to Scene History (if Scene Mode Grid)
-                    if (!selectedShotId && currentSceneIdCaptured && uploadedGridData && uploadedGridData.gridRows) {
+                    if (!selectedShotId && currentSceneIdCaptured && hasPersistableGrid && persistableGridData?.gridRows) {
                         // We are in Scene Mode + Grid
                         addGridHistory(currentSceneIdCaptured, {
                             id: `grid_${Date.now()}`,
                             timestamp: new Date(),
-                            fullGridUrl: uploadedGridData.fullImage,
-                            slices: uploadedGridData.slices,
-                            gridSize: uploadedGridData.gridSize!,
-                            prompt: uploadedGridData.prompt || '',
-                            aspectRatio: uploadedGridData.aspectRatio as AspectRatio,
+                            fullGridUrl: persistableGridData!.fullImage,
+                            slices: persistableGridData!.slices || [],
+                            gridSize: persistableGridData!.gridSize!,
+                            prompt: persistableGridData!.prompt || '',
+                            aspectRatio: persistableGridData!.aspectRatio as AspectRatio,
                             // assignments will be empty initially
                         });
                     }
@@ -437,6 +455,10 @@ export function useChatGeneration({
                     if (selectedShotId && selectedModel === 'gemini-grid' && !uploadedGridData) {
                         // !uploadedGridData means we are in Shot Mode (Batch)
                         // We save ALL slices to history
+                        if (persistableImages.length !== uploadedResultImages.length || persistableImages.length === 0) {
+                            console.warn('[useChatGeneration] Skipped persisting grid slices due to non-persistable images.');
+                            return;
+                        }
                         const latestShot = await dataService.getShot(selectedShotId);
                         const currentHistory = latestShot?.generationHistory || [];
                         const newHistoryItems = uploadedResultImages.map((sliceUrl, idx) => ({

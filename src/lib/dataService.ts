@@ -46,6 +46,7 @@ interface DataBackend {
     scope?: ChatScope;
     limit?: number;
     offset?: number;
+    orderBy?: { column: string; ascending?: boolean };
   }): Promise<ChatMessage[]>;
   deleteChatMessage(messageId: string): Promise<void>;
   clearChatHistory(filters: {
@@ -768,6 +769,7 @@ class SupabaseBackend implements DataBackend {
     scope?: ChatScope;
     limit?: number;
     offset?: number;
+    orderBy?: { column: string; ascending?: boolean };
   }): Promise<ChatMessage[]> {
     const apiFilters: any = { eq: { project_id: filters.projectId } };
     if (filters.scope) apiFilters.eq.scope = filters.scope;
@@ -779,7 +781,7 @@ class SupabaseBackend implements DataBackend {
       operation: 'select',
       filters: apiFilters,
       select: '*',
-      order: { column: 'created_at', ascending: true },
+      order: filters.orderBy || { column: 'created_at', ascending: true },
       limit: filters.limit,
       offset: filters.offset,
     });

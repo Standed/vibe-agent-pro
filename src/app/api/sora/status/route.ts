@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { KaponaiService } from '@/services/KaponaiService';
 import { authenticateRequest, checkWhitelist } from '@/lib/auth-middleware';
 import { ViduTaskManager } from '@/services/ViduTaskManager';
+import { transferVideoToR2 } from '@/lib/video-transfer';
+import { assetLogService } from '@/lib/assetLogService';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
@@ -110,8 +112,8 @@ export async function GET(req: NextRequest) {
     const resolvedStatus = normalizeStatus(statusRes?.status || task.status);
     const resolvedProgress = resolvedStatus === 'completed' ? 100 : (statusRes?.progress ?? task.progress ?? 0);
     const resolvedKaponaiUrl = statusRes?.video_url || task.kaponai_url || null;
-    const resolvedR2Url = task.r2_url || null;
-    const resolvedVideoUrl = resolvedR2Url || resolvedKaponaiUrl || null;
+    let resolvedR2Url = task.r2_url || null;
+    let resolvedVideoUrl = resolvedR2Url || resolvedKaponaiUrl || null;
 
     if (statusRes) {
       const shouldUpdate =
@@ -127,6 +129,46 @@ export async function GET(req: NextRequest) {
         };
         if (statusRes.video_url) updates.kaponai_url = statusRes.video_url;
         await supabase.from('sora_tasks').update(updates).eq('id', taskId);
+      }
+    }
+
+    if (
+      resolvedStatus === 'completed' &&
+      !resolvedR2Url &&
+      resolvedKaponaiUrl
+    ) {
+      try {
+        const { r2Url } = await transferVideoToR2({
+          providerUrl: resolvedKaponaiUrl,
+          task: {
+            id: task.id,
+            user_id: task.user_id,
+            project_id: task.project_id,
+            scene_id: task.scene_id,
+            shot_id: task.shot_id,
+            provider: task.provider,
+            model: task.model,
+          },
+          model: task.provider || task.model || 'sora',
+        });
+        await supabase.from('sora_tasks').update({ r2_url: r2Url }).eq('id', task.id);
+        resolvedR2Url = r2Url;
+        resolvedVideoUrl = r2Url;
+      } catch (uploadErr) {
+        console.error(`[SoraStatus] R2 upload failed for task ${task.id}:`, uploadErr);
+        await assetLogService.logComplete({
+          userId: task.user_id,
+          operationType: 'sora_video',
+          originalUrl: resolvedKaponaiUrl,
+          status: 'FAILED',
+          metadata: {
+            taskId: task.id,
+            provider: task.provider,
+            model: task.model,
+            context: 'sora_status_transfer_to_r2',
+            error: (uploadErr as any)?.message || 'unknown'
+          }
+        });
       }
     }
 

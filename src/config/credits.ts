@@ -30,6 +30,8 @@ const DEFAULT_CREDITS_CONFIG = {
   // 火山引擎系列
   VOLCANO_GENERATE: 12,      // 可按需覆盖
   VOLCANO_VIDEO: 50,         // 视频生成
+  SORA2_PRO_15S: 50,         // Sora 2 Pro 15s
+  SORA2_PRO_25S: 100,        // Sora 2 Pro 25s
 
   // Vidu 视频生成（基于时长和分辨率动态计算）
   // 720p: 2 积分/秒，1080p: 4 积分/秒
@@ -94,6 +96,8 @@ export const OPERATION_DESCRIPTIONS: Record<keyof typeof CREDITS_CONFIG, string>
   SEEDREAM_EDIT: 'SeeDream 图片编辑',
   VOLCANO_GENERATE: '火山引擎图片生成',
   VOLCANO_VIDEO: '视频生成',
+  SORA2_PRO_15S: 'Sora 2 Pro 15s 视频生成',
+  SORA2_PRO_25S: 'Sora 2 Pro 25s 视频生成',
   VIDU_VIDEO_720P_PER_SECOND: 'Vidu 720p 视频生成（每秒）',
   VIDU_VIDEO_1080P_PER_SECOND: 'Vidu 1080p 视频生成（每秒）',
   UPLOAD_PROCESS: '图片上传处理',
@@ -169,4 +173,16 @@ export function calculateCredits(
 
   // 普通用户原价
   return baseCost;
+}
+
+export function calculateSoraCredits(
+  model: 'sora-2' | 'sora-2-pro',
+  seconds: number,
+  userRole: 'user' | 'admin' | 'vip'
+): number {
+  if (model === 'sora-2-pro') {
+    const key = seconds === 25 ? 'SORA2_PRO_25S' : 'SORA2_PRO_15S';
+    return calculateCredits(key as keyof typeof CREDITS_CONFIG, userRole);
+  }
+  return calculateCredits('VOLCANO_VIDEO', userRole);
 }

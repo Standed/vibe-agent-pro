@@ -12,6 +12,7 @@ import type {
   AudioAsset,
   GridHistoryItem,
   ChatMessage,
+  ChatPanelMessage,
   GenerationHistoryItem,
   GridGenerationResult,
 } from '@/types/project';
@@ -63,6 +64,12 @@ interface ProjectStore {
     status: 'idle' | 'running' | 'success' | 'error';
     message?: string;
   };
+  chatCache: Record<string, {
+    messages: ChatPanelMessage[];
+    updatedAt: number;
+    hasMore: boolean;
+    loadedCount: number;
+  }>;
 
   // Project Actions
   loadProject: (project: Project) => void;
@@ -80,6 +87,8 @@ interface ProjectStore {
   updateScript: (script: string) => void;
   setGenerationRequest: (request: ProjectStore['generationRequest']) => void;
   setGenerationProgress: (progress: Partial<ProjectStore['generationProgress']>) => void;
+  setChatCache: (key: string, entry: ProjectStore['chatCache'][string]) => void;
+  clearChatCache: (key?: string) => void;
 
   // Scene Actions
   addScene: (scene: Scene) => void;
@@ -160,6 +169,7 @@ export const useProjectStore = create<ProjectStore>()(
       current: 0,
       status: 'idle',
     },
+    chatCache: {},
 
     // Project Actions
     loadProject: (project) =>
@@ -168,6 +178,7 @@ export const useProjectStore = create<ProjectStore>()(
         recalcShotOrders(project);
         return {
           project,
+          chatCache: {},
           leftSidebarCollapsed: true, // Reset sidebar state on load
           rightSidebarCollapsed: true
         };
@@ -178,6 +189,18 @@ export const useProjectStore = create<ProjectStore>()(
     setGenerationProgress: (progress) =>
       set((state) => {
         state.generationProgress = { ...state.generationProgress, ...progress };
+      }),
+    setChatCache: (key, entry) =>
+      set((state) => {
+        state.chatCache[key] = entry;
+      }),
+    clearChatCache: (key) =>
+      set((state) => {
+        if (!key) {
+          state.chatCache = {};
+          return;
+        }
+        delete state.chatCache[key];
       }),
 
     renumberScenesAndShots: () =>

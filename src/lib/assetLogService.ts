@@ -13,7 +13,7 @@ const supabaseAdmin = createClient<Database>(
     }
 );
 
-export type AssetOperationType = 'seedream' | 'gemini' | 'jimeng' | 'image_upload' | 'sora_video';
+export type AssetOperationType = 'seedream' | 'gemini' | 'jimeng' | 'image_upload' | 'sora_video' | 'vidu_video';
 
 export interface AssetLogEntry {
     userId: string;

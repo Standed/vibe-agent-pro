@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KaponaiService } from '@/services/KaponaiService';
 import { SoraTask } from '@/types/project';
+import { ViduTaskManager } from '@/services/ViduTaskManager';
 import { uploadBufferToR2 } from '@/lib/cloudflare-r2';
+import { transferVideoToR2 } from '@/lib/video-transfer';
+import { assetLogService } from '@/lib/assetLogService';
 
 // Initialize Supabase Client (Server-side)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -49,10 +52,13 @@ export async function GET(req: Request) {
 
         console.log(`[Cron] Found ${tasks.length} pending tasks.`);
         const kaponaiService = new KaponaiService();
-        try {
-            await kaponaiService.assertReachable();
-        } catch (error: any) {
-            return NextResponse.json({ error: error.message || 'Kaponai unreachable' }, { status: 503 });
+        const hasNonViduTasks = tasks.some((task: any) => task.provider !== 'vidu' && !(task.model && String(task.model).includes('vidu')));
+        if (hasNonViduTasks) {
+            try {
+                await kaponaiService.assertReachable();
+            } catch (error: any) {
+                return NextResponse.json({ error: error.message || 'Kaponai unreachable' }, { status: 503 });
+            }
         }
         const results = [];
         const touchedScenes = new Set<string>();
@@ -61,6 +67,17 @@ export async function GET(req: Request) {
         for (const taskRecord of tasks) {
             const task = taskRecord as any;
             try {
+                const isVidu = task.provider === 'vidu' || (task.model && String(task.model).includes('vidu'));
+                if (isVidu) {
+                    const updatedTask = await ViduTaskManager.checkAndUpdateTask(task.id);
+                    results.push({
+                        id: task.id,
+                        status: updatedTask?.status || task.status,
+                        updated: true
+                    });
+                    continue;
+                }
+
                 const statusRes = await kaponaiService.getVideoStatus(task.id);
                 const normalizedStatus = normalizeStatus(statusRes.status);
 
@@ -119,35 +136,58 @@ export async function GET(req: Request) {
                                 }).eq('id', task.character_id);
                                 console.log(`[Cron] Auto-registered character ${regResult.username} with R2 video`);
                             }
-                        } catch (uploadErr) {
-                            console.error(`[Cron] Failed to process success logic for task ${task.id}:`, uploadErr);
+                            } catch (uploadErr) {
+                                console.error(`[Cron] Failed to process success logic for task ${task.id}:`, uploadErr);
+                                await assetLogService.logComplete({
+                                    userId: task.user_id,
+                                    operationType: 'sora_video',
+                                    originalUrl: statusRes.video_url,
+                                    status: 'FAILED',
+                                    metadata: {
+                                        taskId: task.id,
+                                        provider: task.provider,
+                                        model: task.model,
+                                        context: 'cron_character_reference_upload',
+                                        error: (uploadErr as any)?.message || 'unknown'
+                                    }
+                                });
+                            }
                         }
-                    }
 
                     if (normalizedStatus === 'completed' && (task.type === 'shot_generation' || task.type === 'direct_generation')) {
                         let finalVideoUrl = task.r2_url || statusRes.video_url || task.kaponai_url;
                         if (!task.r2_url && statusRes.video_url) {
                             try {
-                                const vidRes = await fetch(statusRes.video_url);
-                                if (!vidRes.ok) throw new Error('Failed to download video from Kaponai');
-                                const vidBuffer = Buffer.from(await vidRes.arrayBuffer());
-                                const filename = `sora_${task.id}_${Date.now()}.mp4`;
-
-                                let baseFolder = `generated/${task.user_id || 'anonymous'}`;
-                                if (task.shot_id) baseFolder = `shots/${task.shot_id}`;
-                                else if (task.scene_id) baseFolder = `scenes/${task.scene_id}`;
-                                else if (task.project_id) baseFolder = `projects/${task.project_id}`;
-
-                                const key = `${task.user_id}/${baseFolder}/${filename}`;
-                                const r2Url = await uploadBufferToR2({
-                                    buffer: vidBuffer,
-                                    key,
-                                    contentType: 'video/mp4'
+                                const { r2Url } = await transferVideoToR2({
+                                    providerUrl: statusRes.video_url,
+                                    task: {
+                                        id: task.id,
+                                        user_id: task.user_id,
+                                        project_id: task.project_id,
+                                        scene_id: task.scene_id,
+                                        shot_id: task.shot_id,
+                                        provider: task.provider,
+                                        model: task.model,
+                                    },
+                                    model: task.provider || task.model || 'sora',
                                 });
                                 finalVideoUrl = r2Url;
                                 await supabase.from('sora_tasks').update({ r2_url: r2Url }).eq('id', task.id);
                             } catch (uploadErr) {
                                 console.error(`[Cron] Shot/Direct R2 upload failed for task ${task.id}:`, uploadErr);
+                                await assetLogService.logComplete({
+                                    userId: task.user_id,
+                                    operationType: task.provider === 'vidu' ? 'vidu_video' : 'sora_video',
+                                    originalUrl: statusRes.video_url,
+                                    status: 'FAILED',
+                                    metadata: {
+                                        taskId: task.id,
+                                        provider: task.provider,
+                                        model: task.model,
+                                        context: 'cron_transfer_to_r2',
+                                        error: (uploadErr as any)?.message || 'unknown'
+                                    }
+                                });
                             }
                         }
 
@@ -256,7 +296,9 @@ export async function GET(req: Request) {
                                         type: 'sora_video_complete',
                                         videoUrl: finalVideoUrl,
                                         taskId: task.id,
-                                        model: 'sora-2',
+                                        model: task.model || 'sora-2',
+                                        provider: task.provider || 'sora',
+                                        mode: task.generation_params?.mode,
                                         prompt: task.prompt || '',
                                         source: 'pro',
                                         isMultiShot: targetShotIds.length > 1,

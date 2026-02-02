@@ -33,10 +33,12 @@ interface ChatInputProps {
     geminiImageSize?: '2K' | '4K';
     setGeminiImageSize?: (size: '2K' | '4K') => void;
     // Sora specific
+    soraModel?: 'sora-2' | 'sora-2-pro';
+    setSoraModel?: (model: 'sora-2' | 'sora-2-pro') => void;
     soraAspectRatio?: '16:9' | '9:16';
     setSoraAspectRatio?: (ratio: '16:9' | '9:16') => void;
-    soraDuration?: 10 | 15;
-    setSoraDuration?: (duration: 10 | 15) => void;
+    soraDuration?: 10 | 15 | 25;
+    setSoraDuration?: (duration: 10 | 15 | 25) => void;
     // Vidu specific
     viduMode?: 'img2video' | 'start-end2video' | 'reference2video';
     setViduMode?: (mode: 'img2video' | 'start-end2video' | 'reference2video') => void;
@@ -73,6 +75,8 @@ export function ChatInput({
     setSoraAspectRatio,
     soraDuration = 10,
     setSoraDuration,
+    soraModel = 'sora-2',
+    setSoraModel,
     viduMode = 'img2video',
     setViduMode,
     viduDuration = 5,
@@ -446,6 +450,26 @@ export function ChatInput({
                     {/* Sora Video Options Panel */}
                     {selectedModel === 'sora-video' && (
                         <div className="animate-in fade-in slide-in-from-top-2 flex items-center gap-4">
+                            {/* 模型选择 */}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-zinc-500">模型:</span>
+                                <div className="flex p-0.5 bg-zinc-100 dark:bg-white/5 rounded-lg">
+                                    {(['sora-2', 'sora-2-pro'] as const).map((model) => (
+                                        <button
+                                            key={model}
+                                            onClick={() => setSoraModel?.(model)}
+                                            className={cn(
+                                                "px-2 py-1 text-[10px] font-medium rounded transition-all",
+                                                soraModel === model
+                                                    ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
+                                                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                            )}
+                                        >
+                                            {model === 'sora-2' ? 'Sora' : 'Sora Pro'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                             {/* 尺寸选择 */}
                             <div className="flex items-center gap-1.5">
                                 <span className="text-[10px] text-zinc-500">尺寸:</span>
@@ -470,7 +494,7 @@ export function ChatInput({
                             <div className="flex items-center gap-1.5">
                                 <span className="text-[10px] text-zinc-500">时长:</span>
                                 <div className="flex p-0.5 bg-zinc-100 dark:bg-white/5 rounded-lg">
-                                    {([10, 15] as const).map((dur) => (
+                                    {(soraModel === 'sora-2-pro' ? [15, 25] : [10, 15]).map((dur) => (
                                         <button
                                             key={dur}
                                             onClick={() => setSoraDuration?.(dur)}

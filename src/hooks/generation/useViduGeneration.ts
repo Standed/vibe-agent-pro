@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useProjectStore } from '@/store/useProjectStore';
 import { ChatPanelMessage } from '@/types/project';
@@ -26,6 +26,19 @@ export function useViduGeneration({
     setDroppedReferences,
     setIsGenerating
 }: UseViduGenerationProps) {
+    // AbortController 用于取消轮询
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    // 组件卸载时自动取消轮询
+    useEffect(() => {
+        return () => {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+                abortControllerRef.current = null;
+            }
+        };
+    }, []);
+
     // 状态管理
     const [viduMode, setViduMode] = useState<'img2video' | 'start-end2video' | 'reference2video'>('img2video');
     const [viduDuration, setViduDuration] = useState<number>(5);
@@ -117,7 +130,13 @@ export function useViduGeneration({
                 model: 'vidu-video',
                 shotId: selectedShotId || undefined,
                 sceneId: currentSceneId || undefined,
-                metadata: { viduTaskId: result.taskId },
+                metadata: {
+                    taskId: result.taskId,
+                    viduTaskId: result.taskId,
+                    model: 'vidu-video',
+                    provider: 'vidu',
+                    mode: viduMode
+                },
             };
             setMessages(prev => [...prev, assistantMessage]);
             toast.success('Vidu 视频任务已提交');
@@ -126,6 +145,89 @@ export function useViduGeneration({
             setInputText('');
             setDroppedReferences([]);
             setIsGenerating(false);
+
+            // 启动后台轮询任务状态（复用 /api/sora/status，内部会处理 Vidu + R2 转存）
+            if (result.taskId) {
+                if (abortControllerRef.current) {
+                    abortControllerRef.current.abort();
+                }
+                const abortController = new AbortController();
+                abortControllerRef.current = abortController;
+
+                const pollTask = async () => {
+                    // 首次等待，避免过早轮询
+                    await new Promise((resolve, reject) => {
+                        const timeout = setTimeout(resolve, 25000);
+                        abortController.signal.addEventListener('abort', () => {
+                            clearTimeout(timeout);
+                            reject(new DOMException('Aborted', 'AbortError'));
+                        });
+                    });
+
+                    const maxAttempts = 90;
+                    for (let i = 0; i < maxAttempts; i++) {
+                        if (abortController.signal.aborted) return;
+
+                        try {
+                            const statusRes = await fetch(`/api/sora/status?taskId=${result.taskId}`, {
+                                signal: abortController.signal,
+                            });
+                            if (!statusRes.ok) {
+                                await new Promise(r => setTimeout(r, 10000));
+                                continue;
+                            }
+                            const statusData = await statusRes.json();
+
+                            if (statusData.status === 'completed' && statusData.videoUrl) {
+                                setMessages(prev => prev.map(m =>
+                                    m.id === assistantMsgId
+                                        ? { ...m, content: 'Vidu 视频生成完成！', videoUrl: statusData.videoUrl }
+                                        : m
+                                ));
+                                toast.success('Vidu 视频生成完成！');
+                                abortControllerRef.current = null;
+                                return;
+                            }
+                            if (statusData.status === 'failed') {
+                                setMessages(prev => prev.map(m =>
+                                    m.id === assistantMsgId
+                                        ? { ...m, content: `视频生成失败: ${statusData.error || '未知错误'}` }
+                                        : m
+                                ));
+                                toast.error('Vidu 视频生成失败');
+                                abortControllerRef.current = null;
+                                return;
+                            }
+
+                            const progress = statusData.progress || 0;
+                            setMessages(prev => prev.map(m =>
+                                m.id === assistantMsgId
+                                    ? { ...m, content: `Vidu 视频生成中... ${progress}%` }
+                                    : m
+                            ));
+                        } catch (e: any) {
+                            if (e.name === 'AbortError') return;
+                            console.warn('[useViduGeneration] Status poll error:', e);
+                        }
+
+                        await new Promise((resolve, reject) => {
+                            const timeout = setTimeout(resolve, 10000);
+                            abortController.signal.addEventListener('abort', () => {
+                                clearTimeout(timeout);
+                                reject(new DOMException('Aborted', 'AbortError'));
+                            });
+                        }).catch(() => { });
+                    }
+
+                    abortControllerRef.current = null;
+                };
+
+                pollTask().catch((e) => {
+                    if (e.name !== 'AbortError') {
+                        console.error('[useViduGeneration] Poll task error:', e);
+                    }
+                });
+            }
 
         } catch (error: any) {
             toast.error(`Vidu 生成失败: ${error.message}`);
