@@ -203,7 +203,7 @@ const { controlMode, setControlMode } = useProjectStore();
 | | Kaponai 服务 | `KaponaiService.ts` | Sora API 底层封装 |
 | | 角色一致性 | `CharacterConsistencyService.ts` | 角色注册与参考视频 |
 | | Vidu 服务 | `ViduService.ts` | Vidu 视频 API 封装 |
-| | Vidu 任务 | `ViduTaskManager.ts` | 任务创建、状态查询、R2 转存 |
+| | Vidu 任务 | `ViduTaskManager.ts` | 任务创建、状态查询、R2 自动转存 |
 | | RunningHub | `RunningHubService.ts` | ComfyUI 工作流接入 |
 | | T8Star | `T8StarService.ts` | T8Star 视频 API |
 | **数据层** | 数据服务 | `dataService.ts` | 统一数据 CRUD |
@@ -245,7 +245,7 @@ const { controlMode, setControlMode } = useProjectStore();
 |------|------|------|
 | `useSoraConfig` | `hooks/sora/useSoraConfig.ts` | Sora 参数状态（模型/时长/比例） |
 | `useSoraGeneration` | `hooks/sora/useSoraGeneration.ts` | Sora 生成流程 |
-| `useSoraTaskManager` | `hooks/sora/useSoraTaskManager.ts` | 任务轮询、状态同步 |
+| `useSoraTaskManager` | `hooks/sora/useSoraTaskManager.ts` | 任务批量轮询 (Batch)、状态同步 |
 | `useSoraCharacter` | `hooks/sora/useSoraCharacter.ts` | 角色注册与一致性 |
 | `useSoraVideoMessages` | `hooks/sora/useSoraVideoMessages.ts` | 视频消息处理 |
 

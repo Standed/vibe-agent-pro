@@ -22,7 +22,7 @@
 |------|------|------|
 | **useSoraConfig** | `src/hooks/sora/useSoraConfig.ts` | Sora 参数状态（模型/时长/比例），自动校正 |
 | **useSoraGeneration** | `src/hooks/sora/useSoraGeneration.ts` | Sora 生成流程封装 |
-| **useSoraTaskManager** | `src/hooks/sora/useSoraTaskManager.ts` | 任务轮询、状态同步、R2 转存 |
+| **useSoraTaskManager** | `src/hooks/sora/useSoraTaskManager.ts` | 任务轮询 (Batch Chunking)、状态同步、R2 转存 |
 | **useSoraCharacter** | `src/hooks/sora/useSoraCharacter.ts` | 角色注册与一致性管理 |
 | **useSoraVideoMessages** | `src/hooks/sora/useSoraVideoMessages.ts` | 视频消息处理 |
 
@@ -59,7 +59,8 @@ graph TD
     
     API -->|Task IDs| SaveTask[DB: Save Tasks\nsora_tasks + scene.soraGeneration]
     SaveTask --> Return[Return Task IDs]
-    SaveTask --> TaskManager[useSoraTaskManager\nPolling + Auto Sync]
+    SaveTask --> TaskManager[useSoraTaskManager\nBatch Polling + Fallback]
+    TaskManager -->|Completed| StatusBatch[API: /api/sora/status/batch\nCheck + Auto R2 Sync]
     TaskManager -->|Completed| R2[R2 Upload + Persist URL]
 ```
 
@@ -114,7 +115,7 @@ graph TD
    ↓
 6. 保存任务 ID → 返回给 Agent
    ↓
-7. useSoraTaskManager 轮询 → 自动同步到分镜
+7. useSoraTaskManager 批量轮询 (60/chunk) → 自动同步到分镜
 ```
 
 ### 3.3 Pro模式生成流程
@@ -198,6 +199,22 @@ finalShotIds = globalShotIndexes
 
 **parallelExecutor.ts** 现在将以下工具归类为可并行执行：
 - `generateShotsVideo` - 不同分镜范围可并行
+
+### 4.5 批量任务轮询与抗故障机制 **[New v4.0]**
+
+**改进前**：前端对每个任务独立轮询，N 个任务产生 N 个请求，容易触发频率限制。
+
+**改进后**（`useSoraTaskManager`）：
+1. **Batch Chunking**：每 60 个任务打包为一个请求 `/api/sora/status/batch`。
+2. **Fallback Mechanism**：如果某个任务在批量接口中连续 3 次未返回结果（丢失），自动降级为单任务查询（带 30s 冷却）。
+3. **Smart Updates**：仅当状态变化、进度更新或 R2/Kaponai URL 变更时才触发 React 状态更新。
+
+### 4.6 弹性 R2 持久化 **[New v4.0]**
+
+**双重保障机制**：
+1. **服务端同步**：`/api/sora/status/batch` 接口发现任务已完成但无 R2 URL 时，会**同步执行**转存逻辑并返回新 URL。
+2. **客户端兜底**：`useSoraTaskManager` 发现转存遗漏时，会再次触发客户端发起的转存请求。
+3. **避免重复**：批量接口调用 `ViduTaskManager` 时设置 `autoTransfer: false`，防止与客户端逻辑冲突。
 - `generateSceneVideo` - 不同场景可并行
 - `generateShotImage` - 不同镜头可并行
 

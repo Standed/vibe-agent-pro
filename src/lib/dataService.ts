@@ -47,7 +47,7 @@ interface DataBackend {
     limit?: number;
     offset?: number;
     orderBy?: { column: string; ascending?: boolean };
-  }): Promise<ChatMessage[]>;
+  }, signal?: AbortSignal): Promise<ChatMessage[]>;
   deleteChatMessage(messageId: string): Promise<void>;
   clearChatHistory(filters: {
     projectId: string;
@@ -156,7 +156,7 @@ class SupabaseBackend implements DataBackend {
     single?: boolean;
     limit?: number;
     offset?: number;
-  }): Promise<any> {
+  }, signal?: AbortSignal): Promise<any> {
     const maxRetries = 3;
     let lastError: any;
 
@@ -173,6 +173,7 @@ class SupabaseBackend implements DataBackend {
             ...request,
             userId: this.userId,
           }),
+          signal,
         });
 
         if (!response.ok) {
@@ -189,6 +190,7 @@ class SupabaseBackend implements DataBackend {
 
         return result.data;
       } catch (err: any) {
+        if (err.name === 'AbortError') throw err; // 不要重试 AbortError
         console.warn(`[SupabaseBackend] ⚠️ API 调用失败 (尝试 ${i + 1}/${maxRetries}):`, err.message);
         lastError = err;
 
@@ -198,8 +200,6 @@ class SupabaseBackend implements DataBackend {
         }
       }
     }
-
-    console.error('[SupabaseBackend] ❌ API 错误 (重试失败):', lastError);
     throw lastError;
   }
 
@@ -764,27 +764,28 @@ class SupabaseBackend implements DataBackend {
 
   async getChatMessages(filters: {
     projectId: string;
+    scope: 'project' | 'scene' | 'shot';
     sceneId?: string;
     shotId?: string;
-    scope?: ChatScope;
     limit?: number;
     offset?: number;
-    orderBy?: { column: string; ascending?: boolean };
-  }): Promise<ChatMessage[]> {
-    const apiFilters: any = { eq: { project_id: filters.projectId } };
-    if (filters.scope) apiFilters.eq.scope = filters.scope;
-    if (filters.sceneId) apiFilters.eq.scene_id = filters.sceneId;
-    if (filters.shotId) apiFilters.eq.shot_id = filters.shotId;
-
+  }, signal?: AbortSignal): Promise<ChatMessage[]> {
     const messages = await this.callSupabaseAPI({
       table: 'chat_messages',
       operation: 'select',
-      filters: apiFilters,
+      filters: {
+        eq: {
+          project_id: filters.projectId,
+          scope: filters.scope,
+          ...(filters.shotId ? { shot_id: filters.shotId } : {}),
+          ...(filters.sceneId ? { scene_id: filters.sceneId } : {}),
+        }
+      },
       select: '*',
-      order: filters.orderBy || { column: 'created_at', ascending: true },
+      order: { column: 'created_at', ascending: true }, // 对话通常按时间正序
       limit: filters.limit,
       offset: filters.offset,
-    });
+    }, signal);
 
     return (messages || []).map((msg: any) => ({
       id: msg.id,
@@ -870,6 +871,21 @@ class SupabaseBackend implements DataBackend {
   async saveSoraTask(task: SoraTask): Promise<void> {
     const serverClient = this.getServerSupabase();
     const client = serverClient || (supabase as any);
+    let resolvedR2Url = task.r2Url;
+    if (!resolvedR2Url && task.id) {
+      try {
+        const { data: existing } = await client
+          .from('sora_tasks')
+          .select('r2_url')
+          .eq('id', task.id)
+          .single();
+        if (existing?.r2_url) {
+          resolvedR2Url = existing.r2_url;
+        }
+      } catch (error) {
+        console.warn('[SupabaseBackend] Failed to load existing r2_url:', error);
+      }
+    }
     // Normalize status to match database constraint (pending, processing, completed, failed)
     const normalizedStatus = (task.status === 'generating' || task.status === 'in_progress') ? 'processing' : task.status;
     const { error } = await client
@@ -891,7 +907,7 @@ class SupabaseBackend implements DataBackend {
         target_duration: task.targetDuration,
         target_size: task.targetSize,
         kaponai_url: task.kaponaiUrl,
-        r2_url: task.r2Url,
+        r2_url: resolvedR2Url,
         point_cost: task.pointCost,
         error_message: task.errorMessage,
         updated_at: new Date().toISOString(),
@@ -1237,9 +1253,9 @@ export class UnifiedDataService {
     scope?: ChatScope;
     limit?: number;
     offset?: number;
-  }, userId?: string): Promise<ChatMessage[]> {
+  }, userId?: string, signal?: AbortSignal): Promise<ChatMessage[]> {
     await this.ensureInitialized(userId);
-    return this.backend!.getChatMessages(filters);
+    return this.backend!.getChatMessages(filters, signal);
   }
 
   async deleteChatMessage(messageId: string, userId?: string): Promise<void> {
