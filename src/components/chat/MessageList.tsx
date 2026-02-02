@@ -19,6 +19,7 @@ interface MessageListProps {
     onLoadMore?: () => Promise<void> | void;
     onMediaLoaded?: () => void;
     onDelete: (messageId: string) => void;
+    project?: any; // For aspect ratio
     onSetSlicerData: (data: {
         gridData: ChatPanelMessage['gridData'];
         shotId?: string;
@@ -43,12 +44,14 @@ const MessageItem = memo(function MessageItem({
     onApplyToShot,
     onApplyVideoToShot,
     onAddToReference,
-    onReusePrompt, // 新增
+    onReusePrompt,
     onMediaLoaded,
+    project,
 }: {
     message: ChatPanelMessage;
     selectedModel: string;
     onDelete: () => void;
+    project?: any;
     onSetSlicerData: (data: {
         gridData: ChatPanelMessage['gridData'];
         shotId?: string;
@@ -75,6 +78,7 @@ const MessageItem = memo(function MessageItem({
                 metadata: message.metadata,
                 gridData: message.gridData as any, // 类型兼容处理
             }}
+            project={project}
             onDelete={onDelete}
             onApplyVideoToShot={onApplyVideoToShot}
             onMediaLoaded={onMediaLoaded}
@@ -105,7 +109,8 @@ const MessageItem = memo(function MessageItem({
         prevProps.message.images === nextProps.message.images &&
         prevProps.message.content === nextProps.message.content &&
         prevProps.selectedModel === nextProps.selectedModel &&
-        prevProps.onAddToReference === nextProps.onAddToReference
+        prevProps.onAddToReference === nextProps.onAddToReference &&
+        prevProps.project?.settings?.aspectRatio === nextProps.project?.settings?.aspectRatio
     );
 });
 
@@ -175,12 +180,13 @@ export const MessageList = memo(function MessageList({
     onLoadMore,
     onMediaLoaded,
     onDelete,
+    project,
     onSetSlicerData,
     onPreview,
     onApplyToShot,
     onApplyVideoToShot,
     onAddToReference,
-    onReusePrompt, // 新增
+    onReusePrompt,
 }: MessageListProps) {
     const loadMoreLock = useRef(false);
     useEffect(() => {
@@ -222,6 +228,7 @@ export const MessageList = memo(function MessageList({
                     key={message.id}
                     message={message}
                     selectedModel={selectedModel}
+                    project={project}
                     onDelete={() => onDelete(message.id)}
                     onSetSlicerData={onSetSlicerData}
                     onPreview={onPreview}
