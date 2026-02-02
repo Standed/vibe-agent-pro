@@ -546,12 +546,13 @@ src/
 │   ├── providers/    # React Context
 │   ├── shot/         # 分镜组件
 │   └── ui/           # 通用 UI 组件
-├── hooks/             # 自定义 Hooks (按功能分组)
+├── hooks/             # 自定义 Hooks (18 个文件)
 │   ├── agent/        # Agent 相关 (useAgent)
-│   ├── chat/         # 聊天面板 (useChatHistory, useChatScroll, useAutoReference)
-│   ├── generation/   # AI 生成 (useAIStoryboard, useJimengGeneration...)
-│   └── sora/         # Sora 视频 (useSoraTaskManager, useSoraCharacter...)
-├── services/          # 业务逻辑和 API 调用
+│   ├── chat/         # Pro 模式 (8 个 hooks)
+│   ├── generation/   # AI 生成 (5 个 hooks)
+│   └── sora/         # Sora 视频 (4 个 hooks)
+├── services/          # 业务逻辑 (28 个文件)
+├── lib/               # 底层库 (15 个文件)
 ├── store/             # Zustand 状态管理
 ├── types/             # TypeScript 类型定义
 └── locales/           # 国际化翻译
@@ -561,11 +562,26 @@ src/
 对于超过 500 行的复杂组件（如 `ChatPanel`），应采用 **Custom Hooks** 模式进行解耦：
 - **逻辑抽离**：将状态管理、副作用 (useEffect)、事件处理抽离到 `src/hooks/`
 - **UI 纯粹化**：组件本体主要负责 JSX 渲染和 Context 传递
-- **示例**：
-  - `useChatGeneration` (v3.8.1): 核心生成逻辑 - 消息发送、参考图压缩上传、乐观更新、后台 R2 上传
-  - `useChatScroll` (v3.9.5): 聊天滚动管理 - 首次加载/媒体加载/分页滚动
-  - `useChatHistory`: 管理消息列表、Sora 视频合并、历史记录加载
-  - `useAutoReference`: 管理 `@` 提及、参考图自动检测、拖拽状态
+
+**Pro 模式核心 Hooks (v3.9.5)**：
+| Hook | 职责 |
+|------|------|
+| `useChatHistory` | 消息列表、历史记录加载、缓存管理 |
+| `useChatScroll` | 滚动行为统一管理（首次/媒体/分页） |
+| `useChatGeneration` | 核心生成逻辑、R2 上传、消息发送 |
+| `useAutoReference` | `@` 提及检测、自动参考图 |
+| `useVideoReferences` | Vidu/Sora 参考图状态隔离 |
+| `useStartEndFrames` | 首尾帧管理 (Vidu/Runway) |
+| `useReferenceCallbacks` | 参考图操作回调 |
+| `useChatReferenceInteractions` | 拖拽/上传交互逻辑 |
+
+**视频生成 Hooks**：
+| Hook | 职责 |
+|------|------|
+| `useViduGeneration` | Vidu 视频生成、状态轮询 |
+| `useSoraTaskManager` | Sora 任务状态管理、Map 索引 |
+| `useSoraGeneration` | Sora 视频生成 |
+| `useSoraCharacter` | Sora 角色一致性 |
 
 ### 代码质量
 

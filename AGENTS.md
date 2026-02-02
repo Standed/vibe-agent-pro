@@ -405,44 +405,76 @@ const parallelizableByTarget = new Set([
 ```
 src/
 ├── app/
-│   ├── api/                    # API 路由 (25 个目录)
-│   │   ├── admin/              # 管理后台
+│   ├── api/                    # API 路由 (41 个端点)
+│   │   ├── admin/              # 管理后台 (5 个子端点)
 │   │   ├── agent/              # Agent 对话
 │   │   ├── sora/               # Sora (10 个子端点)
 │   │   ├── vidu/               # Vidu (generate/status/cancel)
-│   │   ├── gemini-*/           # Gemini 端点
+│   │   ├── gemini-*/           # Gemini 端点 (6 个)
 │   │   ├── jimeng/             # 即梦图片
 │   │   ├── seedream*/          # SeeDream 图片
+│   │   ├── upload-r2/          # R2 上传
 │   │   └── supabase/           # 数据库网关
 │   └── project/[id]/           # 项目编辑页
 │       └── ProjectEditorClient.tsx  # 三视图容器
 ├── components/
 │   ├── agent/                  # AgentPanel
 │   ├── canvas/                 # InfiniteCanvas
-│   ├── chat/                   # ChatPanel + Pro 模式组件
+│   ├── chat/                   # ChatPanel + Pro 模式组件 (16 个文件)
+│   │   ├── ChatPanel.tsx       # Pro 模式主组件
+│   │   ├── ChatInput.tsx       # 输入区域
+│   │   ├── MessageList.tsx     # 消息列表
+│   │   ├── ChatBubble.tsx      # 消息气泡
+│   │   ├── GenerationResult.tsx # 生成结果展示
+│   │   └── StartEndFrameSelector.tsx  # 首尾帧选择器
 │   ├── director/               # PlanningView, PlanningChat
 │   ├── layout/                 # TimelineView, ViewSwitcher, RightPanel
 │   └── ...
-├── hooks/
-│   ├── agent/                  # useAgent
-│   ├── chat/                   # useChatHistory, useChatScroll, useChatGeneration, useAutoReference
-│   ├── generation/             # useAIStoryboard, useJimengGeneration
-│   └── sora/                   # useSoraTaskManager, useSoraCharacter
-├── services/                   # 22 个服务文件
+├── hooks/                      # 自定义 Hooks (18 个文件)
+│   ├── agent/
+│   │   └── useAgent.ts         # Agent 对话逻辑
+│   ├── chat/                   # Pro 模式 Hooks (8 个)
+│   │   ├── useChatHistory.ts   # 消息历史加载与缓存
+│   │   ├── useChatScroll.ts    # 聊天滚动管理
+│   │   ├── useChatGeneration.ts # 生成逻辑核心
+│   │   ├── useAutoReference.ts # @提及自动检测
+│   │   ├── useVideoReferences.ts # Vidu/Sora 参考图状态
+│   │   ├── useStartEndFrames.ts  # 首尾帧管理
+│   │   ├── useReferenceCallbacks.ts # 参考图操作回调
+│   │   └── useChatReferenceInteractions.ts # 拖拽/上传交互
+│   ├── generation/             # AI 生成 Hooks (5 个)
+│   │   ├── useAIStoryboard.ts  # 剧本分镜生成
+│   │   ├── useJimengGeneration.ts # 即梦图片生成
+│   │   ├── useViduGeneration.ts # Vidu 视频生成
+│   │   ├── useAssetGeneration.ts # 资产生成
+│   │   └── useThreeViewGeneration.ts # 三视图生成
+│   └── sora/                   # Sora Hooks (4 个)
+│       ├── useSoraTaskManager.ts # 任务状态管理
+│       ├── useSoraGeneration.ts  # 视频生成
+│       ├── useSoraCharacter.ts   # 角色一致性
+│       └── useSoraVideoMessages.ts # 视频消息处理
+├── services/                   # 服务层 (28 个文件)
 │   ├── agentService.ts
 │   ├── agentToolDefinitions.ts
 │   ├── parallelExecutor.ts
 │   ├── SoraOrchestrator.ts
 │   ├── ViduService.ts
 │   ├── ViduTaskManager.ts
+│   ├── jimengService.ts
+│   ├── geminiService.ts
 │   └── tools/                  # 7 个工具实现文件
 ├── lib/
-│   ├── dataService.ts
-│   ├── storageService.ts
-│   └── auth-middleware.ts
+│   ├── dataService.ts          # 统一数据层 (97 个方法)
+│   ├── storageService.ts       # R2 存储服务
+│   ├── auth-middleware.ts      # 认证中间件
+│   ├── video-transfer.ts       # 视频转存工具
+│   ├── assetLogService.ts      # 资产日志服务
+│   └── cloudflare-r2.ts        # R2 客户端
+├── utils/
+│   ├── uploadQueue.ts          # 并发上传控制
+│   └── fileValidation.ts       # 文件验证
 └── store/
-    └── useProjectStore.ts
-```
+    └── useProjectStore.ts      # Zustand 全局状态
 
 ---
 

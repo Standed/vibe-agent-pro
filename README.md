@@ -275,12 +275,12 @@ Visit [http://localhost:3000](http://localhost:3000)
 
 ---
 
-## 项文结构
+## 项目结构
 
 ```
 src/
 ├── app/                              # Next.js App Router
-│   ├── api/                          # API Routes (22+ endpoints)
+│   ├── api/                          # API Routes (41 endpoints)
 │   ├── admin/                        # Admin dashboard
 │   ├── auth/                         # Authentication pages
 │   └── project/[id]/                 # Project editing page
@@ -289,7 +289,7 @@ src/
 │   ├── asset/                        # Asset management (characters, locations)
 │   ├── auth/                         # Authentication (AuthProvider)
 │   ├── canvas/                       # Infinite canvas
-│   ├── chat/                         # Chat interface + Pro mode components
+│   ├── chat/                         # Chat interface + Pro mode components (16 files)
 │   ├── director/                     # Director/Planning mode
 │   ├── grid/                         # Grid generation UI
 │   ├── jimeng/                       # Jimeng integration
@@ -298,12 +298,29 @@ src/
 │   ├── providers/                    # React Context providers
 │   ├── shot/                         # Shot components
 │   └── ui/                           # Shared UI components
-├── hooks/                            # Custom hooks (4 directories)
+├── hooks/                            # Custom hooks (18 files)
 │   ├── agent/                        # Agent-related hooks
-│   ├── chat/                         # Chat panel hooks
-│   ├── generation/                   # AI generation hooks
-│   └── sora/                         # Sora video hooks
-├── services/                         # Business services (19+ files)
+│   ├── chat/                         # Chat panel hooks (8 files)
+│   │   ├── useChatHistory.ts         # Message history & caching
+│   │   ├── useChatScroll.ts          # Scroll behavior management
+│   │   ├── useChatGeneration.ts      # Core generation logic
+│   │   ├── useAutoReference.ts       # @mention detection
+│   │   ├── useVideoReferences.ts     # Vidu/Sora reference state
+│   │   ├── useStartEndFrames.ts      # Start-end frame management
+│   │   ├── useReferenceCallbacks.ts  # Reference operation callbacks
+│   │   └── useChatReferenceInteractions.ts  # Drag/upload interactions
+│   ├── generation/                   # AI generation hooks (5 files)
+│   │   ├── useViduGeneration.ts      # Vidu video generation
+│   │   ├── useJimengGeneration.ts    # Jimeng image generation
+│   │   ├── useAIStoryboard.ts        # Script to storyboard
+│   │   ├── useAssetGeneration.ts     # Asset generation
+│   │   └── useThreeViewGeneration.ts # Character turnaround
+│   └── sora/                         # Sora video hooks (4 files)
+│       ├── useSoraTaskManager.ts     # Task state management
+│       ├── useSoraGeneration.ts      # Video generation
+│       ├── useSoraCharacter.ts       # Character consistency
+│       └── useSoraVideoMessages.ts   # Video message handling
+├── services/                         # Business services (28 files)
 │   ├── agentService.ts               # Agent core (Function Calling)
 │   ├── agentToolDefinitions.ts       # 28+ Agent tools
 │   ├── geminiService.ts              # Gemini Grid generation
@@ -311,15 +328,25 @@ src/
 │   ├── KaponaiService.ts             # Sora API wrapper
 │   ├── ViduService.ts                # Vidu video API wrapper
 │   ├── ViduTaskManager.ts            # Vidu task management
-│   └── jimengService.ts              # Jimeng integration
-├── lib/                              # Core libraries
-│   ├── dataService.ts                # Unified data service
+│   ├── jimengService.ts              # Jimeng integration
+│   └── tools/                        # Tool implementations (7 files)
+├── lib/                              # Core libraries (15 files)
+│   ├── dataService.ts                # Unified data service (97 methods)
 │   ├── storageService.ts             # R2 file upload
-│   └── auth-middleware.ts            # Authentication middleware
+│   ├── auth-middleware.ts            # Authentication middleware
+│   ├── video-transfer.ts             # Video transfer utility
+│   ├── assetLogService.ts            # Asset logging service
+│   └── cloudflare-r2.ts              # R2 client
+├── utils/                            # Utility functions
+│   ├── uploadQueue.ts                # Concurrent upload control
+│   └── fileValidation.ts             # File validation
 ├── store/                            # Zustand state management
 │   └── useProjectStore.ts            # Project state
-└── types/                            # TypeScript definitions
-    └── project.ts                    # Project types
+├── types/                            # TypeScript definitions
+│   ├── project.ts                    # Project types
+│   └── vidu.ts                       # Vidu API types
+└── config/                           # Configuration
+    └── credits.ts                    # Credits pricing config
 
 scripts/
 ├── deploy/                           # Deployment scripts
