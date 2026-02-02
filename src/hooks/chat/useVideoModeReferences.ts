@@ -52,7 +52,16 @@ interface UseVideoModeReferencesReturn {
     sendReferences: ActiveReference[];
 
     // 操作方法
-    handleMoveReference: (dragIndex: number, hoverIndex: number) => void;
+    handleMoveReference: (
+        dragIndex: number,
+        hoverIndex: number,
+        setDroppedReferences?: React.Dispatch<React.SetStateAction<ActiveReference[]>>,
+        setManualReferenceUrls?: React.Dispatch<React.SetStateAction<string[]>>
+    ) => void;
+    handleRemoveReference: (
+        ref: ActiveReference,
+        onRemoveReferenceFn?: (ref: ActiveReference) => void
+    ) => void;
 }
 
 export function useVideoModeReferences({
@@ -332,7 +341,12 @@ export function useVideoModeReferences({
     }, [selectedModel, viduMode, finalDisplayReferences, startEndFrames.frames]);
 
     // 移动参考图顺序
-    const handleMoveReference = useCallback((dragIndex: number, hoverIndex: number) => {
+    const handleMoveReference = useCallback((
+        dragIndex: number,
+        hoverIndex: number,
+        setDroppedReferences?: React.Dispatch<React.SetStateAction<ActiveReference[]>>,
+        setManualReferenceUrls?: React.Dispatch<React.SetStateAction<string[]>>
+    ) => {
         const fromRef = finalDisplayReferences[dragIndex];
         const toRef = finalDisplayReferences[hoverIndex];
         if (!fromRef || !toRef) return;
@@ -351,7 +365,73 @@ export function useVideoModeReferences({
             setViduReferenceOrder(nextOrder);
             return;
         }
+
+        // 其他视频模式不支持排序
+        if (selectedModel === 'vidu-video' || selectedModel === 'sora-video') {
+            return;
+        }
+
+        // 图片生成模式：重新排序手动和历史参考图
+        if (setDroppedReferences && setManualReferenceUrls) {
+            if (fromRef.source === 'auto_detect' || toRef.source === 'auto_detect') return;
+            const sortableRefs = finalDisplayReferences.filter(ref => ref.source !== 'auto_detect');
+            const fromSortableIndex = sortableRefs.findIndex(ref => ref.url === fromRef.url);
+            const toSortableIndex = sortableRefs.findIndex(ref => ref.url === toRef.url);
+            if (fromSortableIndex === -1 || toSortableIndex === -1) return;
+
+            const nextSortable = [...sortableRefs];
+            const [moved] = nextSortable.splice(fromSortableIndex, 1);
+            nextSortable.splice(toSortableIndex, 0, moved);
+
+            const nextDropped = nextSortable.filter(ref => ref.source !== 'history_ref');
+            const nextManualUrls = nextSortable
+                .filter(ref => ref.source === 'history_ref')
+                .map(ref => ref.url);
+
+            setDroppedReferences(nextDropped);
+            setManualReferenceUrls(nextManualUrls);
+        }
     }, [finalDisplayReferences, selectedModel, viduMode, viduReferenceOrder]);
+
+    // 删除参考图
+    const handleRemoveReference = useCallback((
+        ref: ActiveReference,
+        onRemoveReferenceFn?: (ref: ActiveReference) => void
+    ) => {
+        // Vidu 图生视频
+        if (selectedModel === 'vidu-video' && viduMode === 'img2video') {
+            videoRefs.clearViduImg2Video();
+            return;
+        }
+
+        // Vidu 参考生视频
+        if (selectedModel === 'vidu-video' && viduMode === 'reference2video') {
+            setViduReferenceOrder(prev => prev.filter(url => url !== ref.url));
+            if (ref.source === 'shot_ref') {
+                setIsViduRefShotDeleted(true);
+                return;
+            }
+            if (ref.source === 'auto_detect') {
+                onRemoveReferenceFn?.(ref);
+                return;
+            }
+            videoRefs.removeViduReference(ref);
+            return;
+        }
+
+        // Sora
+        if (selectedModel === 'sora-video') {
+            videoRefs.clearSora();
+            return;
+        }
+
+        // 图片生成模式：原有逻辑
+        if (ref.source === 'shot_ref') {
+            setIsShotRefDeleted(true);
+        } else {
+            onRemoveReferenceFn?.(ref);
+        }
+    }, [selectedModel, viduMode, videoRefs]);
 
     return {
         isShotRefDeleted,
@@ -363,5 +443,7 @@ export function useVideoModeReferences({
         finalDisplayReferences,
         sendReferences,
         handleMoveReference,
+        handleRemoveReference,
     };
 }
+
