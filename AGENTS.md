@@ -200,9 +200,34 @@ const { controlMode, setControlMode } = useProjectStore();
 | | 角色一致性 | `CharacterConsistencyService.ts` | 角色注册与参考视频 |
 | | Vidu 服务 | `ViduService.ts` | Vidu 视频 API 封装 |
 | | Vidu 任务 | `ViduTaskManager.ts` | 任务创建、状态查询、R2 转存 |
-| **转存工具** | 通用转存 | `src/lib/video-transfer.ts` | 统一将供应商视频转存到 R2（带重试） |
+| **转存工具** | 通用转存 | `video-transfer.ts` | 统一将供应商视频转存到 R2（带重试） |
+| | 资产日志 | `assetLogService.ts` | 转存日志、失败重试查询 |
+| **任务队列** | 任务队列 | `TaskQueueService.ts` | 并发限制、优先级队列、超时控制 |
+| **API 工具** | 统一响应 | `api-response.ts` | 标准化 API 错误响应格式 |
+| | Supabase 事务 | `supabase/transactions.ts` | 批量删除、批量更新原子操作 |
 | **Planning** | 意图分析 | `planningIntentService.ts` | 剧本分析、角色地点提取 |
 | | 剧本服务 | `storyboardService.ts` | 分镜生成与解析 |
+
+### Pro 模式 Hook 架构
+
+| 分类 | Hook | 文件路径 | 职责 |
+|------|------|----------|------|
+| **聊天核心** | useChatGeneration | `hooks/chat/useChatGeneration.ts` | 生成请求调度、消息处理 |
+| | useChatHistory | `hooks/chat/useChatHistory.ts` | 历史加载、分页、删除 |
+| | useChatScroll | `hooks/chat/useChatScroll.ts` | 智能滚动（首次/媒体/分页） |
+| **参考图** | useAutoReference | `hooks/chat/useAutoReference.ts` | @提及自动检测参考图 |
+| | useVideoModeReferences | `hooks/chat/useVideoModeReferences.ts` | 视频模式参考图状态 |
+| | useStartEndFrames | `hooks/chat/useStartEndFrames.ts` | Vidu 首尾帧管理 |
+| | useVideoReferences | `hooks/chat/useVideoReferences.ts` | 各模式独立参考图状态 |
+| | useReferenceCallbacks | `hooks/chat/useReferenceCallbacks.ts` | 参考图操作回调 |
+| **操作回调** | useChatActions | `hooks/chat/useChatActions.ts` | 恢复状态、重用图片 |
+| | useApplyVideoToShot | `hooks/chat/useApplyVideoToShot.ts` | 视频应用到分镜 |
+| | useChatModals | `hooks/chat/useChatModals.ts` | 模态框状态管理 |
+| **Sora** | useSoraConfig | `hooks/sora/useSoraConfig.ts` | Sora 参数状态 |
+| | useSoraGeneration | `hooks/sora/useSoraGeneration.ts` | Sora 生成流程 |
+| **Vidu** | useViduGeneration | `hooks/generation/useViduGeneration.ts` | Vidu 生成流程 |
+| **即梦** | useJimengGeneration | `hooks/generation/useJimengGeneration.ts` | 即梦生成流程 |
+
 
 ---
 

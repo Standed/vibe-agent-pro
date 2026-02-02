@@ -28,13 +28,26 @@ src/components/chat/
 └── dragTypes.ts               # 拖拽类型定义
 
 src/hooks/chat/
-├── useAutoReference.ts        # 参考图自动检测
-├── useChatHistory.ts          # 聊天历史管理
+├── useChatGeneration.ts       # 生成请求调度、消息处理
+├── useChatHistory.ts          # 聊天历史管理（分页/删除）
 ├── useChatScroll.ts           # 聊天滚动管理（首次加载/媒体加载/加载更多）
+├── useChatActions.ts          # 消息操作回调（恢复/重用）(NEW)
+├── useChatModals.ts           # 模态框状态管理 (NEW)
+├── useApplyVideoToShot.ts     # 视频应用到分镜逻辑 (NEW)
+├── useAutoReference.ts        # 参考图自动检测
+├── useVideoModeReferences.ts  # 视频模式参考图状态（派生/删除/移动）(ENHANCED)
 ├── useChatReferenceInteractions.ts # 拖拽/上传交互封装
 ├── useStartEndFrames.ts       # 首尾帧状态管理
 ├── useVideoReferences.ts      # 视频模式参考图状态隔离
 └── useReferenceCallbacks.ts   # 参考图操作回调解耦
+
+src/hooks/sora/
+├── useSoraConfig.ts           # Sora 参数状态管理 (NEW)
+└── useSoraGeneration.ts       # Sora 生成流程
+
+src/hooks/generation/
+├── useViduGeneration.ts       # Vidu 生成流程
+└── useJimengGeneration.ts     # 即梦生成流程
 ```
 
 ---

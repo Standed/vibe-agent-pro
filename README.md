@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-3.9.5-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-4.0.0-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -570,6 +570,19 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 - ✅ **Inspiration Auto-Trigger** - Auto-starts AI storyboard from homepage inspiration
 - ✅ **Conflict Resolution** - Mutual exclusion between Auto-Gen and Asset-Gen flows
 - ✅ **UI Refinement** - Unified color theme (Zinc/Neutral) for progress indicators
+
+### v4.0.0 (2026-02-02)
+- ✅ **ChatPanel Hook 架构重构** - 提取 6 个独立 Hook 减少组件复杂度
+  - `useSoraConfig` - Sora 参数管理
+  - `useApplyVideoToShot` - 视频应用逻辑
+  - `useChatActions` - 消息操作回调
+  - `useChatModals` - 模态框状态
+  - `useVideoModeReferences` 增强
+- ✅ **统一 API 响应** - `api-response.ts` 标准化错误格式
+- ✅ **任务队列服务** - `TaskQueueService.ts` 并发控制
+- ✅ **Cron 重试机制** - 视频转存失败自动重试
+- ✅ **Supabase 事务工具** - 批量操作原子性保证
+- ✅ **UI 组件库** - `StatusComponents.tsx` 统一加载/空状态
 
 ### v0.6.0 (2025-12-24)
 - ✅ **Sora Video Generation** - Full Sora 2 integration via Kaponai API
