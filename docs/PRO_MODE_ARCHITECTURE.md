@@ -20,34 +20,41 @@ src/components/chat/
 ├── ChatPanel.tsx              # 主组件（派生状态管理中心）
 ├── ChatInput.tsx              # 输入框组件
 ├── ChatBubble.tsx             # 消息气泡组件
+├── GenerationResult.tsx       # 生成结果展示组件
 ├── DraggableReference.tsx     # 可拖拽参考图组件
 ├── StartEndFrameSelector.tsx  # 首尾帧选择器（含 ↔️ 切换按钮）
 ├── ImagePreviewOverlay.tsx    # 图片预览遮罩
 ├── ReferenceSection.tsx       # 参考图区域组件（纯展示）
-├── MessageList.tsx            # 消息列表组件（性能优化）
+├── MessageList.tsx            # 消息列表组件（性能优化 + 空状态）
 └── dragTypes.ts               # 拖拽类型定义
 
-src/hooks/chat/
+src/hooks/chat/ (12 个 Hook)
 ├── useChatGeneration.ts       # 生成请求调度、消息处理
-├── useChatHistory.ts          # 聊天历史管理（分页/删除）
-├── useChatScroll.ts           # 聊天滚动管理（首次加载/媒体加载/加载更多）
-├── useChatActions.ts          # 消息操作回调（恢复/重用）(NEW)
-├── useChatModals.ts           # 模态框状态管理 (NEW)
-├── useApplyVideoToShot.ts     # 视频应用到分镜逻辑 (NEW)
-├── useAutoReference.ts        # 参考图自动检测
-├── useVideoModeReferences.ts  # 视频模式参考图状态（派生/删除/移动）(ENHANCED)
+├── useChatHistory.ts          # 历史加载、分页、删除
+├── useChatScroll.ts           # 智能滚动（首次/媒体/分页）
+├── useChatActions.ts          # 消息操作回调（恢复/重用）
+├── useChatModals.ts           # 模态框状态管理
 ├── useChatReferenceInteractions.ts # 拖拽/上传交互封装
+├── useApplyVideoToShot.ts     # 视频应用到分镜逻辑
+├── useAutoReference.ts        # @提及自动检测参考图
+├── useVideoModeReferences.ts  # 视频模式参考图状态（派生/删除/移动）
 ├── useStartEndFrames.ts       # 首尾帧状态管理
-├── useVideoReferences.ts      # 视频模式参考图状态隔离
+├── useVideoReferences.ts      # 各模式独立参考图状态
 └── useReferenceCallbacks.ts   # 参考图操作回调解耦
 
-src/hooks/sora/
-├── useSoraConfig.ts           # Sora 参数状态管理 (NEW)
-└── useSoraGeneration.ts       # Sora 生成流程
+src/hooks/sora/ (5 个 Hook)
+├── useSoraConfig.ts           # Sora 参数状态（模型/时长/比例）
+├── useSoraGeneration.ts       # Sora 生成流程
+├── useSoraTaskManager.ts      # 任务轮询、状态同步
+├── useSoraCharacter.ts        # 角色注册与一致性
+└── useSoraVideoMessages.ts    # 视频消息处理
 
-src/hooks/generation/
+src/hooks/generation/ (5 个 Hook)
 ├── useViduGeneration.ts       # Vidu 生成流程
-└── useJimengGeneration.ts     # 即梦生成流程
+├── useJimengGeneration.ts     # 即梦生成流程
+├── useAIStoryboard.ts         # AI 分镜生成
+├── useAssetGeneration.ts      # 资产批量生成
+└── useThreeViewGeneration.ts  # 角色三视图生成
 ```
 
 ---
@@ -457,26 +464,3 @@ type GenerationModel =
 2. **Sora 独立性**：严格过滤，确保 Sora 模式不含自动生成的噪音
 3. **首尾帧验证**：提交前必须验证首尾帧都已设置
 4. **类型安全**：`FrameImage.source` 必须准确反映来源
-
----
-
-## 🧪 测试清单
-
-### 图生视频
-- [ ] 分镜有图片且未被删除时，自动投影显示
-- [ ] 切换到 Sora 模式，投影消失
-- [ ] 删除投影，状态记录为 Deleted
-
-### 首尾帧
-- [ ] 进场自动填充已有的分镜图
-- [ ] 点击删除，立即变为空白（无虚影）
-- [ ] 尾帧必须手动上传
-
-### 参考生视频
-- [ ] 显示投影 + 手动图 + Auto-Detect 图
-- [ ] 上下文最丰富
-
-### Sora 视频
-- [ ] 默认无参考图
-- [ ] Auto-Detect 自动隐藏
-- [ ] 仅显示手动图

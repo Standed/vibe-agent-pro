@@ -184,7 +184,7 @@ const { controlMode, setControlMode } = useProjectStore();
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 核心服务文件
+### 核心服务文件 (22+)
 
 | 分类 | 服务 | 文件路径 | 职责 |
 |------|------|----------|------|
@@ -192,41 +192,72 @@ const { controlMode, setControlMode } = useProjectStore();
 | | 工具执行 | `agentTools.ts` | 工具分发和执行逻辑 |
 | | 工具定义 | `agentToolDefinitions.ts` | 28 个工具 JSON Schema |
 | | 并行执行器 | `parallelExecutor.ts` | 多工具并行执行（含 Vidu） |
+| | 上下文构建 | `contextBuilder.ts` | Agent 对话上下文组装 |
+| | 会话管理 | `sessionManager.ts` | 多轮对话会话持久化 |
 | **图片生成** | Gemini 服务 | `geminiService.ts` | Grid 多视图、图片分析、编辑 |
 | | 火山引擎 | `volcanoEngineService.ts` | SeeDream 图片、SeeDance 视频 |
 | | 即梦服务 | `jimengService.ts` | 中文优化图片生成 |
 | **视频生成** | Sora 编排器 | `SoraOrchestrator.ts` | Sora 全流程编排、并行提交 |
+| | Sora 提示词 | `SoraPromptService.ts` | Sora 专用提示词生成 |
+| | 批量 Sora | `BatchSoraService.ts` | 批量视频生成 |
 | | Kaponai 服务 | `KaponaiService.ts` | Sora API 底层封装 |
 | | 角色一致性 | `CharacterConsistencyService.ts` | 角色注册与参考视频 |
 | | Vidu 服务 | `ViduService.ts` | Vidu 视频 API 封装 |
 | | Vidu 任务 | `ViduTaskManager.ts` | 任务创建、状态查询、R2 转存 |
-| **转存工具** | 通用转存 | `video-transfer.ts` | 统一将供应商视频转存到 R2（带重试） |
+| | RunningHub | `RunningHubService.ts` | ComfyUI 工作流接入 |
+| | T8Star | `T8StarService.ts` | T8Star 视频 API |
+| **数据层** | 数据服务 | `dataService.ts` | 统一数据 CRUD |
+| | 存储服务 | `storageService.ts` | R2 上传/下载 |
+| | 资产服务 | `AssetService.ts` | 资产元数据管理 |
 | | 资产日志 | `assetLogService.ts` | 转存日志、失败重试查询 |
-| **任务队列** | 任务队列 | `TaskQueueService.ts` | 并发限制、优先级队列、超时控制 |
-| **API 工具** | 统一响应 | `api-response.ts` | 标准化 API 错误响应格式 |
-| | Supabase 事务 | `supabase/transactions.ts` | 批量删除、批量更新原子操作 |
+| | 迁移服务 | `migrationService.ts` | 数据迁移工具 |
+| **基础设施** | 任务队列 | `TaskQueueService.ts` | 并发限制、优先级队列 |
+| | API 响应 | `api-response.ts` | 标准化错误响应格式 |
+| | 认证中间件 | `auth-middleware.ts` | JWT 验证、积分扣除 |
+| | Supabase 事务 | `supabase/transactions.ts` | 批量原子操作 |
+| | 视频转存 | `video-transfer.ts` | 统一 R2 转存（带重试） |
+| | 日志服务 | `logService.ts` | 结构化日志 |
 | **Planning** | 意图分析 | `planningIntentService.ts` | 剧本分析、角色地点提取 |
 | | 剧本服务 | `storyboardService.ts` | 分镜生成与解析 |
 
-### Pro 模式 Hook 架构
+### Hook 架构 (22 个)
 
-| 分类 | Hook | 文件路径 | 职责 |
-|------|------|----------|------|
-| **聊天核心** | useChatGeneration | `hooks/chat/useChatGeneration.ts` | 生成请求调度、消息处理 |
-| | useChatHistory | `hooks/chat/useChatHistory.ts` | 历史加载、分页、删除 |
-| | useChatScroll | `hooks/chat/useChatScroll.ts` | 智能滚动（首次/媒体/分页） |
-| **参考图** | useAutoReference | `hooks/chat/useAutoReference.ts` | @提及自动检测参考图 |
-| | useVideoModeReferences | `hooks/chat/useVideoModeReferences.ts` | 视频模式参考图状态 |
-| | useStartEndFrames | `hooks/chat/useStartEndFrames.ts` | Vidu 首尾帧管理 |
-| | useVideoReferences | `hooks/chat/useVideoReferences.ts` | 各模式独立参考图状态 |
-| | useReferenceCallbacks | `hooks/chat/useReferenceCallbacks.ts` | 参考图操作回调 |
-| **操作回调** | useChatActions | `hooks/chat/useChatActions.ts` | 恢复状态、重用图片 |
-| | useApplyVideoToShot | `hooks/chat/useApplyVideoToShot.ts` | 视频应用到分镜 |
-| | useChatModals | `hooks/chat/useChatModals.ts` | 模态框状态管理 |
-| **Sora** | useSoraConfig | `hooks/sora/useSoraConfig.ts` | Sora 参数状态 |
-| | useSoraGeneration | `hooks/sora/useSoraGeneration.ts` | Sora 生成流程 |
-| **Vidu** | useViduGeneration | `hooks/generation/useViduGeneration.ts` | Vidu 生成流程 |
-| **即梦** | useJimengGeneration | `hooks/generation/useJimengGeneration.ts` | 即梦生成流程 |
+#### Chat Hook (12)
+
+| Hook | 文件 | 职责 |
+|------|------|------|
+| `useChatGeneration` | `hooks/chat/useChatGeneration.ts` | 生成请求调度、消息处理 |
+| `useChatHistory` | `hooks/chat/useChatHistory.ts` | 历史加载、分页、删除 |
+| `useChatScroll` | `hooks/chat/useChatScroll.ts` | 智能滚动（首次/媒体/分页） |
+| `useChatActions` | `hooks/chat/useChatActions.ts` | 恢复状态、重用图片 |
+| `useChatModals` | `hooks/chat/useChatModals.ts` | 模态框状态管理 |
+| `useChatReferenceInteractions` | `hooks/chat/useChatReferenceInteractions.ts` | 拖拽/上传交互封装 |
+| `useApplyVideoToShot` | `hooks/chat/useApplyVideoToShot.ts` | 视频应用到分镜 |
+| `useAutoReference` | `hooks/chat/useAutoReference.ts` | @提及自动检测参考图 |
+| `useVideoModeReferences` | `hooks/chat/useVideoModeReferences.ts` | 视频模式参考图状态 |
+| `useStartEndFrames` | `hooks/chat/useStartEndFrames.ts` | Vidu 首尾帧管理 |
+| `useVideoReferences` | `hooks/chat/useVideoReferences.ts` | 各模式独立参考图状态 |
+| `useReferenceCallbacks` | `hooks/chat/useReferenceCallbacks.ts` | 参考图操作回调 |
+
+#### Sora Hook (5)
+
+| Hook | 文件 | 职责 |
+|------|------|------|
+| `useSoraConfig` | `hooks/sora/useSoraConfig.ts` | Sora 参数状态（模型/时长/比例） |
+| `useSoraGeneration` | `hooks/sora/useSoraGeneration.ts` | Sora 生成流程 |
+| `useSoraTaskManager` | `hooks/sora/useSoraTaskManager.ts` | 任务轮询、状态同步 |
+| `useSoraCharacter` | `hooks/sora/useSoraCharacter.ts` | 角色注册与一致性 |
+| `useSoraVideoMessages` | `hooks/sora/useSoraVideoMessages.ts` | 视频消息处理 |
+
+#### Generation Hook (5)
+
+| Hook | 文件 | 职责 |
+|------|------|------|
+| `useViduGeneration` | `hooks/generation/useViduGeneration.ts` | Vidu 生成流程 |
+| `useJimengGeneration` | `hooks/generation/useJimengGeneration.ts` | 即梦生成流程 |
+| `useAIStoryboard` | `hooks/generation/useAIStoryboard.ts` | AI 分镜生成 |
+| `useAssetGeneration` | `hooks/generation/useAssetGeneration.ts` | 资产批量生成 |
+| `useThreeViewGeneration` | `hooks/generation/useThreeViewGeneration.ts` | 角色三视图生成 |
 
 
 ---

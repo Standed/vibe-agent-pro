@@ -122,6 +122,9 @@ When multiple valid approaches exist, choose based on:
 - **Chat scrolling** is managed by `useChatScroll` hook (initial load, media load, pagination).
 - **Media storage** must be R2 URLs only; never persist Base64 to Supabase.
 - **Video persistence**: Sora/Vidu completed tasks should transfer to R2; failures are logged to `asset_logs`.
+- **Hook 架构**: Chat 功能使用 12 个解耦 Hook，参见 `docs/PRO_MODE_ARCHITECTURE.md`.
+- **API 响应**: 使用 `lib/api-response.ts` 中的 `apiError`/`apiSuccess` 标准化响应格式.
+- **并发控制**: 使用 `TaskQueueService.ts` 管理 API 请求并发.
 
 ### Tooling
 
