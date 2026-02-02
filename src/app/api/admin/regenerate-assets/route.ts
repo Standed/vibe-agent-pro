@@ -230,7 +230,7 @@ export async function POST(req: NextRequest) {
 
         const data = await resp.json();
         gridImages = Array.isArray(data.slices) ? data.slices.filter(Boolean) : [];
-        newUrl = gridImages[0] || data.fullImage;
+        newUrl = (gridImages && gridImages.length > 0 ? gridImages[0] : data.fullImage) || '';
       } else if (mode === 'seedream') {
         const resp = await fetch(`${baseUrl}/api/seedream`, {
           method: 'POST',

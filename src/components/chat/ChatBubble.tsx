@@ -3,30 +3,12 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { GenerationResult } from './GenerationResult';
-import { AspectRatio } from '@/types/project';
+import { ChatPanelMessage } from '@/types/project';
 import { User, Sparkles, Maximize2, RefreshCw, Grid3x3, Trash2, Image as ImageIcon, Download } from 'lucide-react';
 import { downloadFile } from '@/utils/download';
-export interface ChatMessage {
-    id: string;
-    role: 'user' | 'assistant';
-    content: string;
-    timestamp: Date;
-    images?: string[];
-    model?: any;
-    shotId?: string;
-    videoUrl?: string;  // Sora生成的视频URL
-    metadata?: any;
-    gridData?: {
-        fullImage: string;
-        slices: string[];
-        gridRows?: number;
-        gridCols?: number;
-        prompt?: string;
-        aspectRatio?: AspectRatio;
-        gridSize?: '2x2' | '3x3';
-        sceneId?: string;
-    };
-}
+
+// 使用统一的类型定义，保持向后兼容的别名
+export type ChatMessage = ChatPanelMessage;
 
 interface ChatBubbleProps {
     message: ChatMessage;
@@ -229,7 +211,7 @@ export function ChatBubble({
                                     gridData={message.gridData}
                                     onImageClick={(url, idx) => onImageClick?.(url, idx, message)}
                                     onSliceSelect={() => onSliceSelect?.(message)}
-                                    onReusePrompt={() => onReusePrompt?.(message.gridData?.prompt || message.model?.prompt || message.content)}
+                                    onReusePrompt={() => onReusePrompt?.(message.gridData?.prompt || message.metadata?.prompt || message.content)}
                                     onReuseImage={onReuseImage}
                                     onApplyToShot={onApplyToShot}
                                     defaultAspectRatio={project?.settings?.aspectRatio}

@@ -40,7 +40,8 @@ export function GridSliceSelector({
     }
   };
 
-  const { gridRows, gridCols, slices, fullImage, aspectRatio } = gridData;
+  const { gridRows = 2, gridCols = 2, slices, fullImage, aspectRatio } = gridData;
+  const totalSlices = gridRows * gridCols;
 
   if (!mounted) return null;
 
@@ -54,7 +55,7 @@ export function GridSliceSelector({
               Grid 切片选择器
             </h2>
             <p className="text-sm text-light-text-muted dark:text-cine-text-muted">
-              {gridRows}x{gridCols} Grid ({gridRows * gridCols} 个切片) · {aspectRatio}
+              {gridRows}x{gridCols} Grid ({totalSlices} 个切片) · {aspectRatio}
             </p>
           </div>
           <button

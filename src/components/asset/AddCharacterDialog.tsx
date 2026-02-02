@@ -11,6 +11,7 @@ import { dataService } from '@/lib/dataService';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { JimengModel } from '@/components/jimeng/JimengOptions';
 import { cn } from '@/lib/utils';
+import { R2AssetScope } from '@/lib/r2-path';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSoraCharacter } from '@/hooks/sora/useSoraCharacter';
 import { SoraReferenceSection } from './SoraReferenceSection';
@@ -286,9 +287,9 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
           try {
             const folder = {
               projectId: resolvedProjectId,
-              scope: 'characters',
+              scope: 'characters' as R2AssetScope,
               entityId: characterIdRef.current,
-              assetType: 'reference',
+              assetType: 'reference' as const,
               model: 'upload'
             };
             // Upload to R2 (or fallback)
@@ -366,9 +367,9 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     try {
       const folder = {
         projectId: resolvedProjectId,
-        scope: 'characters',
+        scope: 'characters' as R2AssetScope,
         entityId: characterIdRef.current,
-        assetType: 'video',
+        assetType: 'video' as const,
         model: 'upload'
       };
       const { url } = await storageService.uploadFile(file, folder, user?.id || 'anonymous');

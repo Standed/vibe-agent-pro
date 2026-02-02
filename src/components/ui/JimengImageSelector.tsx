@@ -6,6 +6,7 @@ import { X, Check, Loader2, Upload } from 'lucide-react';
 import Image from 'next/image';
 import { toast } from 'sonner';
 import { storageService } from '@/lib/storageService';
+import { R2AssetScope, R2AssetType } from '@/lib/r2-path';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useProjectStore } from '@/store/useProjectStore';
 
@@ -72,9 +73,9 @@ export function JimengImageSelector({
             const filename = `jimeng_${timestamp}_${selectedIndex}.webp`;
             const folder = {
                 projectId: project?.id,
-                scope: shotId ? 'shots' : sceneId ? 'scenes' : 'project',
+                scope: (shotId ? 'shots' : sceneId ? 'scenes' : 'project') as R2AssetScope,
                 entityId: shotId || sceneId || project?.id,
-                assetType: 'image',
+                assetType: 'image' as R2AssetType,
                 model: 'jimeng'
             };
 
@@ -139,8 +140,8 @@ export function JimengImageSelector({
                                 onClick={() => setSelectedIndex(index)}
                                 disabled={isUploading}
                                 className={`relative aspect-video rounded-xl overflow-hidden border-4 transition-all duration-200 ${selectedIndex === index
-                                        ? 'border-purple-500 ring-4 ring-purple-500/30 scale-[1.02]'
-                                        : 'border-transparent hover:border-purple-300 dark:hover:border-purple-700'
+                                    ? 'border-purple-500 ring-4 ring-purple-500/30 scale-[1.02]'
+                                    : 'border-transparent hover:border-purple-300 dark:hover:border-purple-700'
                                     } ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                             >
                                 <Image

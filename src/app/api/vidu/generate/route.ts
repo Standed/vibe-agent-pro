@@ -4,6 +4,7 @@ import { ViduTaskManager } from '@/services/ViduTaskManager';
 import { createClient } from '@supabase/supabase-js';
 import { authenticateRequest, checkCredits, checkWhitelist, consumeCredits } from '@/lib/auth-middleware';
 import { calculateViduCredits } from '@/types/vidu';
+import { apiError, apiSuccess, ApiErrors } from '@/lib/api-response';
 
 export const maxDuration = 60;
 
@@ -55,32 +56,20 @@ export async function POST(req: NextRequest) {
 
         // 验证参数
         if (!mode || !['img2video', 'start-end2video', 'reference2video'].includes(mode)) {
-            return NextResponse.json(
-                { error: 'Invalid mode. Must be img2video, start-end2video, or reference2video' },
-                { status: 400 }
-            );
+            return ApiErrors.badRequest('Invalid mode. Must be img2video, start-end2video, or reference2video');
         }
 
         if (!images || !Array.isArray(images) || images.length === 0) {
-            return NextResponse.json(
-                { error: 'Images array is required' },
-                { status: 400 }
-            );
+            return ApiErrors.badRequest('Images array is required');
         }
 
         // 验证图片数量
         if (mode === 'img2video' && images.length !== 1) {
-            return NextResponse.json(
-                { error: 'img2video mode requires exactly 1 image' },
-                { status: 400 }
-            );
+            return ApiErrors.badRequest('img2video mode requires exactly 1 image');
         }
 
         if (mode === 'start-end2video' && images.length !== 2) {
-            return NextResponse.json(
-                { error: 'start-end2video mode requires exactly 2 images (start and end)' },
-                { status: 400 }
-            );
+            return ApiErrors.badRequest('start-end2video mode requires exactly 2 images (start and end)');
         }
 
         if (mode === 'reference2video') {
@@ -237,8 +226,7 @@ export async function POST(req: NextRequest) {
             // 不阻断流程，任务ID已返回给用户
         }
 
-        return NextResponse.json({
-            success: true,
+        return apiSuccess({
             taskId: result.task_id,
             state: result.state,
             message: 'Vidu 视频任务已提交'
@@ -246,9 +234,6 @@ export async function POST(req: NextRequest) {
 
     } catch (error: any) {
         console.error('[Vidu] Generate Error:', error);
-        return NextResponse.json(
-            { error: error.message || 'Failed to generate Vidu video' },
-            { status: 500 }
-        );
+        return ApiErrors.serverError(error.message || 'Failed to generate Vidu video');
     }
 }

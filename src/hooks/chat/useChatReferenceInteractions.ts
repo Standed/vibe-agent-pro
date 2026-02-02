@@ -179,7 +179,7 @@ export function useChatReferenceInteractions({
         drop: (item: any, monitor) => {
             if (monitor.didDrop()) return;
             const itemType = monitor.getItemType();
-            const externalUrl = extractUrlFromItem(item, itemType);
+            const externalUrl = itemType ? extractUrlFromItem(item, itemType) : null;
 
             // ========== Vidu Start-End 模式特殊处理 ==========
             // 智能填充到空槽位：首帧优先，然后尾帧

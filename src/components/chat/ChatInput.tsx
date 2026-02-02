@@ -497,7 +497,7 @@ export function ChatInput({
                                     {(soraModel === 'sora-2-pro' ? [15, 25] : [10, 15]).map((dur) => (
                                         <button
                                             key={dur}
-                                            onClick={() => setSoraDuration?.(dur)}
+                                            onClick={() => setSoraDuration?.(dur as 10 | 15 | 25)}
                                             className={cn(
                                                 "px-2 py-1 text-[10px] font-medium rounded transition-all",
                                                 soraDuration === dur
