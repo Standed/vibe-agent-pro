@@ -5,7 +5,7 @@ import { calculateCredits, getOperationDescription } from '@/config/credits';
 import { isR2Configured, processAndUploadGrid, generatePresignedUrl } from '@/lib/r2-server-upload';
 import { assetLogService } from '@/lib/assetLogService';
 
-export const maxDuration = 300; // Extend to 5 minutes for Pro plan
+export const maxDuration = 120;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -162,12 +162,7 @@ export async function POST(request: NextRequest) {
 
     // ======== 核心请求逻辑 (支持 URL 优先 + 降级重试) ========
     const makeGeminiRequest = async (mode: 'url' | 'download') => {
-      const stepStart = Date.now();
-      console.log(`[Gemini Grid] 🚀 Step 1: Processing references (mode=${mode})...`);
-
       const safeRefsPart = await processReferenceImages(referenceImages, mode);
-      console.log(`[Gemini Grid] ✅ References processed in ${((Date.now() - stepStart) / 1000).toFixed(2)}s`);
-
       const parts = [
         ...safeRefsPart,
         { text: prompt },
@@ -190,13 +185,8 @@ export async function POST(request: NextRequest) {
         },
       };
 
-      // 针对 URL 模式极其严格的超时（45s），因为如果 Gemini 抓不到 URL，通常会挂起很久。
-      // 我们希望尽快失败，以便切换到下载模式。
-      // 下载模式给予更长时间（180s）。
-      const apiTimeoutMs = mode === 'url' ? 45000 : 180000;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), apiTimeoutMs);
-
+      const timeout = setTimeout(() => controller.abort(), 120000);
       const finalRequestBody = JSON.stringify(requestBody);
 
       // 载荷大小检查
@@ -209,83 +199,60 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: finalRequestBody,
-        signal: controller.signal // Bind signal
       };
 
       // Proxy 配置
       if (process.env.HTTP_PROXY) {
         try {
-          const proxyAgent = new ProxyAgent({ uri: process.env.HTTP_PROXY, connectTimeout: 30000 });
+          const proxyAgent = new ProxyAgent({ uri: process.env.HTTP_PROXY, connectTimeout: 60000 });
           fetchOptions.dispatcher = proxyAgent;
         } catch (e) { console.error('[Gemini Grid] ProxyAgent failed:', e); }
       } else {
         try {
-          // 本地开发环境增加超时宽容度
-          const agent = new Agent({
-            connectTimeout: 30000,
-            headersTimeout: apiTimeoutMs,
-            bodyTimeout: apiTimeoutMs
-          });
+          const agent = new Agent({ connectTimeout: 60000, headersTimeout: 130000, bodyTimeout: 130000 });
           fetchOptions.dispatcher = agent;
         } catch (e) { console.error('[Gemini Grid] Agent failed:', e); }
       }
 
-      console.log(`[Gemini Grid] 🚀 Step 2: Sending API request (timeout=${apiTimeoutMs}ms)...`);
-      const apiStartTime = Date.now();
+      const startTime = Date.now();
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+        fetchOptions
+      );
+      clearTimeout(timeout);
 
-      try {
-        const resp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-          fetchOptions
-        );
-        clearTimeout(timeout);
+      const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
-        const elapsedTime = ((Date.now() - apiStartTime) / 1000).toFixed(2);
-        console.log(`[Gemini Grid] 📡 API Response received in ${elapsedTime}s, status: ${resp.status}`);
-
-        if (!resp.ok) {
-          const text = await resp.text();
-          console.error('[Gemini Grid API error]', requestId, resp.status, text);
-          const err = new Error(text || resp.statusText);
-          (err as any).status = resp.status;
-          (err as any).body = text;
-          throw err;
-        }
-
-        const data = await resp.json();
-        const uri = data?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
-        if (!uri) {
-          console.error('[Gemini Grid parse error]', requestId, data);
-          throw new Error('no image returned');
-        }
-
-        return { uri, elapsedTime };
-      } catch (err: any) {
-        clearTimeout(timeout);
-        // 区分超时错误
-        if (err.name === 'AbortError') {
-          throw new Error(`Request timed out after ${apiTimeoutMs}ms (mode=${mode})`);
-        }
+      if (!resp.ok) {
+        const text = await resp.text();
+        console.error('[Gemini Grid API error]', requestId, resp.status, text);
+        const err = new Error(text || resp.statusText);
+        (err as any).status = resp.status;
+        (err as any).body = text;
         throw err;
       }
+
+      const data = await resp.json();
+      const uri = data?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
+      if (!uri) {
+        console.error('[Gemini Grid parse error]', requestId, data);
+        throw new Error('no image returned');
+      }
+
+      return { uri, elapsedTime };
     };
 
-    // ======== 执行请求 (URL 优先 + 降级重试) ========
+    // ======== 执行请求 (URL 优先，失败则降级) ========
     let result: { uri: string; elapsedTime: string };
     try {
       // 首次尝试：使用快速的 URL 模式
-      console.log(`[Gemini Grid] 🟢 Attempt 1: URL Mode`);
       result = await makeGeminiRequest('url');
       console.log(`[Gemini Grid] ✅ URL 模式成功 (${result.elapsedTime}s)`);
     } catch (urlError: any) {
-      console.warn(`[Gemini Grid] ⚠️ Attempt 1 failed:`, urlError.message);
-
-      // 只有特定错误才重试：400 Cannot fetch (Gemini无法抓取) 或 超时 (Gemini挂起)
+      // 检查是否是 Gemini 无法抓取 URL 的错误
       const isCannotFetch = urlError.status === 400 && urlError.body?.includes('Cannot fetch');
-      const isTimeout = urlError.message?.includes('timed out');
-
-      if ((isCannotFetch || isTimeout) && referenceImages.length > 0) {
-        console.warn(`[Gemini Grid] 🔄 Switching to DOWNLOAD mode (Fallback)...`);
+      if (isCannotFetch && referenceImages.length > 0) {
+        console.warn(`[Gemini Grid] ⚠️ URL 模式失败 (Cannot fetch)，切换到下载模式重试...`);
         // 自动降级：使用下载模式重试
         result = await makeGeminiRequest('download');
         console.log(`[Gemini Grid] ✅ 下载模式成功 (${result.elapsedTime}s)`);
@@ -297,6 +264,8 @@ export async function POST(request: NextRequest) {
 
     const uri = result.uri;
     const elapsedTime = result.elapsedTime;
+    const responseSize = (uri.length / 1024).toFixed(2);
+    // console.log('[Gemini Grid] 📊 Response size:', `${responseSize} KB (base64)`);
 
     // 4. 消耗积分
     const consumeResult = await consumeCredits(
@@ -314,34 +283,72 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. [PERFORMANCE FIX] Skip Server-side R2 Upload
-    // 为了防止 Vercel 超时，我们跳过服务端的 processAndUploadGrid (下载+切片+上传)。
-    // 直接返回 Base64/URL 给客户端，由客户端进行切片处理（client-side slicing）。
+    // console.log(`[${requestId}] 💳 Credits consumed: ${requiredCredits} (${user.role}), remaining: ${user.credits - requiredCredits}`);
 
-    console.log(`[Gemini Grid] ⚡ Skipping server-side R2 upload to prevent timeout. Returning raw data.`);
-
-    /* 
-    // 原有的服务端切片逻辑 (暂时屏蔽)
+    // 5. 尝试服务端直传 R2（跳过客户端上传，极大减少延迟）
     let logId: string | null = null;
-    logId = await assetLogService.logStart({ ... });
-
-    if (isR2Configured()) {
-        const uploadResult = await processAndUploadGrid(uri, user.id, gridRows, gridCols, uploadContext);
-        if (uploadResult.success) { ... }
-    }
-    */
-
-    // 直接返回，前端 services/geminiService.ts 会自动处理切片
-    return NextResponse.json({
-      fullImage: `data:image/png;base64,${uri}`,
-      requestId,
-      uploadedToR2: false, // Explicitly tell client we didn't upload to R2
-      timings: {
-        geminiGeneration: elapsedTime,
-        r2Upload: '0.00'
+    logId = await assetLogService.logStart({
+      userId: user.id,
+      operationType: 'gemini',
+      status: 'PENDING',
+      metadata: {
+        prompt,
+        aspectRatio,
+        gridRows,
+        gridCols,
+        requestId,
+        uploadContext: uploadContext || null
       }
     });
 
+    if (isR2Configured()) {
+      const uploadResult = await processAndUploadGrid(uri, user.id, gridRows, gridCols, uploadContext);
+
+      if (uploadResult.success && uploadResult.fullImageUrl) {
+        if (logId) {
+          await assetLogService.logUpdate(logId, { r2Url: uploadResult.fullImageUrl, status: 'SUCCESS' });
+        }
+        console.log(`[Gemini Grid] ✅ R2 服务端直传成功 (${uploadResult.uploadTime}s): 1 fullImage + ${uploadResult.sliceUrls.length} slices`);
+        return NextResponse.json({
+          fullImage: uploadResult.fullImageUrl,
+          slices: uploadResult.sliceUrls as string[],
+          requestId,
+          uploadedToR2: true,
+          timings: {
+            geminiGeneration: elapsedTime,
+            r2Upload: uploadResult.uploadTime
+          }
+        });
+      }
+
+      // 部分成功：只有 fullImage 上传成功
+      if (uploadResult.fullImageUrl) {
+        if (logId) {
+          await assetLogService.logUpdate(logId, { r2Url: uploadResult.fullImageUrl, status: 'SUCCESS' });
+        }
+        console.log(`[Gemini Grid] ⚠️ 部分成功：fullImage 已上传 R2 (${uploadResult.uploadTime}s)`);
+        return NextResponse.json({
+          fullImage: uploadResult.fullImageUrl,
+          requestId,
+          uploadedToR2: 'partial',
+          timings: {
+            geminiGeneration: elapsedTime,
+            r2Upload: uploadResult.uploadTime
+          }
+        });
+      }
+    }
+
+    // 5.2 完全回退到 Base64
+    if (logId) {
+      await assetLogService.logUpdate(logId, { status: 'FAILED', error: 'R2 upload failed' });
+    }
+    console.warn(`[Gemini Grid] ⚠️ R2 未配置或上传失败，回退 Base64`);
+    return NextResponse.json({
+      fullImage: `data:image/png;base64,${uri}`,
+      requestId,
+      uploadedToR2: false
+    });
   } catch (error: any) {
     console.error('[Gemini Grid fetch failed]', requestId, error);
     const message =
