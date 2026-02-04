@@ -48,6 +48,7 @@ interface ChatInputProps {
     setViduResolution?: (res: '720p' | '1080p') => void;
     viduOffPeak?: boolean;
     setViduOffPeak?: (offPeak: boolean) => void;
+    onPasteImages?: (files: File[]) => void; // 支持粘贴图片
 }
 
 export function ChatInput({
@@ -85,7 +86,8 @@ export function ChatInput({
     setViduResolution,
     viduOffPeak = false,
     setViduOffPeak,
-    onAssetSelected
+    onAssetSelected,
+    onPasteImages
 }: ChatInputProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [commandSuggestions, setCommandSuggestions] = useState<SlashCommand[]>([]);
@@ -524,8 +526,7 @@ export function ChatInput({
                         className="hidden"
                     />
                     <button
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isGenerating}
+                        disabled={false}
                         className="flex-shrink-0 p-3 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-zinc-400 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-white mb-1"
                         title="上传参考图"
                     >
@@ -538,8 +539,9 @@ export function ChatInput({
                             onChange={setInputText}
                             onMention={onAssetSelected || (() => { })}
                             onEnterSend={onSend}
+                            onPaste={onPasteImages}
                             placeholder="输入提示词... (@ 引用资源)"
-                            disabled={isGenerating}
+                            disabled={false}
                             autoResize={false}
                             style={{ height: inputHeight, minHeight: inputHeight }}
                             className="w-full bg-transparent border-none px-2 py-3 text-sm focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600 custom-scrollbar pb-12"

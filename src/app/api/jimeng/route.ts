@@ -29,7 +29,7 @@ const MODEL_MAP: Record<string, string> = {
     'jimeng-4.0': 'high_aes_general_v40'
 };
 
-const DEFAULT_MODEL = 'jimeng-4.0';
+const DEFAULT_MODEL = 'jimeng-4.5';
 const R2_PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || '';
 const isR2Url = (url?: string) => !!url && !!R2_PUBLIC_URL && url.startsWith(R2_PUBLIC_URL);
 

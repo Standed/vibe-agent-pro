@@ -592,6 +592,9 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                     className="w-full px-4 py-3 seko-input"
                     required
                   />
+                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500 leading-relaxed">
+                    💡 提示：角色名称需与分镜描述中的名称<span className="text-amber-500 font-medium">完全一致</span>，系统才能自动匹配参考图。例如分镜描述中写"苏白走过来"，则角色名称也需设为"苏白"。
+                  </p>
                 </div>
 
                 {/* Character Description */}

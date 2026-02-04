@@ -5,7 +5,8 @@
  * 优势：数据不经过用户浏览器，上传速度快 3-10 倍
  */
 
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import sharp from 'sharp';
 import { buildR2Folder, type R2PathContext } from './r2-path';
 
@@ -58,6 +59,50 @@ export const generateR2Key = (userId: string, folder: string, suffix: string = '
     const randomStr = Math.random().toString(36).substring(2, 8);
     const safeSuffix = suffix ? `_${suffix}` : '';
     return `${userId}/${folder}/${timestamp}_${randomStr}${safeSuffix}.png`;
+};
+
+/**
+ * 生成预签名 URL (用于 Gemini 等外部服务直接访问私有/公共资源)
+ * 
+ * @param publicUrl - 原始 R2 公共链接
+ * @param expiresIn - 有效期 (秒), 默认 300s (5分钟)
+ * @returns 预签名 URL 或 null
+ */
+export const generatePresignedUrl = async (publicUrl: string, expiresIn: number = 300): Promise<string | null> => {
+    const client = getR2Client();
+    if (!client || !R2_BUCKET_NAME || !publicUrl) return null;
+
+    try {
+        // 从公共 URL 解析 Key
+        // 假设 publicUrl 格式: https://pub-xxx.r2.dev/USER/FOLDER/FILE.png
+        // 或者自定义域名: https://assets.example.com/USER/FOLDER/FILE.png
+        // 我们只关心 path 部分去除开头的 /
+        let key = '';
+        try {
+            const urlObj = new URL(publicUrl);
+            key = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+            // 对于 R2/S3，Key 是 decode 后的
+            key = decodeURIComponent(key);
+        } catch (e) {
+            console.warn('[R2 Presign] Invalid URL:', publicUrl);
+            return null;
+        }
+
+        if (!key) return null;
+
+        const command = new GetObjectCommand({
+            Bucket: R2_BUCKET_NAME,
+            Key: key,
+        });
+
+        // 生成签名 URL
+        const signedUrl = await getSignedUrl(client, command, { expiresIn });
+        console.log(`[R2 Presign] Generated for ${key.slice(0, 20)}...`);
+        return signedUrl;
+    } catch (error: any) {
+        console.error('[R2 Presign] ❌ Failed:', error.message);
+        return null;
+    }
 };
 
 /**

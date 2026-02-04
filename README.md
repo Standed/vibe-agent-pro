@@ -445,6 +445,20 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 
 ## 📝 Changelog
 
+### v4.0.1 (2026-02-05) - 🛡️ Critical Risk Fixes
+ - ✅ **Atomic Transactions** - Migrated batch operations to Supabase RPC (`delete_scene_atomic`), eliminating data inconsistency risks during network failures.
+ - ✅ **Async Cron Architecture** - Decoupled heavy video uploads from status checks. `check-sora-status` is now lightweight (status only), while `retry-transfers` handles R2 uploads asynchronously, solving Vercel timeout issues.
+ - ✅ **Image Upload Optimization** - Added "Fast Path" for uploads < 3MB (skips compression) and implemented progress feedback.
+ - ✅ **Reference Management Fix** - Fixed `useAutoReference` to strictly sync UI with deletion actions using `useRef` + versioning.
+ - ✅ **SSR Hydration Fix** - Resolved Next.js hydration mismatches in `useProjectStore` by deferring localStorage reads to client-side effects.
+ 
+ ### v3.9.6 (2026-02-04)
+- ✅ **Gemini Reference Image Optimization** - Implemented "URL-first + Auto-fallback" strategy for reference images.
+  - First attempt: Use R2 presigned URLs (`fileData.fileUri`) for instant transfer.
+  - Auto-retry: If Gemini returns "Cannot fetch" error, automatically switch to server-side download mode (`inlineData`).
+  - Benefits: Maximizes speed while ensuring reliability through transparent fallback.
+- ✅ **R2 Presigned URL Support** - Added `generatePresignedUrl()` function in `r2-server-upload.ts` for generating signed URLs.
+
 ### v3.9.5 (2026-02-02)
 - ✅ **Pro Mode Scroll Optimization** - Created `useChatScroll` hook to unify chat scrolling logic, fixing initial load scroll issues and media load compensation.
 - ✅ **Code Refactoring** - Reduced 120+ lines of scattered scroll logic in `ChatPanel.tsx` to a clean ~20 lines using the new hook.

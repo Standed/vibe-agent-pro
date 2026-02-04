@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useProjectStore } from '@/store/useProjectStore';
+import { translateCameraMovement } from '@/utils/translations';
 import { ChatPanelMessage } from '@/types/project';
 import { generateMessageId } from '@/lib/utils';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -13,7 +14,6 @@ interface UseViduGenerationProps {
     setMessages: React.Dispatch<React.SetStateAction<ChatPanelMessage[]>>;
     setInputText: (text: string) => void;
     setDroppedReferences: (refs: any[]) => void;
-    setIsGenerating: (isGenerating: boolean) => void;
 }
 
 export function useViduGeneration({
@@ -23,9 +23,9 @@ export function useViduGeneration({
     currentSceneId,
     setMessages,
     setInputText,
-    setDroppedReferences,
-    setIsGenerating
+    setDroppedReferences
 }: UseViduGenerationProps) {
+    const { addActiveTask, removeActiveTask } = useProjectStore();
     // AbortController 用于取消轮询
     const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -64,7 +64,6 @@ export function useViduGeneration({
                     viduImages = [referenceUrls[0]];
                 } else {
                     toast.error('图生视频模式需要至少一张图片');
-                    setIsGenerating(false);
                     return;
                 }
             } else if (viduMode === 'start-end2video') {
@@ -73,7 +72,6 @@ export function useViduGeneration({
                     viduImages = referenceUrls.slice(0, 2);
                 } else if (!startEndFrames.startFrame || !startEndFrames.endFrame) {
                     toast.error('请设置首帧和尾帧');
-                    setIsGenerating(false);
                     return;
                 } else {
                     viduImages = [startEndFrames.startFrame.url, startEndFrames.endFrame.url];
@@ -82,12 +80,10 @@ export function useViduGeneration({
                 // 参考生视频
                 if (!prompt || !prompt.trim()) {
                     toast.error('参考生视频模式需要提示词');
-                    setIsGenerating(false);
                     return;
                 }
                 if (referenceUrls.length === 0) {
                     toast.error('参考生视频模式需要至少一张参考图');
-                    setIsGenerating(false);
                     return;
                 }
                 viduImages = referenceUrls;
@@ -96,12 +92,22 @@ export function useViduGeneration({
             // 调试日志
             console.log(`[Vidu] Mode: ${viduMode}, Images: ${viduImages.length}`);
 
+            // Auto-append camera movement for video if missing
+            let finalPrompt = prompt;
+            if (selectedShot?.cameraMovement && selectedShot.cameraMovement !== 'Static') {
+                const cnMove = translateCameraMovement(selectedShot.cameraMovement);
+                const suffix = `${cnMove}`;
+                if (!finalPrompt.includes(suffix) && !finalPrompt.includes(cnMove)) {
+                    finalPrompt = `${finalPrompt}，${suffix}`;
+                }
+            }
+
             // 调用 API
             const response = await fetch('/api/vidu/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    prompt,
+                    prompt: finalPrompt,
                     mode: viduMode,
                     images: viduImages,
                     duration: viduDuration,
@@ -141,10 +147,21 @@ export function useViduGeneration({
             setMessages(prev => [...prev, assistantMessage]);
             toast.success('Vidu 视频任务已提交');
 
+            // 注册全局任务（切换分镜后仍可追踪）
+            const taskId = result.taskId;
+            addActiveTask({
+                taskId,
+                shotId: selectedShotId || '',
+                type: 'video',
+                model: 'vidu',
+                status: 'generating',
+                startTime: Date.now(),
+                prompt
+            });
+
             // 清理状态
             setInputText('');
             setDroppedReferences([]);
-            setIsGenerating(false);
 
             // 启动后台轮询任务状态（复用 /api/sora/status，内部会处理 Vidu + R2 转存）
             if (result.taskId) {
@@ -185,6 +202,7 @@ export function useViduGeneration({
                                         : m
                                 ));
                                 toast.success('Vidu 视频生成完成！');
+                                removeActiveTask(taskId);
                                 abortControllerRef.current = null;
                                 return;
                             }
@@ -195,6 +213,7 @@ export function useViduGeneration({
                                         : m
                                 ));
                                 toast.error('Vidu 视频生成失败');
+                                removeActiveTask(taskId);
                                 abortControllerRef.current = null;
                                 return;
                             }
@@ -231,7 +250,6 @@ export function useViduGeneration({
 
         } catch (error: any) {
             toast.error(`Vidu 生成失败: ${error.message}`);
-            setIsGenerating(false);
         }
     }, [
         project,
@@ -245,7 +263,6 @@ export function useViduGeneration({
         setMessages,
         setInputText,
         setDroppedReferences,
-        setIsGenerating
     ]);
 
     return {

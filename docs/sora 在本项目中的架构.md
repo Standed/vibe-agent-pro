@@ -200,21 +200,28 @@ finalShotIds = globalShotIndexes
 **parallelExecutor.ts** 现在将以下工具归类为可并行执行：
 - `generateShotsVideo` - 不同分镜范围可并行
 
-### 4.5 批量任务轮询与抗故障机制 **[New v4.0]**
-
-**改进前**：前端对每个任务独立轮询，N 个任务产生 N 个请求，容易触发频率限制。
-
-**改进后**（`useSoraTaskManager`）：
-1. **Batch Chunking**：每 60 个任务打包为一个请求 `/api/sora/status/batch`。
-2. **Fallback Mechanism**：如果某个任务在批量接口中连续 3 次未返回结果（丢失），自动降级为单任务查询（带 30s 冷却）。
-3. **Smart Updates**：仅当状态变化、进度更新或 R2/Kaponai URL 变更时才触发 React 状态更新。
-
-### 4.6 弹性 R2 持久化 **[New v4.0]**
-
-**双重保障机制**：
-1. **服务端同步**：`/api/sora/status/batch` 接口发现任务已完成但无 R2 URL 时，会**同步执行**转存逻辑并返回新 URL。
-2. **客户端兜底**：`useSoraTaskManager` 发现转存遗漏时，会再次触发客户端发起的转存请求。
-3. **避免重复**：批量接口调用 `ViduTaskManager` 时设置 `autoTransfer: false`，防止与客户端逻辑冲突。
+### 4.5 异步任务架构 (v4.0.1 重构)
+ 
+ 为彻底解决 Serverless Function 60秒超时限制，我们将监控与转存解耦：
+ 
+ #### Phase 1: 轻量级状态检查 (`check-sora-status`)
+ - **频率**: 每 5 分钟
+ - **逻辑**: 仅调用 Kaponai API 查询状态。
+ - **关键动作**: 任务完成后，仅更新 DB 状态为 `pending_upload` 并缓存 `kaponai_url`，**绝不执行耗时的视频下载/上传**。
+ - **耗时**: < 1秒，永不超时。
+ 
+ #### Phase 2: 专职转存工兵 (`retry-transfers`)
+ - **频率**: 每 5 分钟
+ - **逻辑**: 扫描 `pending_upload` 状态的任务（每次 5 个）以及 `failed` 的重试任务。
+ - **动作**: 执行 "Download -> Buffer -> Upload R2" 重型操作。
+ - **优势**: 流量控制精准，即使 R2 上传慢也不会阻塞状态检查。
+ 
+ ### 4.6 弹性 R2 持久化
+ 
+ **双重保障机制**：
+ 1. **Cron 自动处理**：`retry-transfers` 接管所有转存工作。
+ 2. **手动/即时触发**：前端轮询检测到任务完成时，如果服务端尚未转存，会主动发起一次 `/api/sora/tasks/backfill` (可选) 或等待 Cron。
+ 3. **失败重试**：转存失败写入 `asset_logs`，`retry-transfers` 会自动捞起重试（最多 3 次）。
 - `generateSceneVideo` - 不同场景可并行
 - `generateShotImage` - 不同镜头可并行
 
@@ -405,6 +412,7 @@ sequenceDiagram
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v3.3 | 2026-02-04 | **Gemini 参考图优化**：URL 优先 + 自动降级策略；**新增 Cron 任务** `retry-transfers` 每日自动重试失败的 R2 转存 |
 | v3.2 | 2026-02-02 | **Pro 模式聊天滚动优化**：新增 `useChatScroll` hook，解决首次进入分镜/图片加载后滚动问题，支持加载更多时保持位置 |
 | v3.1 | 2026-01-21 | **同步性能优化**：批量处理 + 只对新任务（30s内）写数据库、Sora 视频总是覆盖、URL 归一化优化（纯文件名比较）、Session 自动刷新（Cookie丢失时从Supabase获取 + Token 即将过期时后台刷新）、Agent 请求超时延长至 90s |
 | v3.0 | 2026-01-21 | **Agent 工具选择优化**：明确 Sora 工具选择规则（特定分镜→generateShotsVideo + globalShotIndexes）、SSE 架构方案文档、通知去重与时间窗口优化 |
@@ -417,6 +425,7 @@ sequenceDiagram
 
 ---
 
-**最后更新**: 2026-02-02
-**版本**: v3.2
+**最后更新**: 2026-02-04
+**版本**: v3.3
+
 

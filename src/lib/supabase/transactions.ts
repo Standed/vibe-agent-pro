@@ -41,25 +41,17 @@ export interface BatchOperationOptions {
  * 批量删除场景及其关联的分镜
  * 使用 RPC 函数实现事务原子性
  */
+/**
+ * 批量删除场景及其关联的分镜
+ * 使用 RPC 函数实现事务原子性
+ */
 export async function deleteSceneWithShots(sceneId: string): Promise<TransactionResult<void>> {
     try {
-        // 先删除分镜，再删除场景
-        const { error: shotsError } = await supabaseAdmin
-            .from('shots')
-            .delete()
-            .eq('scene_id', sceneId);
+        // 调用 PostgreSQL RPC 函数实现原子删除
+        const { error } = await supabaseAdmin.rpc('delete_scene_atomic', { scene_uuid: sceneId });
 
-        if (shotsError) {
-            return { success: false, error: `删除分镜失败: ${shotsError.message}` };
-        }
-
-        const { error: sceneError } = await supabaseAdmin
-            .from('scenes')
-            .delete()
-            .eq('id', sceneId);
-
-        if (sceneError) {
-            return { success: false, error: `删除场景失败: ${sceneError.message}` };
+        if (error) {
+            return { success: false, error: `删除场景失败 (RPC): ${error.message}` };
         }
 
         return { success: true };

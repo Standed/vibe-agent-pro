@@ -3,16 +3,20 @@
  * 支持懒加载和 React.memo 优化
  */
 
-import React, { memo, useEffect, useRef } from 'react';
-import { Sparkles, MessageCircle } from 'lucide-react';
+import React, { memo, useEffect, useRef, useState } from 'react';
+import { Sparkles, MessageCircle, Loader2 } from 'lucide-react';
 import { ChatPanelMessage } from '@/types/project';
 import { ChatBubble } from './ChatBubble';
 import { EmptyState } from '@/components/ui/StatusComponents';
+import { useProjectStore } from '@/store/useProjectStore';
+
+import { GeneratingIndicator } from './GeneratingIndicator';
 
 interface MessageListProps {
     messages: ChatPanelMessage[];
-    isGenerating: boolean;
     selectedModel: string;
+    selectedShotId: string | null;
+    currentSceneId: string | null;
     scrollParentRef?: React.RefObject<HTMLDivElement | null>;
     hasMore?: boolean;
     isLoadingMore?: boolean;
@@ -114,41 +118,17 @@ const MessageItem = memo(function MessageItem({
     );
 });
 
-/**
- * 生成中状态组件
- */
-const GeneratingIndicator = memo(function GeneratingIndicator({
-    selectedModel,
-}: {
-    selectedModel: string;
-}) {
-    return (
-        <div className="flex w-full mb-6 justify-start animate-pulse">
-            <div className="flex max-w-[90%] md:max-w-[85%] gap-3 flex-row">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-sm border border-black/5 dark:border-white/10 bg-zinc-900 dark:bg-white">
-                    <Sparkles size={14} className="text-white dark:text-black" />
-                </div>
-                <div className="flex flex-col gap-2 min-w-0 items-start">
-                    <div className="px-4 py-3 rounded-2xl shadow-sm border text-sm bg-white dark:bg-zinc-900/50 text-zinc-700 dark:text-zinc-200 border-black/5 dark:border-white/10 rounded-tl-sm backdrop-blur-sm">
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                            <span>
-                                {selectedModel.includes('video') ? '正在生成视频，请稍候...' : '正在生成图片，请稍候...'}
-                            </span>
-                        </div>
-                        <p className="text-xs text-zinc-400 mt-2">
-                            {selectedModel === 'jimeng'
-                                ? '即梦 AI 正在绘制中，通常需要 15-30 秒'
-                                : selectedModel.includes('video')
-                                    ? 'AI 正在生成视频，通常需要 3-5 分钟'
-                                    : 'AI 正在思考中...'}
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-});
+const MODEL_LABELS: Record<string, string> = {
+    jimeng: '即梦',
+    gemini: 'Gemini',
+    'gemini-grid': 'Gemini Grid',
+    'gemini-direct': 'Gemini',
+    seedream: 'SeeDream',
+    sora: 'Sora',
+    vidu: 'Vidu'
+};
+
+
 
 /**
  * 骨架屏加载组件
@@ -172,8 +152,9 @@ export const SkeletonMessage = memo(function SkeletonMessage() {
  */
 export const MessageList = memo(function MessageList({
     messages,
-    isGenerating,
     selectedModel,
+    selectedShotId,
+    currentSceneId,
     scrollParentRef,
     hasMore,
     isLoadingMore,
@@ -214,7 +195,7 @@ export const MessageList = memo(function MessageList({
     return (
         <div className="space-y-6">
             {/* 空状态 */}
-            {messages.length === 0 && !isGenerating && (
+            {messages.length === 0 && (
                 <EmptyState
                     icon={<MessageCircle className="w-12 h-12" />}
                     title="开始创作"
@@ -239,13 +220,18 @@ export const MessageList = memo(function MessageList({
                     onMediaLoaded={onMediaLoaded}
                 />
             ))}
-            {isGenerating && <GeneratingIndicator selectedModel={selectedModel} />}
+            {(useProjectStore.getState().activeTasks.size > 0) && (
+                <GeneratingIndicator
+                    selectedModel={selectedModel}
+                    shotId={selectedShotId}
+                    sceneId={currentSceneId}
+                />
+            )}
         </div>
     );
 }, (prevProps, nextProps) => {
     return (
         prevProps.messages === nextProps.messages &&
-        prevProps.isGenerating === nextProps.isGenerating &&
         prevProps.selectedModel === nextProps.selectedModel &&
         prevProps.onAddToReference === nextProps.onAddToReference &&
         prevProps.onApplyVideoToShot === nextProps.onApplyVideoToShot &&

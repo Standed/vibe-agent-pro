@@ -444,7 +444,7 @@ export class GenerationTools {
                     if (prompt) combinedPrompt += `Additional Instructions: ${prompt}\n`;
                     combinedPrompt += `\nShot Requirements (${chunk.length} shots):\n`;
                     chunk.forEach((shot, idx) => {
-                        combinedPrompt += `${idx + 1}. ${shot.shotSize} - ${shot.cameraMovement}`;
+                        combinedPrompt += `${idx + 1}. ${shot.shotSize}`; // Image gen: Remove camera movement
                         if (shot.description) combinedPrompt += ` - ${shot.description}`;
                         combinedPrompt += '\n';
                     });
@@ -758,44 +758,9 @@ export class GenerationTools {
             }
 
             // 2. 使用 constructBaseShotPrompt 构建提示词（包含运镜信息）
-            const promptParts = constructBaseShotPrompt(this.project, shot);
+            const promptParts = constructBaseShotPrompt(this.project, shot, { includeCameraMovement: true });
 
-            // 添加运镜信息（cameraMovement 的中文描述）
-            if (shot.cameraMovement && shot.cameraMovement !== 'Static') {
-                const cameraMovementMap: Record<string, string> = {
-                    'Static': '静止镜头',
-                    'Pan': '摇镜',
-                    'Pan Left': '向左摇镜',
-                    'Pan Right': '向右摇镜',
-                    'Tilt': '俯仰',
-                    'Tilt Up': '向上俯仰',
-                    'Tilt Down': '向下俯仰',
-                    'Dolly': '推拉',
-                    'Dolly In': '推进',
-                    'Dolly Out': '拉远',
-                    'Zoom': '变焦',
-                    'Zoom In': '拉近',
-                    'Zoom Out': '拉远',
-                    'Truck': '横移',
-                    'Truck Left': '向左横移',
-                    'Truck Right': '向右横移',
-                    'Pedestal': '升降',
-                    'Pedestal Up': '升高',
-                    'Pedestal Down': '降低',
-                    'Crane': '升降臂运动',
-                    'Tracking Shot': '跟踪镜头',
-                    'Steadicam': '斯坦尼康运动',
-                    'Handheld': '手持摄影',
-                    'Arc': '弧形运动',
-                    'Rack Focus': '焦点转移',
-                    'Whip Pan': '快速摇镜',
-                    'Push In': '推进',
-                    'Pull Out': '拉出',
-                    'Vertigo Effect': '眩晕效果'
-                };
-                const chineseCameraMovement = cameraMovementMap[shot.cameraMovement] || shot.cameraMovement;
-                promptParts.push(`运镜：${chineseCameraMovement}`);
-            }
+            // (Manual camera movement logic removed as it's now in constructBaseShotPrompt)
 
             const prompt = promptParts.filter(Boolean).join('，');
 

@@ -14,6 +14,7 @@ interface MentionInputProps {
   onEnterSend?: () => void;
   autoResize?: boolean;
   style?: React.CSSProperties;
+  onPaste?: (files: File[]) => void; // 支持粘贴图片
 }
 
 export default function MentionInput({
@@ -26,6 +27,7 @@ export default function MentionInput({
   onEnterSend,
   autoResize = true,
   style,
+  onPaste,
 }: MentionInputProps) {
   const { project } = useProjectStore();
   const [showMentionMenu, setShowMentionMenu] = useState(false);
@@ -33,6 +35,7 @@ export default function MentionInput({
   const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 });
   const [selectedIndex, setSelectedIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const characters = project?.characters || [];
   const locations = project?.locations || [];
@@ -118,6 +121,28 @@ export default function MentionInput({
     }
   };
 
+  // 处理粘贴事件（支持截图粘贴）
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items || !onPaste) return;
+
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          imageFiles.push(file);
+        }
+      }
+    }
+
+    if (imageFiles.length > 0) {
+      e.preventDefault(); // 阻止默认粘贴行为
+      onPaste(imageFiles);
+    }
+  };
+
   // 键盘导航
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (!showMentionMenu || filteredAssets.length === 0) {
@@ -150,6 +175,13 @@ export default function MentionInput({
     }
   }, [value, autoResize]);
 
+  // 键盘导航时滚动到高亮项
+  useEffect(() => {
+    if (showMentionMenu && itemRefs.current[selectedIndex]) {
+      itemRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [selectedIndex, showMentionMenu]);
+
   return (
     <div className="relative">
       <textarea
@@ -157,6 +189,7 @@ export default function MentionInput({
         value={value}
         onChange={handleInput}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         placeholder={placeholder}
         disabled={disabled}
         className={`${className} overflow-y-auto`}
@@ -181,6 +214,7 @@ export default function MentionInput({
             {filteredAssets.map((asset, index) => (
               <button
                 key={`${asset.type}-${asset.item.id}`}
+                ref={(el) => { itemRefs.current[index] = el; }}
                 onClick={() => handleSelectAsset(asset)}
                 className={cn(
                   "w-full text-left px-3 py-2.5 rounded-lg transition-all flex items-center gap-3",

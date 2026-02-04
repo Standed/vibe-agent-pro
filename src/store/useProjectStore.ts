@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
+import { enableMapSet } from 'immer';
+
+// 启用 Immer Map/Set 支持 (activeTasks 使用 Map)
+enableMapSet();
 import type {
   Project,
   Scene,
@@ -15,6 +19,7 @@ import type {
   ChatPanelMessage,
   GenerationHistoryItem,
   GridGenerationResult,
+  GenerationModel,
 } from '@/types/project';
 import { dataService } from '@/lib/dataService';
 import { recalcShotOrders, normalizeSceneOrder } from '@/utils/shotOrder';
@@ -36,6 +41,17 @@ const generateUuid = () => {
     return v.toString(16);
   });
 };
+
+// 生成任务状态类型
+export interface ActiveTask {
+  taskId: string;
+  shotId: string;
+  type: 'image' | 'video';
+  model: 'jimeng' | 'gemini' | 'gemini-grid' | 'seedream' | 'sora' | 'vidu';
+  status: 'pending' | 'generating' | 'uploading';
+  startTime: number;
+  prompt?: string;
+}
 
 interface ProjectStore {
   // 状态
@@ -71,6 +87,19 @@ interface ProjectStore {
     loadedCount: number;
   }>;
 
+  // 生成任务状态（全局持久化，切换分镜不丢失）
+  activeTasks: Map<string, ActiveTask>;
+
+  // 模型选择状态（持久化）
+  modelByContext: Record<string, GenerationModel>;
+  setModelForContext: (contextKey: string, model: GenerationModel) => void;
+  getModelForContext: (contextKey: string) => GenerationModel | undefined;
+
+  // 乐观消息队列 (解决消息延迟显示问题)
+  optimisticMessages: ChatPanelMessage[];
+  addOptimisticMessage: (message: ChatPanelMessage) => void;
+  removeOptimisticMessage: (messageId: string) => void;
+
   // Project Actions
   loadProject: (project: Project) => void;
   saveProject: () => Promise<void>;
@@ -89,6 +118,12 @@ interface ProjectStore {
   setGenerationProgress: (progress: Partial<ProjectStore['generationProgress']>) => void;
   setChatCache: (key: string, entry: ProjectStore['chatCache'][string]) => void;
   clearChatCache: (key?: string) => void;
+
+  // 生成任务管理
+  addActiveTask: (task: ActiveTask) => void;
+  updateActiveTaskStatus: (taskId: string, status: ActiveTask['status']) => void;
+  removeActiveTask: (taskId: string) => void;
+  getActiveTasksForShot: (shotId: string) => ActiveTask[];
 
   // Scene Actions
   addScene: (scene: Scene) => void;
@@ -170,6 +205,36 @@ export const useProjectStore = create<ProjectStore>()(
       status: 'idle',
     },
     chatCache: {},
+    activeTasks: new Map(),
+    // 模型选择状态（初始化为空对象，避免 SSR hydration mismatch）
+    // 客户端挂载后会在 ChatPanel 中通过读取 localStorage 同步
+    modelByContext: {},
+
+    // 模型状态方法（同步到 localStorage）
+    setModelForContext: (contextKey, model) =>
+      set((state) => {
+        state.modelByContext[contextKey] = model;
+        // 同步到 localStorage
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('video-agent-pro:modelByContext', JSON.stringify(state.modelByContext));
+          } catch (e) {
+            console.warn('[Store] Failed to persist modelByContext:', e);
+          }
+        }
+      }),
+    getModelForContext: (contextKey) => get().modelByContext[contextKey],
+
+    // 乐观消息管理
+    optimisticMessages: [],
+    addOptimisticMessage: (message) =>
+      set((state) => {
+        state.optimisticMessages.push(message);
+      }),
+    removeOptimisticMessage: (messageId) =>
+      set((state) => {
+        state.optimisticMessages = state.optimisticMessages.filter(m => m.id !== messageId);
+      }),
 
     // Project Actions
     loadProject: (project) =>
@@ -202,6 +267,30 @@ export const useProjectStore = create<ProjectStore>()(
         }
         delete state.chatCache[key];
       }),
+
+    // 生成任务管理
+    addActiveTask: (task) =>
+      set((state) => {
+        state.activeTasks.set(task.taskId, task);
+      }),
+    updateActiveTaskStatus: (taskId, status) =>
+      set((state) => {
+        const task = state.activeTasks.get(taskId);
+        if (task) {
+          task.status = status;
+        }
+      }),
+    removeActiveTask: (taskId) =>
+      set((state) => {
+        state.activeTasks.delete(taskId);
+      }),
+    getActiveTasksForShot: (shotId) => {
+      const tasks: ActiveTask[] = [];
+      get().activeTasks.forEach((task) => {
+        if (task.shotId === shotId) tasks.push(task);
+      });
+      return tasks;
+    },
 
     renumberScenesAndShots: () =>
       set((state) => {

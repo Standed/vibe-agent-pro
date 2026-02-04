@@ -12,6 +12,9 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { formatShotLabel } from '@/utils/shotOrder';
 import { ImagePreviewOverlay } from './ImagePreviewOverlay';
 import { dataService } from '@/lib/dataService';
+import { storageService } from '@/lib/storageService';
+import { constructBaseShotPrompt } from '@/utils/promptConstruction';
+import { translateCameraMovement, translateShotSize, SHOT_SIZE_TRANSLATIONS, CAMERA_MOVEMENT_TRANSLATIONS } from '@/utils/translations';
 import { useJimengGeneration } from '@/hooks/generation/useJimengGeneration';
 import { ImageSelectionModal } from '@/components/jimeng/ImageSelectionModal';
 import { ChatInput } from './ChatInput';
@@ -33,6 +36,7 @@ import { useApplyVideoToShot } from '@/hooks/chat/useApplyVideoToShot';
 import { useChatActions } from '@/hooks/chat/useChatActions';
 import { useChatModals } from '@/hooks/chat/useChatModals';
 import { useVideoModeReferences } from '@/hooks/chat/useVideoModeReferences';
+import { ActiveTaskIndicator } from './ActiveTaskIndicator';
 
 
 export default function ChatPanel() {
@@ -49,6 +53,7 @@ export default function ChatPanel() {
         generationProgress,
         setGenerationProgress,
         refreshShot,
+        activeTasks // Subscribe to activeTasks
     } = useProjectStore();
 
     const { user } = useAuth();
@@ -58,12 +63,80 @@ export default function ChatPanel() {
     const scenes = project?.scenes || [];
     const selectedShot = shots.find((s) => s.id === selectedShotId);
     const selectedScene = scenes.find((s) => s.id === (selectedShot?.sceneId || currentSceneId));
+
+    // Check if current context is generating
+    // activeTasks is a Map<string, ActiveTask>
+    // We check if any task matches the current shotId
+    const isCurrentGenerating = Array.from(activeTasks.values()).some(task => {
+        // Simple check: match shotId. 
+        // If task has no shotId (global), it might block everything or nothing. 
+        // User requested "该分镜或者该场景维度下". 
+        // Assuming tasks generated here have shotId.
+        if (selectedShotId) {
+            return task.shotId === selectedShotId;
+        }
+        if (currentSceneId) {
+            // If in scene mode (no shot selected), check scene tasks?
+            // Current implementation mostly binds tasks to shots or "capturedShotId".
+            // Let's stick to shotId check for now if selectedShotId exists.
+            return false;
+        }
+        return false;
+    });
     const selectedShotLabel = selectedShot ? formatShotLabel(selectedScene?.order, selectedShot.order, selectedShot.globalOrder) : undefined;
     const projectId = project?.id || 'default';
 
     // State
     const [inputText, setInputText] = useState('');
-    const [selectedModel, setSelectedModel] = useState<GenerationModel>('gemini-grid');
+
+    // 从 Store 获取模型状态方法
+    const {
+        setModelForContext,
+        getModelForContext,
+        modelByContext
+    } = useProjectStore();
+
+    const getContextKey = useCallback(() =>
+        selectedShotId ? `shot:${selectedShotId}` : currentSceneId ? `scene:${currentSceneId}` : 'global'
+        , [selectedShotId, currentSceneId]);
+
+    const [selectedModel, setSelectedModelRaw] = useState<GenerationModel>('jimeng');
+
+    // 封装模型设置：同步到 Store
+    const setSelectedModel = (model: GenerationModel) => {
+        setSelectedModelRaw(model);
+        const key = getContextKey();
+        setModelForContext(key, model);
+    };
+
+    // 切换上下文时从 Store 恢复模型
+    useEffect(() => {
+        const key = getContextKey();
+        const savedModel = getModelForContext(key);
+        if (savedModel) {
+            setSelectedModelRaw(savedModel);
+        } else {
+            // 默认值
+            setSelectedModelRaw('jimeng');
+        }
+    }, [getContextKey, modelByContext]); // 依赖 store 变化
+
+    // 客户端挂载后从 localStorage 初始化模型状态（避免 SSR hydration mismatch）
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        try {
+            const stored = localStorage.getItem('video-agent-pro:modelByContext');
+            if (stored) {
+                const parsed = JSON.parse(stored) as Record<string, GenerationModel>;
+                Object.entries(parsed).forEach(([key, model]) => {
+                    setModelForContext(key, model);
+                });
+            }
+        } catch {
+            // 忽略解析错误
+        }
+    }, []); // 仅在客户端挂载时执行一次
+
     // Removed uploadedImages state - now managed within droppedReferences
 
     const [manualReferenceUrls, setManualReferenceUrls] = useState<string[]>([]);
@@ -105,14 +178,15 @@ export default function ChatPanel() {
         currentSliceIndex?: number;
     } | null>(null);
 
-    const { isGenerating, setIsGenerating, handleSend } = useChatGeneration({
+    const { handleSend, isUploading } = useChatGeneration({
         project,
         user,
+        selectedModel,
         selectedShotId,
         currentSceneId: currentSceneId || (selectedShot ? selectedShot.sceneId : null),
         setMessages,
         setInputText,
-        setUploadedImages: () => { }, // No-op, managed via setDroppedReferences
+        setUploadedImages: () => { },
         setManualReferenceUrls,
         setDroppedReferences
     });
@@ -156,9 +230,16 @@ export default function ChatPanel() {
         currentSceneId: currentSceneId || (selectedShot ? selectedShot.sceneId : null),
         setMessages,
         setInputText,
-        setDroppedReferences,
-        setIsGenerating
+        setDroppedReferences
     });
+
+    // ... (lines 198-237 skipped/kept same if possible, but I'll assume they are stable) ...
+    // To safe, I will replace the blocks individually if they are far apart.
+    // Block 1: useViduGeneration (L176-196)
+
+    // Block 2: useSoraGeneration (L238-250)
+    // Block 3: ChatInput (L1007)
+
 
     // 首尾帧管理（通用，支持 Vidu、Runway 等）
     const startEndFrames = useStartEndFrames();
@@ -208,7 +289,6 @@ export default function ChatPanel() {
         soraAspectRatio,
         soraDuration,
         setMessages,
-        setIsGenerating,
         setInputText,
         setUploadedImages: () => { }, // No-op, managed via setDroppedReferences
         setManualReferenceUrls
@@ -242,11 +322,11 @@ export default function ChatPanel() {
     // --- Vidu Derived State Logic ---
     // isShotRefDeleted 已在上方定义
 
-    // 重置逻辑：切换分镜时，恢复显示默认分镜图
+    // 重置逻辑：切换分镜时重置删除标记
     useEffect(() => {
         setIsShotRefDeleted(false);
         setIsViduRefShotDeleted(false);
-    }, [selectedShotId]);
+    }, [selectedShotId, currentSceneId]);
 
     // 自动填充逻辑：切换模式/分镜时自动初始化参考图
     const prevShotIdRef = useRef<string | null>(null);
@@ -599,6 +679,61 @@ export default function ChatPanel() {
         }
     }, [selectedModel, viduMode, videoRefs, onRemoveReferenceFn, setIsViduRefShotDeleted]);
 
+
+    // [NEW] Effect: 强力提示词修复与同步 (Aggressive Prompt Repair)
+    // 解决: 1. 英文残留 2. 画风错位 3. 运镜缺失
+    useEffect(() => {
+        if (!selectedShot || !inputText || !project) return;
+
+        const isVideoModel = selectedModel.includes('vidu') || selectedModel.includes('sora');
+        let shouldRepair = false;
+
+        // 1. 检查景别 (English vs Chinese)
+        if (selectedShot.shotSize) {
+            const cn = translateShotSize(selectedShot.shotSize);
+            // 如果输入中包含英文原词且不包含中文翻译 -> 需要修复
+            // (排除 raw===cn 的情况，即本身就没翻译的)
+            if (selectedShot.shotSize !== cn) {
+                if (inputText.includes(selectedShot.shotSize) && !inputText.includes(cn)) {
+                    shouldRepair = true;
+                }
+            }
+        }
+
+        // 2. 检查运镜
+        if (selectedShot.cameraMovement) {
+            const cn = translateCameraMovement(selectedShot.cameraMovement);
+
+            // 视频模式：必须包含中文运镜词 (包括 '固定镜头')
+            if (isVideoModel) {
+                if (!inputText.includes(cn)) {
+                    shouldRepair = true;
+                }
+            }
+
+            // 检查英文残留
+            if (selectedShot.cameraMovement !== cn) {
+                if (inputText.includes(selectedShot.cameraMovement) && !inputText.includes(cn)) {
+                    shouldRepair = true;
+                }
+            }
+        }
+
+        // 3. 执行修复
+        // 使用标准构建函数重新生成，这会自动纠正画风顺序(Art Style First)
+        if (shouldRepair) {
+            const newPromptParts = constructBaseShotPrompt(project, selectedShot, {
+                includeCameraMovement: isVideoModel
+            });
+            const newPrompt = newPromptParts.join('，');
+
+            // 避免无效更新
+            if (newPrompt !== inputText) {
+                setInputText(newPrompt);
+            }
+        }
+    }, [selectedModel, selectedShot, project, inputText]);
+
     // Handle Generation Request from other components (e.g. Storyboard)
     useEffect(() => {
         if (generationRequest) {
@@ -679,11 +814,65 @@ export default function ChatPanel() {
             return next;
         });
 
-        setManualReferenceUrls(prev => {
-            if (prev.includes(url)) return prev;
-            return [...prev, url];
-        });
-        // toast.success("图片已加入参考");
+        // 检查是否已存在于参考列表中
+        const alreadyInManual = manualReferenceUrls.includes(url);
+        const alreadyInDropped = droppedReferences.some(r => r.url === url);
+
+        if (alreadyInManual || alreadyInDropped) {
+            toast.info("该图片已在参考列表中");
+            return;
+        }
+
+        // 同时添加到 manualReferenceUrls 和 droppedReferences 确保被正确发送
+        setManualReferenceUrls(prev => [...prev, url]);
+        setDroppedReferences(prev => [...prev, {
+            url,
+            source: 'history_ref' as const,
+            label: '历史图片'
+        }]);
+        toast.success("图片已加入参考");
+    };
+
+    // 处理粘贴图片：压缩后立即上传 R2，获取永久 URL
+    const handlePasteImages = async (files: File[]) => {
+        if (files.length === 0) return;
+
+        const toastId = toast.loading(`正在处理 ${files.length} 张粘贴图片...`);
+
+        try {
+            const { compressFileForUpload } = await import('@/utils/imageCompression');
+
+            const uploadPromises = files.map(async (file, idx) => {
+                // 1. 压缩（如果超过 10MB）
+                const compressedFile = await compressFileForUpload(file);
+
+                // 2. 立即上传到 R2
+                const folder = {
+                    projectId: project?.id,
+                    scope: 'shots' as const,
+                    entityId: selectedShotId || 'chat',
+                    assetType: 'reference' as const,
+                    model: 'paste'
+                };
+                const result = await storageService.uploadFile(compressedFile, folder, user?.id);
+
+                return {
+                    url: result.url,
+                    source: 'manual_upload' as const,
+                    label: `粘贴图片 ${idx + 1}`
+                };
+            });
+
+            const uploadedRefs = await Promise.all(uploadPromises);
+            setDroppedReferences(prev => [...prev, ...uploadedRefs]);
+
+            toast.dismiss(toastId);
+            toast.success(`已添加 ${files.length} 张粘贴图片为参考图`);
+        } catch (error: any) {
+            toast.dismiss(toastId);
+            console.error('[handlePasteImages] 上传失败:', error);
+            toast.error(`粘贴图片上传失败: ${error.message || '请检查网络后重试'}`);
+        }
     };
 
     const handleApplyToShot = async (url: string) => {
@@ -809,6 +998,7 @@ export default function ChatPanel() {
                     </button>
                 </div>
 
+                {/* 批量生成进度 */}
                 {generationProgress.status === 'running' && (
                     <div className="mt-4 animate-in slide-in-from-top duration-300">
                         <div className="flex items-center justify-between mb-1.5">
@@ -835,8 +1025,9 @@ export default function ChatPanel() {
                 )}
                 <MessageList
                     messages={messages}
-                    isGenerating={isGenerating}
                     selectedModel={selectedModel}
+                    selectedShotId={selectedShotId}
+                    currentSceneId={currentSceneId}
                     scrollParentRef={messagesContainerRef}
                     hasMore={hasMore}
                     isLoadingMore={isLoading}
@@ -913,7 +1104,7 @@ export default function ChatPanel() {
                     );
                 }}
                 onAssetSelected={handleAssetSelected}
-                isGenerating={isGenerating}
+                isGenerating={isCurrentGenerating}
                 selectedModel={selectedModel}
                 setSelectedModel={setSelectedModel}
                 uploadedImages={[]} // Use empty as managed in droppedReferences
@@ -944,6 +1135,7 @@ export default function ChatPanel() {
                 setViduResolution={setViduResolution}
                 viduOffPeak={viduOffPeak}
                 setViduOffPeak={setViduOffPeak}
+                onPasteImages={handlePasteImages}
             />
 
             {gridResult && (

@@ -95,7 +95,18 @@ export default function Home() {
 
   const { user, profile, signOut, loading: authLoading } = useRequireWhitelist();
 
-  const parseStoryboardRows = (rows: any[]) => {
+  // 智能表头检测：检查第一行是否为表头（要求至少3列匹配关键词）
+  const isHeaderRow = (row: any[]): boolean => {
+    const headerKeywords = ['场景名称', '镜头序号', '镜头描述', '描述', '对白', '旁白', '景别', '运镜', '时长', 'scene', 'shot', 'description', 'dialogue'];
+    const normalizedRow = row.map((cell: any) => String(cell || '').trim().toLowerCase());
+    // 计算匹配的列数，至少3列匹配才判定为表头
+    const matchCount = normalizedRow.filter(cell =>
+      headerKeywords.some(kw => cell.includes(kw.toLowerCase()))
+    ).length;
+    return matchCount >= 3;
+  };
+
+  const parseStoryboardRows = (rows: any[], hasHeader: boolean = true) => {
     const errors: { row: number; msg: string; type: 'error' | 'warning' }[] = [];
     const scenes: Scene[] = [];
     const shots: Shot[] = [];
@@ -106,7 +117,8 @@ export default function Home() {
       const normalizedRow = row.map((cell: any) => (cell === null || cell === undefined ? '' : String(cell).trim()));
       if (normalizedRow.every((cell: string) => !cell)) return;
 
-      const rowNum = idx + 2; // +1 for header, +1 for 0-index
+      // 根据是否有表头调整行号：有表头 +2（跳过表头+0索引），无表头 +1（只需0索引调整）
+      const rowNum = hasHeader ? idx + 2 : idx + 1;
       const [sceneName, , description, dialogue, narration, shotSizeVal, cameraMoveVal, durationVal] = normalizedRow;
 
       if (!sceneName) {
@@ -186,13 +198,20 @@ export default function Home() {
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
       const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[];
-      return parseStoryboardRows(rows.slice(1));
+      // 智能表头检测：检查第一行是否为表头
+      const hasHeader = rows.length > 0 && isHeaderRow(rows[0]);
+      const dataRows = hasHeader ? rows.slice(1) : rows;
+      return parseStoryboardRows(dataRows, hasHeader);
     }
 
     if (extension === 'csv') {
       const text = await file.text();
       const results = Papa.parse(text, { header: false, skipEmptyLines: true });
-      return parseStoryboardRows((results.data as any[]).slice(1));
+      const rows = results.data as any[];
+      // 智能表头检测：检查第一行是否为表头
+      const hasHeader = rows.length > 0 && isHeaderRow(rows[0]);
+      const dataRows = hasHeader ? rows.slice(1) : rows;
+      return parseStoryboardRows(dataRows, hasHeader);
     }
 
     throw new Error('不支持的分镜脚本格式，请上传 CSV 或 Excel 文件');

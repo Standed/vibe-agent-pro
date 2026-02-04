@@ -86,6 +86,8 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
   const cancelRef = useRef(false);
   const [pendingConfirmation, setPendingConfirmation] = useState<{ credits: number; message: string } | null>(null);
   const confirmationResolverRef = useRef<((value: boolean) => void) | null>(null);
+  // 同一次 sendMessage 调用期间，用户确认一次后不再重复询问
+  const hasConfirmedCreditsRef = useRef(false);
 
   // Auto-update session manager when project changes
   useEffect(() => {
@@ -122,6 +124,8 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
     }
 
     cancelRef.current = false;
+    // 每次新的用户操作重置积分确认状态
+    hasConfirmedCreditsRef.current = false;
     // 创建新的 AbortController
     abortControllerRef.current = new AbortController();
 
@@ -317,8 +321,8 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
         throw new Error('USER_CANCELLED');
       }
 
-      // ⭐ 积分确认逻辑：如果预计消耗积分 > 0，暂停执行并等待用户确认
-      if (action.requiresToolExecution && action.estimatedCredits && action.estimatedCredits > 0) {
+      // ⭐ 积分确认逻辑：如果预计消耗积分 > 0 且本次调用尚未确认，暂停执行并等待用户确认
+      if (action.requiresToolExecution && action.estimatedCredits && action.estimatedCredits > 0 && !hasConfirmedCreditsRef.current) {
         const stepIdConfirm = addStep({
           type: 'thinking',
           content: `等待积分确认 (预计消耗 ${action.estimatedCredits} 积分)...`,
@@ -341,6 +345,9 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
           });
           throw new Error('USER_CANCELLED');
         }
+
+        // 记住本次调用已确认，后续不再重复询问
+        hasConfirmedCreditsRef.current = true;
 
         updateStep(stepIdConfirm, {
           status: 'completed',
