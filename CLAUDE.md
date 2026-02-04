@@ -127,6 +127,7 @@ When multiple valid approaches exist, choose based on:
 - **并发控制**: 使用 `TaskQueueService.ts` 管理 API 请求并发.
 - **性能优化**: 优先使用批量接口 (如 `/api/sora/status/batch`) 代替循环请求.
 - **Strict Mode**: React 开发模式下 Effect 会执行两次，需使用 `AbortController` 自动取消重复请求.
+- **Gemini 参考图**: 采用 URL 优先 + 自动降级策略。首次使用预签名 URL，失败则切换到服务端下载模式。参见 `api/gemini-*/route.ts` 中的 `processReferenceImages`。
 
 ### Tooling
 

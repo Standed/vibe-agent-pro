@@ -45,7 +45,7 @@ export function useJimengGeneration({
     manualReferenceUrls,
     mentionedAssets
 }: UseJimengGenerationProps) {
-    const [model, setModel] = useState<JimengModel>('jimeng-4.0');
+    const [model, setModel] = useState<JimengModel>('jimeng-4.5');
     const [resolution, setResolution] = useState<JimengResolution>('2k');
     const [generatedImages, setGeneratedImages] = useState<string[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -60,7 +60,7 @@ export function useJimengGeneration({
         skipAssetRefs: boolean;
     } | null>(null);
 
-    const { project, updateShot } = useProjectStore();
+    const { project, updateShot, addActiveTask, removeActiveTask } = useProjectStore();
     const { user } = useAuth();
 
     // 提取上传逻辑
@@ -169,6 +169,18 @@ export function useJimengGeneration({
 
         // toast.info(`即梦任务已提交 (${model}, ${resolution})，正在后台生成...`, { duration: 3000 });
 
+        // 生成全局任务 ID（切换分镜后仍可追踪）
+        const taskId = `jimeng_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        addActiveTask({
+            taskId,
+            shotId: capturedShotId || '',
+            type: 'image',
+            model: 'jimeng',
+            status: 'generating',
+            startTime: Date.now(),
+            prompt: promptForModel
+        });
+
         // Return the promise so the caller can await it
         return jimengService.generateImage({
             prompt: promptForModel,
@@ -273,8 +285,12 @@ export function useJimengGeneration({
             }
         }).catch(err => {
             console.error('[Jimeng] Generation failed:', err);
+            removeActiveTask(taskId);
             toast.error('即梦生成失败: ' + err.message);
             throw err; // Re-throw to let caller know it failed
+        }).finally(() => {
+            // 成功或失败都移除任务
+            removeActiveTask(taskId);
         });
     };
 

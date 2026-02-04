@@ -25,6 +25,7 @@ import { ActiveReference } from './useAutoReference';
 interface UseChatGenerationProps {
     project: Project | null;
     user: any;
+    selectedModel: GenerationModel; // Copied from implementation
     selectedShotId: string | null;
     currentSceneId: string | null;
     setMessages: React.Dispatch<React.SetStateAction<ChatPanelMessage[]>>;
@@ -95,9 +96,8 @@ export function useChatGeneration({
     setManualReferenceUrls,
     setDroppedReferences
 }: UseChatGenerationProps) {
-    const [isGenerating, setIsGenerating] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
-    const { updateShot, addGridHistory } = useProjectStore();
+    const { updateShot, addGridHistory, addActiveTask, removeActiveTask, addOptimisticMessage, removeOptimisticMessage, updateActiveTaskStatus } = useProjectStore();
 
     // Note: beforeunload 提示已移除
     // 现在服务端直接上传 R2，数据保存到 Supabase，刷新不会丢失数据
@@ -118,11 +118,27 @@ export function useChatGeneration({
         // Collect files to upload from the ordered list
         const filesToUpload = orderedReferences.filter(r => r.file).map(r => r.file!);
 
-        if ((!inputText.trim() && filesToUpload.length === 0 && orderedReferences.length === 0) || isGenerating || !user || !project) return;
+        if ((!inputText.trim() && filesToUpload.length === 0 && orderedReferences.length === 0) || !user || !project) return;
 
         const currentShot = project.shots.find(s => s.id === selectedShotId);
         const currentSceneIdCaptured = currentSceneId || (currentShot ? currentShot.sceneId : null);
         const contextKey = selectedShotId ? `pro-chat:${project.id}:shot:${selectedShotId}` : currentSceneIdCaptured ? `pro-chat:${project.id}:scene:${currentSceneIdCaptured}` : `pro-chat:${project.id}:global`;
+
+        // 生成任务 ID (提前生成，涵盖上传阶段)
+        const generationTaskId = `generation_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const capturedShotId = selectedShotId || '';
+        const activeTaskModel = selectedModel === 'gemini-direct' ? 'gemini' : selectedModel;
+
+        // 0. 立即注册 pending 任务 (用于显示 Loading)
+        addActiveTask({
+            taskId: generationTaskId,
+            shotId: capturedShotId,
+            type: selectedModel.includes('video') ? 'video' : 'image',
+            model: activeTaskModel as any,
+            status: 'pending', // 初始状态为 pending (上传中)
+            startTime: Date.now(),
+            prompt: inputText
+        });
 
         // 1. Capture Active References (URLs only for now) - incomplete until upload
         // We will construct the final list later.
@@ -139,41 +155,44 @@ export function useChatGeneration({
             sceneId: currentSceneIdCaptured || undefined,
         };
 
+        // 优化：添加到 Store 的乐观消息队列
         setMessages(prev => [...prev, userMessage]);
+        addOptimisticMessage(userMessage);
 
         // Clear Inputs immediately
         setInputText('');
         setUploadedImages([]);
         setManualReferenceUrls([]);
         setDroppedReferences([]);
-        setIsGenerating(true);
 
-        // 3. Pre-upload Local Images to R2 (Concurrent) - With Compression
-        // Map file -> uploaded URL
         const fileUrlMap = new Map<File, string>();
 
+        // 3. Sequential Upload (Blocking)
         if (filesToUpload.length > 0) {
+            setIsUploading(true);
             try {
                 const baseScope: R2PathContext = {
                     projectId: project.id,
                     scope: selectedShotId ? 'shots' : currentSceneIdCaptured ? 'scenes' : 'project',
-                    entityId: selectedShotId || currentSceneIdCaptured || project.id,
-                    assetType: 'reference',
-                    model: 'upload'
+                    entityId: selectedShotId || currentSceneIdCaptured || project.id
                 };
 
-                const uploadPromises = filesToUpload.map(async (file, idx) => {
+                const uploadPromises = filesToUpload.map(async (file) => {
                     try {
                         const compressedDataUrl = await compressFileToBase64(file);
                         const matches = compressedDataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
                         if (matches && matches.length === 3) {
-                            const filePath = `upload_${Date.now()}_${idx}.jpg`;
+                            const filePath = `upload_${Date.now()}_${file.name}`; // Use original file name for path
                             const url = await storageService.uploadBase64ToR2(compressedDataUrl, baseScope, filePath, user.id);
                             fileUrlMap.set(file, url);
                             return url;
                         }
                         throw new Error("Invalid base64");
-                    } catch (err) {
+                    } catch (err: unknown) {
+                        if (err instanceof Error && err.message === "Invalid base64") {
+                            throw new Error("Invalid base64");
+                        }
+                        // Non-Error exception handling
                         console.warn(`Compression failed for ${file.name}, uploading original`, err);
                         const res = await storageService.uploadFile(file, baseScope, user.id);
                         fileUrlMap.set(file, res.url);
@@ -185,8 +204,12 @@ export function useChatGeneration({
             } catch (error) {
                 console.error("Failed to upload images", error);
                 toast.error("图片上传失败，请重试");
-                setIsGenerating(false);
+                setIsUploading(false);
+                removeActiveTask(generationTaskId); // 失败移除任务
+                removeOptimisticMessage(userMsgId); // 失败移除消息
                 return;
+            } finally {
+                setIsUploading(false);
             }
         }
 
@@ -215,26 +238,40 @@ export function useChatGeneration({
             metadata: { images: allRefUrls },
             createdAt: userMessage.timestamp,
             updatedAt: userMessage.timestamp,
-        }).catch(e => console.error("Failed to save user message", e)); // Non-blocking
+        }).catch(e => {
+            console.error("Failed to save user message", e);
+            removeOptimisticMessage(userMsgId); // 保存失败移除
+        }); // Non-blocking
 
         try {
             // 5. Delegate to Specialized Handlers if needed
             if (selectedModel === 'sora-video' && soraHandler) {
+                removeActiveTask(generationTaskId); // Handlers manage their own tasks? 
+                // Wait, handlers create their own tasks usually. We created a placeholder.
+                // For handlers, we should probably pass the taskId or let them create one.
+                // Current impl: Handlers create new tasks inside. So we remove this placeholder.
+                // 优化：最好让 handlers 接受 taskId，目前先移除避免重复
+
                 await soraHandler(allRefUrls); // Sora handler handles its own logic
                 return;
             }
 
             if (selectedModel === 'jimeng' && jimengHandler) {
+                removeActiveTask(generationTaskId);
                 await jimengHandler(allRefUrls, contextKey); // Jimeng handler
                 return;
             }
 
             if (selectedModel === 'vidu-video' && viduHandler) {
+                removeActiveTask(generationTaskId);
                 await viduHandler(allRefUrls, contextKey); // Vidu handler
                 return;
             }
 
             // 6. Gemini Generation Logic (Grid / Direct)
+
+            // 更新任务状态为 generating (开始调用 API)
+            updateActiveTaskStatus(generationTaskId, 'generating');
 
             // Smart Enrichment
             const hasBaseImage = orderedReferences.some(r => r.source === 'manual_upload' || r.source === 'history_ref') || orderedReferences.some(r => !!r.file);
@@ -252,77 +289,94 @@ export function useChatGeneration({
                 entityId: selectedShotId || currentSceneIdCaptured || project.id
             };
 
-            if (selectedModel === 'gemini-grid') {
-                const rows = gridSize === '3x3' ? 3 : 2;
-                const cols = gridSize === '3x3' ? 3 : 2;
-                const projectAspectRatio = project.settings?.aspectRatio || AspectRatio.WIDE;
+            // Gemini/SeeDream 逻辑不需要重复 addActiveTask，因为已经在开头添加了
+            // 这里只需要更新 prompt
+            addActiveTask({
+                taskId: generationTaskId,
+                shotId: capturedShotId,
+                type: 'image',
+                model: selectedModel as any,
+                status: 'generating',
+                startTime: Date.now(),
+                prompt: enrichedPrompt // Update with enriched prompt
+            });
 
-                const res = await generateSimpleGrid(
-                    enrichedPrompt,
-                    rows,
-                    cols,
-                    projectAspectRatio,
-                    referenceImagesData,
-                    { ...baseContext, assetType: 'grid', model: 'gemini-grid' }
-                );
+            try {
+                if (selectedModel === 'gemini-grid') {
+                    const rows = gridSize === '3x3' ? 3 : 2;
+                    const cols = gridSize === '3x3' ? 3 : 2;
+                    const projectAspectRatio = project.settings?.aspectRatio || AspectRatio.WIDE;
 
-                // Logic Split: Shot vs Scene
-                if (selectedShotId) {
-                    // Shot Mode: Batch Generation (Slices)
-                    resultImages = res.slices; // Base64 slices
-                    gridData = undefined; // No "Grid Data" overlay needed
-                } else {
-                    // Scene Mode: Assignment (Full Image)
-                    resultImages = [res.fullImage];
+                    const res = await generateSimpleGrid(
+                        enrichedPrompt,
+                        rows,
+                        cols,
+                        projectAspectRatio,
+                        referenceImagesData,
+                        { ...baseContext, assetType: 'grid', model: 'gemini-grid' }
+                    );
+
+                    // Logic Split: Shot vs Scene
+                    if (selectedShotId) {
+                        // Shot Mode: Batch Generation (Slices)
+                        resultImages = res.slices; // Base64 slices
+                        gridData = undefined; // No "Grid Data" overlay needed
+                    } else {
+                        // Scene Mode: Assignment (Full Image)
+                        resultImages = [res.fullImage];
+                        gridData = {
+                            fullImage: res.fullImage,
+                            slices: res.slices,
+                            gridRows: rows,
+                            gridCols: cols,
+                            gridSize: gridSize,
+                            prompt: enrichedPrompt,
+                            aspectRatio: projectAspectRatio,
+                            sceneId: currentSceneIdCaptured || undefined
+                        };
+                    }
+                } else if (selectedModel === 'gemini-direct') {
+                    const res = await generateSingleImage(
+                        enrichedPrompt,
+                        project.settings?.aspectRatio || AspectRatio.WIDE,
+                        referenceImagesData,
+                        geminiImageSize,
+                        { ...baseContext, assetType: 'image', model: 'gemini-direct' }
+                    );
+                    resultImages = [res];
                     gridData = {
-                        fullImage: res.fullImage,
-                        slices: res.slices,
-                        gridRows: rows,
-                        gridCols: cols,
-                        gridSize: gridSize,
+                        fullImage: res,
+                        slices: [],
+                        aspectRatio: project.settings?.aspectRatio || AspectRatio.WIDE,
+                        sceneId: currentSceneIdCaptured || undefined,
                         prompt: enrichedPrompt,
-                        aspectRatio: projectAspectRatio,
-                        sceneId: currentSceneIdCaptured || undefined
+                        gridRows: undefined,
+                        gridCols: undefined,
+                        gridSize: undefined
+                    };
+                } else if (selectedModel === 'seedream') {
+                    const { VolcanoEngineService } = await import('@/services/volcanoEngineService');
+                    const seedreamUrl = await VolcanoEngineService.getInstance().generateSingleImage(
+                        enrichedPrompt,
+                        project.settings?.aspectRatio || AspectRatio.WIDE,
+                        allRefUrls,
+                        { ...baseContext, assetType: 'image', model: 'seedream' }
+                    );
+                    resultImages = [seedreamUrl];
+                    gridData = {
+                        fullImage: seedreamUrl,
+                        slices: [],
+                        aspectRatio: project.settings?.aspectRatio || AspectRatio.WIDE,
+                        sceneId: currentSceneIdCaptured || undefined,
+                        prompt: enrichedPrompt,
+                        gridRows: undefined,
+                        gridCols: undefined,
+                        gridSize: undefined
                     };
                 }
-            } else if (selectedModel === 'gemini-direct') {
-                const res = await generateSingleImage(
-                    enrichedPrompt,
-                    project.settings?.aspectRatio || AspectRatio.WIDE,
-                    referenceImagesData,
-                    geminiImageSize,
-                    { ...baseContext, assetType: 'image', model: 'gemini-direct' }
-                );
-                resultImages = [res];
-                gridData = {
-                    fullImage: res,
-                    slices: [],
-                    aspectRatio: project.settings?.aspectRatio || AspectRatio.WIDE,
-                    sceneId: currentSceneIdCaptured || undefined,
-                    prompt: enrichedPrompt,
-                    gridRows: undefined,
-                    gridCols: undefined,
-                    gridSize: undefined
-                };
-            } else if (selectedModel === 'seedream') {
-                const { VolcanoEngineService } = await import('@/services/volcanoEngineService');
-                const seedreamUrl = await VolcanoEngineService.getInstance().generateSingleImage(
-                    enrichedPrompt,
-                    project.settings?.aspectRatio || AspectRatio.WIDE,
-                    allRefUrls,
-                    { ...baseContext, assetType: 'image', model: 'seedream' }
-                );
-                resultImages = [seedreamUrl];
-                gridData = {
-                    fullImage: seedreamUrl,
-                    slices: [],
-                    aspectRatio: project.settings?.aspectRatio || AspectRatio.WIDE,
-                    sceneId: currentSceneIdCaptured || undefined,
-                    prompt: enrichedPrompt,
-                    gridRows: undefined,
-                    gridCols: undefined,
-                    gridSize: undefined
-                };
+            } finally {
+                // 无论成功失败都移除任务
+                removeActiveTask(generationTaskId);
             }
 
             // 7. Reference Handling (Optimistic Display + Background Upload)
@@ -503,14 +557,10 @@ export function useChatGeneration({
         } catch (error: any) {
             console.error('Generation failed:', error);
             toast.error(`生成失败: ${error.message}`);
-        } finally {
-            setIsGenerating(false);
         }
     };
 
     return {
-        isGenerating, // Decoupled from isUploading to avoid UI blocking
-        setIsGenerating,
         handleSend,
         isUploading // Expose uploading state if UI wants to show non-blocking indicator
     };

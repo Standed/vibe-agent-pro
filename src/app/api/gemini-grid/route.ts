@@ -1,9 +1,8 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { ProxyAgent, Agent } from 'undici';
-import sharp from 'sharp';
 import { authenticateRequest, checkCredits, consumeCredits, checkWhitelist, checkRateLimit } from '@/lib/auth-middleware';
 import { calculateCredits, getOperationDescription } from '@/config/credits';
-import { isR2Configured, processAndUploadGrid } from '@/lib/r2-server-upload';
+import { isR2Configured, processAndUploadGrid, generatePresignedUrl } from '@/lib/r2-server-upload';
 import { assetLogService } from '@/lib/assetLogService';
 
 export const maxDuration = 120;
@@ -21,68 +20,79 @@ const GEMINI_API_KEY =
 const isValidGridSize = (n: any) => Number.isInteger(n) && (n === 2 || n === 3);
 
 /**
- * Fetch image from URL and compress to max 2048px JPEG
- * This prevents 5MB+ payload errors from high-resolution Gemini images
+ * 获取 MIME 类型从 URL
  */
-const fetchImageToBase64 = async (url: string): Promise<{ data: string, mimeType: string } | null> => {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout per image
-
-    // Add no-store to prevent caching of failed responses
-    // Add User-Agent to avoid blocking by some CDNs/WAFs
-    const response = await fetch(url, {
-      signal: controller.signal,
-      cache: 'no-store',
-      headers: {
-        'User-Agent': 'VibeAgent-Pro/1.0 (Bot)',
-        'Accept': 'image/*'
-      }
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.error(`[Gemini Grid] ❌ Failed to fetch image: ${response.status} ${response.statusText}`, url);
-      return null;
-    }
-
-    const contentType = response.headers.get('content-type');
-    if (contentType && !contentType.startsWith('image/')) {
-      console.warn(`[Gemini Grid] ⚠️ Fetched non-image content type: ${contentType}`, url);
-      // Continue anyway as some CDNs might have incorrect headers, but log it
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-      console.error('[Gemini Grid] ❌ Fetched empty image buffer', url);
-      return null;
-    }
-
-    const inputBuffer = Buffer.from(arrayBuffer);
-
-    // Compress with sharp: resize to max 2048px, JPEG quality 90
-    const compressedBuffer = await sharp(inputBuffer)
-      .resize(2048, 2048, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 90 })
-      .toBuffer();
-
-    const base64 = compressedBuffer.toString('base64');
-    const mimeType = 'image/jpeg';
-
-    console.log(`[Gemini Grid] 📦 Image processed: ${(inputBuffer.length / 1024).toFixed(0)}KB → ${(compressedBuffer.length / 1024).toFixed(0)}KB`);
-
-    return { data: base64, mimeType };
-  } catch (error: any) {
-    console.error('[Gemini Grid] ❌ Error processing image:', url, error.message);
-    return null;
+const getMimeTypeFromUrl = (url: string): string => {
+  const ext = url.split('.').pop()?.toLowerCase().split('?')[0];
+  switch (ext) {
+    case 'png': return 'image/png';
+    case 'webp': return 'image/webp';
+    case 'gif': return 'image/gif';
+    case 'bmp': return 'image/bmp';
+    default: return 'image/jpeg';
   }
 };
 
-const processReferenceImages = async (refs: any[]) => {
+/**
+ * 处理参考图片 - 支持双模式
+ * mode = 'url': 使用预签名 URL (fileData.fileUri) - 速度最快
+ * mode = 'download': 服务端下载转 Base64 (inlineData) - 最稳定
+ */
+const processReferenceImages = async (refs: any[], mode: 'url' | 'download' = 'url') => {
   if (!Array.isArray(refs)) return [];
-  const processed = await Promise.all(refs.map(async (img) => {
+
+  const processedPromises = refs.map(async (img) => {
     if (!img) return null;
-    // Data URL provided directly
+
+    // 1. Google File API URI (原生支持)
+    if (typeof img.url === 'string' && img.url.startsWith('https://generativelanguage.googleapis.com')) {
+      return {
+        fileData: {
+          fileUri: img.url,
+          mimeType: img.mimeType || getMimeTypeFromUrl(img.url),
+        },
+      };
+    }
+
+    // 2. 外部 URL 处理（根据 mode 选择策略）
+    if (typeof img.url === 'string' && img.url.length > 0 && img.url.startsWith('http')) {
+      const mimeType = img.mimeType || getMimeTypeFromUrl(img.url);
+
+      if (mode === 'url') {
+        // 快速路径：尝试预签名 URL
+        let finalUrl = img.url;
+        if (isR2Configured()) {
+          const signed = await generatePresignedUrl(img.url);
+          if (signed) finalUrl = signed;
+        }
+        return {
+          fileData: {
+            fileUri: finalUrl,
+            mimeType
+          }
+        };
+      } else {
+        // 降级路径：服务端下载转 Base64
+        try {
+          console.log(`[Gemini Grid] Downloading (fallback): ${img.url}`);
+          const resp = await fetch(img.url);
+          if (!resp.ok) throw new Error(`Failed to fetch ${img.url}: ${resp.status}`);
+          const arrayBuffer = await resp.arrayBuffer();
+          const base64 = Buffer.from(arrayBuffer).toString('base64');
+          return {
+            inlineData: {
+              data: base64,
+              mimeType: resp.headers.get('content-type') || mimeType
+            }
+          };
+        } catch (e) {
+          console.error(`[Gemini Grid] Download failed: ${img.url}`, e);
+          return null;
+        }
+      }
+    }
+
+    // 3. Data URL / Base64 回退
     if (typeof img.data === 'string' && img.data.length > 0) {
       return {
         inlineData: {
@@ -91,22 +101,14 @@ const processReferenceImages = async (refs: any[]) => {
         },
       };
     }
-    // URL provided
-    if (typeof img.url === 'string' && img.url.length > 0) {
-      const fetched = await fetchImageToBase64(img.url);
-      if (fetched) {
-        return {
-          inlineData: {
-            data: fetched.data,
-            mimeType: fetched.mimeType,
-          },
-        };
-      }
-    }
+
     return null;
-  }));
+  });
+
+  const processed = await Promise.all(processedPromises);
   return processed.filter((p) => p !== null);
 };
+
 
 export async function POST(request: NextRequest) {
   // 1. 验证用户身份
@@ -158,124 +160,110 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'gridRows/gridCols must be 2 or 3' }, { status: 400 });
     }
 
-    // Process reference images (handle URLs server-side)
-    const safeRefsPart = await processReferenceImages(referenceImages);
+    // ======== 核心请求逻辑 (支持 URL 优先 + 降级重试) ========
+    const makeGeminiRequest = async (mode: 'url' | 'download') => {
+      const safeRefsPart = await processReferenceImages(referenceImages, mode);
+      const parts = [
+        ...safeRefsPart,
+        { text: prompt },
+      ];
 
-    const parts = [
-      ...safeRefsPart,
-      { text: prompt },
-    ];
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000); // 120s safeguard
-
-    const requestBody: any = {
-      contents: [
-        {
-          role: 'user',
-          parts,
+      const requestBody: any = {
+        contents: [
+          {
+            role: 'user',
+            parts,
+          },
+        ],
+        generationConfig: {
+          temperature: 1.0,
+          // @ts-ignore
+          imageConfig: {
+            aspectRatio,
+            imageSize: '4K',
+          },
         },
-      ],
-      generationConfig: {
-        temperature: 1.0,
-        // @ts-ignore
-        imageConfig: {
-          aspectRatio,
-          imageSize: '4K',
-        },
-      },
-    };
+      };
 
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 120000);
+      const finalRequestBody = JSON.stringify(requestBody);
 
-    const finalRequestBody = JSON.stringify(requestBody);
+      // 载荷大小检查
+      if (finalRequestBody.length > 20 * 1024 * 1024) {
+        clearTimeout(timeout);
+        throw new Error(`请求载荷过大 (${(finalRequestBody.length / 1024 / 1024).toFixed(2)}MB)`);
+      }
 
-    // 🛡️ 载荷大小检查：Gemini 限制通常在 20MB 左右 (Base64 后)，我们放宽限制到 20MB
-    if (finalRequestBody.length > 20 * 1024 * 1024) {
-      console.error(`[Gemini Grid] ❌ Payload too large: ${(finalRequestBody.length / 1024 / 1024).toFixed(2)}MB`);
-      return NextResponse.json(
-        { error: `请求载荷过大 (${(finalRequestBody.length / 1024 / 1024).toFixed(2)}MB)，请减少参考图数量或缩短提示词。` },
-        { status: 413 }
+      const fetchOptions: any = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: finalRequestBody,
+      };
+
+      // Proxy 配置
+      if (process.env.HTTP_PROXY) {
+        try {
+          const proxyAgent = new ProxyAgent({ uri: process.env.HTTP_PROXY, connectTimeout: 60000 });
+          fetchOptions.dispatcher = proxyAgent;
+        } catch (e) { console.error('[Gemini Grid] ProxyAgent failed:', e); }
+      } else {
+        try {
+          const agent = new Agent({ connectTimeout: 60000, headersTimeout: 130000, bodyTimeout: 130000 });
+          fetchOptions.dispatcher = agent;
+        } catch (e) { console.error('[Gemini Grid] Agent failed:', e); }
+      }
+
+      const startTime = Date.now();
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+        fetchOptions
       );
-    }
+      clearTimeout(timeout);
 
-    const fetchOptions: any = {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: finalRequestBody,
+      const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        console.error('[Gemini Grid API error]', requestId, resp.status, text);
+        const err = new Error(text || resp.statusText);
+        (err as any).status = resp.status;
+        (err as any).body = text;
+        throw err;
+      }
+
+      const data = await resp.json();
+      const uri = data?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
+      if (!uri) {
+        console.error('[Gemini Grid parse error]', requestId, data);
+        throw new Error('no image returned');
+      }
+
+      return { uri, elapsedTime };
     };
 
-    // 🔍 调试：检查代理配置
-    // console.log('[Gemini Grid] HTTP_PROXY:', process.env.HTTP_PROXY);
-    // console.log('[Gemini Grid] HTTPS_PROXY:', process.env.HTTPS_PROXY);
-
-    if (process.env.HTTP_PROXY) {
-      try {
-        const proxyAgent = new ProxyAgent({
-          uri: process.env.HTTP_PROXY,
-          connectTimeout: 60000, // 60s connection timeout
-        });
-        fetchOptions.dispatcher = proxyAgent;
-        // console.log('[Gemini Grid] ✅ ProxyAgent created successfully');
-      } catch (e) {
-        console.error('[Gemini Grid] ❌ Failed to create ProxyAgent:', e);
-      }
-    } else {
-      // Create Agent with extended connection timeout for direct connection
-      try {
-        const agent = new Agent({
-          connectTimeout: 60000, // 60s connection timeout
-          headersTimeout: 130000, // 130s headers timeout (longer than AbortController)
-          bodyTimeout: 130000, // 130s body timeout
-        });
-        fetchOptions.dispatcher = agent;
-        // console.log('[Gemini Grid] ✅ Agent created with extended timeouts');
-      } catch (e) {
-        console.error('[Gemini Grid] ❌ Failed to create Agent:', e);
+    // ======== 执行请求 (URL 优先，失败则降级) ========
+    let result: { uri: string; elapsedTime: string };
+    try {
+      // 首次尝试：使用快速的 URL 模式
+      result = await makeGeminiRequest('url');
+      console.log(`[Gemini Grid] ✅ URL 模式成功 (${result.elapsedTime}s)`);
+    } catch (urlError: any) {
+      // 检查是否是 Gemini 无法抓取 URL 的错误
+      const isCannotFetch = urlError.status === 400 && urlError.body?.includes('Cannot fetch');
+      if (isCannotFetch && referenceImages.length > 0) {
+        console.warn(`[Gemini Grid] ⚠️ URL 模式失败 (Cannot fetch)，切换到下载模式重试...`);
+        // 自动降级：使用下载模式重试
+        result = await makeGeminiRequest('download');
+        console.log(`[Gemini Grid] ✅ 下载模式成功 (${result.elapsedTime}s)`);
+      } else {
+        // 其他错误直接抛出
+        throw urlError;
       }
     }
 
-    // 📊 诊断信息：记录请求详情
-    const bodySize = (fetchOptions.body.length / 1024).toFixed(2);
-    const refImageCount = safeRefsPart.length;
-    const promptLength = prompt.length;
-    const totalViews = gridRows * gridCols;
-
-    const startTime = Date.now();
-    // console.log('[Gemini Grid] 🚀 Request started');
-    // console.log('[Gemini Grid] 📊 Diagnostics:', {
-    //   timestamp: new Date().toISOString(),
-    //   bodySize: `${bodySize} KB`,
-    //   refImageCount,
-    //   promptLength,
-    //   gridSize: `${gridRows}x${gridCols}`,
-    //   totalViews,
-    //   aspectRatio,
-    //   proxy: process.env.HTTP_PROXY ? 'enabled' : 'disabled'
-    // });
-
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      fetchOptions
-    );
-    clearTimeout(timeout);
-
-    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-    // console.log(`[Gemini Grid] ✅ Request completed in ${elapsedTime}s`);
-
-    if (!resp.ok) {
-      const text = await resp.text();
-      console.error('[Gemini Grid API error]', requestId, resp.status, text);
-      return NextResponse.json({ error: text || resp.statusText, requestId }, { status: resp.status });
-    }
-
-    const data = await resp.json();
-    const uri = data?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
-    if (!uri) {
-      console.error('[Gemini Grid parse error]', requestId, data);
-      return NextResponse.json({ error: 'no image returned', requestId }, { status: 500 });
-    }
-
-    // 📊 记录响应数据大小
+    const uri = result.uri;
+    const elapsedTime = result.elapsedTime;
     const responseSize = (uri.length / 1024).toFixed(2);
     // console.log('[Gemini Grid] 📊 Response size:', `${responseSize} KB (base64)`);
 

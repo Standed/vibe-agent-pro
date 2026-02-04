@@ -57,11 +57,23 @@ export const CAMERA_MOVEMENT_TRANSLATIONS: Record<CameraMovement, string> = {
 };
 
 export function translateShotSize(size: ShotSize): string {
-    return SHOT_SIZE_TRANSLATIONS[size] || size;
+    const direct = SHOT_SIZE_TRANSLATIONS[size];
+    if (direct) return direct;
+
+    // Fallback: Case-insensitive & Trim lookup
+    const normalized = size.trim().toLowerCase();
+    const foundEntry = Object.entries(SHOT_SIZE_TRANSLATIONS).find(([k]) => k.toLowerCase() === normalized);
+    return foundEntry ? foundEntry[1] : size;
 }
 
 export function translateCameraMovement(movement: CameraMovement): string {
-    return CAMERA_MOVEMENT_TRANSLATIONS[movement] || movement;
+    const direct = CAMERA_MOVEMENT_TRANSLATIONS[movement];
+    if (direct) return direct;
+
+    // Fallback: Case-insensitive & Trim lookup
+    const normalized = movement.trim().toLowerCase();
+    const foundEntry = Object.entries(CAMERA_MOVEMENT_TRANSLATIONS).find(([k]) => k.toLowerCase() === normalized);
+    return foundEntry ? foundEntry[1] : movement;
 }
 
 export function getShotSizeFromValue(value: string): ShotSize | undefined {

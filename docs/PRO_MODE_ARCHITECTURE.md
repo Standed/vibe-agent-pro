@@ -1,7 +1,7 @@
 # Pro 模式 (ChatPanel) 架构文档
 
-> 最后更新：2026-02-02
-> 关联文档：[AGENTS.md](/AGENTS.md), [sora 在本项目中的架构.md](/docs/sora%20在本项目中的架构.md)
+> 最后更新：2026-02-04
+> 关联文档：[AGENTS.md](/AGENTS.md), [sora 在本项目中的架构.md](/docs/sora%20在本项目中的架构.md), [IMAGE_PROCESSING_ARCHITECTURE.md](/docs/IMAGE_PROCESSING_ARCHITECTURE.md)
 
 ## 概述
 
@@ -241,24 +241,36 @@ POST /api/sora
 }
 ```
 
-### useAutoReference
-位置：`src/hooks/chat/useAutoReference.ts`
-
-功能：
-- 管理当前活跃的参考图列表
-- 支持拖拽排序
-- 支持手动上传
- - 输出 `mentionedAssets`（角色/场景命中），供 Vidu reference2video 自动引用
-
-返回值：
-```typescript
-{
-    activeReferences: ActiveReference[];
-    setDroppedReferences: (refs) => void;
-    manualReferenceUrls: string[];
-    setManualReferenceUrls: (urls) => void;
-}
-```
+### useAutoReference (v3.9.6 P0 修复)
+ 位置：`src/hooks/chat/useAutoReference.ts`
+ 
+ 功能：
+ - 管理当前活跃的参考图列表
+ - **闭包陷阱修复**：使用 `useRef` 存储 `ignoredUrls`，配合 `ignoredVersion` 状态强刷 Effect，彻底解决删除参考图后 UI 不响应的问题
+ - 支持拖拽排序 (Dropped Refs 优先)
+ - 支持手动上传 (Manual Override)
+ - 输出 `mentionedAssets`（角色/场景命中）
+ 
+ 返回值：
+ ```typescript
+ {
+     activeReferences: ActiveReference[];
+     setDroppedReferences: (refs) => void;
+     manualReferenceUrls: string[];
+     setManualReferenceUrls: (urls) => void;
+     // P0 Fix: Stable API
+     ignoredUrls: Set<string>;
+     setIgnoredUrls: (updater) => void;
+ }
+ ```
+ 
+ ### Store Hydration (v4.0.1 P0 修复)
+ 
+ 为防止 Next.js 服务端渲染 (SSR) 与客户端初始状态不一致导致 Hydration Error：
+ 
+ 1. **Store 初始化**：`useProjectStore` 中 `modelByContext` 初始值改为空对象 `{}`。
+ 2. **Client Hydration**：在 `ChatPanel` 挂载后通过 `useEffect` 读取 `localStorage` 并同步回 Store。
+ 3. **效果**：不仅消除了控制台红字报错，还确保了刷新页面后模型选择状态的正确回填。
 
 ### useStartEndFrames
 位置：`src/hooks/chat/useStartEndFrames.ts`
@@ -414,10 +426,29 @@ ChatPanel.tsx (主容器，编排逻辑)
 | API | 用途 |
 |-----|------|
 | `POST /api/gemini/generate` | Gemini 图片生成 |
+| `POST /api/gemini-grid` | Gemini Grid 多视图生成 |
+| `POST /api/gemini-image` | Gemini 单图生成 |
 | `POST /api/jimeng` | 即梦图片生成 |
 | `POST /api/vidu/generate` | Vidu 视频生成 |
 | `POST /api/sora` | Sora 视频生成 |
 | `POST /api/upload/r2` | R2 图片上传 |
+
+### Gemini 参考图处理策略 (2026-02 优化)
+
+Gemini 接口对外部 URL 的抓取存在限制（Cloudflare R2 可能被防火墙拦截）。为兼顾速度与稳定性，采用 **URL 优先 + 自动降级** 机制：
+
+```
+首次请求：预签名 URL (fileData.fileUri) → 极速
+          ↓ 若 Gemini 返回 "Cannot fetch" 错误
+自动重试：服务端下载 → Base64 (inlineData) → 稳健
+```
+
+| 模式 | 传输方式 | 优势 |
+|------|----------|------|
+| **URL 模式** | R2 预签名 URL → Gemini 直接抓取 | 零服务端负担，毫秒级 |
+| **Download 模式** | 服务端下载 → Base64 → Gemini | 绕过所有防火墙，100% 可靠 |
+
+关键代码：`processReferenceImages(refs, mode: 'url' | 'download')`
 
 ---
 

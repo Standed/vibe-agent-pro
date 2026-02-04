@@ -359,6 +359,9 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
                     className="w-full px-4 py-3 seko-input"
                     required
                   />
+                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500 leading-relaxed">
+                    💡 提示：场景名称需与分镜脚本中的"场景名"<span className="text-amber-500 font-medium">完全一致</span>，系统才能自动匹配参考图。例如分镜脚本场景列为"咖啡厅"，则此处也需填写"咖啡厅"。
+                  </p>
                 </div>
 
                 {/* Location Type */}

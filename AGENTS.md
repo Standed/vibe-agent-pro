@@ -75,6 +75,7 @@ const { controlMode, setControlMode } = useProjectStore();
 - **跨分镜隔离**：切换分镜会重置 Vidu/Sora 参考图状态，避免污染下一镜头。
 - **聊天历史加载**：默认加载最近 30 条，向上滚动加载更多；首次进入自动滚到底部。
 - **聊天滚动优化**：通过 `useChatScroll` hook 统一管理滚动行为（首次加载/媒体加载/分页）。
+ - **状态稳定性 (Fix)**：参考图状态通过 `useRef` + 版本锁管理，彻底解决闭包陷阱导致的删除失效。
 
 ---
 
@@ -197,6 +198,7 @@ const { controlMode, setControlMode } = useProjectStore();
 | **图片生成** | Gemini 服务 | `geminiService.ts` | Grid 多视图、图片分析、编辑 |
 | | 火山引擎 | `volcanoEngineService.ts` | SeeDream 图片、SeeDance 视频 |
 | | 即梦服务 | `jimengService.ts` | 中文优化图片生成 |
+| | R2 上传 | `r2-server-upload.ts` | 服务端上传、Grid 切片、预签名 URL 生成 |
 | **视频生成** | Sora 编排器 | `SoraOrchestrator.ts` | Sora 全流程编排、并行提交 |
 | | Sora 提示词 | `SoraPromptService.ts` | Sora 专用提示词生成 |
 | | 批量 Sora | `BatchSoraService.ts` | 批量视频生成 |
@@ -427,7 +429,73 @@ const parallelizableByTarget = new Set([
 | `r2_url` | R2 持久化链接 |
 | `shot_ids` | 多镜头任务覆盖的分镜 ID 列表 |
 
----
+### 批量轮询机制 (v3.9.6)
+
+为避免频繁请求和优化性能，Sora/Vidu 任务状态采用**批量轮询**：
+
+```typescript
+// POST /api/sora/status/batch
+// 一次请求同时查询多个任务状态
+const response = await fetch('/api/sora/status/batch', {
+    method: 'POST',
+    body: JSON.stringify({ taskIds: ['task1', 'task2', ...] })
+});
+// 返回 Map<taskId, TaskStatus>
+```
+
+| 特性 | 说明 |
+|------|------|
+| **批量查询** | 单次 API 调用可查询 60+ 任务 |
+| **自动转存** | 任务完成时自动触发 R2 转存 |
+| **失败记录** | 转存失败写入 `asset_logs` 供后台追踪 |
+| **客户端缓存** | `useSoraTaskManager` 使用 Map 索引加速查询 |
+
+### Cron 定时任务 (v4.0.1 异步架构)
+ 
+ 为解决 Serverless 函数超时问题，已重构为**双阶段异步架构**：
+ 
+ | Cron 路由 | 触发时间 | 功能与特性 |
+ |-----------|----------|------------|
+ | `/api/cron/check-sora-status` | 每 5 分钟 | **轻量轮询**：仅查询 API 状态并更新 DB。若任务完成，仅标记为 `pending_upload`，**不执行耗时上传**。毫秒级响应。 |
+ | `/api/cron/retry-transfers` | 每 5 分钟 | **重型工兵**：专门处理 `pending_upload` 状态及失败的任务。每次处理 5-10 个，负责下载视频并上传 R2。 |
+ 
+ ```typescript
+ // vercel.json
+ {
+   "crons": [
+     { "path": "/api/cron/check-sora-status", "schedule": "*/5 * * * *" },
+     { "path": "/api/cron/retry-transfers", "schedule": "*/5 * * * *" }
+   ]
+ }
+ ```
+ 
+ ### 事务原子性 (v4.0.1)
+ 
+ 核心批量操作已迁移至 **PostgreSQL RPC (存储过程)**，确保数据库级原子性：
+ 
+ - `delete_scene_atomic(scene_id)`: 原子删除场景及其下所有分镜。
+ - `delete_project_atomic(project_id)`: 原子删除项目及级联数据。
+ 
+ 对应的 TypeScript 封装：`src/lib/supabase/transactions.ts` (已移除客户端分步逻辑)。
+
+### Gemini 参考图优化 (v3.9.6)
+
+Gemini 接口采用 **URL 优先 + 自动降级** 策略：
+
+```
+首次请求：预签名 URL (fileUri) → 极速
+         ↓ 若返回 "Cannot fetch" 错误
+自动重试：服务端下载 → Base64 (inlineData) → 稳健
+```
+
+| 模式 | 传输方式 | 优势 |
+|------|----------|------|
+| **URL 模式** | R2 预签名 URL → `fileData.fileUri` | 极速，零服务端负担 |
+| **Download 模式** | 服务端下载 → Base64 → `inlineData` | 100% 可靠 |
+
+关键函数：`processReferenceImages(refs, mode: 'url' | 'download')`
+
+
 
 ## 💾 数据存储架构
 
@@ -598,5 +666,5 @@ const results = await executor.execute(toolCalls);
 
 ---
 
-**最后更新**: 2026-02-02  
-**版本**: v3.9.5 (Pro 模式聊天滚动优化)
+**最后更新**: 2026-02-04  
+**版本**: v3.9.6 (Gemini 参考图优化：URL 优先 + 自动降级)

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Project, Character, Location } from '@/types/project';
 import { enrichPromptWithAssets } from '@/utils/promptEnrichment';
 
@@ -19,7 +19,22 @@ export function useAutoReference(
     droppedReferences: ActiveReference[] = []
 ) {
     const [activeReferences, setActiveReferences] = useState<ActiveReference[]>([]);
-    const [ignoredUrls, setIgnoredUrls] = useState<Set<string>>(new Set());
+    // 使用 useRef 稳定 ignoredUrls，避免闭包陷阱
+    const ignoredUrlsRef = useRef<Set<string>>(new Set());
+    // 版本号用于触发 Effect 重新执行
+    const [ignoredVersion, setIgnoredVersion] = useState(0);
+
+    // 暴露的 setter，同时触发 Effect 重新执行
+    const setIgnoredUrls = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+        if (typeof updater === 'function') {
+            ignoredUrlsRef.current = updater(ignoredUrlsRef.current);
+        } else {
+            ignoredUrlsRef.current = updater;
+        }
+        // 更新版本号，触发 Effect 依赖重新执行
+        setIgnoredVersion(v => v + 1);
+    }, []);
+
     const [mentionedAssets, setMentionedAssets] = useState<{
         characters: Character[];
         locations: Location[];
@@ -38,7 +53,7 @@ export function useAutoReference(
             // But we should check if it's explicitly ignored? 
             // Actually, if it's in droppedReferences, it means user just added it.
             // The ChatPanel logic removes it from ignoredUrls on drop.
-            if (!seenUrls.has(ref.url) && !ignoredUrls.has(ref.url)) {
+            if (!seenUrls.has(ref.url) && !ignoredUrlsRef.current.has(ref.url)) {
                 newRefs.push(ref);
                 seenUrls.add(ref.url);
             }
@@ -77,7 +92,7 @@ export function useAutoReference(
         let textChanged = false;
 
         referenceImageMap.forEach(ref => {
-            if (!seenUrls.has(ref.imageUrl) && !ignoredUrls.has(ref.imageUrl)) {
+            if (!seenUrls.has(ref.imageUrl) && !ignoredUrlsRef.current.has(ref.imageUrl)) {
                 newRefs.push({
                     url: ref.imageUrl,
                     source: 'auto_detect',
@@ -103,7 +118,8 @@ export function useAutoReference(
             return newRefs;
         });
 
-    }, [inputText, selectedShotId, project, manualReferenceUrls, droppedReferences, ignoredUrls, setInputText, setMentionedAssets]);
+        // ignoredVersion 变化时会触发 Effect 重新执行，确保删除参考图后 UI 正确刷新
+    }, [inputText, selectedShotId, project, manualReferenceUrls, droppedReferences, setInputText, setMentionedAssets, ignoredVersion]);
 
     const handleMention = async (query: string) => {
         if (!project) return [];
@@ -143,7 +159,7 @@ export function useAutoReference(
     return {
         activeReferences,
         setActiveReferences,
-        ignoredUrls,
+        ignoredUrls: ignoredUrlsRef.current,
         setIgnoredUrls,
         mentionedAssets,
         setMentionedAssets,

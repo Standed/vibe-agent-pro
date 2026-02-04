@@ -1,8 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { replaceSoraCharacterCodes } from '@/utils/soraCharacterReplace';
+import { translateCameraMovement } from '@/utils/translations';
 import { Project, ChatPanelMessage } from '@/types/project';
 import { generateMessageId } from '@/lib/utils';
+import { useProjectStore } from '@/store/useProjectStore';
 
 interface UseSoraGenerationProps {
     project: Project | null;
@@ -12,7 +14,6 @@ interface UseSoraGenerationProps {
     soraAspectRatio: string;
     soraDuration: number;
     setMessages: React.Dispatch<React.SetStateAction<ChatPanelMessage[]>>;
-    setIsGenerating: (isGenerating: boolean) => void;
     setInputText: (text: string) => void;
     setUploadedImages: (images: File[]) => void;
     setManualReferenceUrls: (urls: string[]) => void;
@@ -38,11 +39,11 @@ export function useSoraGeneration({
     soraAspectRatio,
     soraDuration,
     setMessages,
-    setIsGenerating,
     setInputText,
     setUploadedImages,
     setManualReferenceUrls
 }: UseSoraGenerationProps): UseSoraGenerationReturn {
+    const { addActiveTask, removeActiveTask } = useProjectStore();
     // AbortController 用于取消轮询
     const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -88,12 +89,25 @@ export function useSoraGeneration({
             toast.info(`角色替换: ${replaceInfo}`);
         }
 
+        // Auto-append camera movement for video if missing
+        let finalPrompt = processedPrompt;
+        if (currentShotId) {
+            const shot = project?.shots.find(s => s.id === currentShotId);
+            if (shot?.cameraMovement) {
+                const cnMove = translateCameraMovement(shot.cameraMovement);
+                const suffix = `运镜：${cnMove}`;
+                if (!finalPrompt.includes(suffix) && !finalPrompt.includes(cnMove)) {
+                    finalPrompt = `${finalPrompt}，${suffix}`;
+                }
+            }
+        }
+
         try {
             const response = await fetch('/api/sora/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    prompt: processedPrompt,
+                    prompt: finalPrompt,
                     model: soraModel,
                     seconds: soraDuration,
                     size: resolution,
@@ -136,7 +150,17 @@ export function useSoraGeneration({
             setInputText('');
             setUploadedImages([]);
             setManualReferenceUrls([]);
-            setIsGenerating(false);
+
+            // 注册全局任务（切换分镜后仍可追踪）
+            addActiveTask({
+                taskId,
+                shotId: currentShotId || '',
+                type: 'video',
+                model: 'sora',
+                status: 'generating',
+                startTime: Date.now(),
+                prompt: finalPrompt
+            });
 
             // 启动后台轮询任务状态（带 AbortController）
             if (taskId) {
@@ -185,6 +209,7 @@ export function useSoraGeneration({
                                         : m
                                 ));
                                 toast.success('Sora 视频生成完成！');
+                                removeActiveTask(taskId);
                                 abortControllerRef.current = null;
                                 return;
                             } else if (statusData.status === 'failed') {
@@ -194,6 +219,7 @@ export function useSoraGeneration({
                                         : m
                                 ));
                                 toast.error('Sora 视频生成失败');
+                                removeActiveTask(taskId);
                                 abortControllerRef.current = null;
                                 return;
                             } else {
@@ -244,9 +270,8 @@ export function useSoraGeneration({
             };
             setMessages(prev => [...prev, errorMessage]);
             toast.error(`Sora 生成失败: ${soraError.message}`);
-            setIsGenerating(false);
         }
-    }, [project, selectedModel, soraModel, soraAspectRatio, soraDuration, setMessages, setIsGenerating, setInputText, setUploadedImages, setManualReferenceUrls]);
+    }, [project, user, selectedModel, soraModel, soraAspectRatio, soraDuration, setMessages, setInputText, setUploadedImages, setManualReferenceUrls]);
 
     return { generateSoraVideo, cancelPolling };
 }
