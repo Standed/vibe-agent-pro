@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberEmail, setRememberEmail] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isPendingApproval, setIsPendingApproval] = useState(false);
   const hasRedirected = useRef(false); // 防止重复跳转
   const REMEMBER_EMAIL_KEY = 'vap_login_email';
 
@@ -28,9 +29,10 @@ export default function LoginPage() {
   useEffect(() => {
     // 只在页面加载时检查一次（不是登录过程中）
     if (user && !loading && !hasRedirected.current) {
-      // 如果已登录但未激活，不跳转
+      // 如果已登录但未激活，显示等待界面而不是直接阻止
       if (profile && !(profile as any).is_whitelisted && profile.role !== 'admin') {
-        console.log('⛔ [LoginPage] 用户已登录但未激活，阻止跳转');
+        console.log('⛔ [LoginPage] 用户已登录但未激活，显示等待界面');
+        setIsPendingApproval(true);
         return;
       }
 
@@ -68,6 +70,44 @@ export default function LoginPage() {
       setRememberEmail(true);
     }
   }, []);
+
+  const handleRefreshStatus = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      // 强制重新检查状态
+      const { data: latestProfile } = await getUserProfile(user.id);
+
+      if (latestProfile && ((latestProfile as any).is_whitelisted || latestProfile.role === 'admin')) {
+        toast.success('账号已开通，正在进入系统...');
+        setIsPendingApproval(false);
+        hasRedirected.current = true;
+        router.replace(redirectTo);
+      } else {
+        toast.info('账号仍未开通，请稍后刷新或联系管理员');
+      }
+    } catch (e) {
+      console.error('刷新状态失败:', e);
+      toast.error('刷新失败，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    setLoading(true);
+    try {
+      await signOut();
+      setIsPendingApproval(false);
+      // 清理可能的残留状态
+      router.refresh();
+      toast.success('已退出登录');
+    } catch (e) {
+      console.error('登出失败:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,9 +161,8 @@ export default function LoginPage() {
         try {
           const { data: profile, error: profileError } = await getUserProfile(result.user.id);
           if (profile && !(profile as any).is_whitelisted && profile.role !== 'admin') {
-            console.warn('⛔ [Login] 用户未激活，阻止跳转');
-            toast.error('您的账号尚未开通白名单权限，请联系管理员激活', { duration: 5000 });
-            await signOut(); // 登出，防止下次刷新自动登录
+            console.warn('⛔ [Login] 用户未激活，显示等待界面');
+            setIsPendingApproval(true);
             setLoading(false);
             return;
           }
@@ -159,11 +198,56 @@ export default function LoginPage() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    // 阻止输入法（IME）确认时的回车触发提交
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSubmit(e as unknown as React.FormEvent);
     }
   };
+
+  // 渲染等待审核界面
+  if (isPendingApproval) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] px-4">
+        <div className="max-w-md w-full space-y-8 text-center p-8 bg-zinc-900/50 rounded-2xl border border-white/10 backdrop-blur-xl">
+          <div className="space-y-4">
+            <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto text-yellow-500 border border-yellow-500/30">
+              <Eye size={32} />
+            </div>
+            <h2 className="text-2xl font-bold text-white">账号权限确认中</h2>
+            <p className="text-zinc-400">
+              您的账号暂未获取白名单权限，<br />
+              请联系管理员开通后点击下方按钮刷新。
+            </p>
+          </div>
+
+          <div className="space-y-3 pt-4">
+            <button
+              onClick={handleRefreshStatus}
+              disabled={loading}
+              className="w-full py-3 px-4 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {loading ? (
+                '检查中...'
+              ) : (
+                <>
+                  <span>🔄</span> 我已开通 / 刷新状态
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleLogout}
+              disabled={loading}
+              className="w-full py-3 px-4 bg-zinc-800 text-white font-medium rounded-lg hover:bg-zinc-700 transition-colors border border-white/5 disabled:opacity-50"
+            >
+              退出登录
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] px-4">

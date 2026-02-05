@@ -53,7 +53,8 @@ export default function RegisterPage() {
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    // 阻止输入法（IME）确认时的回车触发提交
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSubmit(e as unknown as React.FormEvent);
     }
