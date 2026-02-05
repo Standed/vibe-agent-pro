@@ -30,9 +30,30 @@ body {
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))) rgb(var(--background-start-rgb));
+  background-color: rgb(var(--background-start-rgb));
+  font-feature-settings: "ss01", "ss02", "cv01", "cv02";
+}
+
+/* Ambient Background Effect */
+.ambient-bg-light {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(255, 220, 220, 0.5), transparent 25%),
+    radial-gradient(circle at 85% 30%, rgba(210, 230, 255, 0.5), transparent 25%);
+  background-attachment: fixed;
+}
+
+.dark .ambient-bg-dark {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(40, 20, 60, 0.4), transparent 40%),
+    radial-gradient(circle at 85% 30%, rgba(10, 30, 60, 0.4), transparent 40%);
+  background-attachment: fixed;
+}
+
+
+@layer base {
+  *:focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-white dark:ring-offset-zinc-900 rounded-lg;
+  }
 }
 
 @layer components {
@@ -43,11 +64,11 @@ body {
   }
 
   .glass-panel {
-    @apply bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-2xl border-black/5 dark:border-white/5;
+    @apply bg-white/60 dark:bg-[#0a0a0a]/60 backdrop-blur-2xl border border-white/40 dark:border-white/5 shadow-2xl;
   }
 
   .glass-card {
-    @apply bg-white/60 dark:bg-[#1a1a1a]/60 backdrop-blur-xl border border-white/40 dark:border-white/5 rounded-3xl shadow-sm hover:shadow-md transition-all duration-300;
+    @apply bg-white/40 dark:bg-[#121212]/40 backdrop-blur-xl border border-white/50 dark:border-white/5 rounded-3xl shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 ease-out;
   }
 
   .glass-button {
@@ -150,7 +171,7 @@ body {
 .dark {
   /* 增强文本对比度 */
   --foreground-rgb: 250, 250, 250;
-  
+
   /* 边框增强 */
   --border-color: rgba(255, 255, 255, 0.12);
 }
@@ -168,6 +189,7 @@ body {
 
 /* ========== 统一加载状态组件 ========== */
 @layer components {
+
   /* 骨架屏加载效果 */
   .skeleton {
     @apply animate-pulse bg-gradient-to-r from-zinc-200 via-zinc-100 to-zinc-200 dark:from-zinc-800 dark:via-zinc-700 dark:to-zinc-800 rounded-lg;
@@ -176,8 +198,13 @@ body {
   }
 
   @keyframes skeleton-shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+      background-position: 200% 0;
+    }
+
+    100% {
+      background-position: -200% 0;
+    }
   }
 
   /* 加载旋转器 */
@@ -266,8 +293,15 @@ body {
   }
 
   @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   /* 缩放弹入 */
@@ -276,7 +310,14 @@ body {
   }
 
   @keyframes scaleIn {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
   }
 }

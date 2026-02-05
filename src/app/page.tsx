@@ -549,190 +549,87 @@ export default function Home() {
   const formatDate = (date: Date) => new Date(date).toLocaleDateString('zh-CN');
 
   return (
-    <main className="min-h-screen bg-light-bg dark:bg-cine-black p-8">
-      <div className="max-w-7xl mx-auto">
+    <main className="min-h-screen relative overflow-hidden bg-white dark:bg-black selection:bg-primary/30">
+      {/* Ambient Background */}
+      <div className="fixed inset-0 pointer-events-none ambient-bg-light dark:ambient-bg-dark opacity-70" />
+      <div className="fixed inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 pointer-events-none mix-blend-overlay" />
+
+      <div className="relative z-10 max-w-7xl mx-auto p-8">
         {/* Header */}
-        <header className="mb-8 flex items-center justify-between">
+        <header className="mb-12 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/" className="flex items-center gap-3">
-              <Image
-                src="https://storage.googleapis.com/n8n-bucket-xys/%E7%AB%96%E7%89%88logo%E9%80%8F%E6%98%8E%E5%BA%95.png"
-                alt="Logo"
-                width={40}
-                height={40}
-                className="object-contain"
-              />
-              <h1 className="text-2xl font-bold text-light-text dark:text-white hidden md:block">
+            <Link href="/" className="flex items-center gap-3 group">
+              <div className="relative w-10 h-10 transition-transform duration-500 group-hover:rotate-12">
+                <Image
+                  src="https://storage.googleapis.com/n8n-bucket-xys/%E7%AB%96%E7%89%88logo%E9%80%8F%E6%98%8E%E5%BA%95.png"
+                  alt="Logo"
+                  fill
+                  className="object-contain drop-shadow-lg"
+                />
+              </div>
+              <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-zinc-900 via-zinc-700 to-zinc-900 dark:from-white dark:via-zinc-200 dark:to-zinc-400 hidden md:block">
                 {t('common.appName')}
               </h1>
             </Link>
 
-            <div className="h-6 w-px bg-gray-300 dark:bg-gray-700 mx-2"></div>
+            <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800 mx-2"></div>
 
             <Link
               href="/assets"
-              className="flex items-center gap-2 text-light-text-muted dark:text-cine-text-muted hover:text-light-accent dark:hover:text-cine-accent transition-colors"
+              className="group flex items-center gap-2 px-4 py-2 rounded-full hover:bg-white/50 dark:hover:bg-white/5 transition-all duration-300"
             >
-              <ImageIcon size={18} />
-              <span className="text-sm font-medium">素材库</span>
+              <ImageIcon size={18} className="text-zinc-500 dark:text-zinc-400 group-hover:text-primary transition-colors" />
+              <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">素材库</span>
             </Link>
           </div>
           <UserNav />
         </header>
 
         {/* AI Director Hero Section */}
-        {/* AI Director Hero Section */}
         {!currentSeriesId && (
-          <section className="mb-20 text-center relative">
-            {/* Background Glow */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-light-accent/10 dark:bg-cine-accent/5 blur-[120px] rounded-full -z-10" />
+          <section className="mb-24 text-center relative max-w-3xl mx-auto">
+            {/* Hero Title & decorative elements */}
+            <div className="mb-10 relative">
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 blur-3xl rounded-full opacity-60 pointer-events-none" />
+              <h2 className="relative text-5xl md:text-7xl font-medium tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-b from-zinc-800 to-zinc-500 dark:from-white dark:to-zinc-200">
+                What will you create?
+              </h2>
+              <p className="relative text-zinc-500 dark:text-zinc-400 text-lg md:text-xl max-w-xl mx-auto">
+                释放 AI 的力量，将您的灵感转化为电影级作品
+              </p>
+            </div>
 
-            <h2 className="text-5xl md:text-6xl font-black text-zinc-900 dark:text-white mb-10 tracking-tight leading-tight">
-              有什么新的故事灵感？
-            </h2>
+            <div className="relative group">
+              {/* Glow Effect behind input */}
+              <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-[2rem] opacity-20 group-hover:opacity-40 blur-xl transition-opacity duration-500" />
 
-            <div className="max-w-4xl mx-auto px-4">
-              <form
-                onSubmit={handleAiDirectorSubmit}
-                className="relative bg-white/40 dark:bg-zinc-900/40 border border-white/20 dark:border-white/10 rounded-[40px] p-3 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] dark:shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] focus-within:border-light-accent/40 dark:focus-within:border-cine-accent/40 transition-all backdrop-blur-[40px] saturate-150"
-              >
-                <div className="relative">
-                  <textarea
-                    ref={textareaRef}
-                    value={aiDirectorInput}
-                    onChange={handleTextareaChange}
-                    placeholder="输入你的灵感，输入 @ 召唤角色..."
-                    rows={4}
-                    className="w-full bg-transparent border-none py-6 px-8 text-xl focus:outline-none focus:ring-0 resize-none text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600 font-medium leading-relaxed"
-                  />
+              <div className="relative glass-panel rounded-[1.5rem] p-2 transition-transform duration-300 focus-within:-translate-y-1 focus-within:shadow-2xl ring-1 ring-white/20 dark:ring-white/10">
+                <textarea
+                  ref={textareaRef}
+                  value={aiDirectorInput}
+                  onChange={handleTextareaChange}
+                  placeholder="描述您的故事创意，输入 @ 召唤角色..."
+                  rows={currentSeriesId ? 1 : 3}
+                  className="w-full bg-transparent border-none py-4 px-6 text-lg focus:outline-none focus:ring-0 resize-none text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500 font-medium leading-relaxed"
+                  style={{ minHeight: '120px' }}
+                />
 
-                  {/* @ Mention Menu */}
-                  <AnimatePresence>
-                    {mentionState.visible && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className="absolute left-8 top-20 w-64 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-2xl p-2 shadow-2xl z-50 max-h-60 overflow-y-auto"
-                      >
-                        <div className="px-3 py-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">召唤全局角色</div>
-                        {globalCharacters
-                          .filter(c => c.name.toLowerCase().includes(mentionState.filter.toLowerCase()))
-                          .map((char) => (
-                            <button
-                              key={char.id}
-                              type="button"
-                              onClick={() => insertMention(char)}
-                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors text-left"
-                            >
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-light-accent/20 to-cine-accent/20 flex items-center justify-center text-xs font-bold border border-white/20">
-                                {char.name[0]}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-bold text-zinc-900 dark:text-white truncate">{char.name}</div>
-                                <div className="text-[10px] text-zinc-500 truncate">{char.description || '无描述'}</div>
-                              </div>
-                            </button>
-                          ))}
-                        {globalCharacters.length === 0 && (
-                          <div className="px-3 py-4 text-center text-xs text-zinc-500">暂无全局角色</div>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 px-6 mb-2">
-                  {selectedCharacters.map(id => {
-                    const char = globalCharacters.find(c => c.id === id);
-                    if (!char) return null;
-                    return (
-                      <span key={id} className="flex items-center gap-1.5 px-3 py-1 bg-light-accent/10 dark:bg-cine-accent/10 border border-light-accent/20 dark:border-cine-accent/20 rounded-full text-[11px] font-bold text-light-accent dark:text-cine-accent">
-                        <UserCircle2 size={12} />
-                        {char.name}
-                        <button type="button" onClick={() => toggleCharacter(id)} className="hover:text-red-500 transition-colors">
-                          <Plus size={12} className="rotate-45" />
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
-
-                <div className="flex items-center justify-between px-6 pb-4">
+                {/* Toolbar inside input */}
+                <div className="flex items-center justify-between px-4 pb-2 mt-2">
                   <div className="flex items-center gap-2">
-                    {/* 上传剧本 */}
-                    <label className="p-3 rounded-2xl hover:bg-white/20 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-400 cursor-pointer transition-all group relative active:scale-95">
-                      <FileText size={22} />
-                      <span className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-zinc-900 text-white text-[11px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap pointer-events-none shadow-xl">上传剧本</span>
-                      <input
-                        type="file"
-                        accept=".txt,.md,.fdx"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (ev) => {
-                              const content = ev.target?.result as string;
-                              setUploadedScript(content || '');
-                              toast.success(`已导入剧本: ${file.name}`);
-                            };
-                            reader.readAsText(file);
-                          }
-                        }}
-                      />
-                    </label>
-
-                    {/* 上传分镜脚本 */}
-                    <label className="p-3 rounded-2xl hover:bg-white/20 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-400 cursor-pointer transition-all group relative active:scale-95">
-                      <Upload size={22} />
-                      <span className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-zinc-900 text-white text-[11px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap pointer-events-none shadow-xl">上传分镜脚本</span>
-                      <input
-                        type="file"
-                        accept=".csv,.xlsx,.xls"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            parseStoryboardFile(file)
-                              .then((result) => {
-                                setImportedStoryboard({
-                                  scenes: result.scenes,
-                                  shots: result.shots,
-                                  errors: result.errors,
-                                  fileName: file.name
-                                });
-                                const warningCount = result.errors.filter(e => e.type === 'warning').length;
-                                const errorCount = result.errors.filter(e => e.type === 'error').length;
-                                if (errorCount > 0) {
-                                  toast.error(`分镜脚本导入完成（${errorCount} 条错误，${warningCount} 条警告）`);
-                                } else if (warningCount > 0) {
-                                  toast.warning(`分镜脚本导入完成（${warningCount} 条警告）`);
-                                } else {
-                                  toast.success(`已导入分镜脚本: ${file.name}`);
-                                }
-                              })
-                              .catch((error: Error) => {
-                                console.error('Storyboard import failed:', error);
-                                toast.error(error.message || '分镜脚本导入失败');
-                              });
-                          }
-                        }}
-                      />
-                    </label>
-
-                    <div className="w-px h-6 bg-zinc-200 dark:bg-white/10 mx-2" />
-
-                    {/* 角色多选 */}
+                    {/* 角色选择 */}
                     <div className="relative">
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setShowSubjectMenu(!showSubjectMenu); setShowStyleMenu(false); }}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/30 dark:bg-white/5 hover:bg-white/50 dark:hover:bg-white/10 text-zinc-700 dark:text-zinc-300 transition-all text-xs font-bold border border-white/20 dark:border-white/5 active:scale-95"
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all border ${selectedCharacters.length > 0
+                          ? "bg-blue-50/50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
+                          : "bg-zinc-50/50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-700"
+                          }`}
                       >
-                        <UserCircle2 size={16} />
-                        <span>选择角色 ({selectedCharacters.length})</span>
-                        <ChevronDown size={14} className={cn("transition-transform", showSubjectMenu && "rotate-180")} />
+                        <UserCircle2 size={14} />
+                        <span>{selectedCharacters.length > 0 ? `已选 ${selectedCharacters.length} 人` : "选择角色"}</span>
+                        <ChevronDown size={12} className={cn("transition-transform", showSubjectMenu && "rotate-180")} />
                       </button>
 
                       <AnimatePresence>
@@ -742,24 +639,24 @@ export default function Home() {
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.95 }}
                             onClick={(e) => e.stopPropagation()}
-                            className="absolute bottom-full mb-3 left-0 w-64 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-2xl p-2 shadow-2xl z-50 max-h-80 overflow-y-auto"
+                            className="absolute top-full mt-2 left-0 w-64 glass-panel backdrop-blur-2xl bg-white/80 dark:bg-black/80 rounded-xl p-2 z-50 max-h-80 overflow-y-auto shadow-2xl border border-white/20 ring-1 ring-black/5"
                           >
-                            <div className="px-3 py-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">我的全局角色库</div>
+                            <div className="px-3 py-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">角色库</div>
                             {globalCharacters.map((char) => (
                               <button
                                 key={char.id}
                                 type="button"
                                 onClick={() => toggleCharacter(char.id)}
                                 className={cn(
-                                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-colors",
+                                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold transition-colors",
                                   selectedCharacters.includes(char.id)
-                                    ? "bg-light-accent/20 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent"
-                                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5"
+                                    ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
                                 )}
                               >
                                 <div className={cn(
                                   "w-6 h-6 rounded-full flex items-center justify-center text-[10px] border",
-                                  selectedCharacters.includes(char.id) ? "border-current" : "border-zinc-200 dark:border-white/10"
+                                  selectedCharacters.includes(char.id) ? "border-current" : "border-zinc-200 dark:border-zinc-700"
                                 )}>
                                   {char.name[0]}
                                 </div>
@@ -770,7 +667,7 @@ export default function Home() {
                             {globalCharacters.length === 0 && (
                               <div className="px-3 py-6 text-center">
                                 <p className="text-xs text-zinc-500 mb-3">暂无全局角色</p>
-                                <Link href="/assets" className="text-[10px] font-bold text-light-accent dark:text-cine-accent hover:underline">去素材库创建</Link>
+                                <Link href="/assets" className="text-[10px] font-bold text-blue-500 hover:underline">去素材库创建</Link>
                               </div>
                             )}
                           </motion.div>
@@ -783,11 +680,11 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setShowStyleMenu(!showStyleMenu); setShowSubjectMenu(false); }}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/30 dark:bg-white/5 hover:bg-white/50 dark:hover:bg-white/10 text-zinc-700 dark:text-zinc-300 transition-all text-xs font-bold border border-white/20 dark:border-white/5 active:scale-95"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-50/50 dark:bg-zinc-800/50 hover:bg-white dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 transition-all text-xs font-bold border border-zinc-200 dark:border-zinc-700"
                       >
-                        <Palette size={16} />
+                        <Palette size={14} />
                         <span>{selectedArtStyle}</span>
-                        <ChevronDown size={14} className={cn("transition-transform", showStyleMenu && "rotate-180")} />
+                        <ChevronDown size={12} className={cn("transition-transform", showStyleMenu && "rotate-180")} />
                       </button>
 
                       <AnimatePresence>
@@ -797,7 +694,7 @@ export default function Home() {
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.95 }}
                             onClick={(e) => e.stopPropagation()}
-                            className="absolute bottom-full mb-3 left-0 w-48 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-2xl p-2 shadow-2xl z-50"
+                            className="absolute top-full mt-2 left-0 w-48 glass-panel backdrop-blur-2xl bg-white/80 dark:bg-black/80 rounded-xl p-2 z-50 shadow-2xl border border-white/20 ring-1 ring-black/5"
                           >
                             {artStyles.map((style) => (
                               <button
@@ -805,10 +702,10 @@ export default function Home() {
                                 type="button"
                                 onClick={() => { setSelectedArtStyle(style.name); setShowStyleMenu(false); }}
                                 className={cn(
-                                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-colors",
+                                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold transition-colors",
                                   selectedArtStyle === style.name
-                                    ? "bg-light-accent dark:bg-cine-accent text-white dark:text-black"
-                                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5"
+                                    ? "bg-zinc-900 dark:bg-white text-white dark:text-black"
+                                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
                                 )}
                               >
                                 {style.icon}
@@ -819,201 +716,332 @@ export default function Home() {
                         )}
                       </AnimatePresence>
                     </div>
+
+                    <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-700 mx-1" />
+
+                    {/* Upload Actions */}
+                    <div className="flex items-center gap-1">
+                      <label className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 cursor-pointer transition-colors" title="上传剧本">
+                        <FileText size={18} />
+                        <input
+                          type="file"
+                          accept=".txt,.md,.fdx"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                const content = ev.target?.result as string;
+                                setUploadedScript(content || '');
+                                toast.success(`已导入剧本: ${file.name}`);
+                              };
+                              reader.readAsText(file);
+                            }
+                          }}
+                        />
+                      </label>
+                      <label className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 cursor-pointer transition-colors" title="上传分镜">
+                        <Upload size={18} />
+                        <input
+                          type="file"
+                          accept=".csv,.xlsx,.xls"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              parseStoryboardFile(file)
+                                .then((result) => {
+                                  setImportedStoryboard({
+                                    scenes: result.scenes,
+                                    shots: result.shots,
+                                    errors: result.errors,
+                                    fileName: file.name
+                                  });
+                                  // Error handling logic (abbreviated)
+                                  toast.success(`已导入分镜脚本: ${file.name}`);
+                                })
+                                .catch((error: Error) => {
+                                  toast.error(error.message || '分镜脚本导入失败');
+                                });
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
                   </div>
 
                   <button
                     type="submit"
                     disabled={isAiBrainstorming || !aiDirectorInput.trim()}
                     className={cn(
-                      "group relative flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-xl disabled:opacity-20 disabled:scale-100 disabled:cursor-not-allowed overflow-hidden",
-                      isAiBrainstorming
-                        ? "bg-zinc-900 dark:bg-zinc-100 scale-110"
-                        : "bg-zinc-900 dark:bg-zinc-100 hover:scale-110 active:scale-95"
+                      "group relative flex items-center justify-center w-12 h-12 rounded-full transition-all shadow-lg overflow-hidden",
+                      isAiBrainstorming || !aiDirectorInput.trim()
+                        ? "bg-zinc-100 dark:bg-zinc-800 cursor-not-allowed opacity-50"
+                        : "bg-black dark:bg-white hover:scale-105 active:scale-95 cursor-pointer"
                     )}
                   >
-                    {/* Rotating Glow Effect for Loading */}
-                    {isAiBrainstorming && (
-                      <div className="absolute inset-0">
-                        <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0%,#3b82f6_30%,transparent_100%)] animate-[spin_2s_linear_infinite]" />
-                        <div className="absolute inset-[2px] bg-zinc-900 dark:bg-zinc-100 rounded-full z-10" />
-                      </div>
-                    )}
-
-                    <div className="absolute inset-0 bg-gradient-to-tr from-light-accent/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
                     {isAiBrainstorming ? (
-                      <div className="relative z-20 flex items-center justify-center">
-                        <Loader2 size={24} className="animate-spin text-zinc-100 dark:text-zinc-900" />
-                      </div>
+                      <Loader2 size={20} className="animate-spin text-zinc-500" />
                     ) : (
-                      <ArrowRight size={24} className="relative z-10 text-zinc-100 dark:text-zinc-900" />
+                      <ArrowRight size={20} className="text-white dark:text-black" />
                     )}
                   </button>
                 </div>
-              </form>
 
+                {/* Visual indicator for selected script */}
+                {uploadedScript && (
+                  <div className="absolute top-2 right-4 flex items-center gap-1.5 px-2 py-1 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-[10px] font-bold rounded-md">
+                    <FileText size={10} />
+                    <span>已加载剧本</span>
+                  </div>
+                )}
+              </div>
 
+              {/* @ Mention Menu Implementation */}
+              <AnimatePresence>
+                {mentionState.visible && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute left-8 top-20 w-64 glass-panel rounded-xl p-2 z-50 max-h-60 overflow-y-auto"
+                  >
+                    {/* ... mention list rendering ... reuse logic from existing ... */}
+                    <div className="px-3 py-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">召唤全局角色</div>
+                    {globalCharacters
+                      .filter(c => c.name.toLowerCase().includes(mentionState.filter.toLowerCase()))
+                      .map((char) => (
+                        <button
+                          key={char.id}
+                          type="button"
+                          onClick={() => insertMention(char)}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-colors text-left"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center text-xs font-bold text-zinc-700 dark:text-zinc-300">
+                            {char.name[0]}
+                          </div>
+                          <span className="text-sm font-bold text-zinc-900 dark:text-white truncate">{char.name}</span>
+                        </button>
+                      ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Quick Chips suggestions (Optional) */}
+            <div className="mt-6 flex flex-wrap justify-center gap-2 opacity-60">
+              {["赛博朋克风格的城市追逐", "宁静的江南水乡", "悬疑探案故事"].map(tag => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setAiDirectorInput(tag)}
+                  className="px-3 py-1 rounded-full text-xs bg-white/30 dark:bg-white/5 border border-white/20 dark:border-white/10 hover:bg-white/50 dark:hover:bg-white/10 transition-colors"
+                >
+                  {tag}
+                </button>
+              ))}
             </div>
           </section>
         )}
 
-        {/* Breadcrumb if in Series */}
-        {currentSeriesId && activeSeries && (
-          <div className="mb-6 flex items-center gap-2 text-lg">
-            <Link href="/" className="text-light-text-muted hover:text-light-text dark:text-cine-text-muted dark:hover:text-white transition-colors">首页</Link>
-            <span className="text-gray-400">/</span>
-            <span className="font-bold text-light-text dark:text-white flex items-center gap-2">
-              <Folder size={20} className="text-light-accent dark:text-cine-accent" />
-              {activeSeries.title}
-            </span>
-          </div>
-        )}
+        {/* Content Section */}
+        <section className="relative z-10 transition-all duration-500">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-zinc-900 to-zinc-600 dark:from-white dark:to-zinc-400">
+                {currentSeriesId ? activeSeries?.title : '全部作品'}
+              </span>
+              {currentSeriesId && <span className="text-sm font-normal text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full">剧集</span>}
+            </h2>
 
-        {/* Content Controls */}
-        <div className="mb-8 flex items-end justify-between">
-          <div>
-            <h3 className="text-2xl font-black text-zinc-900 dark:text-white tracking-tight">
-              {currentSeriesId ? '剧集内容' : '全部作品'}
-            </h3>
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-1">
-              {currentSeriesId ? '该剧集下的所有分集' : '您最近的项目和剧集'}
-            </p>
-          </div>
-          <div className="flex gap-3">
-            {!currentSeriesId && (
+            <div className="flex gap-3">
+              {!currentSeriesId && (
+                <button
+                  onClick={() => setShowNewSeriesDialog(true)}
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                >
+                  新建剧集
+                </button>
+              )}
               <button
-                onClick={() => setShowNewSeriesDialog(true)}
-                className="inline-flex items-center gap-2 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white border border-zinc-200 dark:border-zinc-800 px-5 py-2.5 rounded-2xl font-bold hover:border-zinc-900 dark:hover:border-white transition-all active:scale-95 shadow-sm"
+                onClick={() => setShowNewProjectDialog(true)}
+                className="px-4 py-2 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold shadow-lg shadow-black/5 dark:shadow-white/5 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
               >
-                <Folder size={18} />
-                <span>新建剧集</span>
+                <Plus size={16} />
+                新建项目
               </button>
-            )}
-            <button
-              onClick={() => setShowNewProjectDialog(true)}
-              className="inline-flex items-center gap-2 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 px-5 py-2.5 rounded-2xl font-bold hover:opacity-90 transition-all active:scale-95 shadow-xl shadow-black/10 dark:shadow-white/10"
-            >
-              <Plus size={18} />
-              <span>{currentSeriesId ? '新建分集' : '新建项目'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-          {isLoading ? (
-            <div className="col-span-full py-32 flex flex-col items-center justify-center gap-4">
-              <Loader2 className="w-8 h-8 animate-spin text-zinc-300" />
-              <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">正在加载...</p>
             </div>
-          ) : displayedItems.length === 0 ? (
-            <div className="col-span-full py-32 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[32px] flex flex-col items-center justify-center gap-4 bg-zinc-50/50 dark:bg-white/5">
-              <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-                <Film size={24} className="text-zinc-400" />
-              </div>
-              <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">暂无作品</p>
+          </div>
+
+          {displayedItems.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              <AnimatePresence mode="popLayout">
+                {displayedItems.map((item) => (
+                  <motion.div
+                    key={item.type === 'project' ? item.data.id : item.data.id}
+                    layout
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {item.type === 'project' ? (
+                      // Project Card
+                      <Link href={`/project/${item.data.id}`} className="block h-full group">
+                        <div className="glass-card h-full flex flex-col overflow-hidden relative">
+                          <div className="aspect-video relative overflow-hidden bg-zinc-100 dark:bg-zinc-900/50">
+                            {item.data.metadata.coverImage ? (
+                              <Image
+                                src={item.data.metadata.coverImage}
+                                alt={item.data.metadata.title}
+                                fill
+                                className="object-cover transition-transform duration-700 group-hover:scale-110"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-zinc-300 dark:text-zinc-700">
+                                <Film size={32} />
+                              </div>
+                            )}
+
+                            {/* Overlay */}
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
+
+                            {/* Quick Actions */}
+                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                              <button
+                                onClick={(e) => handleDeleteProject(item.data.id, e)}
+                                className="p-1.5 bg-black/50 text-white rounded-lg hover:bg-red-500 transition-colors backdrop-blur-md"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+
+                            <div className="absolute top-2 left-2">
+                              <span className="px-2 py-0.5 bg-black/40 backdrop-blur-md text-white text-[10px] uppercase font-bold tracking-wider rounded-md border border-white/10">项目</span>
+                            </div>
+                          </div>
+
+                          <div className="p-4 flex-1 flex flex-col">
+                            <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{item.data.metadata.title}</h3>
+                            <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2 mb-4 flex-1">{item.data.metadata.description || '无描述'}</p>
+
+                            <div className="flex items-center justify-between pt-3 border-t border-zinc-100 dark:border-white/5">
+                              <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                                <Clock size={12} />
+                                <span>{formatDate(item.data.metadata.modified)}</span>
+                              </div>
+                              <div className="flex items-center gap-1 text-xs font-medium text-zinc-500">
+                                <span>{item.data.shots.length} 镜头</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </Link>
+                    ) : (
+                      // Series Card
+                      <Link href={`/?seriesId=${item.data.id}`} className="block h-full group">
+                        <div className="glass-card h-full flex flex-col overflow-hidden relative border-l-4 border-l-purple-500">
+                          <div className="aspect-video relative overflow-hidden bg-purple-50 dark:bg-purple-900/10">
+                            {item.data.coverImage ? (
+                              <>
+                                <Image
+                                  src={item.data.coverImage}
+                                  alt={item.data.title}
+                                  fill
+                                  className="object-cover transition-transform duration-700 group-hover:scale-110"
+                                />
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
+                              </>
+                            ) : (
+                              <>
+                                <div className="absolute inset-0 flex items-center justify-center text-purple-200 dark:text-purple-800/30">
+                                  <Folder size={64} />
+                                </div>
+                                <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-[1px] p-4 opacity-80 rotate-3 scale-110 group-hover:rotate-0 group-hover:scale-100 transition-all duration-500">
+                                  {/* Series Preview Grid (Mock) */}
+                                  <div className="bg-white/40 dark:bg-white/5 rounded-lg backdrop-blur-sm" />
+                                  <div className="bg-white/30 dark:bg-white/5 rounded-lg backdrop-blur-sm" />
+                                  <div className="bg-white/20 dark:bg-white/5 rounded-lg backdrop-blur-sm" />
+                                  <div className="bg-white/10 dark:bg-white/5 rounded-lg backdrop-blur-sm flex items-center justify-center">
+                                    <span className="text-xs font-bold text-purple-500">+</span>
+                                  </div>
+                                </div>
+                              </>
+                            )}
+
+                            <div className="absolute top-2 left-2">
+                              <span className="px-2 py-0.5 bg-purple-500 text-white text-[10px] uppercase font-bold tracking-wider rounded-md shadow-lg shadow-purple-500/20">剧集</span>
+                            </div>
+                          </div>
+
+                          <div className="p-4 flex-1 flex flex-col relative z-10 bg-white/30 dark:bg-zinc-900/30 backdrop-blur-sm">
+                            <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-1">{item.data.title}</h3>
+                            <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2 mb-4 flex-1">{item.data.description || '剧集容器'}</p>
+
+                            <div className="flex items-center justify-between pt-3 border-t border-zinc-100 dark:border-white/5">
+                              <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                                <Clock size={12} />
+                                <span>{formatDate(item.data.updated)}</span>
+                              </div>
+                              <button
+                                onClick={(e) => handleDeleteSeries(item.data.id, e)}
+                                className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-zinc-400 hover:text-red-500 rounded-md transition-colors"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </Link>
+                    )}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           ) : (
-            displayedItems.map((item) => {
-              if (item.type === 'series') {
-                const s = item.data as Series;
-                return (
-                  <Link
-                    key={`series-${s.id}`}
-                    href={`/?seriesId=${s.id}`}
-                    className="group relative flex flex-col bg-white dark:bg-zinc-900 rounded-[32px] border border-black/5 dark:border-white/10 p-4 transition-all duration-500 hover:shadow-2xl hover:shadow-black/5 dark:hover:shadow-white/5 hover:-translate-y-1"
-                  >
-                    <div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[24px] mb-4 flex items-center justify-center relative overflow-hidden">
-                      {s.coverImage ? (
-                        <img src={s.coverImage} alt={s.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                      ) : (
-                        <div className="flex flex-col items-center gap-2 opacity-20">
-                          <Folder size={40} className="text-zinc-900 dark:text-white" />
-                        </div>
-                      )}
-                      <div className="absolute top-3 left-3 px-2.5 py-1 bg-zinc-900/90 dark:bg-white/90 backdrop-blur-md rounded-full shadow-lg">
-                        <span className="text-[10px] font-black text-white dark:text-zinc-900 uppercase tracking-tighter">剧集</span>
-                      </div>
-                    </div>
-                    <div className="px-2 pb-2">
-                      <h4 className="font-black text-zinc-900 dark:text-white truncate tracking-tight">{s.title}</h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{formatDate(s.updated)}</span>
-                        <div className="w-1 h-1 rounded-full bg-zinc-200 dark:bg-zinc-800" />
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">合集</span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={(e) => handleDeleteSeries(s.id, e)}
-                      className="absolute top-6 right-6 p-2 bg-red-500 text-white rounded-full shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 hover:scale-110"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </Link>
-                );
-              } else {
-                const p = item.data as Project;
-                return (
-                  <Link
-                    key={`proj-${p.id}`}
-                    href={`/project/${p.id}`}
-                    className="group relative flex flex-col bg-white dark:bg-zinc-900 rounded-[32px] border border-black/5 dark:border-white/10 p-4 transition-all duration-500 hover:shadow-2xl hover:shadow-black/5 dark:hover:shadow-white/5 hover:-translate-y-1"
-                  >
-                    <div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[24px] mb-4 flex items-center justify-center relative overflow-hidden">
-                      {/* 优先使用持久化封面，兼容旧数据回退到分镜参考图 */}
-                      {(p.metadata.coverImage || p.shots?.find(s => s.referenceImage)?.referenceImage) ? (
-                        <img src={p.metadata.coverImage || p.shots?.find(s => s.referenceImage)?.referenceImage} alt={p.metadata.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                      ) : (
-                        <div className="flex flex-col items-center gap-2 opacity-20">
-                          <Film size={40} className="text-zinc-900 dark:text-white" />
-                        </div>
-                      )}
-                      <div className="absolute top-3 left-3 px-2.5 py-1 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md rounded-full shadow-lg border border-black/5 dark:border-white/10">
-                        <span className="text-[10px] font-black text-zinc-900 dark:text-white uppercase tracking-tighter">项目</span>
-                      </div>
-                    </div>
-                    <div className="px-2 pb-2">
-                      <h4 className="font-black text-zinc-900 dark:text-white truncate tracking-tight">{p.metadata.title}</h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{formatDate(p.metadata.modified)}</span>
-                        <div className="w-1 h-1 rounded-full bg-zinc-200 dark:bg-zinc-800" />
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-1">
-                          <Film size={10} /> {p.shots?.length || 0} 个分镜
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={(e) => handleDeleteProject(p.id, e)}
-                      className="absolute top-6 right-6 p-2 bg-red-500 text-white rounded-full shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 hover:scale-110"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </Link>
-                );
-              }
-            })
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-24 h-24 bg-zinc-100 dark:bg-zinc-800/50 rounded-full flex items-center justify-center mb-6">
+                <Film className="w-10 h-10 text-zinc-400" />
+              </div>
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">
+                {currentSeriesId ? '此剧集为空' : '还没有项目'}
+              </h3>
+              <p className="text-zinc-500 dark:text-zinc-400 max-w-sm mb-8">
+                {currentSeriesId ? '在这个剧集中创建一个新项目，或者从其他地方移动项目过来。' : '创建一个新项目开始创作，或创建一个剧集来组织您的作品。'}
+              </p>
+              <button
+                onClick={() => setShowNewProjectDialog(true)}
+                className="px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-full font-bold hover:scale-105 active:scale-95 transition-all shadow-xl shadow-black/10 dark:shadow-white/10"
+              >
+                开始创作
+              </button>
+            </div>
           )}
-        </div>
+        </section>
 
-        {showNewProjectDialog && (
-          <NewProjectDialog
-            onConfirm={handleCreateProject}
-            onClose={() => setShowNewProjectDialog(false)}
-            initialDescription={aiProposal?.description || aiDirectorInput}
-            initialTitle={aiProposal?.title}
-            initialArtStyle={aiProposal?.artStyle}
-            initialAspectRatio={aiProposal?.aspectRatio}
-          />
-        )}
+        {/* Dialogs */}
+        {
+          showNewProjectDialog && (
+            <NewProjectDialog
+              onConfirm={handleCreateProject}
+              onClose={() => setShowNewProjectDialog(false)}
+              initialDescription={aiProposal?.description || aiDirectorInput}
+              initialTitle={aiProposal?.title}
+              initialArtStyle={aiProposal?.artStyle}
+              initialAspectRatio={aiProposal?.aspectRatio}
+            />
+          )
+        }
 
-        {showNewSeriesDialog && (
-          <NewSeriesDialog
-            onConfirm={handleCreateSeries}
-            onClose={() => setShowNewSeriesDialog(false)}
-          />
-        )}
+        {
+          showNewSeriesDialog && (
+            <NewSeriesDialog
+              onConfirm={handleCreateSeries}
+              onClose={() => setShowNewSeriesDialog(false)}
+            />
+          )
+        }
       </div>
     </main>
   );

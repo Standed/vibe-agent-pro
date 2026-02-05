@@ -159,18 +159,19 @@ export function ChatBubble({
                                         return (
                                             <div
                                                 key={idx}
-                                                className="relative group/image rounded-lg overflow-hidden border border-black/5 dark:border-white/10 shadow-sm h-28 w-auto flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-light-accent dark:hover:ring-cine-accent transition-all"
+                                                className="relative group/image rounded-lg overflow-hidden border border-black/5 dark:border-white/10 shadow-sm h-28 w-auto flex-shrink-0 cursor-pointer transition-all"
                                                 onClick={() => onImageClick?.(img, idx, message)}
                                             >
+                                                <div className="absolute inset-0 border-2 border-transparent group-hover/image:border-black dark:group-hover/image:border-white rounded-lg z-20 pointer-events-none transition-colors duration-300" />
                                                 <img
                                                     src={img}
                                                     alt={`User upload ${idx + 1}`}
-                                                    className="h-full w-auto object-cover hover:scale-110 transition-transform duration-500"
+                                                    className="h-full w-auto object-cover transition-transform duration-500 group-hover/image:scale-105"
                                                     onLoad={onMediaLoaded}
                                                 />
 
                                                 {/* Hover Actions Overlay (Standardized with GenerationResult) */}
-                                                <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover/image:opacity-100 transition-opacity flex justify-end gap-1.5 pt-6">
+                                                <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover/image:opacity-100 transition-opacity flex justify-end gap-1.5 pt-6 z-30">
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();

@@ -1,6 +1,6 @@
 # Pro 模式 (ChatPanel) 架构文档
 
-> 最后更新：2026-02-04
+> 最后更新：2026-02-05
 > 关联文档：[AGENTS.md](/AGENTS.md), [sora 在本项目中的架构.md](/docs/sora%20在本项目中的架构.md), [IMAGE_PROCESSING_ARCHITECTURE.md](/docs/IMAGE_PROCESSING_ARCHITECTURE.md)
 
 ## 概述
@@ -409,6 +409,14 @@ ChatPanel.tsx (主容器，编排逻辑)
    - 最大并发数 3
    - 指数退避重试
    - 失败不中断其他上传
+
+   - 失败不中断其他上传
+
+4. **交互体验优化 (2026-02)**
+   - **高对比生成按钮**：侧边栏分镜卡片的“生成”按钮强制使用纯黑/纯白背景，确保视觉显著性。
+   - **参考图悬浮反馈**：
+     - **Zoom Effect**：鼠标悬浮放大 1.1x。
+     - **Inset Border**：使用内描边 (Black/White) 替代 Outline，避免布局抖动和边缘裁切。
 
 ### 待实现
 

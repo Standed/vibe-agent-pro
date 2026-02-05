@@ -94,13 +94,13 @@ export default function ShotListItem({
             {/* Generate Button Overlay */}
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[1px]">
               <button
-                className="text-[10px] font-medium text-white bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover px-2 py-1 rounded-md shadow-lg flex items-center gap-1 backdrop-blur-md transform scale-90 hover:scale-100 transition-all"
+                className="text-[10px] font-medium text-white dark:text-black bg-light-accent dark:bg-white hover:bg-light-accent-hover dark:hover:bg-zinc-200 px-2 py-1 rounded-md shadow-lg flex items-center gap-1 backdrop-blur-md transform scale-90 hover:scale-100 transition-all"
                 onClick={(e) => {
                   e.stopPropagation();
                   onImageClick?.();
                 }}
               >
-                <Sparkles size={10} className="text-white" />
+                <Sparkles size={10} className="text-white dark:text-black" />
                 生成
               </button>
             </div>
