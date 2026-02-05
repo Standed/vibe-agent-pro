@@ -229,11 +229,19 @@ export async function getUserProfile(userId?: string) {
   console.log('[Auth] 直接获取 Profile 失败或为空，尝试使用 API 代理...');
 
   try {
+    // 获取当前的 Token
+    const session = await getCurrentSession();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+
     const response = await fetch('/api/supabase', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       credentials: 'include', // ✅ 确保发送 cookie
       body: JSON.stringify({
         table: 'profiles',
