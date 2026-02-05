@@ -128,6 +128,9 @@ function DraggableResultImage({
                 />
             )}
 
+            {/* Hover Border Overlay for Consistency */}
+            <div className="absolute inset-0 border-2 border-transparent group-hover:border-black dark:group-hover:border-white rounded-xl z-20 pointer-events-none transition-colors duration-300" />
+
             {/* Grid Badge */}
             {isGrid && model === 'gemini-grid' && (gridData.gridRows || gridData.gridSize) && (
                 <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md text-white text-[10px] px-2 py-1 rounded-md flex items-center gap-1 font-medium">

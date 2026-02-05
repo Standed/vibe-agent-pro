@@ -46,7 +46,7 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
     const isTall = aspectRatio === AspectRatio.MOBILE || aspectRatio === AspectRatio.PORTRAIT || aspectRatio === '9:16' || aspectRatio === '3:4';
 
     // 动态样式类
-    const buttonBaseClass = "rounded-full bg-white/20 hover:bg-white/40 text-white backdrop-blur-md transition-all pointer-events-auto border border-white/10 shadow-sm flex items-center justify-center";
+    const buttonBaseClass = "rounded-full bg-white/10 dark:bg-white/10 hover:bg-white/20 dark:hover:bg-white/20 text-white dark:text-white backdrop-blur-md transition-all pointer-events-auto border border-white/20 shadow-sm flex items-center justify-center";
     const buttonClass = `${buttonBaseClass} ${isTall ? 'p-1 w-6 h-6' : 'p-1.5 w-7 h-7'}`; // Tall模式下更小
     const iconSize = isTall ? 10 : 12;
 
@@ -172,7 +172,7 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
                         <ImageIcon size={24} className="text-light-text-muted dark:text-cine-text-muted" />
                         <div className={`absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end pointer-events-none ${isTall ? 'gap-1' : 'gap-2'}`}>
                             <button onClick={(e) => { e.stopPropagation(); onUpload(shot.id); }} className={buttonClass} title="上传图片"><Upload size={iconSize} /></button>
-                            <button onClick={(e) => onGenerate(shot.id, e)} className={`${buttonBaseClass} px-3 py-1 text-xs gap-1`}><Sparkles size={iconSize} /> {isTall ? '生成' : '生成图片'}</button>
+                            <button onClick={(e) => onGenerate(shot.id, e)} className="px-3 py-1.5 rounded-full bg-black text-white hover:bg-zinc-800 transition-colors shadow-lg flex items-center gap-1.5 text-xs font-bold pointer-events-auto border border-white/10"><Sparkles size={12} /> {isTall ? '生成' : '生成图片'}</button>
                         </div>
                     </>
                 )}
@@ -196,7 +196,7 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
                     // Tall Layout: Two rows, compact
                     <>
                         <div className="flex items-center justify-between text-xs mb-1">
-                            <span className="font-mono font-medium text-light-text-primary dark:text-cine-text-primary truncate mr-1">{shotLabel}</span>
+                            <span className="font-mono font-medium text-light-text-primary dark:text-cine-text-primary truncate mr-1 text-[10px]">{shotLabel}</span>
                             <span className="text-light-text-muted dark:text-cine-text-muted shrink-0 text-[10px] bg-black/10 dark:bg-white/10 px-1 rounded">{shot.duration}s</span>
                         </div>
                         <div className="text-[10px] text-light-text-muted dark:text-cine-text-muted truncate leading-tight">
@@ -207,10 +207,10 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
                     // Regular Layout
                     <>
                         <div className="flex items-center justify-between text-xs">
-                            <span className="font-mono text-light-text-muted dark:text-cine-text-muted">{shotLabel}</span>
-                            <span className="text-light-text-muted dark:text-cine-text-muted">{shot.duration}s</span>
+                            <span className="font-mono text-light-text-muted dark:text-cine-text-muted text-[10px]">{shotLabel}</span>
+                            <span className="text-light-text-muted dark:text-cine-text-muted text-[10px]">{shot.duration}s</span>
                         </div>
-                        <div className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1 truncate">{shotSizeLabel} · {cameraMovementLabel}</div>
+                        <div className="text-[10px] text-light-text-muted dark:text-cine-text-muted mt-1 truncate">{shotSizeLabel} · {cameraMovementLabel}</div>
                     </>
                 )}
             </div>

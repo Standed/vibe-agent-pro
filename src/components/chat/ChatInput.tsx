@@ -178,7 +178,7 @@ export function ChatInput({
     ];
 
     return (
-        <div className="flex-shrink-0 p-4 m-4 mt-0 bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-3xl shadow-lg z-20 relative transition-all duration-75 ease-out">
+        <div className="flex-shrink-0 p-3 m-3 mt-0 bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-2xl shadow-lg z-20 relative transition-all duration-75 ease-out">
             {/* Top Resize Handle */}
             <div
                 onMouseDown={startResize}
@@ -267,7 +267,7 @@ export function ChatInput({
                             "px-4 py-1.5 text-xs font-medium rounded-lg transition-all",
                             models.find(m => m.id === selectedModel)?.category === 'image'
                                 ? "bg-white dark:bg-zinc-700 text-black dark:text-white shadow-sm"
-                                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-200"
                         )}
                     >
                         图片生成
@@ -305,8 +305,8 @@ export function ChatInput({
                                 className={cn(
                                     "px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-300 min-w-fit whitespace-nowrap",
                                     selectedModel === m.id
-                                        ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
-                                        : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/5"
+                                        ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/10"
+                                        : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-200/50 dark:hover:bg-white/5"
                                 )}
                             >
                                 {m.label}
@@ -528,7 +528,7 @@ export function ChatInput({
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         disabled={false}
-                        className="flex-shrink-0 p-3 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-zinc-400 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-white mb-1"
+                        className="flex-shrink-0 p-2.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white mb-1"
                         title="上传参考图"
                     >
                         <ImageIcon size={20} />
@@ -561,12 +561,17 @@ export function ChatInput({
                         <button
                             onClick={onSend}
                             disabled={isGenerating || (!inputText.trim() && uploadedImages.length === 0)}
-                            className="w-10 h-10 rounded-full bg-zinc-900 dark:bg-white text-white dark:text-black hover:scale-105 active:scale-95 transition-all flex items-center justify-center shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                            className={cn(
+                                "w-9 h-9 rounded-xl flex items-center justify-center shadow-lg transition-all duration-200",
+                                isGenerating || (!inputText.trim() && uploadedImages.length === 0)
+                                    ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed"
+                                    : "bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-zinc-700 dark:hover:bg-zinc-200 hover:scale-105 active:scale-95 shadow-lg"
+                            )}
                         >
                             {isGenerating ? (
-                                <Loader2 size={18} className="animate-spin" />
+                                <Loader2 size={16} className="animate-spin" />
                             ) : (
-                                <Send size={18} />
+                                <Send size={16} />
                             )}
                         </button>
                     </div>

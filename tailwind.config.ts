@@ -10,6 +10,25 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Semantic Token System
+        primary: {
+          DEFAULT: '#6366f1', // Indigo-500
+          hover: '#4f46e5',   // Indigo-600
+          foreground: '#ffffff',
+        },
+        success: {
+          DEFAULT: '#10b981', // Emerald-500
+          foreground: '#ffffff',
+        },
+        warning: {
+          DEFAULT: '#f59e0b', // Amber-500
+          foreground: '#ffffff',
+        },
+        error: {
+          DEFAULT: '#ef4444', // Red-500
+          foreground: '#ffffff',
+        },
+
         // Dark theme colors (Cinema Dark)
         'cine-black': '#09090b',
         'cine-dark': '#0c0c0e',
@@ -33,8 +52,8 @@ const config: Config = {
         'light-text-muted': '#6c757d',
       },
       fontFamily: {
-        sans: ['var(--font-geist-sans)'],
-        mono: ['var(--font-geist-mono)'],
+        sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        display: ['var(--font-display)', 'system-ui', 'sans-serif'],
       },
     },
   },

@@ -1,6 +1,6 @@
 # 图片处理架构文档
 
-> 最后更新：2026-02-04
+> 最后更新：2026-02-05
 > 关联文档：[PRO_MODE_ARCHITECTURE.md](/docs/PRO_MODE_ARCHITECTURE.md), [AGENTS.md](/AGENTS.md)
 
 ## 概述
@@ -265,7 +265,15 @@ await sharp(inputBuffer)
 | `src/lib/storageService.ts` | R2 上传统一入口 |
 | `src/lib/r2-server-upload.ts` | 服务端 R2 上传、Grid 切片、预签名 URL 生成 |
 | `src/lib/cloudflare-r2.ts` | R2 客户端底层封装 |
+| `src/lib/cloudflare-r2.ts` | R2 客户端底层封装 |
 | `src/utils/imageCompression.ts` | 前端图片压缩 |
+
+### 前端展示交互
+| 文件 | 功能 |
+|-----|------|
+| `DraggableCanvasShotCard.tsx` | 画布卡片，侧边栏生成按钮 (高对比度) |
+| `ChatBubble.tsx` | 聊天气泡，参考图悬浮效果 (1.1x Zoom + Inset Border) |
+| `GenerationResult.tsx` | 生成结果，统一的悬浮交互逻辑 |
 
 ### AI 模型集成
 
