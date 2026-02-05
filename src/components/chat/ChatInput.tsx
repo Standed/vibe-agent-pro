@@ -526,6 +526,7 @@ export function ChatInput({
                         className="hidden"
                     />
                     <button
+                        onClick={() => fileInputRef.current?.click()}
                         disabled={false}
                         className="flex-shrink-0 p-3 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-zinc-400 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-white mb-1"
                         title="上传参考图"
