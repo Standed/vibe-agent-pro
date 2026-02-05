@@ -445,6 +445,13 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 
 ## 📝 Changelog
 
+### v4.0.2 (2026-02-05) - 🛡️ Login & UI UX Improvements
+- ✅ **Login Flow Overhaul** - Replaced aggressive auto-logout with a user-friendly "Pending Approval" UI. Users waiting for whitelist approval can now refresh their status without re-logging.
+- ✅ **Robust Profile Fetching** - Fixed `getUserProfile` to explicitly include `Authorization` headers in proxy requests, resolving "User not found" issues caused by missing auth context.
+- ✅ **IME Input Fix** - Solved an issue where pressing `Enter` during IME composition (e.g., Chinese Pinyin) would accidentally submit forms in Login/Register pages.
+- ✅ **Image Upload Fix** - Fixed the Chat Input image upload button which was unresponsive due to a missing event handler.
+- ✅ **New Skill Integration** - Integrated Anthropic's official `frontend-design` skill for higher quality UI generation.
+
 ### v4.0.1 (2026-02-05) - 🛡️ Critical Risk Fixes
  - ✅ **Atomic Transactions** - Migrated batch operations to Supabase RPC (`delete_scene_atomic`), eliminating data inconsistency risks during network failures.
  - ✅ **Async Cron Architecture** - Decoupled heavy video uploads from status checks. `check-sora-status` is now lightweight (status only), while `retry-transfers` handles R2 uploads asynchronously, solving Vercel timeout issues.

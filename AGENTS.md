@@ -666,5 +666,21 @@ const results = await executor.execute(toolCalls);
 
 ---
 
-**最后更新**: 2026-02-04  
-**版本**: v3.9.6 (Gemini 参考图优化：URL 优先 + 自动降级)
+
+## 🧠 Skill System (v4.0.2)
+
+本项目引入了 Anthropic 官方 Skills 系统，提升 Agent 的专业能力：
+
+### Frontend Design Skill
+- **路径**: `.agent/skills/frontend-design/SKILL.md`
+- **来源**: Anthropic 官方 (Claude)
+- **功能**: 指导生成高质量、无"AI味"的前端 UI 设计。
+- **原则**: 
+  - 拒绝平庸字体 (如 Arial)
+  - 大胆的色彩与排版
+  - 强调动效与空间构图
+
+---
+
+**最后更新**: 2026-02-05
+**版本**: v4.0.2 (Login Flow Fix & UI Optimizations)
