@@ -591,7 +591,7 @@ export default function Home() {
             {/* Hero Title & decorative elements */}
             <div className="mb-10 relative">
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 blur-3xl rounded-full opacity-60 pointer-events-none" />
-              <h2 className="relative text-5xl md:text-7xl font-medium tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-b from-zinc-800 to-zinc-500 dark:from-white dark:to-zinc-200">
+              <h2 className="relative text-5xl md:text-7xl font-medium tracking-tight mb-4 pb-2 bg-clip-text text-transparent bg-gradient-to-b from-zinc-800 to-zinc-500 dark:from-white dark:to-zinc-200">
                 What will you create?
               </h2>
               <p className="relative text-zinc-500 dark:text-zinc-400 text-lg md:text-xl max-w-xl mx-auto">
@@ -694,7 +694,7 @@ export default function Home() {
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.95 }}
                             onClick={(e) => e.stopPropagation()}
-                            className="absolute top-full mt-2 left-0 w-48 glass-panel backdrop-blur-2xl bg-white/80 dark:bg-black/80 rounded-xl p-2 z-50 shadow-2xl border border-white/20 ring-1 ring-black/5"
+                            className="absolute top-full mt-2 left-0 w-48 bg-white dark:bg-zinc-900 rounded-xl p-2 z-[9999] shadow-2xl border border-zinc-200 dark:border-zinc-700"
                           >
                             {artStyles.map((style) => (
                               <button
@@ -941,8 +941,8 @@ export default function Home() {
                     ) : (
                       // Series Card
                       <Link href={`/?seriesId=${item.data.id}`} className="block h-full group">
-                        <div className="glass-card h-full flex flex-col overflow-hidden relative border-l-4 border-l-purple-500">
-                          <div className="aspect-video relative overflow-hidden bg-purple-50 dark:bg-purple-900/10">
+                        <div className="glass-card h-full flex flex-col overflow-hidden relative border border-black/5 dark:border-white/10">
+                          <div className="aspect-video relative overflow-hidden bg-zinc-100 dark:bg-white/5">
                             {item.data.coverImage ? (
                               <>
                                 <Image
@@ -955,23 +955,27 @@ export default function Home() {
                               </>
                             ) : (
                               <>
-                                <div className="absolute inset-0 flex items-center justify-center text-purple-200 dark:text-purple-800/30">
-                                  <Folder size={64} />
-                                </div>
-                                <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-[1px] p-4 opacity-80 rotate-3 scale-110 group-hover:rotate-0 group-hover:scale-100 transition-all duration-500">
-                                  {/* Series Preview Grid (Mock) */}
-                                  <div className="bg-white/40 dark:bg-white/5 rounded-lg backdrop-blur-sm" />
-                                  <div className="bg-white/30 dark:bg-white/5 rounded-lg backdrop-blur-sm" />
-                                  <div className="bg-white/20 dark:bg-white/5 rounded-lg backdrop-blur-sm" />
-                                  <div className="bg-white/10 dark:bg-white/5 rounded-lg backdrop-blur-sm flex items-center justify-center">
-                                    <span className="text-xs font-bold text-purple-500">+</span>
+                                <div className="absolute inset-0 flex items-center justify-center text-zinc-300 dark:text-zinc-700 z-10">
+                                  <div className="relative">
+                                    <Folder size={64} strokeWidth={1} className="drop-shadow-sm" />
+                                    <div className="absolute -bottom-2 -right-2 bg-black dark:bg-white text-white dark:text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-white dark:border-black shadow-sm">
+                                      SET
+                                    </div>
                                   </div>
                                 </div>
+
+                                {/* Stacked Cards Effect */}
+                                <div className="absolute inset-0 flex items-center justify-center opacity-50 group-hover:opacity-100 transition-opacity duration-500">
+                                  <div className="absolute w-2/3 h-2/3 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-sm rotate-6 translate-x-4 translate-y-2 pointer-events-none" />
+                                  <div className="absolute w-2/3 h-2/3 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-sm rotate-3 translate-x-2 translate-y-1 pointer-events-none" />
+                                  <div className="absolute w-2/3 h-2/3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-sm pointer-events-none" />
+                                </div>
+
                               </>
                             )}
 
                             <div className="absolute top-2 left-2">
-                              <span className="px-2 py-0.5 bg-purple-500 text-white text-[10px] uppercase font-bold tracking-wider rounded-md shadow-lg shadow-purple-500/20">剧集</span>
+                              <span className="px-2 py-0.5 bg-black/40 backdrop-blur-md text-white text-[10px] uppercase font-bold tracking-wider rounded-md border border-white/10">剧集</span>
                             </div>
                           </div>
 

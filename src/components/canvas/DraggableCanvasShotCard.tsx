@@ -176,8 +176,19 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
                         </div>
                     </>
                 )}
-                {/* Status Indicator */}
-                <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${shot.status === 'done' ? 'bg-green-500' : shot.status === 'processing' ? 'bg-yellow-500' : shot.status === 'error' ? 'bg-red-500' : 'bg-gray-500'}`} />
+                <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+                    {shot.status === 'done' || shot.referenceImage ? (
+                        <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-lg shadow-green-500/50" />
+                    ) : (
+                        shot.status === 'processing' ? (
+                            <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+                        ) : shot.status === 'error' ? (
+                            <div className="w-2 h-2 rounded-full bg-red-500" />
+                        ) : (
+                            <div className="w-2 h-2 rounded-full bg-gray-400" />
+                        )
+                    )}
+                </div>
                 {shot.videoClip && (
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                         <Play size={32} className="text-white" fill="white" />

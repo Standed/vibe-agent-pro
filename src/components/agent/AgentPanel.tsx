@@ -400,28 +400,28 @@ export default function AgentPanel() {
               onClick={() => setInput('使用 Gemini 直出模式为整个项目生成图片')}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
             >
-              <Sparkles size={12} className="text-blue-500" />
+              <Sparkles size={12} className="text-zinc-500 dark:text-zinc-400" />
               Gemini 直出
             </button>
             <button
               onClick={() => setInput('使用 Gemini Grid (2x2) 为整个项目生成多视图')}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
             >
-              <Grid2x2 size={12} className="text-indigo-500" />
+              <Grid2x2 size={12} className="text-zinc-500 dark:text-zinc-400" />
               Gemini Grid 2x2
             </button>
             <button
               onClick={() => setInput('使用即梦(Jimeng)为整个项目生成图片')}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
             >
-              <ImageIcon size={12} className="text-orange-500" />
+              <ImageIcon size={12} className="text-zinc-500 dark:text-zinc-400" />
               即梦生成
             </button>
             <button
               onClick={() => setInput('使用 Sora2 为整个项目生成视频')}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/10 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-all backdrop-blur-sm shadow-sm"
             >
-              <Video size={12} className="text-purple-500" />
+              <Video size={12} className="text-zinc-500 dark:text-zinc-400" />
               Sora 视频
             </button>
           </div>
