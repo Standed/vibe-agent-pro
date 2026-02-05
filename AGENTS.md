@@ -33,10 +33,13 @@ npm run lint             # ESLint 代码检查
 - **精细交互**：
   - **Pro 模式悬浮**：图片悬浮时采用 **内描边 (Inset Border)** + **1.1x 缩放**，避免布局跳动，提供沉浸式预览体验。
   - **侧边栏折叠**：无缝的宽度过渡与 UI 响应。
+  - **Tooltip 系统**: 使用 React Portal 渲染到 `document.body`,确保在任何滚动容器中都能正确显示 (例如即梦模型说明)。
+  - **下拉菜单层级**: 关键下拉框 (如艺术风格选择器) 使用 `z-[9999]` + 不透明背景,确保内容不穿透。
+  - **状态指示器**: 简约的圆点设计 - 绿色(完成)、黄色脉冲(处理中)、红色(错误)、灰色(草稿)。
 
 ---
 
-## � 产品视图架构
+##  产品视图架构
 
 ### 三大核心视图
 
@@ -228,6 +231,26 @@ const { controlMode, setControlMode } = useProjectStore();
 | | 迁移服务 | `migrationService.ts` | 数据迁移工具 |
 | **基础设施** | 任务队列 | `TaskQueueService.ts` | 并发限制、优先级队列 |
 | | API 响应 | `api-response.ts` | 标准化错误响应格式 |
+#### Profile 自动创建
+
+用户首次登录时,系统自动创建 Profile:
+- 默认 `credits = 0`、`role = 'user'`、`is_whitelisted = false`
+- 若无头像,前端生成 DiceBear 默认头像(仅前端显示,不写数据库)
+- 通过 `supabase/user_management.sql` 中的触发器实现
+
+#### 登录流程优化 (2026-02)
+
+- **移除阻塞性数据库更新**: `AuthProvider.fetchProfile` 不再自动更新默认头像到数据库,避免 RLS 策略触发导致登录卡死
+- **默认头像策略**: 使用 DiceBear API 在前端生成默认头像,仅在 `profile` 对象中设置,不触发 `UPDATE` SQL
+- **RLS 策略修复**: 通过 `supabase/fix_avatar_upload_rls.sql` 修复 profiles 表的 UPDATE 策略,允许用户更新 `avatar_url`、`full_name` 等基本字段,同时保护 `role`、`credits`、`is_whitelisted`
+
+#### 头像上传优化 (2026-02)
+
+- **简化流程**: 移除 `Auth.updateUser` 调用,直接更新 `profiles` 表
+- **详细日志**: 添加 11 步上传日志 (`[Avatar Upload]`),方便调试
+- **失败处理**: profiles 表更新失败时立即抛出异常,防止闪回
+- **缓存破坏**: URL 添加 `?t=${Date.now()}` 时间戳防止浏览器缓存
+- **Optimistic UI**: 立即显示本地预览,后台异步上传和刷新
 | | 认证中间件 | `auth-middleware.ts` | JWT 验证、积分扣除 |
 | | Supabase 事务 | `supabase/transactions.ts` | 批量原子操作 |
 | | 视频转存 | `video-transfer.ts` | 统一 R2 转存（带重试） |

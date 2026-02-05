@@ -76,6 +76,13 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 - Playhead indicator
 - Preview and export buttons (UI ready)
 
+### 🎨 UI/UX Enhancements (2026-02 Latest)
+- **Tooltip System**: Jimeng model tooltips use React Portal rendering to prevent clipping
+- **Dropdown Z-Index**: Style selector dropdown now on top layer (z-9999) with opaque background
+- **Avatar Upload**: Stream lined avatar upload flow with step-by-step logging
+- **Status Indicators**: Simplified green dot indicator for completed shots (minimalist design)
+- **Login Flow**: Optimized authentication flow to prevent database update blocking
+
 ### 🆕 Sora Video Generation
 - **Sora Orchestrator** - Automated video generation pipeline
 - **Character Registration** - @username-based character consistency
