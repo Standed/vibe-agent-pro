@@ -70,19 +70,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           finalProfile.is_whitelisted = true;
         }
 
-        // 如果没有头像，生成默认头像
+        // 如果没有头像,生成默认头像 (仅前端显示,不写数据库以避免阻塞登录)
         if (!finalProfile.avatar_url && userEmail) {
           const defaultAvatar = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userEmail)}&backgroundColor=000000,ffffff&textColor=ffffff,000000`;
           finalProfile.avatar_url = defaultAvatar;
-
-          // 异步更新数据库（仅当数据库已有记录时）
-          if (data) {
-            // 不使用 .catch() 以避免 TypeError，如果 update 返回 Promise 则忽略错误
-            const updatePromise = (supabase as any).from('profiles').update({ avatar_url: defaultAvatar }).eq('id', userId);
-            if (updatePromise && typeof updatePromise.then === 'function') {
-              updatePromise.then(null, () => { });
-            }
-          }
+          // ✅ 移除数据库更新逻辑,避免 RLS 权限问题导致登录卡死
         }
 
         setProfile(finalProfile);

@@ -23,6 +23,8 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
     { value: 'system', label: t('settings.themeSystem'), icon: Monitor },
   ];
 
+  const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
+
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       if (!event.target.files || event.target.files.length === 0) {
@@ -47,41 +49,68 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
         return;
       }
 
+      // 0. Optimistic UI: Immediately show the new avatar
+      const objectUrl = URL.createObjectURL(file);
+      setPreviewAvatar(objectUrl);
       setUploading(true);
+
+      console.log('[Avatar Upload] 🚀 1. 开始上传文件');
+      console.log('[Avatar Upload] 📁 文件信息:', { name: file.name, size: file.size, type: file.type });
 
       // 1. 使用 storageService 上传头像
       const { url } = await storageService.uploadFile(file, 'avatars', user.id);
+      console.log('[Avatar Upload] ✅ 2. R2 上传成功, URL:', url);
 
       // 2. 添加时间戳防止本地缓存
       const avatarUrlWithCacheBust = `${url}?t=${Date.now()}`;
+      console.log('[Avatar Upload] 🔗 3. 添加缓存破坏参数:', avatarUrlWithCacheBust);
 
-      // 3. 更新 User Metadata (绕过 RLS 问题)
-      const { error: updateError } = await (supabase as any).auth.updateUser({
-        data: { avatar_url: avatarUrlWithCacheBust }
-      });
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      // 尝试同步更新 profiles 表 (如果不成功也不阻塞)
-      (supabase as any)
+      // 3. 直接更新 profiles 表 (必须成功,否则闪回)
+      console.log('[Avatar Upload] 📝 4. 开始更新 Profiles 表');
+      const { data: profileData, error: profileError } = await (supabase as any)
         .from('profiles')
         .update({ avatar_url: avatarUrlWithCacheBust })
         .eq('id', user.id)
-        .then(({ error }: any) => {
-          if (error) console.warn('[SettingsPanel] Profiles 表同步更新失败 (非致命):', error);
-        });
+        .select();
 
-      // 4. 刷新本地状态
-      await refreshProfile();
+      if (profileError) {
+        console.error('[Avatar Upload] ❌ 5. Profiles 表更新失败:', profileError);
+        console.error('[Avatar Upload] 详细错误:', JSON.stringify(profileError, null, 2));
+        throw new Error(`头像保存失败: ${profileError.message || '权限不足'}`);
+      }
+
+      console.log('[Avatar Upload] ✅ 6. Profiles 表更新成功');
+      console.log('[Avatar Upload] 返回数据:', profileData);
+
+      // KEY FIX: Stop spinning here. The user already sees the optimistic image.
+      setUploading(false);
       toast.success('头像更新成功');
+      console.log('[Avatar Upload] 🎉 7. UI 更新完成');
+
+      // 4. 刷新本地状态 (Background sync) - 强制刷新
+      console.log('[Avatar Upload] 🔄 8. 开始刷新本地 Profile');
+      await refreshProfile();
+      console.log('[Avatar Upload] ✅ 9. Profile 刷新完成');
+
+      // Nuclear Option: Force Reload to clear any browser/client cache
+      console.log('[Avatar Upload] 🔃 10. 准备在 1 秒后重新加载页面...');
+      setTimeout(() => {
+        console.log('[Avatar Upload] 🔃 11. 正在重新加载页面...');
+        window.location.reload();
+      }, 1000);
+      // 这里的 refreshProfile 应该从 profiles 表拉取最新数据。
+      // 如果 profiles 表更新慢，可能拉到旧的。
+      // 但由于 User Metadata 也更新了，useAuth 可能会优先使用 metadata。
+
 
     } catch (error: any) {
       console.error('Error uploading avatar:', error);
       toast.error(error.message || '头像上传失败');
+      setPreviewAvatar(null); // Revert on failure
+      setUploading(false); // Ensure we stop spinning on error
     } finally {
-      setUploading(false);
+      // Just in case
+      if (uploading) setUploading(false);
       // 清空 input 防止重复选择同一文件不触发 onChange
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -128,7 +157,7 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                   <div className="w-16 h-16 rounded-full overflow-hidden bg-light-accent dark:bg-cine-accent flex items-center justify-center ring-2 ring-white dark:ring-black shadow-lg">
                     {profile?.avatar_url ? (
                       <img
-                        src={profile.avatar_url}
+                        src={previewAvatar || profile.avatar_url}
                         alt="Avatar"
                         className="w-full h-full object-cover"
                       />

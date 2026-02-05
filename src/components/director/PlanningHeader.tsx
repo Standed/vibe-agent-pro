@@ -48,13 +48,13 @@ export default function PlanningHeader({
             </div>
 
             <div className="flex items-center gap-3 pr-12">
-                <button
+                {/* <button
                     onClick={onAiAssistantClick}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold transition-all"
                 >
                     <Wand2 size={16} />
                     <span>AI 助手</span>
-                </button>
+                </button> */}
                 <button
                     onClick={onHistoryClick}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 dark:bg-white/5 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-white/10 transition-all"

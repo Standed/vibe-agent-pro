@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Send, Image as ImageIcon, Loader2, X, ChevronDown, Command, Sparkles, Maximize2, Minimize2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import MentionInput from '@/components/chat/MentionInput';
-import { JimengOptions, JimengModel, JimengResolution } from '@/components/jimeng/JimengOptions';
+import { JimengModel, JimengResolution } from '@/components/jimeng/JimengOptions';
 import { cn } from '@/lib/utils';
 import { getCommandSuggestions, SLASH_COMMANDS, type SlashCommand } from '@/utils/slashCommands';
 import { GenerationModel, Character, Location } from '@/types/project';
@@ -94,6 +94,9 @@ export function ChatInput({
     const [showCommands, setShowCommands] = useState(false);
     const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
     const [isExpanded, setIsExpanded] = useState(false);
+
+    // Tooltip State
+    const [activeTooltip, setActiveTooltip] = useState<{ id: string, rect: DOMRect, desc: string } | null>(null);
     const [inputHeight, setInputHeight] = useState(120); // Default height
     const [isResizing, setIsResizing] = useState(false);
     const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -359,15 +362,77 @@ export function ChatInput({
             <div className="flex flex-col gap-2">
                 {/* Scrollable Settings Area */}
                 <div className="max-h-[20vh] overflow-y-auto custom-scrollbar px-1 -mx-1 flex flex-col gap-2">
-                    {/* Jimeng Options Panel */}
+                    {/* Jimeng Options Panel (Inline Style) */}
                     {selectedModel === 'jimeng' && (
-                        <div className="animate-in fade-in slide-in-from-top-2">
-                            <JimengOptions
-                                model={jimengModel}
-                                resolution={jimengResolution}
-                                onModelChange={setJimengModel}
-                                onResolutionChange={setJimengResolution}
-                            />
+                        <div className="animate-in fade-in slide-in-from-top-2 flex items-center gap-3 flex-wrap">
+                            {/* 模型选择 */}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-zinc-500">模型:</span>
+                                <div className="flex p-0.5 bg-zinc-100 dark:bg-white/5 rounded-lg">
+                                    {[
+                                        { id: 'jimeng-4.5', label: '4.5', desc: '强化一致性、风格与图文响应' },
+                                        { id: 'jimeng-4.1', label: '4.1', desc: '更专业的创意、美学和一致性保持' },
+                                        { id: 'jimeng-4.0', label: '4.0', desc: '支持多参考图、系列组图生成' }
+                                    ].map((m) => (
+                                        <button
+                                            key={m.id}
+                                            onClick={() => setJimengModel(m.id as any)}
+                                            onMouseEnter={(e) => {
+                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                setActiveTooltip({ id: m.id, rect, desc: m.desc });
+                                            }}
+                                            onMouseLeave={() => setActiveTooltip(null)}
+                                            className={cn(
+                                                "px-2 py-1 text-[10px] font-medium rounded transition-all whitespace-nowrap",
+                                                jimengModel === m.id
+                                                    ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
+                                                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                            )}
+                                        >
+                                            {m.label}
+                                        </button>
+                                    ))}
+                                    {/* Portal Tooltip - 渲染到 body,绕过父容器的 overflow 限制 */}
+                                    {activeTooltip && typeof document !== 'undefined' && createPortal(
+                                        <div
+                                            className="fixed z-[999999] pointer-events-none"
+                                            style={{
+                                                top: activeTooltip.rect.top - 8,
+                                                left: activeTooltip.rect.left + (activeTooltip.rect.width / 2),
+                                                transform: 'translate(-50%, -100%)'
+                                            }}
+                                        >
+                                            <div className="bg-zinc-900 dark:bg-white text-white dark:text-black text-[10px] p-2 rounded-lg shadow-2xl max-w-[200px] animate-in fade-in zoom-in-95 duration-150">
+                                                <div className="font-bold mb-0.5">即梦 {activeTooltip.id.split('-')[1]}</div>
+                                                <div className="text-zinc-400 dark:text-zinc-600 leading-tight">{activeTooltip.desc}</div>
+                                                {/* Arrow */}
+                                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-zinc-900 dark:border-t-white" />
+                                            </div>
+                                        </div>,
+                                        document.body
+                                    )}
+                                </div>
+                            </div>
+                            {/* 分辨率选择 */}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-zinc-500">分辨率:</span>
+                                <div className="flex p-0.5 bg-zinc-100 dark:bg-white/5 rounded-lg">
+                                    {(['2k', '4k'] as const).map((res) => (
+                                        <button
+                                            key={res}
+                                            onClick={() => setJimengResolution(res)}
+                                            className={cn(
+                                                "px-2 py-1 text-[10px] font-medium rounded transition-all",
+                                                jimengResolution === res
+                                                    ? "bg-white dark:bg-white/10 text-black dark:text-white shadow-sm"
+                                                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                            )}
+                                        >
+                                            {res.toUpperCase()}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     )}
 
