@@ -129,7 +129,7 @@ function DraggableResultImage({
             )}
 
             {/* Hover Border Overlay for Consistency */}
-            <div className="absolute inset-0 border-2 border-transparent group-hover:border-black dark:group-hover:border-white rounded-xl z-20 pointer-events-none transition-colors duration-300" />
+            <div className="absolute inset-0 border border-transparent group-hover:border-black dark:group-hover:border-white rounded-xl z-20 pointer-events-none transition-colors duration-300" />
 
             {/* Grid Badge */}
             {isGrid && model === 'gemini-grid' && (gridData.gridRows || gridData.gridSize) && (
@@ -243,7 +243,7 @@ export function GenerationResult({
             <div className={`grid gap-2 ${gridLayoutClass} ${(allImages.length === 1 && (activeRatio === AspectRatio.MOBILE || activeRatio === AspectRatio.PORTRAIT))
                 ? 'w-fit' // 单张竖图自适应宽度
                 : 'w-full' // 多张或横图占满
-                }`}>
+                } group/grid`}>
                 {displayImages.map((img, idx) => {
                     const isSingle = allImages.length === 1;
 
@@ -251,7 +251,7 @@ export function GenerationResult({
                     const isLastVisible = !isExpanded && shouldCollapse && idx === MAX_VISIBLE - 1;
 
                     return (
-                        <div key={idx} className="relative space-y-2">
+                        <div key={idx} className="relative space-y-2 transition-opacity duration-300 group-hover/grid:opacity-50 hover:!opacity-100">
                             <DraggableResultImage
                                 img={img}
                                 idx={idx}

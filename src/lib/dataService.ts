@@ -26,6 +26,7 @@ interface DataBackend {
   loadProject(id: string): Promise<Project | undefined>;
   getAllProjects(): Promise<Project[]>;
   getProjectFirstImage(projectId: string): Promise<string | null>;
+  updateProjectCoverImage(projectId: string, coverImage: string): Promise<void>;
   deleteProject(id: string): Promise<void>;
   saveScene(projectId: string, scene: Scene): Promise<void>;
   deleteScene(sceneId: string): Promise<void>;
@@ -569,6 +570,37 @@ class SupabaseBackend implements DataBackend {
       // console.warn(`[SupabaseBackend] 获取项目封面失败 ${projectId}:`, err);
       return null;
     }
+  }
+
+  async updateProjectCoverImage(projectId: string, coverImage: string): Promise<void> {
+    // ⚠️ 不能使用 saveProject 来只更新封面：
+    // - saveProject 会写入 scene_count/shot_count（首页的 Project 对象往往没有完整 scenes/shots）
+    // - saveProject 会覆盖 metadata.script / timeline / locations 等（首页对象不一定包含）
+    // 所以这里做“只更新 metadata.coverImage”的最小化更新，避免破坏核心数据。
+    const row = await this.callSupabaseAPI({
+      table: 'projects',
+      operation: 'select',
+      filters: { eq: { id: projectId } },
+      select: 'metadata',
+      single: true,
+    });
+
+    const current = Array.isArray(row) ? row[0] : row;
+    const nextMetadata = {
+      ...(current?.metadata || {}),
+      coverImage,
+    };
+
+    await this.callSupabaseAPI({
+      table: 'projects',
+      operation: 'update',
+      filters: { eq: { id: projectId } },
+      data: {
+        metadata: nextMetadata,
+      },
+      select: 'id',
+      single: true,
+    });
   }
 
   async deleteProject(id: string): Promise<void> {
@@ -1189,6 +1221,11 @@ export class UnifiedDataService {
   async getProjectFirstImage(projectId: string, userId?: string): Promise<string | null> {
     await this.ensureInitialized(userId);
     return this.backend!.getProjectFirstImage(projectId);
+  }
+
+  async updateProjectCoverImage(projectId: string, coverImage: string, userId?: string): Promise<void> {
+    await this.ensureInitialized(userId);
+    return this.backend!.updateProjectCoverImage(projectId, coverImage);
   }
 
   async deleteProject(id: string): Promise<void> {

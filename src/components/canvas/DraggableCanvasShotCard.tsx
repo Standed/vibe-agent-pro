@@ -125,10 +125,10 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
                 e.stopPropagation();
                 onSelect(shot.id);
             }}
-            className={`group bg-white/40 dark:bg-black/40 rounded-2xl overflow-hidden hover:border-light-accent/50 dark:hover:border-cine-accent/50 transition-all duration-300 ${isShotSelected
-                ? 'border-2 border-light-accent dark:border-cine-accent shadow-lg shadow-light-accent/20 dark:shadow-cine-accent/20 scale-[1.02]'
-                : 'border border-white/20 dark:border-white/5 hover:shadow-lg'
-                } ${isDragging ? 'opacity-50 cursor-grabbing' : ''} ${isOver ? 'ring-2 ring-light-accent dark:ring-cine-accent' : ''}`}
+            className={`group bg-white/60 dark:bg-[#121212]/60 backdrop-blur-md rounded-2xl overflow-hidden transition-all duration-200 ease-out cursor-pointer ${isShotSelected
+                ? 'border-2 border-black dark:border-white shadow-lg scale-[1.02] z-10'
+                : 'border border-black/10 dark:border-white/10 hover:border-black/30 dark:hover:border-white/30 hover:shadow-md'
+                } ${isDragging ? 'opacity-50 cursor-grabbing scale-95' : ''} ${isOver ? 'ring-2 ring-emerald-500 dark:ring-emerald-400 scale-105' : ''}`}
         >
             {/* Shot Thumbnail Container with Dynamic Aspect Ratio */}
             <div

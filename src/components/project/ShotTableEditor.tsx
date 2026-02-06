@@ -510,7 +510,7 @@ export default function ShotTableEditor({ isOpen, onClose }: ShotTableEditorProp
                 <div className="flex-1 overflow-auto bg-light-bg/30 dark:bg-cine-black/30">
                     <table className="w-full border-collapse text-left">
                         <thead className="sticky top-0 z-20">
-                            <tr className="bg-light-bg dark:bg-[#141416] border-b border-light-border dark:border-cine-border">
+                            <tr className="bg-light-bg/80 dark:bg-[#141416]/80 backdrop-blur-md border-b border-light-border dark:border-cine-border shadow-sm">
                                 <th className="px-4 py-3 text-[10px] font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider w-12 text-center">#</th>
                                 <th className="px-4 py-3 text-[10px] font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider min-w-[120px]">场景</th>
                                 <th className="px-4 py-3 text-[10px] font-bold text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider min-w-[300px]">镜头描述 (Visual Prompt)</th>
@@ -542,82 +542,89 @@ export default function ShotTableEditor({ isOpen, onClose }: ShotTableEditorProp
                                 return (
                                     <React.Fragment key={shot.id}>
                                         <tr className="group hover:bg-light-accent/5 dark:hover:bg-cine-accent/5 transition-colors">
-                                            <td className="px-4 py-3 text-center text-xs text-light-text-muted dark:text-cine-text-muted font-mono">
+                                            <td className="px-4 py-3 text-center text-xs text-light-text-muted dark:text-cine-text-muted font-mono group-hover:text-light-accent dark:group-hover:text-cine-accent transition-colors">
                                                 {realIdx + 1}
                                             </td>
                                             <td className="px-4 py-3">
-                                                <select
-                                                    value={shot.sceneId}
-                                                    onChange={(e) => handleUpdateShot(shot.id, { sceneId: e.target.value })}
-                                                    className="w-full bg-transparent border-none focus:ring-0 text-sm text-light-text dark:text-white cursor-pointer"
-                                                >
-                                                    {localScenes.map(scene => (
-                                                        <option key={scene.id} value={scene.id}>{scene.name}</option>
-                                                    ))}
-                                                </select>
+                                                <div className="relative group/input">
+                                                    <select
+                                                        value={shot.sceneId}
+                                                        onChange={(e) => handleUpdateShot(shot.id, { sceneId: e.target.value })}
+                                                        className="w-full bg-transparent border-none focus:ring-0 text-sm text-light-text dark:text-white cursor-pointer appearance-none py-1 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                                                    >
+                                                        {localScenes.map(scene => (
+                                                            <option key={scene.id} value={scene.id}>{scene.name}</option>
+                                                        ))}
+                                                    </select>
+                                                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-light-text-muted dark:text-cine-text-muted pointer-events-none opacity-0 group-hover/input:opacity-100 transition-opacity" />
+                                                </div>
                                             </td>
                                             <td className="px-4 py-3">
                                                 <textarea
                                                     value={shot.description}
                                                     onChange={(e) => handleUpdateShot(shot.id, { description: e.target.value })}
                                                     rows={2}
-                                                    className="w-full bg-transparent border-none focus:ring-0 text-sm text-light-text dark:text-white p-0 resize-none placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted"
-                                                    placeholder="描述画面内容..."
+                                                    className="w-full bg-transparent border-none focus:ring-0 text-sm text-light-text dark:text-white p-2 -ml-2 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors resize-none placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted focus:bg-white dark:focus:bg-black/20"
+                                                    placeholder="描述画面..."
                                                 />
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="space-y-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[9px] font-bold text-light-accent dark:text-cine-accent uppercase opacity-50">对话:</span>
+                                                    <div className="flex items-center gap-2 group/field">
+                                                        <span className="text-[9px] font-bold text-light-accent dark:text-cine-accent uppercase opacity-50 w-8">对话</span>
                                                         <input
                                                             type="text"
                                                             value={shot.dialogue || ''}
                                                             onChange={(e) => handleUpdateShot(shot.id, { dialogue: e.target.value })}
-                                                            className="flex-1 bg-transparent border-none focus:ring-0 text-xs text-light-text dark:text-white p-0"
-                                                            placeholder="角色台词..."
+                                                            className="flex-1 bg-transparent border-none focus:ring-0 text-xs text-light-text dark:text-white p-1 -ml-1 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors focus:bg-white dark:focus:bg-black/20"
+                                                            placeholder="-"
                                                         />
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[9px] font-bold text-gray-500 uppercase opacity-50">旁白:</span>
+                                                    <div className="flex items-center gap-2 group/field">
+                                                        <span className="text-[9px] font-bold text-gray-500 uppercase opacity-50 w-8">旁白</span>
                                                         <input
                                                             type="text"
                                                             value={shot.narration || ''}
                                                             onChange={(e) => handleUpdateShot(shot.id, { narration: e.target.value })}
-                                                            className="flex-1 bg-transparent border-none focus:ring-0 text-xs text-light-text-muted dark:text-cine-text-muted p-0"
-                                                            placeholder="系统配音..."
+                                                            className="flex-1 bg-transparent border-none focus:ring-0 text-xs text-light-text-muted dark:text-cine-text-muted p-1 -ml-1 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors focus:bg-white dark:focus:bg-black/20"
+                                                            placeholder="-"
                                                         />
                                                     </div>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3">
-                                                <select
-                                                    value={shot.shotSize}
-                                                    onChange={(e) => handleUpdateShot(shot.id, { shotSize: e.target.value as ShotSize })}
-                                                    className="w-full bg-transparent border-none focus:ring-0 text-xs text-light-text dark:text-white cursor-pointer"
-                                                >
-                                                    {shotSizeOptions.map(opt => (
-                                                        <option key={opt} value={opt}>{translateShotSize(opt)}</option>
-                                                    ))}
-                                                </select>
+                                                <div className="relative group/input">
+                                                    <select
+                                                        value={shot.shotSize}
+                                                        onChange={(e) => handleUpdateShot(shot.id, { shotSize: e.target.value as ShotSize })}
+                                                        className="w-full bg-transparent border-none focus:ring-0 text-xs text-light-text dark:text-white cursor-pointer appearance-none py-1 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                                                    >
+                                                        {shotSizeOptions.map(opt => (
+                                                            <option key={opt} value={opt}>{translateShotSize(opt)}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
                                             </td>
                                             <td className="px-4 py-3">
-                                                <select
-                                                    value={shot.cameraMovement}
-                                                    onChange={(e) => handleUpdateShot(shot.id, { cameraMovement: e.target.value as CameraMovement })}
-                                                    className="w-full bg-transparent border-none focus:ring-0 text-xs text-light-text dark:text-white cursor-pointer"
-                                                >
-                                                    {cameraMovementOptions.map(opt => (
-                                                        <option key={opt} value={opt}>{translateCameraMovement(opt)}</option>
-                                                    ))}
-                                                </select>
+                                                <div className="relative group/input">
+                                                    <select
+                                                        value={shot.cameraMovement}
+                                                        onChange={(e) => handleUpdateShot(shot.id, { cameraMovement: e.target.value as CameraMovement })}
+                                                        className="w-full bg-transparent border-none focus:ring-0 text-xs text-light-text dark:text-white cursor-pointer appearance-none py-1 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                                                    >
+                                                        {cameraMovementOptions.map(opt => (
+                                                            <option key={opt} value={opt}>{translateCameraMovement(opt)}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
                                             </td>
                                             <td className="px-4 py-3">
-                                                <div className="flex items-center gap-1">
+                                                <div className="flex items-center gap-1 group/input hover:bg-black/5 dark:hover:bg-white/5 rounded p-1 -ml-1 transition-colors">
                                                     <input
                                                         type="number"
                                                         value={shot.duration}
                                                         onChange={(e) => handleUpdateShot(shot.id, { duration: parseFloat(e.target.value) || 0 })}
-                                                        className="w-12 bg-transparent border-none focus:ring-0 text-xs text-light-text dark:text-white p-0 text-right"
+                                                        className="w-full bg-transparent border-none focus:ring-0 text-xs text-light-text dark:text-white p-0 text-right font-mono"
                                                     />
                                                     <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted">s</span>
                                                 </div>

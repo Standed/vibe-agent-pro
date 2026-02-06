@@ -212,172 +212,174 @@ export default function DirectorMode({ isOpen, onClose }: DirectorModeProps) {
 
     if (!mounted || !isOpen) return null;
 
+    // --- UI Helpers ---
+    const isSidebarVisible = true; // For now fix it, or add state to toggle
+
+    if (!mounted || !isOpen) return null;
+
     return createPortal(
-        <div className="fixed inset-0 z-50 flex flex-col md:flex-row bg-[#0c0c0e] dark:bg-[#0c0c0e] bg-white text-gray-900 dark:text-gray-100 overflow-hidden font-sans transition-colors duration-200">
-            {/* --- TOP BAR (MOBILE) --- */}
-            <div className="md:hidden flex items-center justify-between p-4 bg-gray-50 dark:bg-[#18181b] border-b border-gray-200 dark:border-[#27272a]">
+        <div className="fixed inset-0 z-50 flex flex-row bg-[#f9f9f9] dark:bg-[#111] text-gray-900 dark:text-gray-100 font-sans transition-colors duration-300">
+
+            {/* --- TOP BAR (MOBILE ONLY) --- */}
+            <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-b border-black/5 dark:border-white/5 z-[60] flex items-center justify-between px-4">
                 <h2 className="font-bold flex items-center gap-2">
-                    <LayoutList size={18} className="text-gray-900 dark:text-white" />
-                    导演模式 (Director Mode)
+                    <LayoutList size={18} />
+                    导演模式
                 </h2>
-                <button onClick={onClose} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
-                    <X size={24} />
-                </button>
+                <button onClick={onClose}><X size={24} /></button>
             </div>
 
-            {/* --- EXIT BUTTON (DESKTOP) --- */}
+            {/* --- DESKTOP EXIT --- */}
             <button
                 onClick={onClose}
-                className="hidden md:flex absolute top-5 right-6 z-[60] bg-black/10 hover:bg-black/20 dark:bg-black/40 dark:hover:bg-black/60 text-gray-600 hover:text-gray-900 dark:text-white/50 dark:hover:text-white p-2 rounded-full transition-all backdrop-blur-md border border-black/5 hover:border-black/10 dark:border-white/5 dark:hover:border-white/10"
+                className="hidden md:flex fixed top-6 right-6 z-[70] w-10 h-10 items-center justify-center seko-button hover:bg-red-500 hover:text-white dark:hover:bg-red-500 dark:hover:text-white hover:border-red-500 shadow-lg"
                 title="退出导演模式"
             >
-                <X size={20} />
+                <X size={20} strokeWidth={2.5} />
             </button>
 
-            {/* --- LEFT COL: SCRIPT EDITOR --- */}
-            <div className="flex-1 flex flex-col min-w-0 h-full relative group">
-                {/* TOOLBAR */}
-                <div className="h-16 px-6 border-b border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#0c0c0e] flex items-center justify-between shrink-0 z-20 transition-colors">
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2 text-gray-800 dark:text-white/90">
-                            <LayoutList size={20} className="text-indigo-600 dark:text-indigo-500" />
-                            <h3 className="font-semibold text-lg tracking-tight">剧本编辑器 (Script Editor)</h3>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3 mr-12">
-                        <button
-                            onClick={() => {
-                                useProjectStore.getState().setControlMode('agent');
-                                if (useProjectStore.getState().rightSidebarCollapsed) {
-                                    useProjectStore.getState().toggleRightSidebar();
-                                }
-                                onClose();
-                            }}
-                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-sm font-bold transition-all"
-                        >
-                            <Wand2 size={16} />
-                            <span>AI 助手</span>
-                        </button>
-                    </div>
-                </div>
+            {/* --- LEFT: IMMERSIVE SCRIPT EDITOR (PAPER) --- */}
+            <div className="flex-1 h-full overflow-hidden relative flex flex-col">
+                {/* Scrollable Container */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col items-center pt-20 pb-32 px-4 md:px-0 scroll-smooth">
 
-                {/* EDITOR AREA */}
-                <div className="flex-1 relative bg-white dark:bg-[#0c0c0e] transition-colors">
-                    <textarea
-                        ref={textareaRef}
-                        className="w-full h-full p-8 md:p-12 bg-transparent resize-none focus:outline-none font-mono text-base md:text-lg leading-loose text-gray-800 dark:text-gray-300 placeholder:text-gray-400 dark:placeholder:text-gray-700 selection:bg-indigo-500/30"
-                        placeholder="# 第一集：开端&#10;&#10;场景：赛博网吧 - 夜晚&#10;&#10;霓虹灯光在湿润的路面上反射。杰克（30岁，粗犷）坐在终端前，手指全息键盘上飞舞..."
-                        value={scriptContent}
-                        onChange={handleScriptChange}
-                        spellCheck={false}
-                    />
-                    {/* Floating Word Count */}
-                    <div className="absolute bottom-4 right-6 text-xs text-gray-400 dark:text-gray-600 font-mono pointer-events-none select-none">
-                        {scriptContent.length} 字
-                    </div>
-
-                    {/* Mention Dropdown */}
-                    {mentionState.isOpen && (
-                        <div
-                            className="absolute z-50 w-64 bg-white dark:bg-[#18181b] border border-gray-200 dark:border-[#3f3f46] rounded-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
-                            style={{
-                                top: mentionState.position.top,
-                                left: mentionState.position.left,
-                                maxHeight: '300px',
-                            }}
-                        >
-                            <div className="px-3 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider bg-gray-50 dark:bg-[#141417] border-b border-gray-200 dark:border-[#27272a]">
-                                提及角色
+                    {/* The "Paper" */}
+                    <div
+                        className="relative w-full max-w-3xl bg-white dark:bg-[#1a1a1a] shadow-sm border border-gray-200 dark:border-white/5 rounded-[4px] min-h-[90vh] transition-colors duration-300 flex flex-col group/paper"
+                        onClick={() => textareaRef.current?.focus()}
+                    >
+                        {/* Header within paper (subtle) */}
+                        <div className="px-12 py-8 flex items-center justify-between opacity-50 hover:opacity-100 transition-opacity select-none border-b border-dashed border-gray-200 dark:border-gray-800">
+                            <div className="flex items-center gap-2 text-xs font-mono tracking-widest uppercase text-gray-400">
+                                <LayoutList size={14} />
+                                <span>剧本草稿 v1.0</span>
                             </div>
-                            <div className="max-h-60 overflow-y-auto p-1">
-                                {filteredCharacters.length > 0 ? (
-                                    filteredCharacters.map(char => (
-                                        <button
-                                            key={char.id}
-                                            onClick={() => insertCharacter(char.name)}
-                                            className="w-full text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-[#27272a] transition-colors group"
-                                        >
-                                            <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-[#27272a] overflow-hidden relative border border-black/5 dark:border-white/5 shrink-0">
-                                                {char.referenceImages && char.referenceImages[0] ? (
-                                                    <img src={char.referenceImages[0]} alt={char.name} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <div className="w-full h-full flex items-center justify-center text-gray-500 text-[10px] font-bold">{char.name[0]}</div>
-                                                )}
-                                            </div>
-                                            <div className="min-w-0">
-                                                <div className="text-sm font-medium text-gray-700 dark:text-gray-200 group-hover:text-black dark:group-hover:text-white">{char.name}</div>
-                                            </div>
-                                        </button>
-                                    ))
-                                ) : (
-                                    <div className="px-3 py-4 text-center text-gray-500 text-xs">
-                                        无匹配角色
-                                    </div>
-                                )}
+                            <div className="text-xs font-mono text-gray-400">
+                                {scriptContent.length} 字
                             </div>
                         </div>
-                    )}
+
+                        <textarea
+                            ref={textareaRef}
+                            className="flex-1 w-full bg-transparent resize-none focus:outline-none font-mono text-lg md:text-xl leading-loose text-gray-800 dark:text-gray-300 placeholder:text-gray-300 dark:placeholder:text-gray-700 selection:bg-indigo-500/20 px-12 py-8"
+                            placeholder="# 输入场景标题...&#10;&#10;动作描写（ACTION）描述画面内容...&#10;&#10;角包名称（CHARACTER）居中..."
+                            value={scriptContent}
+                            onChange={handleScriptChange}
+                            spellCheck={false}
+                        />
+
+                        {/* Mention Popover (Floating) */}
+                        {mentionState.isOpen && (
+                            <div
+                                className="fixed z-[80] w-72 seko-popover overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200"
+                                style={{
+                                    top: mentionState.position.top,
+                                    left: mentionState.position.left,
+                                    maxHeight: '320px',
+                                }}
+                            >
+                                <div className="px-4 py-2 bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5 text-[10px] font-bold text-gray-500 uppercase tracking-wider backdrop-blur-sm">
+                                    提及角色 (Mention)
+                                </div>
+                                <div className="max-h-64 overflow-y-auto p-1.5 custom-scrollbar">
+                                    {filteredCharacters.length > 0 ? (
+                                        filteredCharacters.map(char => (
+                                            <button
+                                                key={char.id}
+                                                onClick={() => insertCharacter(char.name)}
+                                                className="w-full text-left px-3 py-2.5 rounded-xl flex items-center gap-3 hover:bg-black/5 dark:hover:bg-white/10 transition-all group"
+                                            >
+                                                <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden relative border border-black/5 dark:border-white/10 shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                                                    {char.referenceImages && char.referenceImages[0] ? (
+                                                        <img src={char.referenceImages[0]} alt={char.name} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs font-bold">{char.name[0]}</div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-xs font-bold text-gray-700 dark:text-gray-200 group-hover:text-black dark:group-hover:text-white transition-colors">
+                                                        {char.name}
+                                                    </div>
+                                                </div>
+                                                <span className="text-[10px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity font-mono">选择</span>
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <div className="px-3 py-6 text-center text-gray-400 text-xs">
+                                            暂无匹配角色
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Bottom Space for comfortable typing at end */}
+                    <div className="h-32 w-full" />
                 </div>
             </div>
 
-            {/* --- RIGHT COL: BREAKDOWN BOARD --- */}
-            <div className="w-full md:w-[420px] bg-gray-50 dark:bg-[#111111] border-l border-gray-200 dark:border-[#27272a] flex flex-col shadow-2xl relative z-30 transition-colors">
-                {/* BOARD HEADER */}
-                <div className="h-16 px-6 border-b border-gray-200 dark:border-[#27272a] flex items-center justify-between shrink-0 bg-gray-100 dark:bg-[#141417]">
-                    <div>
-                        <h3 className="font-bold text-gray-800 dark:text-gray-200">AI 智能分镜</h3>
-                        <p className="text-[11px] text-gray-500 font-medium uppercase tracking-wide mt-0.5">自动提取角色与场景</p>
+            {/* --- RIGHT: FLOATING SIDEBAR (BREAKDOWN) --- */}
+            <div className="hidden md:flex flex-col w-[350px] m-6 ml-0 mt-20 mb-6 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/5 rounded-2xl relative z-40 overflow-hidden shadow-xl">
+                {/* Board Header */}
+                <div className="h-14 px-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between shrink-0 bg-white/50 dark:bg-white/5">
+                    <div className="flex items-center gap-2">
+                        <Wand2 size={16} className="text-indigo-500" />
+                        <h3 className="font-bold text-sm text-gray-800 dark:text-gray-100">AI 拆解面板</h3>
                     </div>
-                    {/* Visual decoration */}
-                    <div className="flex gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/40 animate-pulse"></div>
+                    <div className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-500 font-mono border border-indigo-500/20">
+                        PRO
                     </div>
                 </div>
 
-                {/* BOARD CONTENT */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-thin scrollbar-thumb-gray-200 dark:scrollbar-thumb-gray-800 scrollbar-track-transparent">
+                {/* Board Content */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
                     {(!project?.characters || project.characters.length === 0) && (!project?.scenes || project.scenes.length === 0) ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 space-y-4">
-                            <Wand2 size={48} className="text-indigo-200 dark:text-indigo-500/20" />
+                        <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 space-y-4 opacity-60">
+                            <div className="w-16 h-16 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center">
+                                <Wand2 size={24} />
+                            </div>
                             <div>
-                                <p className="text-sm text-gray-400">暂无资产数据</p>
-                                <p className="text-xs mt-1">输入剧本并点击生成，AI 将自动分析提取</p>
+                                <p className="text-sm font-medium">智能解析</p>
+                                <p className="text-xs mt-1 max-w-[200px] mx-auto opacity-70">开始编写剧本，点击分析即可自动提取场景和角色。</p>
                             </div>
                         </div>
                     ) : (
                         <>
                             {/* CHARACTERS */}
                             <section>
-                                <h4 className="flex items-center justify-between mb-4">
-                                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                                        <Users size={14} /> 角色列表 (Cast)
-                                    </span>
-                                    <span className="bg-gray-200 dark:bg-[#27272a] text-gray-600 dark:text-gray-300 text-[10px] font-mono px-2 py-0.5 rounded">
-                                        {project?.characters?.length || 0}
+                                <h4 className="flex items-center justify-between mb-3 px-1">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                                        <Users size={12} /> 角色 ({project?.characters?.length || 0})
                                     </span>
                                 </h4>
-
-                                <div className="space-y-3">
+                                <div className="space-y-2">
                                     {(project?.characters || []).map(char => (
                                         <div
                                             key={char.id}
                                             onClick={() => setEditingCharacterId(char.id)}
-                                            className="group p-3 rounded-lg bg-white dark:bg-[#18181b] border border-gray-200 dark:border-[#27272a] hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all flex items-center gap-3 shadow-sm dark:shadow-none cursor-pointer"
+                                            className="group relative p-2 rounded-xl bg-gray-50 dark:bg-white/5 border border-transparent hover:bg-white/80 dark:hover:bg-white/10 hover:border-gray-200 dark:hover:border-white/10 transition-all cursor-pointer flex items-center gap-3 overflow-hidden"
                                         >
-                                            <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-[#27272a] overflow-hidden relative border border-black/5 dark:border-white/5">
+                                            <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/0 via-indigo-500/0 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+
+                                            <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-white/5 overflow-hidden border border-black/5 dark:border-white/5 shrink-0 shadow-sm relative z-10">
                                                 {char.referenceImages && char.referenceImages[0] ? (
                                                     <img src={char.referenceImages[0]} alt={char.name} className="w-full h-full object-cover" />
                                                 ) : (
-                                                    <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-xs font-bold">{char.name[0]}</div>
+                                                    <div className="w-full h-full flex items-center justify-center text-xs font-bold opacity-50">{char.name[0]}</div>
                                                 )}
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-sm font-medium text-gray-700 dark:text-gray-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                            <div className="flex-1 min-w-0 relative z-10">
+                                                <div className="text-xs font-bold text-gray-700 dark:text-gray-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate">
                                                     {char.name}
                                                 </div>
-                                                <div className="text-[10px] text-gray-500 truncate">{char.description || '无描述'}</div>
+                                                <div className="text-[10px] text-gray-400 truncate pr-4">{char.description || '无描述'}</div>
                                             </div>
-                                            <span className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded ml-auto opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">编辑</span>
+                                            <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                                                <div className="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/40">
+                                                    <Wand2 size={10} />
+                                                </div>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -385,29 +387,24 @@ export default function DirectorMode({ isOpen, onClose }: DirectorModeProps) {
 
                             {/* SCENES */}
                             <section>
-                                <h4 className="flex items-center justify-between mb-4">
-                                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                                        <MapPin size={14} /> 场景列表 (Locations)
-                                    </span>
-                                    <span className="bg-gray-200 dark:bg-[#27272a] text-gray-600 dark:text-gray-300 text-[10px] font-mono px-2 py-0.5 rounded">
-                                        {project?.scenes?.length || 0}
+                                <h4 className="flex items-center justify-between mb-3 px-1">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                                        <MapPin size={12} /> 场景列表 ({project?.scenes?.length || 0})
                                     </span>
                                 </h4>
-
-                                <div className="space-y-3">
+                                <div className="space-y-2">
                                     {(project?.scenes || []).map(scene => (
                                         <div
                                             key={scene.id}
                                             onClick={() => setEditingSceneId(scene.id)}
-                                            className="p-4 rounded-lg bg-white dark:bg-[#18181b] border border-gray-200 dark:border-[#27272a] hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all group shadow-sm dark:shadow-none cursor-pointer"
+                                            className="group p-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-transparent hover:bg-white/80 dark:hover:bg-white/10 hover:border-gray-200 dark:hover:border-white/10 transition-all cursor-pointer"
                                         >
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"></span>
-                                                <span className="text-sm font-bold text-gray-700 dark:text-gray-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{scene.name}</span>
-                                                <span className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded ml-auto opacity-0 group-hover:opacity-100 transition-opacity">编辑</span>
+                                            <div className="flex items-center gap-2 mb-1.5">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.3)]" />
+                                                <span className="text-xs font-bold text-gray-700 dark:text-gray-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors truncate flex-1">{scene.name}</span>
                                             </div>
-                                            <p className="text-xs text-gray-500 leading-relaxed border-l-2 border-gray-200 dark:border-[#27272a] pl-3 py-0.5 group-hover:border-indigo-300 dark:group-hover:border-indigo-700 transition-colors">
-                                                {scene.description || '无场景描述'}
+                                            <p className="text-[10px] text-gray-400 leading-relaxed line-clamp-2 pl-3.5 border-l border-black/5 dark:border-white/5 group-hover:border-emerald-500/30 transition-colors">
+                                                {scene.description || '该场景暂无描述。'}
                                             </p>
                                         </div>
                                     ))}
@@ -417,33 +414,28 @@ export default function DirectorMode({ isOpen, onClose }: DirectorModeProps) {
                     )}
                 </div>
 
-                {/* BOARD FOOTER (ACTION) */}
-                <div className="p-6 bg-gray-100 dark:bg-[#141417] border-t border-gray-200 dark:border-[#27272a]">
-                    <div className="flex justify-between items-center mb-4 text-[10px] font-mono uppercase tracking-wider text-gray-500">
-                        <span> 预计消耗: <span className="text-gray-700 dark:text-gray-300">2 积分</span></span>
-                        <span> 模型: <span className="text-gray-700 dark:text-gray-300">Gemini 3 Pro</span></span>
-                    </div>
-
+                {/* Footer Action */}
+                <div className="p-4 bg-white/20 dark:bg-black/20 backdrop-blur-md border-t border-black/5 dark:border-white/5">
                     <button
-                        className="w-full py-4 bg-gray-900 dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-200 active:scale-[0.98] text-white dark:text-black font-bold rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg dark:shadow-[0_0_20px_rgba(255,255,255,0.1)] group disabled:opacity-70 disabled:cursor-not-allowed"
+                        className="w-full py-3.5 seko-button-primary rounded-xl transition-all flex items-center justify-center gap-2 group disabled:opacity-70 disabled:cursor-not-allowed"
                         onClick={handleGenerate}
                         disabled={isGenerating}
                     >
                         {isGenerating ? (
-                            <Loader2 size={16} className="animate-spin text-white dark:text-black" />
+                            <Loader2 size={16} className="animate-spin" />
                         ) : (
-                            <Play size={16} className="fill-white dark:fill-black group-hover:scale-110 transition-transform" />
+                            <Play size={16} className="fill-current group-hover:scale-110 transition-transform" />
                         )}
-                        <span>{isGenerating ? 'AI 解析生成中...' : '生成 AI 分镜 (Generate Storyboard)'}</span>
+                        <span>{isGenerating ? 'AI 解析生成中...' : '生成 AI 分镜'}</span>
                     </button>
-
-                    <div className="mt-3 text-[10px] text-center text-gray-500 dark:text-gray-600">
-                        基于 <span className="text-gray-700 dark:text-gray-400 font-semibold">Gemini 3 Pro</span> 剧本分析与分镜拆解
+                    <div className="mt-2 flex items-center justify-center gap-1.5 opacity-50">
+                        <span className="w-1 h-1 rounded-full bg-gray-500" />
+                        基于 <span className="text-[9px] uppercase tracking-wider font-medium font-mono text-gray-500">Gemini 3 Pro</span> 剧本分析与分镜拆解
                     </div>
                 </div>
             </div>
 
-            {/* --- DIALOGS --- */}
+            {/* --- DIALOGS (Existing) --- */}
             {editingCharacterId && editingCharacter && (
                 <AddCharacterDialog
                     onClose={() => setEditingCharacterId(null)}

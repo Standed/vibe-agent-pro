@@ -6,6 +6,8 @@ import { GenerationResult } from './GenerationResult';
 import { ChatPanelMessage } from '@/types/project';
 import { User, Sparkles, Maximize2, RefreshCw, Grid3x3, Trash2, Image as ImageIcon, Download } from 'lucide-react';
 import { downloadFile } from '@/utils/download';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { Avatar } from '@/components/ui/Avatar';
 
 // 使用统一的类型定义，保持向后兼容的别名
 export type ChatMessage = ChatPanelMessage;
@@ -35,11 +37,13 @@ export function ChatBubble({
     onDelete,
     project
 }: ChatBubbleProps) {
+    const { user, profile } = useAuth(); // Get user and profile for avatar
     const isUser = message.role === 'user';
     const hasImages = message.images && message.images.length > 0;
     const hasVideo = !!message.videoUrl;
     const videoMeta = message.metadata || {};
 
+    // ... (getVideoLabel logic remains same)
     const getVideoLabel = () => {
         const provider = videoMeta.provider || (String(videoMeta.model || '').includes('vidu') ? 'vidu' : String(videoMeta.model || '').includes('sora') ? 'sora' : '');
         if (provider === 'vidu') {
@@ -68,16 +72,23 @@ export function ChatBubble({
             <div className={cn("flex gap-3", containerMaxWidth, isUser ? "flex-row-reverse" : "flex-row")}>
 
                 {/* Avatar */}
-                <div className={cn(
-                    "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-sm border border-black/5 dark:border-white/10",
-                    isUser ? "bg-zinc-100 dark:bg-zinc-800" : "bg-zinc-900 dark:bg-white"
-                )}>
-                    {isUser ? (
-                        <User size={14} className="text-zinc-500 dark:text-zinc-400" />
-                    ) : (
+                {isUser ? (
+                    <div className="flex-shrink-0 w-8 h-8">
+                        <Avatar
+                            src={profile?.avatar_url}
+                            name={profile?.full_name}
+                            email={user?.email}
+                            size="sm"
+                        />
+                    </div>
+                ) : (
+                    <div className={cn(
+                        "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-sm border border-black/5 dark:border-white/10 overflow-hidden",
+                        "bg-zinc-900 dark:bg-white"
+                    )}>
                         <Sparkles size={14} className="text-white dark:text-black" />
-                    )}
-                </div>
+                    </div>
+                )}
 
                 {/* Content Bubble */}
                 <div className={cn(
@@ -91,7 +102,7 @@ export function ChatBubble({
                             "relative group/text px-4 py-3 shadow-sm border text-sm break-words",
                             isUser
                                 ? "bg-white dark:bg-zinc-800 text-black dark:text-white border-black/5 dark:border-white/10 rounded-2xl rounded-tr-sm whitespace-pre-wrap"
-                                : "bg-zinc-100 dark:bg-zinc-900/50 text-zinc-800 dark:text-zinc-200 border-black/5 dark:border-white/10 rounded-2xl rounded-tl-sm backdrop-blur-sm prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-code:bg-zinc-200 dark:prose-code:bg-zinc-700 prose-code:px-1 prose-code:rounded prose-pre:bg-zinc-200 dark:prose-pre:bg-zinc-700 prose-pre:p-2 prose-pre:rounded-lg"
+                                : "bg-white/80 dark:bg-zinc-900/40 text-zinc-800 dark:text-zinc-200 border-black/5 dark:border-white/5 rounded-2xl rounded-tl-sm backdrop-blur-md prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-code:bg-zinc-200 dark:prose-code:bg-zinc-800/50 prose-code:px-1 prose-code:rounded prose-pre:bg-zinc-100 dark:prose-pre:bg-zinc-900/50 prose-pre:p-2 prose-pre:rounded-lg shadow-sm"
                         )}>
                             {isUser ? (
                                 message.content
@@ -162,7 +173,7 @@ export function ChatBubble({
                                                 className="relative group/image rounded-lg overflow-hidden border border-black/5 dark:border-white/10 shadow-sm h-28 w-auto flex-shrink-0 cursor-pointer transition-all"
                                                 onClick={() => onImageClick?.(img, idx, message)}
                                             >
-                                                <div className="absolute inset-0 border-2 border-transparent group-hover/image:border-black dark:group-hover/image:border-white rounded-lg z-20 pointer-events-none transition-colors duration-300" />
+                                                <div className="absolute inset-0 border border-transparent group-hover/image:border-black dark:group-hover/image:border-white rounded-lg z-20 pointer-events-none transition-colors duration-300" />
                                                 <img
                                                     src={img}
                                                     alt={`User upload ${idx + 1}`}

@@ -250,114 +250,127 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] px-4">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <div className="flex items-center justify-center mb-4">
-            <Image
-              src="https://storage.googleapis.com/n8n-bucket-xys/%E7%AB%96%E7%89%88logo%E9%80%8F%E6%98%8E%E5%BA%95.png"
-              alt="Video Agent Pro"
-              width={120}
-              height={120}
-              className="h-16 w-auto"
-            />
-          </div>
-          <h1 className="text-4xl font-bold text-white mb-2">Video Agent Pro</h1>
-          <p className="text-zinc-400">登录你的账号</p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-[#0a0a0a] overflow-hidden relative">
+      {/* Decorative Background Elements */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDuration: '10s' }} />
 
-        {searchParams.get('error') && (
-          <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 text-red-500 text-sm text-center animate-in fade-in slide-in-from-top-2 duration-300">
-            {searchParams.get('error')}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-zinc-300 mb-1">
-                邮箱
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                placeholder="your@email.com"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-zinc-300 mb-1">
-                密码
-              </label>
-              <div className="relative">
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent pr-10"
-                  placeholder="••••••••"
+      <div className="max-w-md w-full space-y-8 relative z-10 px-4">
+        <div className="seko-panel p-8 md:p-12 shadow-2xl shadow-black/10 dark:shadow-black/40 ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-3xl bg-white/60 dark:bg-[#0a0a0a]/40">
+          <div className="text-center">
+            <div className="flex items-center justify-center mb-6">
+              <div className="relative group cursor-pointer">
+                <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-xl group-hover:bg-indigo-500/30 transition-all duration-500" />
+                <Image
+                  src="https://storage.googleapis.com/n8n-bucket-xys/%E7%AB%96%E7%89%88logo%E9%80%8F%E6%98%8E%E5%BA%95.png"
+                  alt="Video Agent Pro"
+                  width={120}
+                  height={120}
+                  className="h-20 w-auto relative z-10 drop-shadow-2xl hover:scale-105 transition-transform duration-500"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors"
-                >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
               </div>
             </div>
+            <h1 className="text-4xl font-bold text-zinc-900 dark:text-white mb-2 tracking-tight">Video Agent Pro</h1>
+            <p className="text-zinc-500 dark:text-zinc-400">登录你的 Cinematic 账号</p>
           </div>
 
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm text-zinc-400">
-              <input
-                type="checkbox"
-                checked={rememberEmail}
-                onChange={(e) => setRememberEmail(e.target.checked)}
-                className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 text-white focus:ring-white/20"
-              />
-              记住邮箱
-            </label>
-            <div className="text-sm">
+          {searchParams.get('error') && (
+            <div className="mt-6 bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-500 text-sm text-center animate-in fade-in slide-in-from-top-2 duration-300">
+              {searchParams.get('error')}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-zinc-700 dark:text-zinc-400 mb-1.5 ml-1">
+                  邮箱
+                </label>
+                <div className="relative group">
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    className="w-full px-4 py-3 bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 rounded-xl text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent focus:bg-white dark:focus:bg-white/10 transition-all hover:bg-white dark:hover:bg-white/10"
+                    placeholder="your@email.com"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-zinc-700 dark:text-zinc-400 mb-1.5 ml-1">
+                  密码
+                </label>
+                <div className="relative group">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    className="w-full px-4 py-3 bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 rounded-xl text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent focus:bg-white dark:focus:bg-white/10 transition-all hover:bg-white dark:hover:bg-white/10 pr-10"
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-900 dark:text-zinc-500 dark:hover:text-white transition-colors p-1"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between mt-2">
+              <label className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer group">
+                <div className="relative flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={rememberEmail}
+                    onChange={(e) => setRememberEmail(e.target.checked)}
+                    className="peer h-4 w-4 rounded border-zinc-300 dark:border-zinc-700 bg-white/5 text-indigo-500 focus:ring-indigo-500/20 transition-all cursor-pointer"
+                  />
+                </div>
+                <span className="group-hover:text-zinc-800 dark:group-hover:text-zinc-300 transition-colors">记住邮箱</span>
+              </label>
+              <div className="text-sm">
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors"
+                >
+                  忘记密码？
+                </Link>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 px-4 bg-zinc-900 text-white dark:bg-white dark:text-black font-bold rounded-xl hover:bg-zinc-800 dark:hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-900/20 dark:focus:ring-white/20 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed transition-all mt-6 shadow-lg shadow-black/5 dark:shadow-white/5 active:scale-[0.98]"
+            >
+              {loading ? '登录中...' : '登 录'}
+            </button>
+
+            <div className="text-center text-sm pt-4 border-t border-zinc-200 dark:border-white/5 mt-6">
+              <span className="text-zinc-500">还没有账号？</span>{' '}
               <Link
-                href="/auth/forgot-password"
-                className="text-white/70 hover:text-white"
+                href="/auth/register"
+                className="text-zinc-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 font-medium transition-colors"
               >
-                忘记密码？
+                立即注册
               </Link>
             </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 px-4 bg-white text-black font-medium rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-white/20 focus:ring-offset-2 focus:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          >
-            {loading ? '登录中...' : '登录'}
-          </button>
-
-          <div className="text-center text-sm">
-            <span className="text-zinc-400">还没有账号？</span>{' '}
-            <Link
-              href="/auth/register"
-              className="text-white/70 hover:text-white font-medium"
-            >
-              立即注册
-            </Link>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );
