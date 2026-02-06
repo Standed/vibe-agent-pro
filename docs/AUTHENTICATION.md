@@ -508,13 +508,53 @@ CREATE TABLE credit_transactions (
 
 ---
 
+## 🛡️ 登录流程优化 (v4.0.4 - 2026-02)
+
+### 1. Hybrid Auth 策略 (Proxy-First)
+
+为解决 Next.js 客户端水合 (Hydration) 延迟导致的用户闪烁问题，引入了 **Proxy-First** 策略：
+
+- **Proxy 请求**: `getUserProfile` 优先发起带 `Authorization` Header 的 API 请求 (`fetchProfileViaProxy`)，直接绕过客户端 Session 状态检查。
+- **Smart Fallback**: 如果 Cookie 失效或 API 返回 401，尝试短超时 (800ms) 从 Supabase 持久化 Session 恢复，避免无限等待。
+
+```typescript
+// src/components/auth/AuthProvider.tsx
+const profile = await fetchProfileViaProxy(token); // 优先尝试 Proxy
+if (!profile) {
+    // 降级到 Supabase 恢复 Session
+    const { data } = await supabase.auth.getSession();
+}
+```
+
+### 2. 竞态条件防护 (Race Condition Lock)
+
+在快速切换账号或登出时，异步请求可能会污染全局状态。我们引入了 `activeUserIdRef` 锁机制：
+
+```typescript
+// 记录当前活跃用户的 ID
+const activeUserIdRef = useRef<string | null>(null);
+
+// 在 fetchProfile 内部检查
+if (currentUserId !== activeUserIdRef.current) {
+    console.warn('Race condition detected, ignoring stale profile fetch');
+    return;
+}
+```
+
+### 3. 非阻塞式 UX & 默认头像优化
+
+- **消除闪烁**: 登录页禁用乐观 UI 强制等待验证，非登录页立即响应。
+- **头像死锁修复**: 前端生成 DiceBear 默认头像仅用于显示，**不再触发 SQL UPDATE**，配合 SQL 触发器完成默认值填充，从根本上杜绝 RLS (Row Level Security) 死锁问题。
+
+---
+
 ## 📚 相关文档
 
 - **API 架构**: [API_ARCHITECTURE.md](./API_ARCHITECTURE.md)
 - **积分系统**: [docs/CREDITS_SYSTEM.md](./docs/CREDITS_SYSTEM.md)
-- **开发指南**: [AGENTS.md](./AGENTS.md)
+- **开发指南**: [AGENTS.md](/AGENTS.md)
 
 ---
 
-**最后更新**: 2025-12-24
-**版本**: v0.6.0
+**最后更新**: 2026-02-06
+**版本**: v4.0.4 (Hybrid Auth & Race Condition Fix)

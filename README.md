@@ -458,13 +458,15 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 
 ## 📝 Changelog
 
- ### v4.0.4 (2026-02-06) - 🎨 UI Polish & Avatar Unification
+ ### v4.0.4 (2026-02-06) - 🎨 UI Polish & Core Stability (Codex Integration)
+
+#### ✨ UI Polish & Experience (Antigravity)
  - ✅ **Unified User Avatar** - Standardized user avatar display across Pro Mode (`ChatBubble`) and Agent Mode, using the same `Avatar` component for consistency.
  - ✅ **Theme Adaptability** - Overhauled Login page to fully support both Light and Dark modes, ensuring optimal readability and aesthetic appeal in any environment.
  - ✅ **Visual Refinement** - Reduced border thickness on image hover states (`GenerationResult`, `ChatBubble`) for a sleeker, less intrusive look.
  - ✅ **Performance Tuning** - Optimized `loadData` with `useCallback` to prevent unnecessary re-fetches.
 
- ### v4.0.3 (2026-02-06) - 🛡️ Final Auth & Dropdown Fixes
+#### 🛡️ Core Stability & Auth (Codex)
 - ✅ **Hybrid Auth Strategy** - Implemented a resilient "Proxy-First" auth check in `getUserProfile` bypasses client hydration delays, ensuring user data loads reliably even after browser refresh.
 - ✅ **Race Condition Protection** - Introduced `activeUserIdRef` lock in `AuthProvider` to prevent profile state pollution during fast account switching or logout.
 - ✅ **Dropdown Interaction Fix** - Reverted the complex Portal mask solution and switched to a lightweight global click listener, permanently fixing the issue where dropdown menus were unclickable.

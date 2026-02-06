@@ -418,6 +418,7 @@ ChatPanel.tsx (主容器，编排逻辑)
    - **参考图悬浮反馈**：
      - **Zoom Effect**：鼠标悬浮放大 1.1x。
      - **Visual Polish**：将悬浮描边 (Border) 减薄为 `border` (1px)，去除了之前的厚重感 (`border-2`)，同时保持 Inset 布局防止抖动。
+   - **下拉菜单修复 (Codex)**：移除全屏遮罩层 (Portal Mask)，改用原生 `window.addEventListener('click')` 全局监听，彻底解决 z-index 穿透和菜单无法点击的问题。
 
 ### 待实现
 
