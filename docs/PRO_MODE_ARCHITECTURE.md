@@ -412,11 +412,12 @@ ChatPanel.tsx (主容器，编排逻辑)
 
    - 失败不中断其他上传
 
-4. **交互体验优化 (2026-02)**
+4. **交互体验优化 (2026-02 Final)**
    - **高对比生成按钮**：侧边栏分镜卡片的“生成”按钮强制使用纯黑/纯白背景，确保视觉显著性。
+   - **头像统一 (Avatar Unification)**：ChatBubble 全面采用 `src/components/ui/Avatar` 组件，确保 Pro 模式/Story 模式与 Agent 模式头像显示完全一致（支持 Fallback）。
    - **参考图悬浮反馈**：
      - **Zoom Effect**：鼠标悬浮放大 1.1x。
-     - **Inset Border**：使用内描边 (Black/White) 替代 Outline，避免布局抖动和边缘裁切。
+     - **Visual Polish**：将悬浮描边 (Border) 减薄为 `border` (1px)，去除了之前的厚重感 (`border-2`)，同时保持 Inset 布局防止抖动。
 
 ### 待实现
 

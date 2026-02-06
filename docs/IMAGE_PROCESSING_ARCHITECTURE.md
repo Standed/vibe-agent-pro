@@ -272,8 +272,8 @@ await sharp(inputBuffer)
 | 文件 | 功能 |
 |-----|------|
 | `DraggableCanvasShotCard.tsx` | 画布卡片，侧边栏生成按钮 (高对比度) |
-| `ChatBubble.tsx` | 聊天气泡，参考图悬浮效果 (1.1x Zoom + Inset Border) |
-| `GenerationResult.tsx` | 生成结果，统一的悬浮交互逻辑 |
+| `ChatBubble.tsx` | 聊天气泡，参考图悬浮效果 (1.1x Zoom + 1px Inset Border) |
+| `GenerationResult.tsx` | 生成结果，统一的悬浮交互逻辑 (Refined Visuals) |
 
 ### AI 模型集成
 

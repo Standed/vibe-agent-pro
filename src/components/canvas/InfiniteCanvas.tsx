@@ -607,15 +607,18 @@ export default function InfiniteCanvas() {
     }
   };
 
-  const sceneGroups = project?.scenes.map((scene) => {
-    const sceneShots = project.shots
-      .filter((shot) => shot.sceneId === scene.id)
-      .sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
-    return {
-      scene,
-      shots: sceneShots,
-    };
-  });
+  const sceneGroups = useMemo(() => {
+    if (!project) return [];
+    return project.scenes.map((scene) => {
+      const sceneShots = project.shots
+        .filter((shot) => shot.sceneId === scene.id)
+        .sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
+      return {
+        scene,
+        shots: sceneShots,
+      };
+    });
+  }, [project?.scenes, project?.shots]);
 
   // Helper to determine grid columns based on aspect ratio
   const getGridColsClass = (ratio: string) => {

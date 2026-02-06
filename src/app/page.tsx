@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -13,12 +12,10 @@ import NewSeriesDialog from '@/components/project/NewSeriesDialog';
 import { useProjectStore } from '@/store/useProjectStore';
 import { dataService } from '@/lib/dataService';
 import type { Project, Series, Character, Scene, Shot } from '@/types/project';
-import { useAuth, useRequireWhitelist } from '@/components/auth/AuthProvider';
+import { useRequireWhitelist } from '@/components/auth/AuthProvider';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import * as XLSX from 'xlsx';
-import Papa from 'papaparse';
 import { getShotSizeFromValue, getCameraMovementFromValue } from '@/utils/translations';
 
 export default function Home() {
@@ -44,6 +41,7 @@ export default function Home() {
   const [showStyleMenu, setShowStyleMenu] = useState(false);
   const [showSubjectMenu, setShowSubjectMenu] = useState(false);
   const [globalCharacters, setGlobalCharacters] = useState<Character[]>([]);
+  const [isLoadingGlobalCharacters, setIsLoadingGlobalCharacters] = useState(false);
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
   const [mentionState, setMentionState] = useState<{
     visible: boolean;
@@ -60,6 +58,7 @@ export default function Home() {
     errors: { row: number; msg: string; type: 'error' | 'warning' }[];
     fileName?: string;
   } | null>(null);
+  const coverFixInFlightRef = useRef<Set<string>>(new Set());
 
   // Close menus on click outside
   useEffect(() => {
@@ -95,6 +94,25 @@ export default function Home() {
   } | null>(null);
 
   const { user, profile, signOut, loading: authLoading } = useRequireWhitelist();
+  const globalCharactersLoadedRef = useRef(false);
+
+  const ensureGlobalCharactersLoaded = useCallback(async () => {
+    if (!user) return;
+    if (globalCharactersLoadedRef.current) return;
+    if (isLoadingGlobalCharacters) return;
+
+    setIsLoadingGlobalCharacters(true);
+    try {
+      const chars = await dataService.getGlobalCharacters(user.id);
+      setGlobalCharacters(chars);
+      globalCharactersLoadedRef.current = true;
+    } catch (e) {
+      // 仅影响首页“角色选择/@召唤”，不影响核心流程
+      console.warn('[HomePage] Failed to load global characters:', e);
+    } finally {
+      setIsLoadingGlobalCharacters(false);
+    }
+  }, [user, isLoadingGlobalCharacters]);
 
   // 智能表头检测：检查第一行是否为表头（要求至少3列匹配关键词）
   const isHeaderRow = (row: any[]): boolean => {
@@ -194,6 +212,7 @@ export default function Home() {
     }
 
     if (extension === 'xlsx' || extension === 'xls') {
+      const XLSX = await import('xlsx');
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
       const firstSheetName = workbook.SheetNames[0];
@@ -206,6 +225,8 @@ export default function Home() {
     }
 
     if (extension === 'csv') {
+      const PapaModule = await import('papaparse');
+      const Papa = (PapaModule as any).default || PapaModule;
       const text = await file.text();
       const results = Papa.parse(text, { header: false, skipEmptyLines: true });
       const rows = results.data as any[];
@@ -218,14 +239,7 @@ export default function Home() {
     throw new Error('不支持的分镜脚本格式，请上传 CSV 或 Excel 文件');
   };
 
-  // 加载数据
-  useEffect(() => {
-    if (!authLoading) {
-      loadData();
-    }
-  }, [user, authLoading, currentSeriesId]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     // console.log('[HomePage] 🔄 开始加载数据...');
     setIsLoading(true);
     setLoadError(null);
@@ -233,19 +247,19 @@ export default function Home() {
     if (!user) {
       setProjects([]);
       setSeries([]);
+      setGlobalCharacters([]);
+      globalCharactersLoadedRef.current = false;
       setIsLoading(false);
       return;
     }
 
     try {
-      const [allProjects, allSeries, allGlobalCharacters] = await Promise.all([
+      const [allProjects, allSeries] = await Promise.all([
         dataService.getAllProjects(user.id),
-        dataService.getAllSeries(),
-        dataService.getGlobalCharacters(user.id)
+        dataService.getAllSeries()
       ]);
       // console.log('[HomePage] Raw projects:', allProjects);
       // console.log('[HomePage] Raw series:', allSeries);
-      // console.log('[HomePage] Global characters:', allGlobalCharacters);
 
       setProjects(allProjects);
 
@@ -254,37 +268,41 @@ export default function Home() {
       const projectsNeedCover = allProjects.filter(p => !p.metadata.coverImage);
 
       if (projectsNeedCover.length > 0) {
-        // console.log(`[HomePage] 🖼️ 尝试自动设置 ${projectsNeedCover.length} 个项目封面`);
+        // ⚠️ 性能优化：不要一次性修复所有项目封面（会触发大量 Supabase 请求）
+        // 只修复“最近修改的前 N 个”，其余在后续加载/进入项目时再补齐。
+        const MAX_COVER_FIX = 8;
+        const projectsToFix = projectsNeedCover
+          .slice(0, MAX_COVER_FIX)
+          .filter(p => !coverFixInFlightRef.current.has(p.id));
+
+        if (projectsToFix.length === 0) {
+          // 已在进行中或已经触发过修复
+        } else {
+          projectsToFix.forEach(p => coverFixInFlightRef.current.add(p.id));
+
+          // console.log(`[HomePage] 🖼️ 尝试自动设置 ${projectsToFix.length} 个项目封面`);
         (async () => {
           let updatedCount = 0;
-          for (const p of projectsNeedCover) {
+          for (const p of projectsToFix) {
             try {
-              const coverUrl = await dataService.getProjectFirstImage(p.id);
+              const coverUrl = await dataService.getProjectFirstImage(p.id, user.id);
               if (coverUrl) {
-                // console.log(`[HomePage] ✅ 找到项目封面 ${p.id}: ${coverUrl}`);
-                // 更新数据库：注意！必须清空 scenes 和 shots，因为 getAllProjects 返回的是空对象
-                // 否则会导致 "null value in column name ... violates not-null constraint"
-                const projectToSave = {
-                  ...p,
-                  metadata: { ...p.metadata, coverImage: coverUrl },
-                  scenes: [], // 避免保存空场景
-                  shots: [],  // 避免保存空分镜
-                  characters: [], // 避免保存空角色
-                  audioAssets: [],
-                };
-                await dataService.saveProject(projectToSave as Project, user.id);
+                // ✅ 只更新 metadata.coverImage，避免 saveProject 覆盖 scene_count/shot_count 或 metadata 其它字段
+                await dataService.updateProjectCoverImage(p.id, coverUrl, user.id);
                 // 更新本地状态
                 setProjects(prev => prev.map(curr => curr.id === p.id ? { ...curr, metadata: { ...curr.metadata, coverImage: coverUrl } } : curr));
                 updatedCount++;
               }
             } catch (e) {
               // 忽略错误，仅仅是封面设置失败
+              coverFixInFlightRef.current.delete(p.id);
             }
           }
           if (updatedCount > 0) {
             // console.log(`[HomePage] 成功更新 ${updatedCount} 个封面`);
           }
         })();
+        }
       }
 
       // 自动设置剧集封面：始终同步为该剧集下最新修改的项目的封面
@@ -332,7 +350,6 @@ export default function Home() {
         })();
       }
       setSeries(allSeries);
-      setGlobalCharacters(allGlobalCharacters);
       // console.log('[HomePage] ✅ 数据加载完成', { projects: allProjects.length, series: allSeries.length });
     } catch (error) {
       // console.error('[HomePage] ❌ 加载失败:', error);
@@ -341,7 +358,22 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  // 加载数据
+  useEffect(() => {
+    if (!authLoading) {
+      loadData();
+    }
+  }, [authLoading, loadData]);
+
+  // 仅在需要时加载全局角色（下拉菜单 / @召唤）
+  useEffect(() => {
+    if (!user) return;
+    if (showSubjectMenu || mentionState.visible) {
+      ensureGlobalCharactersLoaded();
+    }
+  }, [user, showSubjectMenu, mentionState.visible, ensureGlobalCharactersLoaded]);
 
   const activeSeries = currentSeriesId ? series.find(s => s.id === currentSeriesId) : null;
 
@@ -645,47 +677,56 @@ export default function Home() {
                               className="absolute top-full mt-2 left-0 w-64 bg-white dark:bg-zinc-900 rounded-xl p-2 z-[9999] max-h-80 overflow-y-auto shadow-2xl border border-zinc-200 dark:border-zinc-700"
                             >
                               <div className="px-3 py-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">角色库</div>
-                              {globalCharacters.map((char) => (
-                                <button
-                                  key={char.id}
-                                  type="button"
-                                  onClick={() => toggleCharacter(char.id)}
-                                  className={cn(
-                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold transition-colors",
-                                    selectedCharacters.includes(char.id)
-                                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
-                                      : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
-                                  )}
-                                >
-                                  <div className={cn(
-                                    "w-6 h-6 rounded-full flex items-center justify-center text-[10px] border",
-                                    selectedCharacters.includes(char.id) ? "border-current" : "border-zinc-200 dark:border-zinc-700"
-                                  )}>
-                                    {char.name[0]}
-                                  </div>
-                                  <span className="flex-1 text-left truncate">{char.name}</span>
-                                  {selectedCharacters.includes(char.id) && <Sparkles size={12} />}
-                                </button>
-                              ))}
-                              {globalCharacters.length === 0 && (
-                                <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
-                                  <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
-                                    <UserCircle2 size={32} className="text-zinc-400" />
-                                  </div>
-                                  <h3 className="text-sm font-bold text-zinc-900 dark:text-white mb-2">
-                                    暂无全局角色
-                                  </h3>
-                                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
-                                    创建角色后可在这里快速选择
-                                  </p>
-                                  <Link
-                                    href="/assets"
-                                    className="text-xs font-bold px-4 py-2 rounded-lg bg-black dark:bg-white text-white dark:text-black hover:scale-105 transition-transform inline-flex items-center gap-2"
-                                  >
-                                    <Plus size={14} />
-                                    去素材库创建
-                                  </Link>
+                              {isLoadingGlobalCharacters && globalCharacters.length === 0 ? (
+                                <div className="flex items-center justify-center gap-2 py-10 text-xs text-zinc-500 dark:text-zinc-400">
+                                  <Loader2 size={14} className="animate-spin" />
+                                  <span>加载角色中...</span>
                                 </div>
+                              ) : (
+                                <>
+                                  {globalCharacters.map((char) => (
+                                    <button
+                                      key={char.id}
+                                      type="button"
+                                      onClick={() => toggleCharacter(char.id)}
+                                      className={cn(
+                                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold transition-colors",
+                                        selectedCharacters.includes(char.id)
+                                          ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
+                                          : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
+                                      )}
+                                    >
+                                      <div className={cn(
+                                        "w-6 h-6 rounded-full flex items-center justify-center text-[10px] border",
+                                        selectedCharacters.includes(char.id) ? "border-current" : "border-zinc-200 dark:border-zinc-700"
+                                      )}>
+                                        {char.name[0]}
+                                      </div>
+                                      <span className="flex-1 text-left truncate">{char.name}</span>
+                                      {selectedCharacters.includes(char.id) && <Sparkles size={12} />}
+                                    </button>
+                                  ))}
+                                  {globalCharacters.length === 0 && (
+                                    <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+                                      <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
+                                        <UserCircle2 size={32} className="text-zinc-400" />
+                                      </div>
+                                      <h3 className="text-sm font-bold text-zinc-900 dark:text-white mb-2">
+                                        暂无全局角色
+                                      </h3>
+                                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+                                        创建角色后可在这里快速选择
+                                      </p>
+                                      <Link
+                                        href="/assets"
+                                        className="text-xs font-bold px-4 py-2 rounded-lg bg-black dark:bg-white text-white dark:text-black hover:scale-105 transition-transform inline-flex items-center gap-2"
+                                      >
+                                        <Plus size={14} />
+                                        去素材库创建
+                                      </Link>
+                                    </div>
+                                  )}
+                                </>
                               )}
                             </motion.div>
                           </>
@@ -830,21 +871,28 @@ export default function Home() {
                   >
                     {/* ... mention list rendering ... reuse logic from existing ... */}
                     <div className="px-3 py-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">召唤全局角色</div>
-                    {globalCharacters
-                      .filter(c => c.name.toLowerCase().includes(mentionState.filter.toLowerCase()))
-                      .map((char) => (
-                        <button
-                          key={char.id}
-                          type="button"
-                          onClick={() => insertMention(char)}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-colors text-left"
-                        >
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center text-xs font-bold text-zinc-700 dark:text-zinc-300">
-                            {char.name[0]}
-                          </div>
-                          <span className="text-sm font-bold text-zinc-900 dark:text-white truncate">{char.name}</span>
-                        </button>
-                      ))}
+                    {isLoadingGlobalCharacters && globalCharacters.length === 0 ? (
+                      <div className="flex items-center justify-center gap-2 py-8 text-xs text-zinc-500 dark:text-zinc-400">
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>加载角色中...</span>
+                      </div>
+                    ) : (
+                      globalCharacters
+                        .filter(c => c.name.toLowerCase().includes(mentionState.filter.toLowerCase()))
+                        .map((char) => (
+                          <button
+                            key={char.id}
+                            type="button"
+                            onClick={() => insertMention(char)}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-colors text-left"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center text-xs font-bold text-zinc-700 dark:text-zinc-300">
+                              {char.name[0]}
+                            </div>
+                            <span className="text-sm font-bold text-zinc-900 dark:text-white truncate">{char.name}</span>
+                          </button>
+                        ))
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
