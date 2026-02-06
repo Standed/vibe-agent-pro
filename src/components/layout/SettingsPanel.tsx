@@ -8,6 +8,8 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { supabase } from '@/lib/supabase/client';
 import { storageService } from '@/lib/storageService';
 import { toast } from 'sonner';
+import { Avatar } from '@/components/ui/Avatar';
+import { compressFileForUpload } from '@/utils/imageCompression';
 
 export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { theme, setTheme } = useTheme();
@@ -57,8 +59,15 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       console.log('[Avatar Upload] 🚀 1. 开始上传文件');
       console.log('[Avatar Upload] 📁 文件信息:', { name: file.name, size: file.size, type: file.type });
 
-      // 1. 使用 storageService 上传头像
-      const { url } = await storageService.uploadFile(file, 'avatars', user.id);
+      console.log('[Avatar Upload] 📁 文件信息:', { name: file.name, size: file.size, type: file.type });
+
+      // 1. 压缩图片
+      console.log('[Avatar Upload] 🔨 1.5 开始压缩图片...');
+      const compressedFile = await compressFileForUpload(file);
+      console.log('[Avatar Upload] 📉 压缩后大小:', compressedFile.size);
+
+      // 2. 使用 storageService 上传头像 (使用压缩后的文件)
+      const { url } = await storageService.uploadFile(compressedFile, 'avatars', user.id);
       console.log('[Avatar Upload] ✅ 2. R2 上传成功, URL:', url);
 
       // 2. 添加时间戳防止本地缓存
@@ -153,37 +162,31 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
               </h3>
               <div className="flex items-center gap-4 bg-light-bg-secondary dark:bg-cine-bg-secondary p-4 rounded-2xl border border-light-border dark:border-cine-border">
                 {/* Avatar Upload */}
-                <div className="relative group">
-                  <div className="w-16 h-16 rounded-full overflow-hidden bg-light-accent dark:bg-cine-accent flex items-center justify-center ring-2 ring-white dark:ring-black shadow-lg">
-                    {profile?.avatar_url ? (
-                      <img
-                        src={previewAvatar || profile.avatar_url}
-                        alt="Avatar"
-                        className="w-full h-full object-cover"
-                      />
+                <div className="relative group cursor-pointer">
+                  <div className="w-20 h-20 rounded-full overflow-hidden ring-4 ring-white dark:ring-zinc-800 shadow-xl transition-transform duration-300 group-hover:scale-105">
+                    {previewAvatar ? (
+                      <img src={previewAvatar} alt="Avatar Preview" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-2xl font-bold text-white dark:text-black">
-                        {profile?.full_name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase()}
-                      </span>
+                      <Avatar
+                        src={profile?.avatar_url}
+                        name={profile?.full_name}
+                        email={user.email}
+                        className="w-full h-full text-2xl"
+                      />
                     )}
 
-                    {/* Loading Overlay */}
-                    {uploading && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                        <Loader2 className="w-6 h-6 text-white animate-spin" />
-                      </div>
-                    )}
+                    {/* Upload Overlay */}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Camera className="w-6 h-6 text-white" />
+                    </div>
                   </div>
 
-                  {/* Edit Button Overlay */}
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="absolute bottom-0 right-0 p-1.5 bg-light-accent dark:bg-cine-accent text-white dark:text-black rounded-full shadow-md hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="更换头像"
-                  >
-                    <Camera size={12} />
-                  </button>
+                  {uploading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full z-10">
+                      <Loader2 className="w-6 h-6 text-white animate-spin" />
+                    </div>
+                  )}
+
                   <input
                     ref={fileInputRef}
                     type="file"

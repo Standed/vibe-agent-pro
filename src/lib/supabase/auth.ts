@@ -208,10 +208,70 @@ export async function updateProfile(data: {
 /**
  * 获取用户完整信息（包括积分等）
  */
-export async function getUserProfile(userId?: string) {
+export async function getUserProfile(userId?: string, accessToken?: string) {
   const uid = userId || (await getCurrentUser())?.id;
   if (!uid) {
     return { data: null, error: new Error('User not found') };
+  }
+
+  const fetchProfileViaProxy = async (token?: string) => {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch('/api/supabase', {
+        method: 'POST',
+        headers,
+        credentials: 'include', // ✅ 确保发送 cookie
+        cache: 'no-store', // 禁用缓存，确保每次都验证最新 Token
+        body: JSON.stringify({
+          table: 'profiles',
+          operation: 'select',
+          userId: uid,
+          filters: {
+            eq: { id: uid }
+          },
+          single: true
+        })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.warn('[Auth] API 代理请求失败:', response.status, response.statusText);
+        console.warn('[Auth] 错误详情:', text.substring(0, 200));
+        return { data: null, error: new Error(`Proxy request failed (${response.status})`) };
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.warn('[Auth] API 代理返回非 JSON 响应:', text.substring(0, 100));
+        return { data: null, error: new Error('Proxy returned non-JSON response') };
+      }
+
+      const result = await response.json();
+      if (result.success && result.data) {
+        console.log('[Auth] ✅ 通过 API 代理成功获取 Profile:', result.data.email);
+        return { data: result.data, error: null };
+      }
+
+      console.warn('[Auth] API 代理返回数据为空或失败:', result);
+      return { data: null, error: new Error('Proxy returned empty data') };
+    } catch (proxyErr) {
+      console.error('[Auth] API 代理请求异常:', proxyErr);
+      return { data: null, error: proxyErr as Error };
+    }
+  };
+
+  // 0. 如果调用方传入 accessToken（典型刷新场景），优先使用 API 代理，避免依赖 Supabase client session 的水合状态
+  if (accessToken) {
+    const proxied = await fetchProfileViaProxy(accessToken);
+    if (proxied.data && !proxied.error) return proxied;
   }
 
   // 1. 尝试直接从 Supabase 获取 (最快)
@@ -228,53 +288,26 @@ export async function getUserProfile(userId?: string) {
   // 2. 如果直接获取失败 (通常是 RLS 权限问题)，尝试通过 API 代理获取 (使用 Service Role)
   console.log('[Auth] 直接获取 Profile 失败或为空，尝试使用 API 代理...');
 
-  try {
-    // 获取当前的 Token
-    const session = await getCurrentSession();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+  // 2.1 先尝试仅依赖 Cookie（避免 supabase.auth.getSession() 可能挂起）
+  const proxiedByCookie = await fetchProfileViaProxy(accessToken);
+  if (proxiedByCookie.data && !proxiedByCookie.error) {
+    return { data: proxiedByCookie.data, error: null };
+  }
 
-    if (session?.access_token) {
-      headers['Authorization'] = `Bearer ${session.access_token}`;
-    }
+  // 2.2 Cookie 不可用时，短超时尝试从 Supabase 内存 session 获取 token 再重试
+  if (!accessToken) {
+    const session = await Promise.race([
+      getCurrentSession(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
+    ]);
 
-    const response = await fetch('/api/supabase', {
-      method: 'POST',
-      headers,
-      credentials: 'include', // ✅ 确保发送 cookie
-      body: JSON.stringify({
-        table: 'profiles',
-        operation: 'select',
-        userId: uid,
-        filters: {
-          eq: { id: uid }
-        },
-        single: true
-      })
-    });
-
-    if (response.ok) {
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const result = await response.json();
-        if (result.success && result.data) {
-          console.log('[Auth] ✅ 通过 API 代理成功获取 Profile:', result.data.email);
-          return { data: result.data, error: null };
-        } else {
-          console.warn('[Auth] API 代理返回数据为空或失败:', result);
-        }
-      } else {
-        const text = await response.text();
-        console.warn('[Auth] API 代理返回非 JSON 响应:', text.substring(0, 100));
+    const token = session?.access_token;
+    if (token) {
+      const proxiedByToken = await fetchProfileViaProxy(token);
+      if (proxiedByToken.data && !proxiedByToken.error) {
+        return { data: proxiedByToken.data, error: null };
       }
-    } else {
-      console.warn('[Auth] API 代理请求失败:', response.status, response.statusText);
-      const text = await response.text();
-      console.warn('[Auth] 错误详情:', text.substring(0, 200));
     }
-  } catch (proxyErr) {
-    console.error('[Auth] API 代理请求异常:', proxyErr);
   }
 
   // 如果都失败了，返回原始错误

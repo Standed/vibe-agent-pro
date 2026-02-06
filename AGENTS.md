@@ -34,7 +34,7 @@ npm run lint             # ESLint 代码检查
   - **Pro 模式悬浮**：图片悬浮时采用 **内描边 (Inset Border)** + **1.1x 缩放**，避免布局跳动，提供沉浸式预览体验。
   - **侧边栏折叠**：无缝的宽度过渡与 UI 响应。
   - **Tooltip 系统**: 使用 React Portal 渲染到 `document.body`,确保在任何滚动容器中都能正确显示 (例如即梦模型说明)。
-  - **下拉菜单层级**: 关键下拉框 (如艺术风格选择器) 使用 `z-[9999]` + 不透明背景,确保内容不穿透。
+  - **下拉菜单交互**: 移除全屏遮罩层 (Portal Mask)，改用原生 `window.addEventListener('click')` 全局监听，彻底解决 z-index 穿透和菜单无法点击的问题。
   - **状态指示器**: 简约的圆点设计 - 绿色(完成)、黄色脉冲(处理中)、红色(错误)、灰色(草稿)。
 
 ---
@@ -238,11 +238,14 @@ const { controlMode, setControlMode } = useProjectStore();
 - 若无头像,前端生成 DiceBear 默认头像(仅前端显示,不写数据库)
 - 通过 `supabase/user_management.sql` 中的触发器实现
 
-#### 登录流程优化 (2026-02)
-
-- **移除阻塞性数据库更新**: `AuthProvider.fetchProfile` 不再自动更新默认头像到数据库,避免 RLS 策略触发导致登录卡死
-- **默认头像策略**: 使用 DiceBear API 在前端生成默认头像,仅在 `profile` 对象中设置,不触发 `UPDATE` SQL
-- **RLS 策略修复**: 通过 `supabase/fix_avatar_upload_rls.sql` 修复 profiles 表的 UPDATE 策略,允许用户更新 `avatar_url`、`full_name` 等基本字段,同时保护 `role`、`credits`、`is_whitelisted`
+#### 登录流程优化 (2026-02 Final)
+- **Hybrid Auth 策略**: 
+  - **Proxy-First**: `getUserProfile` 优先使用 API 代理 (`fetchProfileViaProxy`) 绕过 Client Session 水合延迟。
+  - **Smart Fallback**: Cookie 失效时，尝试短超时 (800ms) 从 Supabase 持久化 Session 恢复，避免无限等待。
+- **竞态条件防护**: 引入 `activeUserIdRef` 锁机制，防止快速切换账号或登出时异步请求污染全局状态。
+- **非阻塞式 UX**: 登录页禁用乐观 UI 强制等待验证，非登录页立即响应，消除"闪烁"感。
+- **默认头像策略**: 前端生成 DiceBear 头像仅用于显示，不再触发 SQL UPDATE，从根本上杜绝 RLS 死锁。
+- **RLS 策略修复**: 配合 `fix_avatar_upload_rls.sql` 实现最小权限原则。
 
 #### 头像上传优化 (2026-02)
 

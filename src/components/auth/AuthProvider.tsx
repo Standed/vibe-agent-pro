@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import { getUserProfile, readSessionCookie, setSessionCookie, parseJWT, isTokenExpired, getCurrentSession } from '@/lib/supabase/auth';
@@ -34,27 +34,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const activeUserIdRef = useRef<string | null>(null);
+
+  const setUserState = (nextUser: User | null) => {
+    activeUserIdRef.current = nextUser?.id ?? null;
+    setUser(nextUser);
+  };
 
   const clearAuthState = () => {
     setSession(null);
-    setUser(null);
+    setUserState(null);
     setProfile(null);
     setSessionCookie(null);
   };
 
   // 获取用户 profile
-  const fetchProfile = async (userId: string, userEmail?: string) => {
+  // 获取用户 profile
+  const fetchProfile = async (userId: string, userEmail?: string, accessToken?: string): Promise<boolean> => {
     try {
-      const { data, error } = await getUserProfile(userId);
+      const { data, error } = await getUserProfile(userId, accessToken);
 
       let finalProfile: any = data;
 
       // 如果数据库中没有 profile，但我们有用户信息，尝试自动创建或等待后端创建
       if (!data || error) {
         console.warn('[AuthProvider] 无法获取用户 Profile:', error);
-        // ❌ 移除：不再伪造 Profile，避免显示错误的积分
-        // 应该让 UI 显示加载状态或错误，或者等待后端中间件自动创建完成
-        setProfile(null);
+
+        // ✅ 不要在请求失败时清空已有 profile，避免短暂网络错误导致头像/积分闪回
+        return false; // 返回失败状态
       } else {
         // 数据库有数据，但确保积分字段不为 null
         finalProfile = {
@@ -70,31 +77,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           finalProfile.is_whitelisted = true;
         }
 
+        const avatarSeedEmail = userEmail || finalProfile?.email;
+
         // 如果没有头像,生成默认头像 (仅前端显示,不写数据库以避免阻塞登录)
-        if (!finalProfile.avatar_url && userEmail) {
-          const defaultAvatar = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userEmail)}&backgroundColor=000000,ffffff&textColor=ffffff,000000`;
+        if (!finalProfile.avatar_url && avatarSeedEmail) {
+          const defaultAvatar = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeedEmail)}&backgroundColor=000000,ffffff&textColor=ffffff,000000`;
           finalProfile.avatar_url = defaultAvatar;
           // ✅ 移除数据库更新逻辑,避免 RLS 权限问题导致登录卡死
         }
 
-        setProfile(finalProfile);
+        // 只为当前用户落地结果，避免切号/登出导致串写
+        if (activeUserIdRef.current === userId) {
+          setProfile(finalProfile);
+        }
+        return true; // 返回成功状态
       }
     } catch (err) {
       console.error('[AuthProvider] fetchProfile 异常:', err);
-      setProfile(null);
+      // ✅ 异常时保持现有 profile（不要清空）
+      return false;
     }
   };
 
   // 刷新 profile
   const refreshProfile = async () => {
     if (user) {
-      await fetchProfile(user.id, user.email);
+      const cookieTokens = readSessionCookie();
+      await fetchProfile(user.id, user.email, cookieTokens?.access_token);
     }
   };
 
   // 初始化：乐观认证策略（先信任 cookie，后台验证）
   useEffect(() => {
     let isMounted = true;
+
+    // 监听认证状态变化（要在 initSession 前注册，避免错过 setSession 触发的事件）
+    const subscriptionWrapper = supabase.auth.onAuthStateChange(async (event, session) => {
+      try {
+        if (!isMounted) return;
+
+        if (event === 'TOKEN_REFRESHED') {
+          setSession(session);
+          setUserState(session?.user ?? null);
+          setSessionCookie(session);
+          if (session?.user?.id) {
+            await fetchProfile(session.user.id, session.user.email, session.access_token);
+          }
+          return;
+        }
+
+        if (session?.user) {
+          setSession(session);
+          setUserState(session.user);
+          // ✅ 必须先设置 cookie，否则 fetchProfile 内部调用 API 代理时会因缺少 cookie 而被重定向到登录页
+          setSessionCookie(session);
+          await fetchProfile(session.user.id, session.user.email, session.access_token);
+        } else {
+          const cookieTokens = readSessionCookie();
+          const hasValidCookie = !!cookieTokens?.access_token && !isTokenExpired(cookieTokens.access_token);
+          if (!hasValidCookie) {
+            setSession(null);
+            setUserState(null);
+            setProfile(null);
+            setSessionCookie(null);
+          }
+        }
+      } catch (err) {
+        console.warn('[AuthProvider] 处理 auth 事件失败:', err);
+        if (!isMounted) return;
+        setSession(null);
+        setUserState(null);
+        setProfile(null);
+      } finally {
+        if (isMounted && event !== 'TOKEN_REFRESHED') {
+          setLoading(false);
+        }
+      }
+    });
 
     const initSession = async () => {
       try {
@@ -105,6 +164,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // 如果没有 cookie，立即结束 loading（未登录状态）
           if (!cookieTokens?.access_token || !cookieTokens?.refresh_token) {
             if (isMounted) {
+              // 尝试从 Supabase 持久化 session 恢复（短超时，避免 getSession() 挂起）
+              const sessionResult = await Promise.race([
+                supabase.auth.getSession(),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
+              ]);
+              const restoredSession = (sessionResult as any)?.data?.session as Session | null | undefined;
+
+              if (restoredSession?.user) {
+                setSession(restoredSession);
+                setUserState(restoredSession.user);
+                setSessionCookie(restoredSession);
+                setLoading(false);
+                fetchProfile(restoredSession.user.id, restoredSession.user.email, restoredSession.access_token).catch(err =>
+                  console.warn('[AuthProvider] ⚠️ Profile 加载失败:', err)
+                );
+                return;
+              }
+
               setLoading(false);
             }
             return;
@@ -131,13 +208,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 // 关键修复：如果在登录页，禁用乐观 UI (不立即结束 loading)，强制等待后台验证
                 // 避免 "客户端认为有效 -> 跳转首页 -> 中间件认为无效 -> 跳转登录页" 的死循环
                 if (!isLoginPage) {
-                  setUser(user);
+                  setUserState(user);
                   setLoading(false); // 立即结束 loading (非登录页保持高性能)
 
-                  // 异步加载 profile（不阻塞）
-                  fetchProfile(user.id, user.email).catch(err =>
-                    console.warn('[AuthProvider] ⚠️ Profile 加载失败:', err)
-                  );
+                  // 异步加载 profile（不阻塞），带重试机制
+                  const initProfile = async (retryCount = 0) => {
+                    const success = await fetchProfile(user.id, user.email, cookieTokens.access_token);
+                    if (!success && retryCount < 3 && isMounted) {
+                      const delay = 1000 * Math.pow(2, retryCount); // 1s, 2s, 4s
+                      console.log(`[AuthProvider] ⚠️ Profile 加载失败，${delay}ms 后重试 (${retryCount + 1}/3)...`);
+                      setTimeout(() => initProfile(retryCount + 1), delay);
+                    }
+                  };
+                  initProfile();
                 }
               }
 
@@ -150,10 +233,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
                 if (!error && data?.session) {
                   setSession(data.session);
+                  setSessionCookie(data.session);
                   // 如果 token 被 refresh，更新 user
                   if (data.session.user.id !== user.id || isLoginPage) {
-                    setUser(data.session.user); // 登录页在这里更新 user
-                    fetchProfile(data.session.user.id, data.session.user.email);
+                    setUserState(data.session.user); // 登录页在这里更新 user
+                    fetchProfile(data.session.user.id, data.session.user.email, data.session.access_token);
+                  }
+
+                  // ✅ 即使用户 id 未变化，也做一次兜底刷新，避免刷新页时首轮 profile 拉取失败后一直为空
+                  if (!isLoginPage) {
+                    fetchProfile(data.session.user.id, data.session.user.email, data.session.access_token);
                   }
 
                   if (isLoginPage) {
@@ -197,10 +286,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (!error && data?.session) {
               if (isMounted) {
                 setSession(data.session);
-                setUser(data.session.user);
+                setSessionCookie(data.session);
+                setUserState(data.session.user);
                 setLoading(false);
 
-                fetchProfile(data.session.user.id, data.session.user.email).catch(err =>
+                fetchProfile(data.session.user.id, data.session.user.email, data.session.access_token).catch(err =>
                   console.warn('[AuthProvider] ⚠️ Profile 加载失败:', err)
                 );
               }
@@ -228,42 +318,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     initSession();
-
-    // 监听认证状态变化
-    const subscriptionWrapper = supabase.auth.onAuthStateChange(async (event, session) => {
-      try {
-        if (!isMounted) return;
-
-        if (event === 'TOKEN_REFRESHED') {
-          setSession(session);
-          setUser(session?.user ?? null);
-          setSessionCookie(session);
-          return;
-        }
-
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          // ✅ 必须先设置 cookie，否则 fetchProfile 内部调用 API 代理时会因缺少 cookie 而被重定向到登录页
-          setSessionCookie(session);
-          await fetchProfile(session.user.id, session.user.email);
-        } else {
-          setProfile(null);
-          setSessionCookie(null);
-        }
-      } catch (err) {
-        console.warn('[AuthProvider] 处理 auth 事件失败:', err);
-        if (!isMounted) return;
-        setSession(null);
-        setUser(null);
-        setProfile(null);
-      } finally {
-        if (isMounted && event !== 'TOKEN_REFRESHED') {
-          setLoading(false);
-        }
-      }
-    });
 
     // 启动心跳检测：JWT 7 天有效期，30 分钟检查一次即可
     const heartbeatInterval = setInterval(async () => {
@@ -306,7 +360,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('[AuthProvider] Supabase signOut 失败或超时:', err);
       });
 
-      setUser(null);
+      setUserState(null);
       setSession(null);
       setProfile(null);
       setSessionCookie(null);
@@ -327,7 +381,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.error('[AuthProvider] 登出过程中发生异常:', error);
-      setUser(null);
+      setUserState(null);
       setSession(null);
       setProfile(null);
       setSessionCookie(null);

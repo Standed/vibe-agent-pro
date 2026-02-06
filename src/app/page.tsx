@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -603,7 +604,7 @@ export default function Home() {
               {/* Glow Effect behind input */}
               <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-[2rem] opacity-20 group-hover:opacity-40 blur-xl transition-opacity duration-500" />
 
-              <div className="relative glass-panel rounded-[1.5rem] p-2 transition-transform duration-300 focus-within:-translate-y-1 focus-within:shadow-2xl ring-1 ring-white/20 dark:ring-white/10">
+              <div className="relative z-20 glass-panel rounded-[1.5rem] p-2 transition-transform duration-300 focus-within:-translate-y-1 focus-within:shadow-2xl ring-1 ring-white/20 dark:ring-white/10">
                 <textarea
                   ref={textareaRef}
                   value={aiDirectorInput}
@@ -634,43 +635,60 @@ export default function Home() {
 
                       <AnimatePresence>
                         {showSubjectMenu && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute top-full mt-2 left-0 w-64 glass-panel backdrop-blur-2xl bg-white/80 dark:bg-black/80 rounded-xl p-2 z-50 max-h-80 overflow-y-auto shadow-2xl border border-white/20 ring-1 ring-black/5"
-                          >
-                            <div className="px-3 py-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">角色库</div>
-                            {globalCharacters.map((char) => (
-                              <button
-                                key={char.id}
-                                type="button"
-                                onClick={() => toggleCharacter(char.id)}
-                                className={cn(
-                                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold transition-colors",
-                                  selectedCharacters.includes(char.id)
-                                    ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
-                                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
-                                )}
-                              >
-                                <div className={cn(
-                                  "w-6 h-6 rounded-full flex items-center justify-center text-[10px] border",
-                                  selectedCharacters.includes(char.id) ? "border-current" : "border-zinc-200 dark:border-zinc-700"
-                                )}>
-                                  {char.name[0]}
+                          <>
+                            {/* 下拉菜单 */}
+                            <motion.div
+                              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute top-full mt-2 left-0 w-64 bg-white dark:bg-zinc-900 rounded-xl p-2 z-[9999] max-h-80 overflow-y-auto shadow-2xl border border-zinc-200 dark:border-zinc-700"
+                            >
+                              <div className="px-3 py-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">角色库</div>
+                              {globalCharacters.map((char) => (
+                                <button
+                                  key={char.id}
+                                  type="button"
+                                  onClick={() => toggleCharacter(char.id)}
+                                  className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold transition-colors",
+                                    selectedCharacters.includes(char.id)
+                                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
+                                      : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
+                                  )}
+                                >
+                                  <div className={cn(
+                                    "w-6 h-6 rounded-full flex items-center justify-center text-[10px] border",
+                                    selectedCharacters.includes(char.id) ? "border-current" : "border-zinc-200 dark:border-zinc-700"
+                                  )}>
+                                    {char.name[0]}
+                                  </div>
+                                  <span className="flex-1 text-left truncate">{char.name}</span>
+                                  {selectedCharacters.includes(char.id) && <Sparkles size={12} />}
+                                </button>
+                              ))}
+                              {globalCharacters.length === 0 && (
+                                <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+                                  <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
+                                    <UserCircle2 size={32} className="text-zinc-400" />
+                                  </div>
+                                  <h3 className="text-sm font-bold text-zinc-900 dark:text-white mb-2">
+                                    暂无全局角色
+                                  </h3>
+                                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+                                    创建角色后可在这里快速选择
+                                  </p>
+                                  <Link
+                                    href="/assets"
+                                    className="text-xs font-bold px-4 py-2 rounded-lg bg-black dark:bg-white text-white dark:text-black hover:scale-105 transition-transform inline-flex items-center gap-2"
+                                  >
+                                    <Plus size={14} />
+                                    去素材库创建
+                                  </Link>
                                 </div>
-                                <span className="flex-1 text-left truncate">{char.name}</span>
-                                {selectedCharacters.includes(char.id) && <Sparkles size={12} />}
-                              </button>
-                            ))}
-                            {globalCharacters.length === 0 && (
-                              <div className="px-3 py-6 text-center">
-                                <p className="text-xs text-zinc-500 mb-3">暂无全局角色</p>
-                                <Link href="/assets" className="text-[10px] font-bold text-blue-500 hover:underline">去素材库创建</Link>
-                              </div>
-                            )}
-                          </motion.div>
+                              )}
+                            </motion.div>
+                          </>
                         )}
                       </AnimatePresence>
                     </div>
@@ -689,30 +707,33 @@ export default function Home() {
 
                       <AnimatePresence>
                         {showStyleMenu && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute top-full mt-2 left-0 w-48 bg-white dark:bg-zinc-900 rounded-xl p-2 z-[9999] shadow-2xl border border-zinc-200 dark:border-zinc-700"
-                          >
-                            {artStyles.map((style) => (
-                              <button
-                                key={style.name}
-                                type="button"
-                                onClick={() => { setSelectedArtStyle(style.name); setShowStyleMenu(false); }}
-                                className={cn(
-                                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold transition-colors",
-                                  selectedArtStyle === style.name
-                                    ? "bg-zinc-900 dark:bg-white text-white dark:text-black"
-                                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
-                                )}
-                              >
-                                {style.icon}
-                                {style.name}
-                              </button>
-                            ))}
-                          </motion.div>
+                          <>
+                            {/* 下拉菜单 */}
+                            <motion.div
+                              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute top-full mt-2 left-0 w-48 bg-white dark:bg-zinc-900 rounded-xl p-2 z-[9999] shadow-2xl border border-zinc-200 dark:border-zinc-700"
+                            >
+                              {artStyles.map((style) => (
+                                <button
+                                  key={style.name}
+                                  type="button"
+                                  onClick={() => { setSelectedArtStyle(style.name); setShowStyleMenu(false); }}
+                                  className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold transition-colors",
+                                    selectedArtStyle === style.name
+                                      ? "bg-zinc-900 dark:bg-white text-white dark:text-black"
+                                      : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
+                                  )}
+                                >
+                                  {style.icon}
+                                  {style.name}
+                                </button>
+                              ))}
+                            </motion.div>
+                          </>
                         )}
                       </AnimatePresence>
                     </div>

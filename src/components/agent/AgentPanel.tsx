@@ -11,10 +11,11 @@ import { useAgent } from '@/hooks/agent/useAgent';
 import ThinkingProcess, { ThinkingStep } from './ThinkingProcess';
 import { dataService } from '@/lib/dataService';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { Avatar } from '@/components/ui/Avatar';
 
 export default function AgentPanel() {
   const { project } = useProjectStore();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -353,8 +354,13 @@ export default function AgentPanel() {
                   </div>
 
                   {msg.role === 'user' && (
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
-                      <User size={16} className="text-gray-600 dark:text-gray-300" />
+                    <div className="flex-shrink-0 w-8 h-8">
+                      <Avatar
+                        src={profile?.avatar_url}
+                        name={profile?.full_name}
+                        email={user?.email}
+                        size="sm"
+                      />
                     </div>
                   )}
                 </div>
