@@ -281,27 +281,27 @@ export default function Home() {
           projectsToFix.forEach(p => coverFixInFlightRef.current.add(p.id));
 
           // console.log(`[HomePage] 🖼️ 尝试自动设置 ${projectsToFix.length} 个项目封面`);
-        (async () => {
-          let updatedCount = 0;
-          for (const p of projectsToFix) {
-            try {
-              const coverUrl = await dataService.getProjectFirstImage(p.id, user.id);
-              if (coverUrl) {
-                // ✅ 只更新 metadata.coverImage，避免 saveProject 覆盖 scene_count/shot_count 或 metadata 其它字段
-                await dataService.updateProjectCoverImage(p.id, coverUrl, user.id);
-                // 更新本地状态
-                setProjects(prev => prev.map(curr => curr.id === p.id ? { ...curr, metadata: { ...curr.metadata, coverImage: coverUrl } } : curr));
-                updatedCount++;
+          (async () => {
+            let updatedCount = 0;
+            for (const p of projectsToFix) {
+              try {
+                const coverUrl = await dataService.getProjectFirstImage(p.id, user.id);
+                if (coverUrl) {
+                  // ✅ 只更新 metadata.coverImage，避免 saveProject 覆盖 scene_count/shot_count 或 metadata 其它字段
+                  await dataService.updateProjectCoverImage(p.id, coverUrl, user.id);
+                  // 更新本地状态
+                  setProjects(prev => prev.map(curr => curr.id === p.id ? { ...curr, metadata: { ...curr.metadata, coverImage: coverUrl } } : curr));
+                  updatedCount++;
+                }
+              } catch (e) {
+                // 忽略错误，仅仅是封面设置失败
+                coverFixInFlightRef.current.delete(p.id);
               }
-            } catch (e) {
-              // 忽略错误，仅仅是封面设置失败
-              coverFixInFlightRef.current.delete(p.id);
             }
-          }
-          if (updatedCount > 0) {
-            // console.log(`[HomePage] 成功更新 ${updatedCount} 个封面`);
-          }
-        })();
+            if (updatedCount > 0) {
+              // console.log(`[HomePage] 成功更新 ${updatedCount} 个封面`);
+            }
+          })();
         }
       }
 
@@ -632,7 +632,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="relative group">
+            <div className="relative z-30 group">
               {/* Glow Effect behind input */}
               <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-[2rem] opacity-20 group-hover:opacity-40 blur-xl transition-opacity duration-500" />
 
@@ -803,7 +803,7 @@ export default function Home() {
                           }}
                         />
                       </label>
-                      <label className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 cursor-pointer transition-colors" title="上传分镜">
+                      <label className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 cursor-pointer transition-colors" title="上传分镜脚本">
                         <Upload size={18} />
                         <input
                           type="file"

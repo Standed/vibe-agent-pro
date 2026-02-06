@@ -76,14 +76,45 @@ export const readSessionCookie = (cookieString?: string): { access_token: string
     const match = cookies.find((row) => row.startsWith(`${SESSION_COOKIE_NAME}=`));
     if (!match) return null;
 
-    try {
-        const value = decodeURIComponent(match.split('=')[1]);
-        const parsed = JSON.parse(value);
-        if (parsed.access_token && parsed.refresh_token) {
-            return { access_token: parsed.access_token, refresh_token: parsed.refresh_token };
+    const rawValue = match.slice(`${SESSION_COOKIE_NAME}=`.length);
+
+    const safeDecode = (value: string) => {
+        try {
+            return decodeURIComponent(value);
+        } catch {
+            return value;
         }
-    } catch (err) {
-        console.warn('[CookieUtils] 解析会话 cookie 失败:', err);
+    };
+
+    const tryParse = (value: string) => {
+        try {
+            const parsed = JSON.parse(value);
+            if (parsed?.access_token && parsed?.refresh_token) {
+                return {
+                    access_token: String(parsed.access_token),
+                    refresh_token: String(parsed.refresh_token),
+                };
+            }
+        } catch {
+            // ignore
+        }
+        return null;
+    };
+
+    const candidates: string[] = [rawValue];
+    let current = rawValue;
+    for (let i = 0; i < 3; i++) {
+        const decoded = safeDecode(current);
+        if (decoded === current) break;
+        candidates.push(decoded);
+        current = decoded;
     }
+
+    for (const candidate of candidates) {
+        const parsed = tryParse(candidate);
+        if (parsed) return parsed;
+    }
+
+    console.warn('[CookieUtils] 解析会话 cookie 失败: invalid format');
     return null;
 };

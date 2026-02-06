@@ -722,5 +722,5 @@ const results = await executor.execute(toolCalls);
 
 ---
 
-**最后更新**: 2026-02-05
-**版本**: v4.0.2 (Login Flow Fix & UI Optimizations)
+**最后更新**: 2026-02-06
+**版本**: v4.0.5 (Core Optimization & Doc Updates)

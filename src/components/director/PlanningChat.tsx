@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, FileText, Users, MapPin, MessageSquare, Wand2, CheckCircle2, Circle, Send, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { ChatMessage, Project } from '@/types/project';
 import { ChatBubble } from '@/components/chat/ChatBubble';
+import { useAuth } from '@/components/auth/AuthProvider';
 import ThinkingProcess, { ThinkingStep } from '@/components/agent/ThinkingProcess';
 import { cn } from '@/lib/utils';
 
@@ -38,6 +39,7 @@ export default function PlanningChat({
     messagesEndRef,
     messagesTopRef
 }: PlanningChatProps) {
+    const { user, profile } = useAuth();
     // 调试日志
     // console.log('[PlanningChat] 渲染状态:', { isGeneratingAssets, hasStep: !!assetGenerationStep });
 
@@ -123,7 +125,13 @@ export default function PlanningChat({
                     )}
 
                     {messages.map((msg) => (
-                        <ChatBubble key={msg.id} message={msg as any} />
+                        <ChatBubble
+                            key={msg.id}
+                            message={msg as any}
+                            userAvatarSrc={profile?.avatar_url}
+                            userAvatarName={profile?.full_name}
+                            userAvatarEmail={user?.email}
+                        />
                     ))}
 
                     {/* Thinking Process */}
