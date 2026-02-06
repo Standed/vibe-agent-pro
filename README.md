@@ -458,6 +458,12 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 
 ## 📝 Changelog
 
+### v4.0.3 (2026-02-06) - 🛡️ Final Auth & Dropdown Fixes
+- ✅ **Hybrid Auth Strategy** - Implemented a resilient "Proxy-First" auth check in `getUserProfile` bypasses client hydration delays, ensuring user data loads reliably even after browser refresh.
+- ✅ **Race Condition Protection** - Introduced `activeUserIdRef` lock in `AuthProvider` to prevent profile state pollution during fast account switching or logout.
+- ✅ **Dropdown Interaction Fix** - Reverted the complex Portal mask solution and switched to a lightweight global click listener, permanently fixing the issue where dropdown menus were unclickable.
+- ✅ **Session Recovery** - Added a smart fallback mechanism that recovers session from Supabase persistence with an 800ms timeout if cookies are missing.
+
 ### v4.0.2 (2026-02-05) - 🛡️ Login & UI UX Improvements
 - ✅ **Login Flow Overhaul** - Replaced aggressive auto-logout with a user-friendly "Pending Approval" UI. Users waiting for whitelist approval can now refresh their status without re-logging.
 - ✅ **Robust Profile Fetching** - Fixed `getUserProfile` to explicitly include `Authorization` headers in proxy requests, resolving "User not found" issues caused by missing auth context.

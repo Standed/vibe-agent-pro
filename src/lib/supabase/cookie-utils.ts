@@ -16,10 +16,14 @@ export const parseJWT = (token: string): any | null => {
         if (parts.length !== 3) return null;
 
         const payload = parts[1];
+        // JWT payload is base64url (not base64) and may be missing padding.
+        const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+
         // 使用 Buffer if available (server), else atob (client)
         const decoded = typeof Buffer !== 'undefined'
-            ? Buffer.from(payload, 'base64').toString('utf8')
-            : atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+            ? Buffer.from(padded, 'base64').toString('utf8')
+            : atob(padded);
 
         return JSON.parse(decoded);
     } catch (err) {

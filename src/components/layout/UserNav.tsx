@@ -6,6 +6,7 @@ import { LogOut, User, Settings, Coins, ChevronDown, CreditCard } from 'lucide-r
 import { useAuth } from '@/components/auth/AuthProvider';
 import { SettingsPanel, SettingsModal } from '@/components/layout/SettingsPanel';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Avatar } from '@/components/ui/Avatar';
 
 export function UserNav() {
     const router = useRouter();
@@ -59,12 +60,14 @@ export function UserNav() {
                 className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border border-white/20 dark:border-white/10 bg-white/50 dark:bg-black/50 backdrop-blur-md hover:bg-white/80 dark:hover:bg-black/70 transition-all group shadow-sm"
             >
                 {/* Avatar */}
-                <div className="w-8 h-8 rounded-full bg-light-accent dark:bg-cine-accent flex items-center justify-center text-white dark:text-black font-bold text-sm overflow-hidden shadow-sm">
-                    {profile?.avatar_url ? (
-                        <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
-                    ) : (
-                        (profile?.full_name?.[0] || user.email?.[0] || 'U').toUpperCase()
-                    )}
+                <div className="w-8 h-8 rounded-full shadow-sm">
+                    <Avatar
+                        src={profile?.avatar_url}
+                        name={profile?.full_name}
+                        email={user.email}
+                        size="sm"
+                        className="w-full h-full"
+                    />
                 </div>
 
                 {/* Name & Arrow */}
