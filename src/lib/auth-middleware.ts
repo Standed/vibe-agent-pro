@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
 import { getUserRoleByEmail, getInitialCredits } from '@/config/users';
+import { readSessionCookie } from '@/lib/supabase/cookie-utils';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -34,45 +35,10 @@ export interface AuthenticatedUser {
   isWhitelisted: boolean;
 }
 
-const SESSION_COOKIE_NAME = 'supabase-session';
-
 const readAccessTokenFromCookies = (request: NextRequest): string | null => {
-  const cookieHeader = request.headers.get('cookie');
-  if (!cookieHeader) {
-    // console.log('[Auth Middleware] No cookie header');
-    return null;
-  }
-
-  const cookies = cookieHeader.split(';').map((c) => c.trim());
-  const sessionCookie = cookies.find((c) => c.startsWith(`${SESSION_COOKIE_NAME}=`));
-  if (!sessionCookie) {
-    // console.log('[Auth Middleware] No session cookie found');
-    return null;
-  }
-
-  try {
-    const cookieValue = sessionCookie.split('=')[1];
-    const raw = decodeURIComponent(cookieValue);
-    // console.log('[Auth Middleware] Raw cookie value length:', raw.length);
-
-    const parsed = JSON.parse(raw);
-    if (parsed?.access_token && typeof parsed.access_token === 'string') {
-      return parsed.access_token;
-    } else {
-      console.warn('[Auth Middleware] Cookie parsed but no access_token');
-    }
-  } catch (err) {
-    console.warn('[Auth Middleware] 解析会话 cookie 失败:', err);
-    // 尝试直接解析（防止未编码的情况）
-    try {
-      const cookieValue = sessionCookie.split('=')[1];
-      const parsed = JSON.parse(cookieValue);
-      if (parsed?.access_token) return parsed.access_token;
-    } catch (e) {
-      // ignore
-    }
-  }
-  return null;
+  const cookieHeader = request.headers.get('cookie') || '';
+  const session = readSessionCookie(cookieHeader);
+  return session?.access_token || null;
 };
 
 /**
@@ -114,20 +80,17 @@ export async function authenticateRequest(
     if ((authError || !user) && request.headers.get('cookie')) {
       try {
         const cookieHeader = request.headers.get('cookie') || '';
-        const sessionCookieMatch = cookieHeader.match(/supabase-session=([^;]+)/);
-        if (sessionCookieMatch) {
-          const sessionData = JSON.parse(decodeURIComponent(sessionCookieMatch[1]));
-          if (sessionData.refresh_token) {
-            console.log('[Auth Middleware] Access token 无效，尝试使用 refresh_token 刷新...');
-            const { data: refreshData, error: refreshError } = await admin.auth.refreshSession({
-              refresh_token: sessionData.refresh_token
-            });
+        const sessionTokens = readSessionCookie(cookieHeader);
+        if (sessionTokens?.refresh_token) {
+          console.log('[Auth Middleware] Access token 无效，尝试使用 refresh_token 刷新...');
+          const { data: refreshData, error: refreshError } = await admin.auth.refreshSession({
+            refresh_token: sessionTokens.refresh_token
+          });
 
-            if (!refreshError && refreshData?.user) {
-              user = refreshData.user;
-              console.log('[Auth Middleware] ✅ Session 刷新成功，用户:', user.email);
-              // 注意：新的 session tokens 需要由前端更新 cookie
-            }
+          if (!refreshError && refreshData?.user) {
+            user = refreshData.user;
+            console.log('[Auth Middleware] ✅ Session 刷新成功，用户:', user.email);
+            // 注意：新的 session tokens 需要由前端更新 cookie
           }
         }
       } catch (refreshErr) {

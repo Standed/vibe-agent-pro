@@ -64,7 +64,7 @@ export async function middleware(req: NextRequest) {
             refresh_token: data.session.refresh_token,
           };
 
-          const newCookieValue = encodeURIComponent(JSON.stringify(newSession));
+          const newCookieValue = JSON.stringify(newSession);
 
           // 关键修复：将刷新的 Token 同步到下游请求 Request 中
           // 避免 API 路由再次使用旧 Token 触发二次刷新导致冲突

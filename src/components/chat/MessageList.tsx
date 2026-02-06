@@ -17,6 +17,9 @@ interface MessageListProps {
     selectedModel: string;
     selectedShotId: string | null;
     currentSceneId: string | null;
+    userAvatarSrc?: string | null;
+    userAvatarName?: string | null;
+    userAvatarEmail?: string | null;
     scrollParentRef?: React.RefObject<HTMLDivElement | null>;
     hasMore?: boolean;
     isLoadingMore?: boolean;
@@ -42,6 +45,9 @@ interface MessageListProps {
 const MessageItem = memo(function MessageItem({
     message,
     selectedModel,
+    userAvatarSrc,
+    userAvatarName,
+    userAvatarEmail,
     onDelete,
     onSetSlicerData,
     onPreview,
@@ -54,6 +60,9 @@ const MessageItem = memo(function MessageItem({
 }: {
     message: ChatPanelMessage;
     selectedModel: string;
+    userAvatarSrc?: string | null;
+    userAvatarName?: string | null;
+    userAvatarEmail?: string | null;
     onDelete: () => void;
     project?: any;
     onSetSlicerData: (data: {
@@ -82,6 +91,9 @@ const MessageItem = memo(function MessageItem({
                 metadata: message.metadata,
                 gridData: message.gridData as any, // 类型兼容处理
             }}
+            userAvatarSrc={userAvatarSrc}
+            userAvatarName={userAvatarName}
+            userAvatarEmail={userAvatarEmail}
             project={project}
             onDelete={onDelete}
             onApplyVideoToShot={onApplyVideoToShot}
@@ -113,6 +125,9 @@ const MessageItem = memo(function MessageItem({
         prevProps.message.images === nextProps.message.images &&
         prevProps.message.content === nextProps.message.content &&
         prevProps.selectedModel === nextProps.selectedModel &&
+        prevProps.userAvatarSrc === nextProps.userAvatarSrc &&
+        prevProps.userAvatarName === nextProps.userAvatarName &&
+        prevProps.userAvatarEmail === nextProps.userAvatarEmail &&
         prevProps.onAddToReference === nextProps.onAddToReference &&
         prevProps.project?.settings?.aspectRatio === nextProps.project?.settings?.aspectRatio
     );
@@ -155,6 +170,9 @@ export const MessageList = memo(function MessageList({
     selectedModel,
     selectedShotId,
     currentSceneId,
+    userAvatarSrc,
+    userAvatarName,
+    userAvatarEmail,
     scrollParentRef,
     hasMore,
     isLoadingMore,
@@ -209,6 +227,9 @@ export const MessageList = memo(function MessageList({
                     key={message.id}
                     message={message}
                     selectedModel={selectedModel}
+                    userAvatarSrc={userAvatarSrc}
+                    userAvatarName={userAvatarName}
+                    userAvatarEmail={userAvatarEmail}
                     project={project}
                     onDelete={() => onDelete(message.id)}
                     onSetSlicerData={onSetSlicerData}
@@ -233,6 +254,9 @@ export const MessageList = memo(function MessageList({
     return (
         prevProps.messages === nextProps.messages &&
         prevProps.selectedModel === nextProps.selectedModel &&
+        prevProps.userAvatarSrc === nextProps.userAvatarSrc &&
+        prevProps.userAvatarName === nextProps.userAvatarName &&
+        prevProps.userAvatarEmail === nextProps.userAvatarEmail &&
         prevProps.onAddToReference === nextProps.onAddToReference &&
         prevProps.onApplyVideoToShot === nextProps.onApplyVideoToShot &&
         prevProps.scrollParentRef === nextProps.scrollParentRef

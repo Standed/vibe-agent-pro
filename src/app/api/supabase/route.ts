@@ -80,7 +80,7 @@ const UUID_FIELDS: Record<AllowedTable, string[]> = {
   projects: ['id', 'user_id'],
   scenes: ['id', 'project_id'],
   shots: ['id', 'scene_id'],
-  characters: ['id', 'project_id'],
+  characters: ['id', 'project_id', 'user_id'],
   audio_assets: ['id', 'project_id'],
   profiles: ['id'],
   chat_messages: ['id', 'user_id', 'project_id', 'scene_id', 'shot_id'], // ✅ 聊天消息 UUID 字段
@@ -165,6 +165,7 @@ const collectInvalidUuidFields = (
 // 需要强制注入/过滤 user_id 的表
 const USER_ID_FIELD: Partial<Record<AllowedTable, string>> = {
   projects: 'user_id',
+  characters: 'user_id',
   chat_messages: 'user_id',
   series: 'user_id',
   profiles: 'id', // ✅ 确保用户只能查询/更新自己的 Profile
@@ -274,6 +275,153 @@ export async function POST(request: NextRequest) {
         { error: `无效的 UUID 字段: ${invalidUuidFields.join(', ')}` },
         { status: 400 }
       );
+    }
+
+    const unique = (values: string[]) =>
+      Array.from(new Set(values.filter(Boolean)));
+
+    const pushIds = (dest: string[], value: any) => {
+      if (value === undefined || value === null || value === 'null') return;
+      if (Array.isArray(value)) {
+        value.forEach((v) => {
+          if (v === undefined || v === null || v === 'null') return;
+          dest.push(String(v));
+        });
+        return;
+      }
+      dest.push(String(value));
+    };
+
+    const collectFromData = (data: any, key: string) => {
+      const ids: string[] = [];
+      if (!data) return ids;
+      if (Array.isArray(data)) {
+        data.forEach((item) => pushIds(ids, item?.[key]));
+      } else {
+        pushIds(ids, data?.[key]);
+      }
+      return ids;
+    };
+
+    const collectFromFilters = (filters: SupabaseRequest['filters'], key: string) => {
+      const ids: string[] = [];
+      pushIds(ids, (filters as any)?.eq?.[key]);
+      pushIds(ids, (filters as any)?.in?.[key]);
+      return ids;
+    };
+
+    const ensureProjectsOwned = async (projectIds: string[]) => {
+      const ids = unique(projectIds);
+      if (ids.length === 0) return false;
+      const { data: projects, error } = await getSupabaseAdmin()
+        .from('projects')
+        .select('id')
+        .in('id', ids)
+        .eq('user_id', userId);
+      if (error) throw error;
+      return Array.isArray(projects) && projects.length === ids.length;
+    };
+
+    const resolveProjectIdsFromSceneIds = async (sceneIds: string[]) => {
+      const ids = unique(sceneIds);
+      if (ids.length === 0) return null;
+      const { data: scenes, error } = await getSupabaseAdmin()
+        .from('scenes')
+        .select('id, project_id')
+        .in('id', ids);
+      if (error) throw error;
+      if (!Array.isArray(scenes) || scenes.length !== ids.length) return null;
+      const projectIds = unique(scenes.map((s: any) => String(s.project_id || '')).filter(Boolean));
+      return projectIds.length > 0 ? projectIds : null;
+    };
+
+    const resolveSceneIdsFromShotIds = async (shotIds: string[]) => {
+      const ids = unique(shotIds);
+      if (ids.length === 0) return null;
+      const { data: shots, error } = await getSupabaseAdmin()
+        .from('shots')
+        .select('id, scene_id')
+        .in('id', ids);
+      if (error) throw error;
+      if (!Array.isArray(shots) || shots.length !== ids.length) return null;
+      const sceneIds = unique(shots.map((s: any) => String(s.scene_id || '')).filter(Boolean));
+      return sceneIds.length > 0 ? sceneIds : null;
+    };
+
+    const resolveProjectIdsFromAudioAssetIds = async (audioAssetIds: string[]) => {
+      const ids = unique(audioAssetIds);
+      if (ids.length === 0) return null;
+      const { data: assets, error } = await getSupabaseAdmin()
+        .from('audio_assets')
+        .select('id, project_id')
+        .in('id', ids);
+      if (error) throw error;
+      if (!Array.isArray(assets) || assets.length !== ids.length) return null;
+      const projectIds = unique(assets.map((a: any) => String(a.project_id || '')).filter(Boolean));
+      return projectIds.length > 0 ? projectIds : null;
+    };
+
+    const guardedTable = table as AllowedTable;
+    if (guardedTable === 'scenes' || guardedTable === 'shots' || guardedTable === 'audio_assets') {
+      const deny = () => NextResponse.json({ error: '无权限访问该资源' }, { status: 403 });
+      const badScope = (hint: string) =>
+        NextResponse.json({ error: `缺少资源范围过滤条件：${hint}` }, { status: 400 });
+
+      if (guardedTable === 'scenes') {
+        let projectIds = unique([
+          ...collectFromData(dataWithUserId, 'project_id'),
+          ...collectFromFilters(filtersWithUserId, 'project_id'),
+        ]);
+
+        if (projectIds.length === 0) {
+          const sceneIds = unique(collectFromFilters(filtersWithUserId, 'id'));
+          if (sceneIds.length === 0) return badScope('scenes.project_id 或 scenes.id');
+          const resolved = await resolveProjectIdsFromSceneIds(sceneIds);
+          if (!resolved) return deny();
+          projectIds = resolved;
+        }
+
+        const ok = await ensureProjectsOwned(projectIds);
+        if (!ok) return deny();
+      }
+
+      if (guardedTable === 'shots') {
+        let sceneIds = unique([
+          ...collectFromData(dataWithUserId, 'scene_id'),
+          ...collectFromFilters(filtersWithUserId, 'scene_id'),
+        ]);
+
+        if (sceneIds.length === 0) {
+          const shotIds = unique(collectFromFilters(filtersWithUserId, 'id'));
+          if (shotIds.length === 0) return badScope('shots.scene_id 或 shots.id');
+          const resolved = await resolveSceneIdsFromShotIds(shotIds);
+          if (!resolved) return deny();
+          sceneIds = resolved;
+        }
+
+        const projectIds = await resolveProjectIdsFromSceneIds(sceneIds);
+        if (!projectIds) return deny();
+        const ok = await ensureProjectsOwned(projectIds);
+        if (!ok) return deny();
+      }
+
+      if (guardedTable === 'audio_assets') {
+        let projectIds = unique([
+          ...collectFromData(dataWithUserId, 'project_id'),
+          ...collectFromFilters(filtersWithUserId, 'project_id'),
+        ]);
+
+        if (projectIds.length === 0) {
+          const assetIds = unique(collectFromFilters(filtersWithUserId, 'id'));
+          if (assetIds.length === 0) return badScope('audio_assets.project_id 或 audio_assets.id');
+          const resolved = await resolveProjectIdsFromAudioAssetIds(assetIds);
+          if (!resolved) return deny();
+          projectIds = resolved;
+        }
+
+        const ok = await ensureProjectsOwned(projectIds);
+        if (!ok) return deny();
+      }
     }
 
     console.log('[Supabase API] 📡', operation.toUpperCase(), table, 'userId:', userId);

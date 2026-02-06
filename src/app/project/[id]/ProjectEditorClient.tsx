@@ -143,14 +143,14 @@ export function ProjectEditorClient() {
                         {isAuthError ? (
                             <button
                                 onClick={() => router.push('/auth/login')}
-                                className="px-6 py-3 bg-light-accent dark:bg-cine-accent text-white rounded-lg hover:opacity-90 font-medium"
+                                className="px-6 py-3 bg-light-accent dark:bg-cine-accent text-white dark:text-black rounded-lg hover:opacity-90 font-medium"
                             >
                                 重新登录
                             </button>
                         ) : (
                             <button
                                 onClick={() => router.push('/')}
-                                className="px-6 py-3 bg-light-accent dark:bg-cine-accent text-white rounded-lg hover:opacity-90 font-medium"
+                                className="px-6 py-3 bg-light-accent dark:bg-cine-accent text-white dark:text-black rounded-lg hover:opacity-90 font-medium"
                             >
                                 返回首页
                             </button>

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-4.0.0-purple?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-4.0.5-purple?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15.1-black?style=for-the-badge&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=for-the-badge&logo=typescript)
@@ -457,6 +457,11 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 ---
 
 ## 📝 Changelog
+
+ ### v4.0.5 (2026-02-06) - ⚡ Performance & Documentation
+- ✅ **Core Optimization** - Decoupled `ChatBubble` from `useAuth` context, eliminating unnecessary re-renders of hundreds of chat bubbles during score updates (P0 Performance Fix).
+- ✅ **Stability Fix** - Fixed regression in `PlanningChat` where user avatars were missing; restored prop passing for consistent display.
+- ✅ **Documentation** - Added deep architectural reviews (Risk Analysis, Gemini Performance) and updated AGENTS.md guide.
 
  ### v4.0.4 (2026-02-06) - 🎨 UI Polish & Core Stability (Codex Integration)
 

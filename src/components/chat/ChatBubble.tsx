@@ -6,7 +6,6 @@ import { GenerationResult } from './GenerationResult';
 import { ChatPanelMessage } from '@/types/project';
 import { User, Sparkles, Maximize2, RefreshCw, Grid3x3, Trash2, Image as ImageIcon, Download } from 'lucide-react';
 import { downloadFile } from '@/utils/download';
-import { useAuth } from '@/components/auth/AuthProvider';
 import { Avatar } from '@/components/ui/Avatar';
 
 // 使用统一的类型定义，保持向后兼容的别名
@@ -14,6 +13,9 @@ export type ChatMessage = ChatPanelMessage;
 
 interface ChatBubbleProps {
     message: ChatMessage;
+    userAvatarSrc?: string | null;
+    userAvatarName?: string | null;
+    userAvatarEmail?: string | null;
     onImageClick?: (url: string, index: number, message: ChatMessage) => void;
     onSliceSelect?: (message: ChatMessage) => void;
     onReusePrompt?: (prompt: string) => void;
@@ -27,6 +29,9 @@ interface ChatBubbleProps {
 
 export function ChatBubble({
     message,
+    userAvatarSrc,
+    userAvatarName,
+    userAvatarEmail,
     onImageClick,
     onSliceSelect,
     onReusePrompt,
@@ -37,7 +42,6 @@ export function ChatBubble({
     onDelete,
     project
 }: ChatBubbleProps) {
-    const { user, profile } = useAuth(); // Get user and profile for avatar
     const isUser = message.role === 'user';
     const hasImages = message.images && message.images.length > 0;
     const hasVideo = !!message.videoUrl;
@@ -75,9 +79,9 @@ export function ChatBubble({
                 {isUser ? (
                     <div className="flex-shrink-0 w-8 h-8">
                         <Avatar
-                            src={profile?.avatar_url}
-                            name={profile?.full_name}
-                            email={user?.email}
+                            src={userAvatarSrc}
+                            name={userAvatarName || undefined}
+                            email={userAvatarEmail || undefined}
                             size="sm"
                         />
                     </div>

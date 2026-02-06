@@ -1,20 +1,37 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Home, Plus, Edit2, Trash2, ArrowLeft } from 'lucide-react';
+import { Plus, Edit2, Trash2, ArrowLeft, Search, X } from 'lucide-react';
 import { dataService } from '@/lib/dataService';
 import type { Character } from '@/types/project';
-import { useAuth, useRequireWhitelist } from '@/components/auth/AuthProvider';
+import { useRequireWhitelist } from '@/components/auth/AuthProvider';
 import AddCharacterDialog from '@/components/asset/AddCharacterDialog';
 import { toast } from 'sonner';
 
 export default function AssetsPage() {
     const [characters, setCharacters] = useState<Character[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
     const { user, loading: authLoading } = useRequireWhitelist();
+
+    const filteredCharacters = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return characters;
+        return characters.filter((char) => {
+            const haystack = [
+                char.name,
+                char.description,
+                char.appearance,
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+            return haystack.includes(q);
+        });
+    }, [characters, searchQuery]);
 
     useEffect(() => {
         if (!authLoading && user) {
@@ -89,7 +106,7 @@ export default function AssetsPage() {
             // But usually it just deletes by ID.
             // I'll assume it works or I added it.
             // I will verify dataService deleteCharacter signature.
-            await (dataService as any).deleteCharacter(id); // Using cast if typescript complains
+            await dataService.deleteCharacter(id);
             toast.success('删除成功');
             loadCharacters();
         } catch (error) {
@@ -111,13 +128,34 @@ export default function AssetsPage() {
                             <p className="text-light-text-muted dark:text-cine-text-muted">管理你的全局角色和资产</p>
                         </div>
                     </div>
-                    <button
-                        onClick={() => setShowAddDialog(true)}
-                        className="bg-light-accent dark:bg-cine-accent text-white px-4 py-2 rounded-lg font-bold hover:bg-light-accent-hover dark:hover:bg-cine-accent/90 transition-colors flex items-center gap-2"
-                    >
-                        <Plus size={20} />
-                        添加角色
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <div className="relative w-[180px] sm:w-64">
+                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-light-text-muted dark:text-cine-text-muted" />
+                            <input
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="搜索角色..."
+                                className="w-full pl-9 pr-9 py-2 rounded-lg bg-white/70 dark:bg-black/40 border border-light-border/60 dark:border-cine-border/60 text-sm text-light-text dark:text-white placeholder:text-light-text-muted/70 dark:placeholder:text-cine-text-muted/70 focus:outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/10"
+                            />
+                            {searchQuery.trim() && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted"
+                                    title="清空搜索"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setShowAddDialog(true)}
+                            className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-lg font-bold hover:opacity-90 transition-colors flex items-center gap-2 shadow-lg shadow-black/10 dark:shadow-white/10"
+                        >
+                            <Plus size={20} />
+                            添加角色
+                        </button>
+                    </div>
                 </header>
 
                 {/* Content */}
@@ -133,9 +171,32 @@ export default function AssetsPage() {
                             创建一个新角色
                         </button>
                     </div>
+                ) : filteredCharacters.length === 0 ? (
+                    <div className="text-center py-20 border border-light-border/60 dark:border-cine-border/60 rounded-xl bg-white/40 dark:bg-black/20">
+                        <p className="text-light-text dark:text-white font-bold">未找到匹配角色</p>
+                        <p className="text-sm text-light-text-muted dark:text-cine-text-muted mt-2">
+                            试试换个关键词，或清空搜索查看全部角色
+                        </p>
+                        <div className="mt-6 flex justify-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setSearchQuery('')}
+                                className="px-4 py-2 rounded-lg bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:opacity-90 transition-colors"
+                            >
+                                清空搜索
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowAddDialog(true)}
+                                className="px-4 py-2 rounded-lg border border-light-border dark:border-cine-border text-light-text dark:text-white text-sm font-bold hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                            >
+                                创建新角色
+                            </button>
+                        </div>
+                    </div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                        {characters.map(char => (
+                        {filteredCharacters.map(char => (
                             <div key={char.id} className="group bg-light-panel dark:bg-cine-panel border border-light-border dark:border-cine-border rounded-xl overflow-hidden hover:border-light-accent dark:hover:border-cine-accent transition-all relative">
                                 <div className="aspect-[3/4] bg-gray-100 dark:bg-black relative">
                                     {char.referenceImages && char.referenceImages[0] ? (
@@ -148,7 +209,7 @@ export default function AssetsPage() {
                                     <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button
                                             onClick={() => setEditingCharacter(char)}
-                                            className="p-2 bg-black/60 text-white rounded hover:bg-light-accent dark:hover:bg-cine-accent transition-colors"
+                                            className="p-2 bg-black/60 text-white rounded hover:bg-light-accent dark:hover:bg-cine-accent dark:hover:text-black transition-colors"
                                         >
                                             <Edit2 size={16} />
                                         </button>

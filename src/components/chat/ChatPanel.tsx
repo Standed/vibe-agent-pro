@@ -56,7 +56,7 @@ export default function ChatPanel() {
         activeTasks // Subscribe to activeTasks
     } = useProjectStore();
 
-    const { user } = useAuth();
+    const { user, profile } = useAuth();
 
     // Derived State (Moved up for hooks dependency)
     const shots = project?.shots || [];
@@ -1028,6 +1028,9 @@ export default function ChatPanel() {
                     selectedModel={selectedModel}
                     selectedShotId={selectedShotId}
                     currentSceneId={currentSceneId}
+                    userAvatarSrc={profile?.avatar_url}
+                    userAvatarName={profile?.full_name}
+                    userAvatarEmail={user?.email}
                     scrollParentRef={messagesContainerRef}
                     hasMore={hasMore}
                     isLoadingMore={isLoading}
