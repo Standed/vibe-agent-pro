@@ -213,6 +213,7 @@ export async function getUserProfile(userId?: string, accessToken?: string) {
   if (!uid) {
     return { data: null, error: new Error('User not found') };
   }
+  const attemptedTokens = new Set<string>();
 
   const fetchProfileViaProxy = async (token?: string) => {
     try {
@@ -270,6 +271,7 @@ export async function getUserProfile(userId?: string, accessToken?: string) {
 
   // 0. 如果调用方传入 accessToken（典型刷新场景），优先使用 API 代理，避免依赖 Supabase client session 的水合状态
   if (accessToken) {
+    attemptedTokens.add(accessToken);
     const proxied = await fetchProfileViaProxy(accessToken);
     if (proxied.data && !proxied.error) return proxied;
   }
@@ -288,25 +290,23 @@ export async function getUserProfile(userId?: string, accessToken?: string) {
   // 2. 如果直接获取失败 (通常是 RLS 权限问题)，尝试通过 API 代理获取 (使用 Service Role)
   console.log('[Auth] 直接获取 Profile 失败或为空，尝试使用 API 代理...');
 
-  // 2.1 先尝试仅依赖 Cookie（避免 supabase.auth.getSession() 可能挂起）
-  const proxiedByCookie = await fetchProfileViaProxy(accessToken);
+  // 2.1 先尝试仅依赖 Cookie（不传 Authorization，避免重复使用失效 token）
+  const proxiedByCookie = await fetchProfileViaProxy();
   if (proxiedByCookie.data && !proxiedByCookie.error) {
     return { data: proxiedByCookie.data, error: null };
   }
 
   // 2.2 Cookie 不可用时，短超时尝试从 Supabase 内存 session 获取 token 再重试
-  if (!accessToken) {
-    const session = await Promise.race([
-      getCurrentSession(),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
-    ]);
+  const session = await Promise.race([
+    getCurrentSession(),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
+  ]);
 
-    const token = session?.access_token;
-    if (token) {
-      const proxiedByToken = await fetchProfileViaProxy(token);
-      if (proxiedByToken.data && !proxiedByToken.error) {
-        return { data: proxiedByToken.data, error: null };
-      }
+  const token = session?.access_token;
+  if (token && !attemptedTokens.has(token)) {
+    const proxiedByToken = await fetchProfileViaProxy(token);
+    if (proxiedByToken.data && !proxiedByToken.error) {
+      return { data: proxiedByToken.data, error: null };
     }
   }
 

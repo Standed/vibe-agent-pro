@@ -38,7 +38,7 @@ interface UseChatGenerationProps {
 /**
  * Upload Base64 image to R2 with retry mechanism
  * Retries up to 5 times with exponential backoff (3s, 6s, 12s, 24s, 48s)
- * On failure, returns original Base64 data URL so user can still view the image
+ * On failure, throws error (do not persist Base64 fallback into chat history)
  */
 const uploadWithRetry = async (
     base64DataUrl: string,
@@ -72,9 +72,9 @@ const uploadWithRetry = async (
         }
     }
 
-    // All retries failed - return original Base64 so user can still view the image
-    console.error('[uploadWithRetry] ❌ R2 上传最终失败，使用 Base64 作为临时图片', lastError);
-    return base64DataUrl;
+    // All retries failed - fail fast to avoid "current visible but refresh lost" inconsistency.
+    console.error('[uploadWithRetry] ❌ R2 上传最终失败，停止持久化', lastError);
+    throw new Error(lastError?.message || 'R2 upload failed after retries');
 };
 
 const isBase64DataUrl = (value?: string | null) => {
@@ -220,6 +220,15 @@ export function useChatGeneration({
             }
             return r.url;
         });
+
+        // Update optimistic UI: replace local blob: preview URLs with persistable URLs once uploads finish.
+        // This prevents "use as reference" / "apply to shot" from capturing blob:/data: URLs.
+        if (filesToUpload.length > 0) {
+            setMessages(prev => prev.map(m => {
+                if (m.id !== userMsgId) return m;
+                return { ...m, images: allRefUrls };
+            }));
+        }
 
         // Use 'filesToUpload' for checks instead of deprecated arg
         const uploadedImages = filesToUpload;
@@ -548,6 +557,13 @@ export function useChatGeneration({
 
                 } catch (err) {
                     console.error("Background upload failed", err);
+                    setMessages(prev => prev.map(m => {
+                        if (m.id !== assistantMsgId) return m;
+                        return {
+                            ...m,
+                            content: `${assistantMessage.content}\n（结果上传失败，刷新后可能不可见，请重试）`
+                        };
+                    }));
                     toast.error("图片上传到服务器失败，但您可以继续浏览");
                 } finally {
                     setIsUploading(false);

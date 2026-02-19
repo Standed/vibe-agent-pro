@@ -95,7 +95,8 @@ export function useChatHistory(
                 const loadedMessages = await dataService.getChatMessages({
                     ...filters,
                     limit: pageLimit,
-                    offset: 0
+                    offset: 0,
+                    orderBy: { column: 'created_at', ascending: false }
                 }, undefined, controller.signal);
                 const converted = convertChatMessages(loadedMessages).reverse();
 
@@ -337,7 +338,8 @@ export function useChatHistory(
         const loadedMessages = await dataService.getChatMessages({
             ...filters,
             limit: MESSAGES_PER_PAGE,
-            offset
+            offset,
+            orderBy: { column: 'created_at', ascending: false }
         });
         const converted = convertChatMessages(loadedMessages).reverse();
         const nextHasMore = loadedMessages.length >= MESSAGES_PER_PAGE;
@@ -367,6 +369,8 @@ export function useChatHistory(
     // Realtime Subscription
     useEffect(() => {
         if (!projectId) return;
+        const scope: 'shot' | 'scene' | 'project' = selectedShotId ? 'shot' : currentSceneId ? 'scene' : 'project';
+        const cacheKey = buildCacheKey(projectId, scope, selectedShotId, currentSceneId);
 
         const unsubscribe = dataService.subscribeToChatMessages(projectId, (msg) => {
             let isRelevant = false;
@@ -398,6 +402,15 @@ export function useChatHistory(
                     if (prev.some(m => m.id === newMessage.id)) return prev;
                     const next = [...prev, newMessage];
                     next.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                    const nextLoadedCount = loadedCountRef.current + 1;
+                    loadedCountRef.current = nextLoadedCount;
+                    const cached = useProjectStore.getState().chatCache[cacheKey];
+                    setChatCache(cacheKey, {
+                        messages: next,
+                        updatedAt: Date.now(),
+                        hasMore: cached?.hasMore ?? true,
+                        loadedCount: Math.max(cached?.loadedCount || 0, nextLoadedCount)
+                    });
                     return next;
                 });
             }
@@ -406,7 +419,7 @@ export function useChatHistory(
         return () => {
             unsubscribe();
         };
-    }, [projectId, selectedShotId, currentSceneId]);
+    }, [projectId, selectedShotId, currentSceneId, setChatCache]);
 
     const deleteMessage = async (messageId: string) => {
         // 1. Optimistic Update
