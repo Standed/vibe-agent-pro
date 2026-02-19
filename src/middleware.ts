@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 import { createClient } from '@supabase/supabase-js';
-import { isTokenExpired } from '@/lib/supabase/cookie-utils';
+import { isTokenExpired, readSessionCookie } from '@/lib/supabase/cookie-utils';
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
@@ -31,8 +31,10 @@ export async function middleware(req: NextRequest) {
   // 如果有 cookie，检查是否过期并尝试刷新
   if (cookie) {
     try {
-      const cookieValue = decodeURIComponent(cookie.value);
-      const session = JSON.parse(cookieValue);
+      const session = readSessionCookie(`supabase-session=${cookie.value}`);
+      if (!session?.access_token || !session?.refresh_token) {
+        throw new Error('Invalid session cookie');
+      }
 
       // 检查 Token 是否过期
       if (session?.access_token && isTokenExpired(session.access_token)) {
