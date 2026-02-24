@@ -27,6 +27,7 @@ export default function Home() {
   const { createNewProject, project, batchUpdateScenesAndShots } = useProjectStore();
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
   const [showNewSeriesDialog, setShowNewSeriesDialog] = useState(false);
+  const [newProjectFromDirector, setNewProjectFromDirector] = useState(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [series, setSeries] = useState<Series[]>([]);
@@ -95,6 +96,19 @@ export default function Home() {
 
   const { user, profile, signOut, loading: authLoading } = useRequireWhitelist();
   const globalCharactersLoadedRef = useRef(false);
+
+  // Defer non-critical background work to idle time to keep first paint responsive.
+  const scheduleIdle = useCallback((fn: () => void, timeout: number = 1500) => {
+    if (typeof window === 'undefined') return;
+    const ric = (window as any).requestIdleCallback as
+      | ((cb: () => void, opts?: { timeout: number }) => number)
+      | undefined;
+    if (typeof ric === 'function') {
+      ric(fn, { timeout });
+      return;
+    }
+    window.setTimeout(fn, 250);
+  }, []);
 
   const ensureGlobalCharactersLoaded = useCallback(async () => {
     if (!user) return;
@@ -275,33 +289,32 @@ export default function Home() {
           .slice(0, MAX_COVER_FIX)
           .filter(p => !coverFixInFlightRef.current.has(p.id));
 
-        if (projectsToFix.length === 0) {
-          // 已在进行中或已经触发过修复
-        } else {
+        if (projectsToFix.length > 0) {
           projectsToFix.forEach(p => coverFixInFlightRef.current.add(p.id));
 
-          // console.log(`[HomePage] 🖼️ 尝试自动设置 ${projectsToFix.length} 个项目封面`);
-          (async () => {
-            let updatedCount = 0;
-            for (const p of projectsToFix) {
-              try {
-                const coverUrl = await dataService.getProjectFirstImage(p.id, user.id);
-                if (coverUrl) {
-                  // ✅ 只更新 metadata.coverImage，避免 saveProject 覆盖 scene_count/shot_count 或 metadata 其它字段
-                  await dataService.updateProjectCoverImage(p.id, coverUrl, user.id);
-                  // 更新本地状态
-                  setProjects(prev => prev.map(curr => curr.id === p.id ? { ...curr, metadata: { ...curr.metadata, coverImage: coverUrl } } : curr));
-                  updatedCount++;
+          scheduleIdle(() => {
+            (async () => {
+              let updatedCount = 0;
+              for (const p of projectsToFix) {
+                try {
+                  const coverUrl = await dataService.getProjectFirstImage(p.id, user.id);
+                  if (coverUrl) {
+                    // ✅ 只更新 metadata.coverImage，避免 saveProject 覆盖 scene_count/shot_count 或 metadata 其它字段
+                    await dataService.updateProjectCoverImage(p.id, coverUrl, user.id);
+                    // 更新本地状态
+                    setProjects(prev => prev.map(curr => curr.id === p.id ? { ...curr, metadata: { ...curr.metadata, coverImage: coverUrl } } : curr));
+                    updatedCount++;
+                  }
+                } catch (e) {
+                  // 忽略错误，仅仅是封面设置失败
+                  coverFixInFlightRef.current.delete(p.id);
                 }
-              } catch (e) {
-                // 忽略错误，仅仅是封面设置失败
-                coverFixInFlightRef.current.delete(p.id);
               }
-            }
-            if (updatedCount > 0) {
-              // console.log(`[HomePage] 成功更新 ${updatedCount} 个封面`);
-            }
-          })();
+              if (updatedCount > 0) {
+                // console.log(`[HomePage] 成功更新 ${updatedCount} 个封面`);
+              }
+            })().catch((e) => console.warn('[HomePage] cover fix idle task failed:', e));
+          });
         }
       }
 
@@ -323,31 +336,32 @@ export default function Home() {
       });
 
       if (seriesToUpdate.length > 0) {
-        // console.log(`[HomePage] 🎬 尝试更新 ${seriesToUpdate.length} 个剧集封面`);
-        (async () => {
-          let updatedCount = 0;
-          for (const s of seriesToUpdate) {
-            const seriesProjects = allProjects.filter(p => p.seriesId === s.id);
-            seriesProjects.sort((a, b) => new Date(b.metadata.modified).getTime() - new Date(a.metadata.modified).getTime());
-            const latestProject = seriesProjects[0];
+        scheduleIdle(() => {
+          (async () => {
+            let updatedCount = 0;
+            for (const s of seriesToUpdate) {
+              const seriesProjects = allProjects.filter(p => p.seriesId === s.id);
+              seriesProjects.sort((a, b) => new Date(b.metadata.modified).getTime() - new Date(a.metadata.modified).getTime());
+              const latestProject = seriesProjects[0];
 
-            if (latestProject && latestProject.metadata.coverImage) {
-              try {
-                const updatedSeries = { ...s, coverImage: latestProject.metadata.coverImage, updated: new Date() }; // Series type update
-                // 注意：dataService.saveSeries 需要完整对象
-                await dataService.saveSeries(updatedSeries);
-                // Update local state
-                setSeries(prev => prev.map(curr => curr.id === s.id ? updatedSeries : curr));
-                updatedCount++;
-              } catch (e) {
-                console.error('Failed to update series cover', e);
+              if (latestProject && latestProject.metadata.coverImage) {
+                try {
+                  const updatedSeries = { ...s, coverImage: latestProject.metadata.coverImage, updated: new Date() }; // Series type update
+                  // 注意：dataService.saveSeries 需要完整对象
+                  await dataService.saveSeries(updatedSeries);
+                  // Update local state
+                  setSeries(prev => prev.map(curr => curr.id === s.id ? updatedSeries : curr));
+                  updatedCount++;
+                } catch (e) {
+                  console.error('Failed to update series cover', e);
+                }
               }
             }
-          }
-          if (updatedCount > 0) {
-            // console.log(`[HomePage] 成功更新 ${updatedCount} 个剧集封面`);
-          }
-        })();
+            if (updatedCount > 0) {
+              // console.log(`[HomePage] 成功更新 ${updatedCount} 个剧集封面`);
+            }
+          })().catch((e) => console.warn('[HomePage] series cover idle task failed:', e));
+        });
       }
       setSeries(allSeries);
       // console.log('[HomePage] ✅ 数据加载完成', { projects: allProjects.length, series: allSeries.length });
@@ -358,7 +372,7 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, scheduleIdle]);
 
   // 加载数据
   useEffect(() => {
@@ -453,6 +467,7 @@ export default function Home() {
 
     setIsAiBrainstorming(true);
     setAiProposal(null); // Reset previous proposal
+    setNewProjectFromDirector(true);
 
     try {
       const response = await fetch('/api/ai/brainstorm', {
@@ -492,6 +507,7 @@ export default function Home() {
       // Fallback: open dialog with manual summary if provided
       const fallbackDescription = aiDirectorInput.trim();
       setAiProposal({ description: fallbackDescription || undefined });
+      setNewProjectFromDirector(true);
       setShowNewProjectDialog(true);
     } finally {
       setIsAiBrainstorming(false);
@@ -506,6 +522,7 @@ export default function Home() {
   ) => {
     try {
       const scriptContent = uploadedScript.trim();
+      const hasImportedStoryboard = !!(importedStoryboard && importedStoryboard.shots.length > 0);
       createNewProject(title, description, artStyle, aspectRatio, scriptContent);
       await new Promise(resolve => setTimeout(resolve, 100));
       if (importedStoryboard && importedStoryboard.shots.length > 0) {
@@ -523,9 +540,11 @@ export default function Home() {
       await dataService.saveProject(currentProject, user?.id);
 
       setShowNewProjectDialog(false);
+      setNewProjectFromDirector(false);
       setUploadedScript('');
       setImportedStoryboard(null);
-      router.push(`/project/${currentProject.id}?view=planning`);
+      const shouldAutoGenerate = !hasImportedStoryboard && (newProjectFromDirector || !!scriptContent);
+      router.push(`/project/${currentProject.id}?view=planning${shouldAutoGenerate ? '&autoGenerate=true' : ''}`);
     } catch (error) {
       console.error('[HomePage] ❌ Create failed:', error);
       toast.error('创建项目失败');
@@ -636,7 +655,10 @@ export default function Home() {
               {/* Glow Effect behind input */}
               <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-[2rem] opacity-20 group-hover:opacity-40 blur-xl transition-opacity duration-500" />
 
-              <div className="relative z-20 glass-panel rounded-[1.5rem] p-2 transition-transform duration-300 focus-within:-translate-y-1 focus-within:shadow-2xl ring-1 ring-white/20 dark:ring-white/10">
+              <form
+                onSubmit={handleAiDirectorSubmit}
+                className="relative z-20 glass-panel rounded-[1.5rem] p-2 transition-transform duration-300 focus-within:-translate-y-1 focus-within:shadow-2xl ring-1 ring-white/20 dark:ring-white/10"
+              >
                 <textarea
                   ref={textareaRef}
                   value={aiDirectorInput}
@@ -835,10 +857,10 @@ export default function Home() {
 
                   <button
                     type="submit"
-                    disabled={isAiBrainstorming || !aiDirectorInput.trim()}
+                    disabled={isAiBrainstorming || (!aiDirectorInput.trim() && !uploadedScript.trim())}
                     className={cn(
                       "group relative flex items-center justify-center w-12 h-12 rounded-full transition-all shadow-lg overflow-hidden",
-                      isAiBrainstorming || !aiDirectorInput.trim()
+                      isAiBrainstorming || (!aiDirectorInput.trim() && !uploadedScript.trim())
                         ? "bg-zinc-100 dark:bg-zinc-800 cursor-not-allowed opacity-50"
                         : "bg-black dark:bg-white hover:scale-105 active:scale-95 cursor-pointer"
                     )}
@@ -858,7 +880,7 @@ export default function Home() {
                     <span>已加载剧本</span>
                   </div>
                 )}
-              </div>
+              </form>
 
               {/* @ Mention Menu Implementation */}
               <AnimatePresence>
@@ -934,7 +956,11 @@ export default function Home() {
                 </button>
               )}
               <button
-                onClick={() => setShowNewProjectDialog(true)}
+                onClick={() => {
+                  setNewProjectFromDirector(false);
+                  setAiProposal(null);
+                  setShowNewProjectDialog(true);
+                }}
                 className="px-4 py-2 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold shadow-lg shadow-black/5 dark:shadow-white/5 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
               >
                 <Plus size={16} />
@@ -1084,7 +1110,11 @@ export default function Home() {
                 {currentSeriesId ? '在这个剧集中创建一个新项目，或者从其他地方移动项目过来。' : '创建一个新项目开始创作，或创建一个剧集来组织您的作品。'}
               </p>
               <button
-                onClick={() => setShowNewProjectDialog(true)}
+                onClick={() => {
+                  setNewProjectFromDirector(false);
+                  setAiProposal(null);
+                  setShowNewProjectDialog(true);
+                }}
                 className="px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-full font-bold hover:scale-105 active:scale-95 transition-all shadow-xl shadow-black/10 dark:shadow-white/10"
               >
                 开始创作
@@ -1098,7 +1128,10 @@ export default function Home() {
           showNewProjectDialog && (
             <NewProjectDialog
               onConfirm={handleCreateProject}
-              onClose={() => setShowNewProjectDialog(false)}
+              onClose={() => {
+                setShowNewProjectDialog(false);
+                setNewProjectFromDirector(false);
+              }}
               initialDescription={aiProposal?.description || aiDirectorInput}
               initialTitle={aiProposal?.title}
               initialArtStyle={aiProposal?.artStyle}

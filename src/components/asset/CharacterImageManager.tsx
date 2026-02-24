@@ -1,7 +1,6 @@
 import React from 'react';
 import { Upload, Trash2, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
 
 interface CharacterImageManagerProps {
     referenceImages: string[];
@@ -51,10 +50,8 @@ export function CharacterImageManager({
             {referenceImages.length > 0 && (
                 <div className="grid grid-cols-3 gap-3 mt-4">
                     {referenceImages.map((imageUrl, index) => (
-                        <motion.div
+                        <div
                             key={index}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
                             className={cn(
                                 "group relative aspect-square rounded-xl overflow-hidden cursor-pointer transition-all duration-300",
                                 selectedRefIndex === index
@@ -68,6 +65,8 @@ export function CharacterImageManager({
                             <img
                                 src={imageUrl}
                                 alt={`参考图 ${index + 1}`}
+                                loading="lazy"
+                                decoding="async"
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                             />
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
@@ -102,7 +101,7 @@ export function CharacterImageManager({
                                     主图
                                 </div>
                             )}
-                        </motion.div>
+                        </div>
                     ))}
                 </div>
             )}

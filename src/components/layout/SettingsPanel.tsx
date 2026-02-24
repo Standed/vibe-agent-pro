@@ -27,6 +27,18 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
 
   const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (previewAvatar?.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(previewAvatar);
+        } catch {
+          // ignore revoke failures
+        }
+      }
+    };
+  }, [previewAvatar]);
+
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       if (!event.target.files || event.target.files.length === 0) {
@@ -52,6 +64,13 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       }
 
       // 0. Optimistic UI: Immediately show the new avatar
+      if (previewAvatar?.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(previewAvatar);
+        } catch {
+          // ignore revoke failures
+        }
+      }
       const objectUrl = URL.createObjectURL(file);
       setPreviewAvatar(objectUrl);
       setUploading(true);
@@ -115,6 +134,13 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
     } catch (error: any) {
       console.error('Error uploading avatar:', error);
       toast.error(error.message || '头像上传失败');
+      if (previewAvatar?.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(previewAvatar);
+        } catch {
+          // ignore revoke failures
+        }
+      }
       setPreviewAvatar(null); // Revert on failure
       setUploading(false); // Ensure we stop spinning on error
     } finally {
@@ -366,4 +392,3 @@ export function SettingsPanel() {
     </>
   );
 }
-

@@ -13,6 +13,7 @@ import { formatShotLabel } from '@/utils/shotOrder';
 import { ImagePreviewOverlay } from './ImagePreviewOverlay';
 import { dataService } from '@/lib/dataService';
 import { storageService } from '@/lib/storageService';
+import { inferExtFromMime, type R2PathContext } from '@/lib/r2-path';
 import { constructBaseShotPrompt } from '@/utils/promptConstruction';
 import { translateCameraMovement, translateShotSize, SHOT_SIZE_TRANSLATIONS, CAMERA_MOVEMENT_TRANSLATIONS } from '@/utils/translations';
 import { useJimengGeneration } from '@/hooks/generation/useJimengGeneration';
@@ -262,6 +263,89 @@ export default function ChatPanel() {
         setIsShotRefDeleted: (deleted: boolean) => setIsShotRefDeleted(deleted),
         setIgnoredUrls
     });
+
+    // Resolve blob:/data: history media into persistable https URL (R2/Supabase) before reuse/apply.
+    const resolvedUrlCacheRef = useRef<Map<string, Promise<string>>>(new Map());
+    const resolveMediaUrl = useCallback(async (url: string): Promise<string> => {
+        if (!url) throw new Error('empty url');
+
+        // Already a network URL (or Gemini File API URL).
+        if (url.startsWith('http') || url.startsWith('https://generativelanguage.googleapis.com')) {
+            return url;
+        }
+
+        if (!project?.id || !user?.id) {
+            throw new Error('not ready');
+        }
+
+        const cached = resolvedUrlCacheRef.current.get(url);
+        if (cached) return cached;
+
+        const task = (async () => {
+            const toastId = toast.loading('正在上传参考图...');
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) {
+                    throw new Error(`fetch failed (${resp.status})`);
+                }
+                const blob = await resp.blob();
+                const mimeType = blob.type || 'image/png';
+                const ext = inferExtFromMime(mimeType);
+                const file = new File([blob], `reference_${Date.now()}.${ext}`, { type: mimeType });
+
+                const folder: R2PathContext = {
+                    projectId: project.id,
+                    scope: selectedShotId ? 'shots' : currentSceneId ? 'scenes' : 'project',
+                    entityId: selectedShotId || currentSceneId || project.id,
+                    assetType: 'reference',
+                    model: 'history_ref'
+                };
+
+                const result = await storageService.uploadFile(file, folder, user.id);
+                toast.dismiss(toastId);
+                return result.url;
+            } catch (e) {
+                toast.dismiss(toastId);
+                throw e;
+            }
+        })();
+
+        resolvedUrlCacheRef.current.set(url, task);
+        try {
+            const resolved = await task;
+            resolvedUrlCacheRef.current.set(url, Promise.resolve(resolved));
+            return resolved;
+        } catch (e) {
+            resolvedUrlCacheRef.current.delete(url);
+            throw e;
+        }
+    }, [project?.id, currentSceneId, selectedShotId, user?.id]);
+
+    const handleAddToReferenceResolved = useCallback((url: string) => {
+        (async () => {
+            const resolvedUrl = await resolveMediaUrl(url);
+            referenceCallbacks.handleAddToReference(resolvedUrl);
+        })().catch((e) => {
+            console.warn('[ChatPanel] Failed to resolve reference url:', e);
+            toast.error('参考图处理失败，请重试');
+        });
+    }, [resolveMediaUrl, referenceCallbacks.handleAddToReference]);
+
+    const handleApplyToShotResolved = useCallback((url: string) => {
+        if (!selectedShotId) {
+            toast.info('请先选择一个分镜');
+            return;
+        }
+
+        (async () => {
+            const resolvedUrl = await resolveMediaUrl(url);
+            updateShot(selectedShotId, { referenceImage: resolvedUrl });
+            toast.success('已应用到分镜');
+        })().catch((e) => {
+            console.warn('[ChatPanel] Failed to apply image to shot:', e);
+            toast.error('应用失败，请重试');
+        });
+    }, [selectedShotId, resolveMediaUrl, updateShot]);
 
     const { handleFileUpload, drop, isOver } = useChatReferenceInteractions({
         selectedModel,
@@ -1042,14 +1126,9 @@ export default function ChatPanel() {
                         setSliceSelectorData(data);
                     }}
                     onPreview={(images, index) => setPreviewState({ images, index })}
-                    onApplyToShot={async (url) => {
-                        if (selectedShotId) {
-                            updateShot(selectedShotId, { referenceImage: url });
-                            toast.success('已应用到分镜');
-                        }
-                    }}
+                    onApplyToShot={handleApplyToShotResolved}
                     onApplyVideoToShot={handleApplyVideoToShot}
-                    onAddToReference={referenceCallbacks.handleAddToReference}
+                    onAddToReference={handleAddToReferenceResolved}
                     onReusePrompt={(prompt) => setInputText(prompt)}
                 />
                 <div ref={messagesEndRef} />

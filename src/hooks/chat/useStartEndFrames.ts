@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 export interface FrameImage {
     url: string;
@@ -12,6 +12,18 @@ export interface StartEndFramesState {
     endFrame: FrameImage | null;
 }
 
+const canRevokeFrame = (frame?: FrameImage | null) =>
+    !!frame && frame.source === 'manual_upload' && typeof frame.url === 'string' && frame.url.startsWith('blob:');
+
+const revokeFrameUrl = (frame?: FrameImage | null) => {
+    if (!canRevokeFrame(frame)) return;
+    try {
+        URL.revokeObjectURL(frame!.url);
+    } catch {
+        // ignore revoke failures
+    }
+};
+
 /**
  * 通用首尾帧管理 Hook
  * 支持 Vidu、Runway 等多个视频平台的首尾帧功能
@@ -23,21 +35,42 @@ export function useStartEndFrames(defaultStartFrame?: FrameImage) {
     });
 
     const setStartFrame = useCallback((frame: FrameImage | null) => {
-        setFrames(prev => ({ ...prev, startFrame: frame }));
+        setFrames(prev => {
+            if (prev.startFrame && prev.startFrame.url !== frame?.url) {
+                revokeFrameUrl(prev.startFrame);
+            }
+            return { ...prev, startFrame: frame };
+        });
     }, []);
 
     const setEndFrame = useCallback((frame: FrameImage | null) => {
-        setFrames(prev => ({ ...prev, endFrame: frame }));
+        setFrames(prev => {
+            if (prev.endFrame && prev.endFrame.url !== frame?.url) {
+                revokeFrameUrl(prev.endFrame);
+            }
+            return { ...prev, endFrame: frame };
+        });
     }, []);
 
     const clearFrames = useCallback(() => {
-        setFrames({ startFrame: null, endFrame: null });
+        setFrames(prev => {
+            revokeFrameUrl(prev.startFrame);
+            revokeFrameUrl(prev.endFrame);
+            return { startFrame: null, endFrame: null };
+        });
     }, []);
 
     const resetToDefault = useCallback(() => {
-        setFrames({
-            startFrame: defaultStartFrame || null,
-            endFrame: null,
+        setFrames(prev => {
+            const nextStartFrame = defaultStartFrame || null;
+            if (prev.startFrame && prev.startFrame.url !== nextStartFrame?.url) {
+                revokeFrameUrl(prev.startFrame);
+            }
+            revokeFrameUrl(prev.endFrame);
+            return {
+                startFrame: nextStartFrame,
+                endFrame: null,
+            };
         });
     }, [defaultStartFrame]);
 
@@ -61,6 +94,13 @@ export function useStartEndFrames(defaultStartFrame?: FrameImage) {
         if (!frames.startFrame || !frames.endFrame) return null;
         return [frames.startFrame.url, frames.endFrame.url];
     }, [frames]);
+
+    useEffect(() => {
+        return () => {
+            revokeFrameUrl(frames.startFrame);
+            revokeFrameUrl(frames.endFrame);
+        };
+    }, [frames.startFrame, frames.endFrame]);
 
     return {
         frames,

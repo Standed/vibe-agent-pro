@@ -85,6 +85,15 @@ const filterPersistableUrls = (urls: string[]) => {
     return urls.filter(url => !isBase64DataUrl(url));
 };
 
+const safeRevokeObjectUrl = (url?: string | null) => {
+    if (!url || !url.startsWith('blob:')) return;
+    try {
+        URL.revokeObjectURL(url);
+    } catch {
+        // ignore revoke failures
+    }
+};
+
 export function useChatGeneration({
     project,
     user,
@@ -145,12 +154,26 @@ export function useChatGeneration({
 
         // 2. Optimistic User Message
         const userMsgId = generateMessageId();
+        const userPreviewEntries = orderedReferences.map((ref) => {
+            if (ref.file && !ref.url) {
+                return {
+                    url: URL.createObjectURL(ref.file),
+                    owned: true,
+                };
+            }
+            return {
+                url: ref.url,
+                owned: false,
+            };
+        });
+        const userPreviewUrls = userPreviewEntries.map(entry => entry.url);
+
         const userMessage: ChatPanelMessage = {
             id: userMsgId,
             role: 'user',
             content: inputText,
             timestamp: new Date(),
-            images: orderedReferences.map(r => r.file ? URL.createObjectURL(r.file) : r.url),
+            images: userPreviewUrls,
             shotId: selectedShotId || undefined,
             sceneId: currentSceneIdCaptured || undefined,
         };
@@ -207,6 +230,9 @@ export function useChatGeneration({
                 setIsUploading(false);
                 removeActiveTask(generationTaskId); // 失败移除任务
                 removeOptimisticMessage(userMsgId); // 失败移除消息
+                userPreviewEntries.forEach((entry) => {
+                    if (entry.owned) safeRevokeObjectUrl(entry.url);
+                });
                 return;
             } finally {
                 setIsUploading(false);
@@ -228,6 +254,11 @@ export function useChatGeneration({
                 if (m.id !== userMsgId) return m;
                 return { ...m, images: allRefUrls };
             }));
+            userPreviewEntries.forEach((entry) => {
+                if (entry.owned && !allRefUrls.includes(entry.url)) {
+                    safeRevokeObjectUrl(entry.url);
+                }
+            });
         }
 
         // Use 'filesToUpload' for checks instead of deprecated arg

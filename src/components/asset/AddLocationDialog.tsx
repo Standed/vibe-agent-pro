@@ -266,7 +266,7 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
       const r2Url = await storageService.uploadBase64ToR2(base64Url, folder, `loc_${Date.now()}.png`, user?.id || 'anonymous');
 
       setReferenceImages(prev => [r2Url, ...prev]);
-      setPreviewImage(r2Url);
+      // setPreviewImage(r2Url); // 保持一致性，禁用自动弹窗
       setSelectedRefIndex(0);
       toast.success('场景概念图生成成功！');
     } catch (error: any) {
@@ -315,10 +315,10 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
               key="location-dialog-overlay"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={onClose}
-              className="absolute inset-0 bg-black/40 backdrop-blur-md"
-            />
+                exit={{ opacity: 0 }}
+                onClick={onClose}
+                className="absolute inset-0 bg-black/40"
+              />
 
             <motion.div
               key="location-dialog-content"
@@ -359,10 +359,10 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
                     className="w-full px-4 py-3 seko-input"
                     required
                   />
-                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500 leading-relaxed">
-                    💡 提示：场景名称需与分镜脚本中的"场景名"<span className="text-amber-500 font-medium">完全一致</span>，系统才能自动匹配参考图。例如分镜脚本场景列为"咖啡厅"，则此处也需填写"咖啡厅"。
-                  </p>
-                </div>
+                    <p className="text-[11px] text-zinc-400 dark:text-zinc-500 leading-relaxed">
+                      💡 提示：场景名称需与分镜脚本中的“场景名”<span className="text-amber-500 font-medium">完全一致</span>，系统才能自动匹配参考图。例如分镜脚本场景列为“咖啡厅”，则此处也需填写“咖啡厅”。
+                    </p>
+                  </div>
 
                 {/* Location Type */}
                 <div className="space-y-2">
@@ -490,10 +490,10 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
                         )}
                       </button>
 
-                      <div className="flex items-center justify-between mt-3 px-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">比例:</span>
-                          <select
+                        <div className="flex items-center justify-between mt-3 px-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">比例:</span>
+                            <select
                             value={aspectRatio}
                             onChange={(e) => setAspectRatio(e.target.value as '21:9' | '16:9')}
                             className="text-[10px] font-medium bg-transparent text-zinc-700 dark:text-zinc-300 border-none p-0 focus:ring-0 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
@@ -502,15 +502,26 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
                             <option value="16:9" className="dark:bg-zinc-900">16:9 宽屏</option>
                           </select>
                         </div>
-                        <span className="text-[10px] text-zinc-400">消耗 1 次生成额度</span>
+                          <span className="text-[10px] text-zinc-400">消耗 1 次生成额度</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Upload Button */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
+                    <div className="mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800">
+                      <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
+                        生成提示词（高级）
+                      </label>
+                      <textarea
+                        value={generationPrompt}
+                        onChange={(e) => setGenerationPrompt(e.target.value)}
+                        className="w-full h-20 px-3 py-2 text-xs seko-input resize-none font-mono opacity-80 focus:opacity-100 transition-opacity"
+                      />
+                    </div>
+
+                    {/* Upload Button */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
                     accept="image/*"
                     multiple
                     onChange={handleImageUpload}
@@ -530,29 +541,29 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
                     </div>
                   </button>
 
-                  {/* Image Preview Grid */}
-                  {referenceImages.length > 0 && (
-                    <div className="grid grid-cols-3 gap-3 mt-4">
-                      {referenceImages.map((imageUrl, index) => (
-                        <motion.div
-                          key={index}
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className={cn(
-                            "group relative aspect-square rounded-xl overflow-hidden cursor-pointer transition-all duration-300",
-                            selectedRefIndex === index
-                              ? "ring-2 ring-zinc-900 dark:ring-white ring-offset-2 ring-offset-white dark:ring-offset-[#181818]"
+                    {/* Image Preview Grid */}
+                    {referenceImages.length > 0 && (
+                      <div className="grid grid-cols-3 gap-3 mt-4">
+                        {referenceImages.map((imageUrl, index) => (
+                          <div
+                            key={index}
+                            className={cn(
+                              "group relative aspect-square rounded-xl overflow-hidden cursor-pointer transition-all duration-300",
+                              selectedRefIndex === index
+                                ? "ring-2 ring-zinc-900 dark:ring-white ring-offset-2 ring-offset-white dark:ring-offset-[#181818]"
                               : "hover:ring-2 hover:ring-zinc-200 dark:hover:ring-zinc-700"
                           )}
                           onClick={() => {
                             setPreviewImage(imageUrl);
                           }}
                         >
-                          <img
-                            src={imageUrl}
-                            alt={`参考图 ${index + 1}`}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                          />
+                            <img
+                              src={imageUrl}
+                              alt={`参考图 ${index + 1}`}
+                              loading="lazy"
+                              decoding="async"
+                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            />
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
 
                           {selectedRefIndex !== index && (
@@ -580,34 +591,23 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
                             <Trash2 className="w-3 h-3" />
                           </button>
 
-                          {selectedRefIndex === index && (
-                            <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-zinc-900/90 dark:bg-white/90 backdrop-blur-sm text-[10px] font-bold text-white dark:text-black shadow-sm">
-                              主图
-                            </div>
-                          )}
-                        </motion.div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800">
-                    <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
-                      生成提示词（高级）
-                    </label>
-                    <textarea
-                      value={generationPrompt}
-                      onChange={(e) => setGenerationPrompt(e.target.value)}
-                      className="w-full h-20 px-3 py-2 text-xs seko-input resize-none font-mono opacity-80 focus:opacity-100 transition-opacity"
-                    />
+                            {selectedRefIndex === index && (
+                              <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-zinc-900/90 dark:bg-white/90 backdrop-blur-sm text-[10px] font-bold text-white dark:text-black shadow-sm">
+                                主图
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              </form>
+                </form>
 
-              {/* Footer */}
-              <div className="flex items-center justify-end gap-3 px-6 py-5 border-t border-black/5 dark:border-white/5 bg-white/50 dark:bg-black/20 backdrop-blur-xl">
-                <button
-                  type="button"
-                  onClick={onClose}
+                {/* Footer */}
+                <div className="flex items-center justify-end gap-3 px-6 py-5 border-t border-black/5 dark:border-white/5 bg-white/95 dark:bg-zinc-900/95">
+                  <button
+                    type="button"
+                    onClick={onClose}
                   className="seko-button px-5 py-2.5 hover:bg-black/5 dark:hover:bg-white/5"
                 >
                   取消
@@ -639,11 +639,11 @@ export default function AddLocationDialog({ onAdd, onClose, mode = 'add', initia
         document.body
       )}
 
-      {previewImage && createPortal(
-        <div
-          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-in fade-in duration-300"
-          onClick={() => setPreviewImage(null)}
-        >
+        {previewImage && createPortal(
+          <div
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 animate-in fade-in duration-300"
+            onClick={() => setPreviewImage(null)}
+          >
           <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
             <img
               src={previewImage}
