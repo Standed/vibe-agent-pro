@@ -90,7 +90,7 @@ export const StoryboardTab: React.FC<StoryboardTabProps> = ({
                     return (
                         <div
                             key={scene.id}
-                            className="glass-card rounded-xl overflow-hidden"
+                            className="bg-white/60 dark:bg-[#121212]/60 backdrop-blur-md rounded-xl border border-black/10 dark:border-white/10 hover:border-black/30 dark:hover:border-white/30 transition-all duration-300 overflow-hidden group/scene"
                         >
                             {/* Scene Header */}
                             <div className="flex items-center justify-between p-3 hover:bg-light-border/50 dark:hover:bg-cine-panel/50 transition-colors">

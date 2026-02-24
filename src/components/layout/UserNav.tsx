@@ -92,7 +92,7 @@ export function UserNav() {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
                         transition={{ duration: 0.15, ease: "easeOut" }}
-                        className="absolute top-full right-0 mt-3 w-72 bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-3xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.25)] overflow-hidden z-50 ring-1 ring-black/5"
+                        className="absolute top-full right-0 mt-3 w-72 premium-panel !rounded-3xl overflow-hidden z-50"
                     >
                         {/* Header Info */}
                         <div className="p-5 border-b border-black/5 dark:border-white/5 bg-gradient-to-b from-white/50 to-transparent dark:from-white/5">

@@ -694,7 +694,7 @@ export default function InfiniteCanvas() {
       onMouseLeave={handleMouseUp}
     >
       {/* ... (Toolbars code unchanged) ... */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-2 interactive">
+      <div className="absolute top-6 left-[240px] z-[40] flex items-center gap-2 interactive">
         {/* ... contents of top toolbar ... */}
         <div className="flex gap-1 glass-panel p-1.5 rounded-2xl shadow-lg ring-1 ring-black/5">
           <button className="p-2 glass-button rounded-xl text-gray-600 dark:text-gray-300">

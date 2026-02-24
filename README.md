@@ -106,11 +106,11 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 ### 🎵 Audio Asset Management
 - Upload audio files (all formats)
 
-### 🎨 Cinematic UI/UX (New)
-- **High-Contrast Aesthetics**: Minimalist Black & White theme to emphasize content.
-- **Glassmorphism**: Modern, translucent UI elements with backdrop blur.
-- **Refined Interactions**: Smooth hover effects (1.1x zoom), inset borders, and optimized button visibility.
-- **Responsive Sidebar**: Intelligent collapsing and layout adaptation.
+### 🎨 Cinematic UI/UX & Premium Glass (2026-02 Latest)
+- **High-Contrast Aesthetics**: Minimalist Black & White (Zinc) theme to emphasize user content.
+- **Premium Glassmorphism**: Discarded heavy, dirty drop-shadows in favor of clean `.premium-panel` with intensive `backdrop-blur` and ultra-thin inset borders (`border-white/10`).
+- **Refined Interactions**: Unified, sleek hover effects replacing large glowing halos with crisp 1px border highlights, ensuring a consistent premium feel.
+- **Responsive Workspace**: Optimised layout structures, preventing overlaps with dynamic padding (e.g., bottom toolbars vs User Widget), and maintaining a minimalist approach for the collapsible Right Control Panel with no superfluous borders.
 - Category classification: Music / Voice / Sound Effects
 - Auto-convert to Data URL for storage
 - Display and delete functionality

@@ -173,7 +173,7 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md">
-      <div className="glass-panel rounded-3xl w-full max-w-md mx-4 shadow-2xl ring-1 ring-black/5 max-h-[90vh] overflow-y-auto no-scrollbar">
+      <div className="premium-panel w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto no-scrollbar">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border/50 sticky top-0 bg-background/80 backdrop-blur-xl z-10">
           <h2 className="text-xl font-semibold text-primary-text">
@@ -196,7 +196,7 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                 <User className="w-4 h-4" />
                 {t('settings.profile')}
               </h3>
-              <div className="flex items-center gap-4 bg-background-secondary p-4 rounded-2xl border border-border">
+              <div className="flex items-center gap-4 premium-card p-4">
                 {/* Avatar Upload */}
                 <button
                   type="button"
@@ -274,7 +274,7 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                       flex flex-col items-center gap-2 p-3 rounded-2xl border transition-all duration-300
                       ${isActive
                         ? 'bg-accent/10 border-accent shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_rgba(255,255,255,0.1)]'
-                        : 'glass-button border-transparent hover:border-accent/30'
+                        : 'premium-button border-transparent hover:border-accent/30'
                       }
                     `}
                   >
@@ -317,7 +317,7 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                       flex items-center justify-center gap-2 p-3 rounded-2xl border transition-all duration-300
                       ${isActive
                         ? 'bg-accent/10 border-accent shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_rgba(255,255,255,0.1)]'
-                        : 'glass-button border-transparent hover:border-accent/30'
+                        : 'premium-button border-transparent hover:border-accent/30'
                       }
                     `}
                   >
@@ -359,7 +359,7 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                     }
                   }}
                   placeholder={t('settings.jimengSessionPlaceholder')}
-                  className="w-full px-4 py-2.5 rounded-xl bg-background-secondary border border-border text-sm text-primary-text placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted focus:outline-none focus:ring-2 focus:ring-light-accent/20 dark:focus:ring-cine-accent/30 focus:border-light-accent dark:focus:border-cine-accent transition-all"
+                  className="w-full px-4 py-2.5 premium-input"
                 />
               </div>
               <p className="text-[10px] text-muted-text leading-relaxed">
@@ -397,7 +397,7 @@ export function SettingsPanel() {
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="p-2 glass-button rounded-lg"
+        className="p-2 premium-button rounded-lg"
         title={t('common.settings')}
       >
         <Settings className="w-5 h-5 text-zinc-400" />

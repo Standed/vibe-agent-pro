@@ -74,7 +74,7 @@ export default function RightPanel() {
 
   return (
     <div
-      className={`glass-panel border-l flex flex-col transition-all duration-300 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[-4px_0_24px_rgba(0,0,0,0.2)] z-20 relative ${rightSidebarCollapsed ? 'w-12' : ''}`}
+      className={`glass-panel border-l border-black/5 dark:border-white/10 flex flex-col transition-all duration-300 z-20 relative ${rightSidebarCollapsed ? 'w-16 bg-white/90 dark:bg-[#121212]/90 backdrop-blur-2xl shadow-sm' : 'shadow-[-4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[-4px_0_24px_rgba(0,0,0,0.2)]'}`}
       style={rightSidebarCollapsed ? {} : { width: panelWidth }}
     >
       {/* Collapse/Expand Button (Floating on edge) */}
@@ -96,14 +96,14 @@ export default function RightPanel() {
           <div className="flex flex-col gap-2 mt-2">
             <button
               onClick={() => { toggleRightSidebar(); setControlMode('agent'); }}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${controlMode === 'agent' ? 'bg-light-accent/20 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent' : 'bg-light-accent/5 dark:bg-cine-accent/5 text-light-text-muted dark:text-cine-text-muted hover:bg-light-accent/10 dark:hover:bg-cine-accent/10'}`}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${controlMode === 'agent' ? 'text-zinc-900 dark:text-white relative after:absolute after:-left-1.5 after:top-1/2 after:-translate-y-1/2 after:w-1 after:h-4 after:bg-zinc-900 dark:after:bg-white after:rounded-r' : 'bg-transparent text-zinc-400 hover:bg-black/5 dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted hover:text-zinc-900 dark:hover:text-white'}`}
               title="Agent 模式"
             >
               <Bot size={18} />
             </button>
             <button
               onClick={() => { toggleRightSidebar(); setControlMode('pro'); }}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${controlMode === 'pro' ? 'bg-light-accent/20 dark:bg-cine-accent/20 text-light-accent dark:text-cine-accent' : 'bg-light-accent/5 dark:bg-cine-accent/5 text-light-text-muted dark:text-cine-text-muted hover:bg-light-accent/10 dark:hover:bg-cine-accent/10'}`}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${controlMode === 'pro' ? 'text-zinc-900 dark:text-white relative after:absolute after:-left-1.5 after:top-1/2 after:-translate-y-1/2 after:w-1 after:h-4 after:bg-zinc-900 dark:after:bg-white after:rounded-r' : 'bg-transparent text-zinc-400 hover:bg-black/5 dark:hover:bg-white/10 text-light-text-muted dark:text-cine-text-muted hover:text-zinc-900 dark:hover:text-white'}`}
               title="Pro 模式"
             >
               <Sliders size={18} />

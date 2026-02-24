@@ -23,20 +23,19 @@ npm run lint             # ESLint 代码检查
 
 ---
 
-## 🎨 UI/UX 设计哲学 (2026-02 更新)
+## 🎨 UI/UX 设计哲学 (2026-02 Final)
 
-本项目采用 **"Film-Grade Black & White" (电影级黑白)** 美学设计系统：
+本项目采用 **"Film-Grade Black & White" (电影级黑白) & Premium Glass** 美学设计系统：
 
-- **核心色调**：极致的黑白灰 (Zinc) 基调，移除多余的品牌色干扰，让内容（分镜图）成为绝对主角。
-- **高对比交互**：关键操作按钮（如“生成”）强制采用 **黑底白字** (Dark Mode 下白底黑字)，确保在任何背景下都具备最高可读性。
-- **玻璃拟态 (Glassmorphism)**：大面积使用背景模糊 (`backdrop-blur`) 与半透明层级，营造现代、轻盈的悬浮感。
-- **精细交互**：
-  - **主题适配 (Theme Adaptability)**：登录页 (Login Page) 全面支持明/暗模式自动切换，文字与背景对比度经过 WCAG 标准校准，确保在任何光照环境下都清晰可见。
-  - **Pro 模式悬浮**：图片悬浮时采用 **内描边 (1px Inset Border)** + **1.1x 缩放**，移除厚重边框，提供更现代的沉浸式预览体验。
-  - **侧边栏折叠**：无缝的宽度过渡与 UI 响应。
-  - **Tooltip 系统**: 使用 React Portal 渲染到 `document.body`,确保在任何滚动容器中都能正确显示 (例如即梦模型说明)。
-  - **下拉菜单交互**: 移除全屏遮罩层 (Portal Mask)，改用原生 `window.addEventListener('click')` 全局监听，彻底解决 z-index 穿透和菜单无法点击的问题。
-  - **状态指示器**: 简约的圆点设计 - 绿色(完成)、黄色脉冲(处理中)、红色(错误)、灰色(草稿)。
+- **核心色调**：极致的黑白灰 (Zinc) 基调，通过大面积的背景留白和去色处理，让业务内容（分镜、资产）成为绝对主角。
+- **Premium Glass 体系**：
+  - 弃用传统的厚重弥散阴影 (`shadow-lg` / `shadow-2xl` 产生的光斑污染)。
+  - 核心面板全面采用 `.premium-panel` 和 `.glass-panel`，标准组合为：高斯模糊 (`backdrop-blur-2xl`) + 极具质感的极细内描边 (`border-white/10` 或 `ring-1 ring-white/10`)。
+  - Hover 交互克制而优雅，统一摒弃发光阴影，改用细腻的边框高亮 (`hover:border-black/30` / `dark:hover:border-white/30`) 以提升质感水平。
+- **高对比与微动效**：关键操作按钮保持最高对比度响应，并配合 Framer Motion / Tailwind 的微小形变（如 `.active:scale-95` / `.group-hover:translate-x-0.5`）。
+- **空间与布局优化**：
+  - **右侧面板** (`RightPanel`)：折叠状态维持最初的简约去边框形态，仅依赖无背景高亮图标及极简提示条来表示选中状态，拒绝冗余复杂的样式堆砌。
+  - **悬浮层叠控制**：全局遵循更严格的 `z-index` 管理。诸如左下角的 `CanvasUserWidget` 必须预留至少 `bottom-20` 的间距以防遮挡工具栏；合理排布 `ViewSwitcher` 控制器与画布内工具栏的安全距离。
 
 ---
 

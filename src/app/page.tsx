@@ -818,16 +818,16 @@ export default function Home() {
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                                const reader = new FileReader();
-                                reader.onload = (ev) => {
-                                  const content = ev.target?.result as string;
-                                  setUploadedScript(content || '');
-                                  toast.success(t('home.scriptImported', { fileName: file.name }));
-                                };
-                                reader.readAsText(file);
-                              }
-                            }}
-                          />
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                const content = ev.target?.result as string;
+                                setUploadedScript(content || '');
+                                toast.success(t('home.scriptImported', { fileName: file.name }));
+                              };
+                              reader.readAsText(file);
+                            }
+                          }}
+                        />
                       </label>
                       <label className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 cursor-pointer transition-colors" title={t('home.uploadStoryboard')}>
                         <Upload size={18} />
@@ -988,7 +988,7 @@ export default function Home() {
                     {item.type === 'project' ? (
                       // Project Card
                       <Link href={`/project/${item.data.id}`} className="block h-full group">
-                        <div className="glass-card h-full flex flex-col overflow-hidden relative">
+                        <div className="bg-white/60 dark:bg-[#121212]/60 backdrop-blur-md rounded-2xl border border-black/10 dark:border-white/10 group-hover:border-black/30 dark:group-hover:border-white/30 transition-all duration-300 h-full flex flex-col overflow-hidden relative">
                           <div className="aspect-video relative overflow-hidden bg-zinc-100 dark:bg-zinc-900/50">
                             {item.data.metadata.coverImage ? (
                               <Image
@@ -1040,7 +1040,7 @@ export default function Home() {
                     ) : (
                       // Series Card
                       <Link href={`/?seriesId=${item.data.id}`} className="block h-full group">
-                        <div className="glass-card h-full flex flex-col overflow-hidden relative border border-black/5 dark:border-white/10">
+                        <div className="bg-white/60 dark:bg-[#121212]/60 backdrop-blur-md rounded-2xl border border-black/10 dark:border-white/10 group-hover:border-black/30 dark:group-hover:border-white/30 transition-all duration-300 h-full flex flex-col overflow-hidden relative">
                           <div className="aspect-video relative overflow-hidden bg-zinc-100 dark:bg-white/5">
                             {item.data.coverImage ? (
                               <>

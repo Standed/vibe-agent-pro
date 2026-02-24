@@ -61,8 +61,8 @@ export default function ShotListItem({
       className={`relative rounded-xl transition-all duration-300 group/item ${isOver && canDrop
         ? 'bg-green-500/10 ring-2 ring-green-500 border-green-500 z-10 scale-[1.02]'
         : isSelected
-          ? 'bg-light-accent/10 dark:bg-cine-accent/10 ring-2 ring-light-accent dark:ring-cine-accent shadow-[0_0_20px_rgba(168,85,247,0.15)]'
-          : 'glass-card hover:border-light-accent/30 dark:hover:border-cine-accent/30 hover:shadow-lg hover:-translate-y-0.5'
+          ? 'bg-light-accent/10 dark:bg-cine-accent/10 border-2 border-light-accent dark:border-cine-accent shadow-sm'
+          : 'bg-white/60 dark:bg-[#121212]/60 backdrop-blur-md border border-black/10 dark:border-white/10 hover:border-black/30 dark:hover:border-white/30'
         }`}
     >
       {/* Shot Content - Clickable */}

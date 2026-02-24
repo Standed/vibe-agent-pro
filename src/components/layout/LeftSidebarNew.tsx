@@ -378,7 +378,7 @@ export default function LeftSidebarNew({
   return (
     <div className="fixed left-6 top-1/2 -translate-y-1/2 z-50 flex items-center gap-4 pointer-events-none">
       {/* Floating Icon Bar */}
-      <div className="flex flex-col items-center p-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl rounded-full border border-black/5 dark:border-white/10 shadow-2xl pointer-events-auto">
+      <div className="flex flex-col items-center p-2 premium-panel !rounded-full pointer-events-auto">
         {/* Home Logo */}
         <button
           onClick={() => router.push('/')}
@@ -468,7 +468,7 @@ export default function LeftSidebarNew({
             initial={{ opacity: 0, x: -20, scale: 0.95 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
             exit={{ opacity: 0, x: -20, scale: 0.95 }}
-            className="w-[400px] h-[80vh] bg-white/85 dark:bg-zinc-900/85 backdrop-blur-2xl rounded-[32px] border border-black/5 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col pointer-events-auto self-center"
+            className="w-[400px] h-[80vh] premium-panel overflow-hidden flex flex-col pointer-events-auto self-center"
           >
             {/* Header */}
             <div className="p-6 border-b border-black/5 dark:border-white/5 flex items-center justify-between">

@@ -6,13 +6,26 @@
   --foreground-rgb: 26, 26, 26;
   --background-start-rgb: 255, 255, 255;
   --background-end-rgb: 245, 245, 247;
-  /* iOS Light Gray */
+  /* Missing Semantic Tokens (Light) */
+  --background-rgb: 255, 255, 255;
+  --background-secondary-rgb: 248, 249, 250;
+  --primary-text-rgb: 26, 26, 26;
+  --muted-text-rgb: 108, 117, 125;
+  --border-rgb: 233, 236, 239;
+  --accent-rgb: 99, 102, 241;
 }
 
 .dark {
   --foreground-rgb: 255, 255, 255;
   --background-start-rgb: 10, 10, 10;
   --background-end-rgb: 0, 0, 0;
+  /* Missing Semantic Tokens (Dark) */
+  --background-rgb: 10, 10, 10;
+  --background-secondary-rgb: 24, 24, 27;
+  --primary-text-rgb: 250, 250, 250;
+  --muted-text-rgb: 161, 161, 170;
+  --border-rgb: 39, 39, 42;
+  --accent-rgb: 255, 255, 255;
 }
 
 * {
@@ -36,16 +49,12 @@ body {
 
 /* Ambient Background Effect */
 .ambient-bg-light {
-  background:
-    radial-gradient(circle at 15% 50%, rgba(255, 220, 220, 0.5), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(210, 230, 255, 0.5), transparent 25%);
+  background: radial-gradient(circle at 15% 50%, rgba(255, 220, 220, 0.5), transparent 25%), radial-gradient(circle at 85% 30%, rgba(210, 230, 255, 0.5), transparent 25%);
   background-attachment: fixed;
 }
 
 .dark .ambient-bg-dark {
-  background:
-    radial-gradient(circle at 15% 50%, rgba(40, 20, 60, 0.4), transparent 40%),
-    radial-gradient(circle at 85% 30%, rgba(10, 30, 60, 0.4), transparent 40%);
+  background: radial-gradient(circle at 15% 50%, rgba(40, 20, 60, 0.4), transparent 40%), radial-gradient(circle at 85% 30%, rgba(10, 30, 60, 0.4), transparent 40%);
   background-attachment: fixed;
 }
 
@@ -58,58 +67,54 @@ body {
 
 @layer components {
 
-  /* IOS 26 Liquid Glass System */
-  .glass {
-    @apply bg-white/70 dark:bg-[#0a0a0a]/70 backdrop-blur-xl border border-white/20 dark:border-white/5 shadow-sm;
-  }
+  /* ========== Cinematic Premium Glass System ========== */
 
-  .glass-panel {
-    @apply bg-white/60 dark:bg-[#0a0a0a]/60 backdrop-blur-2xl border border-white/40 dark:border-white/5 shadow-2xl;
-  }
-
-  .glass-card {
-    @apply bg-white/40 dark:bg-[#121212]/40 backdrop-blur-xl border border-white/50 dark:border-white/5 rounded-3xl shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 ease-out;
-  }
-
-  .glass-button {
-    @apply bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-black/5 dark:border-white/5 backdrop-blur-md transition-all duration-300 active:scale-95;
-  }
-
-  .glass-button-active {
-    @apply bg-white dark:bg-white/10 text-black dark:text-white shadow-sm border-black/5 dark:border-white/10;
-  }
-
-  .glass-input {
-    @apply bg-white/50 dark:bg-white/5 border border-black/5 dark:border-white/10 focus:bg-white dark:focus:bg-black/40 backdrop-blur-md transition-all duration-300 outline-none focus:ring-2 focus:ring-black/20 dark:focus:ring-white/20;
-  }
-
-  .glass-tag {
-    @apply px-2 py-1 rounded-full text-xs font-medium bg-black/5 dark:bg-white/10 text-gray-600 dark:text-gray-300 backdrop-blur-sm;
-  }
-
-  /* Seko Design System - Premium Liquid Glass */
-  .seko-glass {
-    @apply bg-white/70 dark:bg-[#121212]/70 backdrop-blur-2xl border border-white/40 dark:border-white/5 shadow-lg shadow-black/5;
-  }
-
-  .seko-panel {
-    @apply bg-white/90 dark:bg-[#181818]/90 backdrop-blur-3xl border border-white/50 dark:border-white/5 rounded-[2rem] shadow-2xl shadow-black/20;
-  }
-
+  /* 1. Top Level Panel (Modals, Popovers) - Solid base, deep blur, large rounded corners */
+  .premium-panel,
+  .glass-panel,
+  .seko-panel,
   .seko-popover {
-    @apply bg-white/80 dark:bg-[#1e1e1e]/80 backdrop-blur-3xl border border-white/20 dark:border-white/5 rounded-2xl shadow-xl shadow-black/20;
+    @apply bg-white/95 dark:bg-zinc-900/95 backdrop-blur-3xl ring-1 ring-black/5 dark:ring-white/10 shadow-2xl shadow-black/10 dark:shadow-black/40 rounded-[28px];
   }
 
+  /* 2. Middle Level Card - Elegant cards with hover states */
+  .premium-card,
+  .glass-card,
+  .seko-glass,
+  .glass {
+    @apply bg-white/80 dark:bg-[#121212]/80 backdrop-blur-2xl border border-black/10 dark:border-white/10 hover:border-black/30 dark:hover:border-white/30 rounded-2xl shadow-sm transition-all duration-300 ease-out;
+  }
+
+  /* 3. Interactive/Form Elements - Button */
+  .premium-button,
+  .glass-button,
   .seko-button {
-    @apply relative overflow-hidden bg-white/60 dark:bg-white/5 hover:bg-white/80 dark:hover:bg-white/10 border border-white/30 dark:border-white/5 rounded-2xl backdrop-blur-lg transition-all duration-300 active:scale-95 text-sm font-medium text-zinc-800 dark:text-zinc-200;
+    @apply relative overflow-hidden bg-white/90 dark:bg-zinc-800/90 hover:bg-white dark:hover:bg-zinc-700/90 ring-1 ring-black/10 dark:ring-white/10 rounded-xl shadow-sm backdrop-blur-lg transition-all duration-300 active:scale-95 text-sm font-medium text-zinc-800 dark:text-zinc-200;
   }
 
+  /* 3a. Primary Button (Solid) */
+  .premium-button-primary,
   .seko-button-primary {
-    @apply bg-zinc-900 dark:bg-white text-white dark:text-black border-transparent shadow-lg shadow-black/20 dark:shadow-white/20 hover:bg-zinc-800 dark:hover:bg-zinc-200;
+    @apply bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-md hover:bg-zinc-800 dark:hover:bg-white rounded-xl transition-all duration-300 active:scale-95 text-sm font-medium border border-transparent;
   }
 
+  /* 3b. Active Button */
+  .premium-button-active,
+  .glass-button-active {
+    @apply bg-zinc-100 dark:bg-zinc-800/90 text-zinc-900 dark:text-white shadow-inner ring-1 ring-black/10 dark:ring-white/10 rounded-xl backdrop-blur-lg transition-all duration-300 active:scale-95 text-sm font-medium;
+  }
+
+  /* 4. Interactive/Form Elements - Input */
+  .premium-input,
+  .glass-input,
   .seko-input {
-    @apply bg-black/5 dark:bg-white/5 border border-transparent focus:border-zinc-500/30 focus:bg-white dark:focus:bg-zinc-900 rounded-xl backdrop-blur-md transition-all duration-300 outline-none text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400;
+    @apply bg-zinc-50/50 dark:bg-zinc-900/50 border border-black/10 dark:border-white/10 focus:bg-white dark:focus:bg-zinc-800/90 backdrop-blur-md transition-all duration-300 outline-none focus:ring-2 focus:ring-zinc-900/20 dark:focus:ring-white/20 rounded-xl px-4 py-2.5 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400;
+  }
+
+  /* 5. Utility UI - Tag */
+  .premium-tag,
+  .glass-tag {
+    @apply bg-black/5 dark:bg-white/10 text-zinc-700 dark:text-zinc-300 px-3 py-1 rounded-full text-xs font-medium backdrop-blur-sm;
   }
 }
 
@@ -128,10 +133,10 @@ body {
   }
 }
 
-/* Modern Minimal Scrollbar - Hidden by default, hover to show */
+/* Modern Minimal Scrollbar - Always visible but subtle to avoid flashing */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -139,20 +144,20 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: transparent;
+  background: rgba(0, 0, 0, 0.1);
   border-radius: 10px;
 }
 
-:hover::-webkit-scrollbar {
-  width: 4px;
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
 }
 
-:hover::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
 }
 
-.dark :hover::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 /* Global Select Styles for Dark Mode */
@@ -182,161 +187,160 @@ body {
   border-color: rgba(255, 255, 255, 0.15);
 }
 
-.dark .glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+/* ========== 统一加载状态组件 ========== */
+
+/* 骨架屏加载效果 */
+.skeleton {
+  background: linear-gradient(90deg, #e4e4e7, #f4f4f5, #e4e4e7);
+  border-radius: 0.5rem;
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite, pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* ========== 统一加载状态组件 ========== */
-@layer components {
+.dark .skeleton {
+  background: linear-gradient(90deg, #27272a, #3f3f46, #27272a);
+  background-size: 200% 100%;
+}
 
-  /* 骨架屏加载效果 */
-  .skeleton {
-    @apply animate-pulse bg-gradient-to-r from-zinc-200 via-zinc-100 to-zinc-200 dark:from-zinc-800 dark:via-zinc-700 dark:to-zinc-800 rounded-lg;
-    background-size: 200% 100%;
-    animation: skeleton-shimmer 1.5s infinite;
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
   }
 
-  @keyframes skeleton-shimmer {
-    0% {
-      background-position: 200% 0;
-    }
+  100% {
+    background-position: -200% 0;
+  }
+}
 
-    100% {
-      background-position: -200% 0;
-    }
+/* 加载旋转器 */
+.spinner {
+  @apply w-5 h-5 border-2 border-zinc-300 dark:border-zinc-600 border-t-zinc-800 dark:border-t-zinc-200 rounded-full animate-spin;
+}
+
+.spinner-sm {
+  @apply w-4 h-4;
+}
+
+.spinner-lg {
+  @apply w-8 h-8;
+}
+
+/* ========== 空状态组件 ========== */
+.empty-state {
+  @apply flex flex-col items-center justify-center py-12 px-6 text-center;
+}
+
+.empty-state-icon {
+  @apply w-16 h-16 mb-4 text-zinc-300 dark:text-zinc-600 opacity-80;
+}
+
+.empty-state-title {
+  @apply text-lg font-medium text-zinc-600 dark:text-zinc-400 mb-2;
+}
+
+.empty-state-description {
+  @apply text-sm text-zinc-400 dark:text-zinc-500 max-w-xs;
+}
+
+.empty-state-action {
+  @apply mt-6;
+}
+
+/* ========== 状态徽章 ========== */
+.badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.badge-success {
+  @apply bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400;
+}
+
+.badge-warning {
+  @apply bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400;
+}
+
+.badge-error {
+  @apply bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400;
+}
+
+.badge-info {
+  @apply bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400;
+}
+
+.badge-neutral {
+  @apply bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400;
+}
+
+/* ========== 微动画效果 ========== */
+.hover-lift {
+  @apply transition-transform duration-200;
+}
+
+.hover-lift:hover {
+  @apply -translate-y-0.5;
+}
+
+.hover-glow {
+  @apply transition-shadow duration-200;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+}
+
+.dark .hover-glow:hover {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.25);
+}
+
+/* Paper Shadow for Script Editor */
+.shadow-paper {
+  box-shadow:
+    0 1px 1px hsl(0deg 0% 0% / 0.075),
+    0 2px 2px hsl(0deg 0% 0% / 0.075),
+    0 4px 4px hsl(0deg 0% 0% / 0.075),
+    0 8px 8px hsl(0deg 0% 0% / 0.075),
+    0 16px 16px hsl(0deg 0% 0% / 0.075);
+}
+
+.dark .shadow-paper {
+  box-shadow:
+    0 1px 1px hsl(0deg 0% 0% / 0.3),
+    0 2px 2px hsl(0deg 0% 0% / 0.3),
+    0 4px 4px hsl(0deg 0% 0% / 0.3),
+    0 8px 8px hsl(0deg 0% 0% / 0.3),
+    0 16px 16px hsl(0deg 0% 0% / 0.3);
+}
+
+/* 渐入动画 */
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
 
-  /* 加载旋转器 */
-  .spinner {
-    @apply w-5 h-5 border-2 border-zinc-300 dark:border-zinc-600 border-t-zinc-800 dark:border-t-zinc-200 rounded-full animate-spin;
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 缩放弹入 */
+.scale-in {
+  animation: scaleIn 0.2s ease-out;
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
   }
 
-  .spinner-sm {
-    @apply w-4 h-4;
-  }
-
-  .spinner-lg {
-    @apply w-8 h-8;
-  }
-
-  /* ========== 空状态组件 ========== */
-  .empty-state {
-    @apply flex flex-col items-center justify-center py-12 px-6 text-center;
-  }
-
-  .empty-state-icon {
-    @apply w-16 h-16 mb-4 text-zinc-300 dark:text-zinc-600 opacity-80;
-  }
-
-  .empty-state-title {
-    @apply text-lg font-medium text-zinc-600 dark:text-zinc-400 mb-2;
-  }
-
-  .empty-state-description {
-    @apply text-sm text-zinc-400 dark:text-zinc-500 max-w-xs;
-  }
-
-  .empty-state-action {
-    @apply mt-6;
-  }
-
-  /* ========== 状态徽章 ========== */
-  .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
-  }
-
-  .badge-success {
-    @apply bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400;
-  }
-
-  .badge-warning {
-    @apply bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400;
-  }
-
-  .badge-error {
-    @apply bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400;
-  }
-
-  .badge-info {
-    @apply bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400;
-  }
-
-  .badge-neutral {
-    @apply bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400;
-  }
-
-  /* ========== 微动画效果 ========== */
-  .hover-lift {
-    @apply transition-transform duration-200;
-  }
-
-  .hover-lift:hover {
-    @apply -translate-y-0.5;
-  }
-
-  .hover-glow {
-    @apply transition-shadow duration-200;
-  }
-
-  .hover-glow:hover {
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
-  }
-
-  .dark .hover-glow:hover {
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.25);
-  }
-
-  /* Paper Shadow for Script Editor */
-  .shadow-paper {
-    box-shadow:
-      0 1px 1px hsl(0deg 0% 0% / 0.075),
-      0 2px 2px hsl(0deg 0% 0% / 0.075),
-      0 4px 4px hsl(0deg 0% 0% / 0.075),
-      0 8px 8px hsl(0deg 0% 0% / 0.075),
-      0 16px 16px hsl(0deg 0% 0% / 0.075);
-  }
-
-  .dark .shadow-paper {
-    box-shadow:
-      0 1px 1px hsl(0deg 0% 0% / 0.3),
-      0 2px 2px hsl(0deg 0% 0% / 0.3),
-      0 4px 4px hsl(0deg 0% 0% / 0.3),
-      0 8px 8px hsl(0deg 0% 0% / 0.3),
-      0 16px 16px hsl(0deg 0% 0% / 0.3);
-  }
-
-  /* 渐入动画 */
-  .fade-in {
-    animation: fadeIn 0.3s ease-out;
-  }
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  /* 缩放弹入 */
-  .scale-in {
-    animation: scaleIn 0.2s ease-out;
-  }
-
-  @keyframes scaleIn {
-    from {
-      opacity: 0;
-      transform: scale(0.95);
-    }
-
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }

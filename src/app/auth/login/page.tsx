@@ -209,7 +209,7 @@ export default function LoginPage() {
   if (isPendingApproval) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] px-4">
-        <div className="max-w-md w-full space-y-8 text-center p-8 bg-zinc-900/50 rounded-2xl border border-white/10 backdrop-blur-xl">
+        <div className="max-w-md w-full space-y-8 text-center p-8 premium-panel overflow-hidden relative">
           <div className="space-y-4">
             <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto text-yellow-500 border border-yellow-500/30">
               <Eye size={32} />
@@ -256,7 +256,7 @@ export default function LoginPage() {
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDuration: '10s' }} />
 
       <div className="max-w-md w-full space-y-8 relative z-10 px-4">
-        <div className="seko-panel p-8 md:p-12 shadow-2xl shadow-black/10 dark:shadow-black/40 ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-3xl bg-white/60 dark:bg-[#0a0a0a]/40">
+        <div className="premium-panel p-8 md:p-12 relative overflow-hidden">
           <div className="text-center">
             <div className="flex items-center justify-center mb-6">
               <div className="relative group cursor-pointer">

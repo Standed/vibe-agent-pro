@@ -127,7 +127,7 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
             }}
             className={`group bg-white/60 dark:bg-[#121212]/60 backdrop-blur-md rounded-2xl overflow-hidden transition-all duration-200 ease-out cursor-pointer ${isShotSelected
                 ? 'border-2 border-black dark:border-white shadow-lg scale-[1.02] z-10'
-                : 'border border-black/10 dark:border-white/10 hover:border-black/30 dark:hover:border-white/30 hover:shadow-md'
+                : 'border border-black/10 dark:border-white/10 hover:border-black/30 dark:hover:border-white/30'
                 } ${isDragging ? 'opacity-50 cursor-grabbing scale-95' : ''} ${isOver ? 'ring-2 ring-emerald-500 dark:ring-emerald-400 scale-105' : ''}`}
         >
             {/* Shot Thumbnail Container with Dynamic Aspect Ratio */}

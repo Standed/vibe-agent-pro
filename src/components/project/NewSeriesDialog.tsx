@@ -45,9 +45,9 @@ export default function NewSeriesDialog({
 
     return createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-            <div className="glass-panel rounded-3xl max-w-lg w-full shadow-2xl ring-1 ring-black/5 animate-in zoom-in-95 duration-200">
+            <div className="premium-panel max-w-lg w-full ring-1 ring-black/5 dark:ring-white/10 animate-in zoom-in-95 duration-200">
                 {/* Header */}
-                <div className="sticky top-0 glass-panel border-b border-black/5 dark:border-white/5 p-6 flex items-center justify-between z-10">
+                <div className="sticky top-0 border-b border-black/5 dark:border-white/10 p-6 flex items-center justify-between z-10">
                     <div>
                         <h2 className="text-xl font-bold text-light-text dark:text-white">
                             {isCreating ? t('newSeries.creatingTitle') : t('newSeries.title')}
@@ -78,7 +78,7 @@ export default function NewSeriesDialog({
                             onChange={(e) => setTitle(e.target.value)}
                             placeholder={t('newSeries.namePlaceholder')}
                             disabled={isCreating}
-                            className="glass-input w-full px-4 py-3 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="premium-input w-full px-4 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
                             required
                         />
                     </div>
@@ -94,18 +94,18 @@ export default function NewSeriesDialog({
                             placeholder={t('newSeries.descriptionPlaceholder')}
                             rows={3}
                             disabled={isCreating}
-                            className="glass-input w-full px-4 py-3 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="premium-input w-full px-4 py-3 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                     </div>
                 </form>
 
                 {/* Footer Actions */}
-                <div className="glass-panel border-t border-black/5 dark:border-white/5 p-6 flex justify-end gap-3">
+                <div className="border-t border-black/5 dark:border-white/10 p-6 flex justify-end gap-3">
                     <button
                         type="button"
                         onClick={onClose}
                         disabled={isCreating}
-                        className="px-6 py-2.5 rounded-lg glass-button text-gray-600 dark:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-6 py-2.5 premium-button disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {t('common.cancel')}
                     </button>
@@ -113,7 +113,7 @@ export default function NewSeriesDialog({
                         type="submit"
                         onClick={handleSubmit}
                         disabled={isCreating}
-                        className="px-6 py-2.5 rounded-lg bg-black dark:bg-white text-white dark:text-black font-bold shadow-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        className="px-6 py-2.5 premium-button-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {isCreating ? (
                             <>

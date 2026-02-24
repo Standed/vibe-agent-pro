@@ -35,7 +35,7 @@ export function CanvasUserWidget() {
             drag
             dragMomentum={false}
             whileDrag={{ scale: 1.1, cursor: 'grabbing' }}
-            className="absolute bottom-6 left-6 z-50 flex flex-col items-start gap-2 cursor-grab"
+            className="absolute bottom-20 left-6 z-50 flex flex-col items-start gap-2 cursor-grab"
             style={{ touchAction: 'none' }}
         >
             <AnimatePresence>

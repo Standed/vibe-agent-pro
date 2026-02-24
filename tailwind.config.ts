@@ -10,7 +10,17 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Semantic Token System
+        // Semantic Token System (Mapped to CSS Variables)
+        background: {
+          DEFAULT: 'rgba(var(--background-rgb), <alpha-value>)',
+          secondary: 'rgba(var(--background-secondary-rgb), <alpha-value>)',
+        },
+        'primary-text': 'rgba(var(--primary-text-rgb), <alpha-value>)',
+        'muted-text': 'rgba(var(--muted-text-rgb), <alpha-value>)',
+        border: 'rgba(var(--border-rgb), <alpha-value>)',
+        accent: 'rgba(var(--accent-rgb), <alpha-value>)',
+
+        // Action Token System (Preserved)
         primary: {
           DEFAULT: '#6366f1', // Indigo-500
           hover: '#4f46e5',   // Indigo-600

@@ -128,6 +128,7 @@ When multiple valid approaches exist, choose based on:
 - **性能优化**: 优先使用批量接口 (如 `/api/sora/status/batch`) 代替循环请求.
 - **Strict Mode**: React 开发模式下 Effect 会执行两次，需使用 `AbortController` 自动取消重复请求.
 - **Gemini 参考图**: 采用 URL 优先 + 自动降级策略。首次使用预签名 URL，失败则切换到服务端下载模式。参见 `api/gemini-*/route.ts` 中的 `processReferenceImages`。
+- **UI Design System**: 遵循 Premium Glass 规范 (`backdrop-blur-2xl` + 极细内描边 `border-white/10`)，严禁使用导致大面积光斑污染的深色模式全局阴影 (`shadow-lg` / `shadow-2xl`)。
 
 ### Tooling
 
