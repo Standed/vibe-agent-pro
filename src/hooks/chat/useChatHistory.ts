@@ -23,7 +23,6 @@ export function useChatHistory(
     setInputText: (text: string) => void
 ) {
     const { user } = useAuth();
-    const project = useProjectStore((state) => state.project);
     const setChatCache = useProjectStore((state) => state.setChatCache);
     const [messages, setMessages] = useState<ChatPanelMessage[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -60,8 +59,9 @@ export function useChatHistory(
         const controller = new AbortController();
         const loadHistory = async () => {
             const pendingRequestRef = useProjectStore.getState().generationRequest;
+            const projectSnapshot = useProjectStore.getState().project;
 
-            if (!project || !user) {
+            if (!projectId || !projectSnapshot || !user) {
                 setMessages([]);
                 return;
             }
@@ -71,16 +71,16 @@ export function useChatHistory(
                 let scope: 'shot' | 'scene' | 'project' = 'project';
 
                 if (selectedShotId) {
-                    filters = { projectId: project.id, scope: 'shot', shotId: selectedShotId };
+                    filters = { projectId, scope: 'shot', shotId: selectedShotId };
                     scope = 'shot';
                 } else if (currentSceneId) {
-                    filters = { projectId: project.id, scope: 'scene', sceneId: currentSceneId };
+                    filters = { projectId, scope: 'scene', sceneId: currentSceneId };
                     scope = 'scene';
                 } else {
-                    filters = { projectId: project.id, scope: 'project' };
+                    filters = { projectId, scope: 'project' };
                 }
 
-                const cacheKey = buildCacheKey(project.id, scope, selectedShotId, currentSceneId);
+                const cacheKey = buildCacheKey(projectId, scope, selectedShotId, currentSceneId);
                 const cached = useProjectStore.getState().chatCache[cacheKey];
                 if (cached) {
                     const slice = cached.messages.slice(-INITIAL_LOAD_COUNT);
@@ -102,7 +102,7 @@ export function useChatHistory(
 
                 // Inject Generation History if a shot is selected
                 if (selectedShotId) {
-                    const currentShot = project?.shots?.find(s => s.id === selectedShotId);
+                    const currentShot = projectSnapshot.shots?.find(s => s.id === selectedShotId);
                     if (currentShot && currentShot.generationHistory && currentShot.generationHistory.length > 0) {
                         const historyMessages: ChatPanelMessage[] = currentShot.generationHistory.map(h => {
                             const params = (h.parameters || {}) as any;
@@ -159,7 +159,7 @@ export function useChatHistory(
                                     gridCols,
                                     gridSize: gridSize || (gridRows === 3 ? '3x3' : '2x2'),
                                     prompt: promptText,
-                                    aspectRatio: project.settings.aspectRatio || AspectRatio.WIDE,
+                                    aspectRatio: projectSnapshot.settings.aspectRatio || AspectRatio.WIDE,
                                     sceneId: currentShot.sceneId
                                 } : undefined,
                                 metadata: {
@@ -201,10 +201,10 @@ export function useChatHistory(
                             setInputText(prompt);
                         } else {
                             // Fallback to default if no user message found
-                            if (selectedShotId && project?.shots) {
-                                const currentShot = project.shots.find(s => s.id === selectedShotId);
+                            if (selectedShotId && projectSnapshot.shots) {
+                                const currentShot = projectSnapshot.shots.find(s => s.id === selectedShotId);
                                 if (currentShot) {
-                                    const promptParts = constructBaseShotPrompt(project, currentShot);
+                                    const promptParts = constructBaseShotPrompt(projectSnapshot, currentShot);
                                     const cleanParts = promptParts
                                         .join('\n')
                                         .split('\n')
@@ -223,11 +223,11 @@ export function useChatHistory(
                             }
                         }
                     } else {
-                        if (selectedShotId && project?.shots) {
-                            const currentShot = project.shots.find(s => s.id === selectedShotId);
+                        if (selectedShotId && projectSnapshot.shots) {
+                            const currentShot = projectSnapshot.shots.find(s => s.id === selectedShotId);
                             if (currentShot) {
                                 // Default Prompt Logic (Same as Agent)
-                                const promptParts = constructBaseShotPrompt(project, currentShot);
+                                const promptParts = constructBaseShotPrompt(projectSnapshot, currentShot);
                                 // Compact prompt parts same as generationTools
                                 const defaultPrompt = promptParts
                                     .join('\n')
@@ -258,7 +258,7 @@ export function useChatHistory(
 
         loadHistory();
         return () => controller.abort();
-    }, [projectId, selectedShotId, currentSceneId, user, setInputText, project, setChatCache, convertChatMessages]);
+    }, [projectId, selectedShotId, currentSceneId, user, setInputText, setChatCache, convertChatMessages]);
 
 
     // Merge Video Messages
@@ -317,23 +317,23 @@ export function useChatHistory(
     }, [videoMessages, selectedShotId, currentSceneId]);
 
     const loadMore = useCallback(async () => {
-        if (!project || !user) return;
+        if (!projectId || !user) return;
         if (!hasMore) return;
 
         let filters: Parameters<typeof dataService.getChatMessages>[0];
         let scope: 'shot' | 'scene' | 'project' = 'project';
 
         if (selectedShotId) {
-            filters = { projectId: project.id, scope: 'shot', shotId: selectedShotId };
+            filters = { projectId, scope: 'shot', shotId: selectedShotId };
             scope = 'shot';
         } else if (currentSceneId) {
-            filters = { projectId: project.id, scope: 'scene', sceneId: currentSceneId };
+            filters = { projectId, scope: 'scene', sceneId: currentSceneId };
             scope = 'scene';
         } else {
-            filters = { projectId: project.id, scope: 'project' };
+            filters = { projectId, scope: 'project' };
         }
 
-        const cacheKey = buildCacheKey(project.id, scope, selectedShotId, currentSceneId);
+        const cacheKey = buildCacheKey(projectId, scope, selectedShotId, currentSceneId);
         const offset = loadedCountRef.current;
         const loadedMessages = await dataService.getChatMessages({
             ...filters,
@@ -364,7 +364,7 @@ export function useChatHistory(
 
         loadedCountRef.current = offset + loadedMessages.length;
         setHasMore(nextHasMore);
-    }, [project, user, hasMore, selectedShotId, currentSceneId, convertChatMessages, setChatCache]);
+    }, [projectId, user, hasMore, selectedShotId, currentSceneId, convertChatMessages, setChatCache]);
 
     // Realtime Subscription
     useEffect(() => {
