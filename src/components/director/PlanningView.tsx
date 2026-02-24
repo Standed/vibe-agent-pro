@@ -307,8 +307,8 @@ export default function PlanningView({
     };
 
     // 分镜生成流程
-    const proceedWithStoryboardGeneration = async (userContent: string) => {
-        if (!project) return;
+    const proceedWithStoryboardGeneration = useCallback(async (userContent: string) => {
+        if (!project || !user?.id) return;
 
         // If user manually triggers generation while auto-run is scheduled, cancel the pending timer
         // to avoid double storyboard generation.
@@ -336,7 +336,7 @@ export default function PlanningView({
         // 立即添加用户消息到本地状态（乐观更新）
         const userMessage: ChatMessage = {
             id: generateMessageId(),
-            userId: user?.id || '',
+            userId: user.id,
             projectId: project.id,
             scope: 'project',
             role: 'user',
@@ -374,7 +374,14 @@ export default function PlanningView({
                 setIsSubmitting(false);
             }
         }
-    };
+    }, [
+        project,
+        user?.id,
+        generateMessageId,
+        updateScript,
+        handleAIStoryboard,
+        filterPlanningMessages,
+    ]);
 
     // ✅ 自动触发 AI 分镜生成（回归原有“有 script/description 且无 scenes/shots 则自动跑”的体验）
     // 规则：
@@ -480,6 +487,7 @@ export default function PlanningView({
         isAgentProcessing,
         router,
         searchParams,
+        proceedWithStoryboardGeneration,
     ]);
 
     const handleDeleteCharacter = (id: string, name: string) => {
