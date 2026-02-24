@@ -485,6 +485,7 @@ export class GenerationTools {
                     }
 
                     // Update shots
+                    const chatSyncPromises: Promise<void>[] = [];
                     chunk.forEach((shot, idx) => {
                         if (idx < sliceUrls.length) {
                             const sliceUrl = sliceUrls[idx];
@@ -516,26 +517,30 @@ export class GenerationTools {
                             }
 
                             // Pro 聊天同步（批量 Grid 也要在分镜 Pro 历史中可见）
-                            void this.saveProChatMessage(
-                                shot.id,
-                                prompt || shot.description || enrichedPrompt,
-                                {
-                                    imageUrl: sliceUrl,
-                                    imageUrls: [sliceUrl],
-                                    fullGridUrl,
-                                    allSlices: sliceUrls,
-                                    gridSize: (gridSize === '3x3' ? '3x3' : '2x2'),
-                                    aspectRatio,
-                                    sceneId: shot.sceneId
-                                },
-                                'gemini-grid',
-                                enrichedPrompt
+                            chatSyncPromises.push(
+                                this.saveProChatMessage(
+                                    shot.id,
+                                    prompt || shot.description || enrichedPrompt,
+                                    {
+                                        imageUrl: sliceUrl,
+                                        imageUrls: [sliceUrl],
+                                        fullGridUrl,
+                                        allSlices: sliceUrls,
+                                        gridSize: (gridSize === '3x3' ? '3x3' : '2x2'),
+                                        aspectRatio,
+                                        sceneId: shot.sceneId
+                                    },
+                                    'gemini-grid',
+                                    enrichedPrompt
+                                )
                             );
                             successCount++;
                         } else {
                             failedCount++;
                         }
                     });
+
+                    await Promise.allSettled(chatSyncPromises);
 
                     // Scene History
                     if (this.storeCallbacks?.addGridHistory) {
