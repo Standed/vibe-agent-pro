@@ -159,6 +159,11 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
     setJimengSessionId(localStorage.getItem('jimeng_session_id') || '');
   }, [isOpen]);
 
+  const handleAvatarClick = () => {
+    if (uploading) return;
+    fileInputRef.current?.click();
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -188,7 +193,12 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
               </h3>
               <div className="flex items-center gap-4 bg-light-bg-secondary dark:bg-cine-bg-secondary p-4 rounded-2xl border border-light-border dark:border-cine-border">
                 {/* Avatar Upload */}
-                <div className="relative group cursor-pointer">
+                <button
+                  type="button"
+                  onClick={handleAvatarClick}
+                  disabled={uploading}
+                  className="relative group cursor-pointer bg-transparent p-0 border-0 disabled:cursor-not-allowed"
+                >
                   <div className="w-20 h-20 rounded-full overflow-hidden ring-4 ring-white dark:ring-zinc-800 shadow-xl transition-transform duration-300 group-hover:scale-105">
                     {previewAvatar ? (
                       <img src={previewAvatar} alt="Avatar Preview" className="w-full h-full object-cover" />
@@ -220,7 +230,7 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                     onChange={handleAvatarUpload}
                     className="hidden"
                   />
-                </div>
+                </button>
 
                 <div className="flex-1 min-w-0">
                   <h4 className="font-bold text-light-text dark:text-white truncate">
