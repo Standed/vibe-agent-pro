@@ -154,12 +154,28 @@ export function useChatGeneration({
 
         // 2. Optimistic User Message
         const userMsgId = generateMessageId();
+        const isVideoModel = selectedModel.includes('video');
+        const inputBlobUrlsToRevoke =
+            isVideoModel
+                ? []
+                : orderedReferences
+                    .filter((ref) => ref.source === 'manual_upload' && ref.url?.startsWith('blob:'))
+                    .map((ref) => ref.url);
+
         const userPreviewEntries = orderedReferences.map((ref) => {
-            if (ref.file && !ref.url) {
-                return {
-                    url: URL.createObjectURL(ref.file),
-                    owned: true,
-                };
+            if (ref.file) {
+                if (!isVideoModel) {
+                    return {
+                        url: URL.createObjectURL(ref.file),
+                        owned: true,
+                    };
+                }
+                if (!ref.url) {
+                    return {
+                        url: URL.createObjectURL(ref.file),
+                        owned: true,
+                    };
+                }
             }
             return {
                 url: ref.url,
@@ -187,6 +203,7 @@ export function useChatGeneration({
         setUploadedImages([]);
         setManualReferenceUrls([]);
         setDroppedReferences([]);
+        inputBlobUrlsToRevoke.forEach(safeRevokeObjectUrl);
 
         const fileUrlMap = new Map<File, string>();
 
