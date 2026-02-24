@@ -1,19 +1,45 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ComponentType } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { useProjectStore } from '@/store/useProjectStore';
 import { dataService } from '@/lib/dataService';
 import LeftSidebarNew from '@/components/layout/LeftSidebarNew';
 import InfiniteCanvas from '@/components/canvas/InfiniteCanvas';
 import RightPanel from '@/components/layout/RightPanel';
-import TimelineView from '@/components/layout/TimelineView';
 import { useI18n } from '@/components/providers/I18nProvider';
-import { useAuth, useRequireWhitelist } from '@/components/auth/AuthProvider';
+import { useRequireWhitelist } from '@/components/auth/AuthProvider';
 import { Film } from 'lucide-react';
 import ViewSwitcher, { ViewType } from '@/components/layout/ViewSwitcher';
 import { createPortal } from 'react-dom';
-import PlanningView from '@/components/director/PlanningView';
+
+const TimelineView = dynamic(() => import('@/components/layout/TimelineView'), {
+    ssr: false,
+    loading: () => (
+        <div className="fixed inset-0 z-[250] bg-light-bg/80 dark:bg-cine-black/80 backdrop-blur-md flex items-center justify-center">
+            <div className="text-sm text-light-text-muted dark:text-cine-text-muted">
+                加载时间轴中...
+            </div>
+        </div>
+    ),
+}) as ComponentType<{ onClose: () => void }>;
+
+const PlanningView = dynamic(() => import('@/components/director/PlanningView'), {
+    ssr: false,
+    loading: () => (
+        <div className="w-full h-full bg-light-bg/80 dark:bg-cine-black/80 backdrop-blur-md flex items-center justify-center">
+            <div className="text-sm text-light-text-muted dark:text-cine-text-muted">
+                加载导演模式中...
+            </div>
+        </div>
+    ),
+}) as ComponentType<{
+    onClose?: () => void;
+    showHomeButton?: boolean;
+    onSwitchToCanvas?: () => void;
+    onSwitchToTimeline?: () => void;
+}>;
 
 export function ProjectEditorClient() {
     const params = useParams();

@@ -83,7 +83,7 @@ export function CanvasUserWidget() {
                             </div>
                             <div className="flex items-end justify-between">
                                 <span className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-                                    {profile?.credits || 0}
+                                    {profile?.credits ?? '...'}
                                 </span>
                                 <button className="text-xs bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black px-2 py-1 rounded-lg transition-colors flex items-center gap-1">
                                     <Plus size={12} />

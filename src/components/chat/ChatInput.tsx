@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { Send, Image as ImageIcon, Loader2, X, ChevronDown, Command, Sparkles, Maximize2, Minimize2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import MentionInput from '@/components/chat/MentionInput';
@@ -94,6 +94,10 @@ export function ChatInput({
     const [showCommands, setShowCommands] = useState(false);
     const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
     const [isExpanded, setIsExpanded] = useState(false);
+    const uploadedImagePreviewUrls = useMemo(
+        () => uploadedImages.map(file => URL.createObjectURL(file)),
+        [uploadedImages]
+    );
 
     // Tooltip State
     const [activeTooltip, setActiveTooltip] = useState<{ id: string, rect: DOMRect, desc: string } | null>(null);
@@ -136,6 +140,18 @@ export function ChatInput({
             window.removeEventListener('mouseup', handleMouseUp);
         };
     }, [isResizing]);
+
+    useEffect(() => {
+        return () => {
+            uploadedImagePreviewUrls.forEach((url) => {
+                try {
+                    URL.revokeObjectURL(url);
+                } catch {
+                    // ignore revoke failures
+                }
+            });
+        };
+    }, [uploadedImagePreviewUrls]);
 
     // 监听输入变化，检测斜杠命令
     useEffect(() => {
@@ -242,7 +258,7 @@ export function ChatInput({
                     {uploadedImages.map((file, idx) => (
                         <div key={`file-${idx}`} className="relative group">
                             <img
-                                src={URL.createObjectURL(file)}
+                                src={uploadedImagePreviewUrls[idx]}
                                 alt={`Upload ${idx + 1}`}
                                 className="h-16 w-16 rounded-lg border border-black/5 dark:border-white/10 object-cover"
                             />

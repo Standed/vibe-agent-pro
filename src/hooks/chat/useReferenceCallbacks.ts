@@ -9,6 +9,16 @@ import type { ActiveReference } from './useAutoReference';
 import type { FrameImage } from './useStartEndFrames';
 import type { VideoReferencesHook } from './useVideoReferences';
 
+const revokeIfBlobReference = (ref: ActiveReference) => {
+    if (ref.source !== 'manual_upload') return;
+    if (!ref.url?.startsWith('blob:')) return;
+    try {
+        URL.revokeObjectURL(ref.url);
+    } catch {
+        // ignore revoke failures
+    }
+};
+
 interface UseReferenceCallbacksOptions {
     // 模式
     selectedModel: string;
@@ -146,6 +156,7 @@ export function useReferenceCallbacks({
         if (ref.source === 'shot_ref') {
             setIsShotRefDeleted(true);
         } else {
+            revokeIfBlobReference(ref);
             setDroppedReferences(prev => prev.filter(r => r.url !== ref.url));
             setManualReferenceUrls(prev => prev.filter(url => url !== ref.url));
             setIgnoredUrls(prev => {

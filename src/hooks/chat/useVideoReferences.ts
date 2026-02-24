@@ -1,6 +1,19 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { ActiveReference } from './useAutoReference';
 import type { FrameImage } from './useStartEndFrames';
+
+const canRevokeRefUrl = (ref?: ActiveReference | null) => {
+    return !!ref && ref.source === 'manual_upload' && typeof ref.url === 'string' && ref.url.startsWith('blob:');
+};
+
+const revokeRefUrl = (ref?: ActiveReference | null) => {
+    if (!canRevokeRefUrl(ref)) return;
+    try {
+        URL.revokeObjectURL(ref!.url);
+    } catch {
+        // ignore revoke failures
+    }
+};
 
 /**
  * 视频参考图状态管理 Hook
@@ -18,11 +31,19 @@ export function useVideoReferences() {
 
     // ========== Vidu Img2Video ==========
     const setViduImg2Video = useCallback((ref: ActiveReference | null) => {
-        setViduImg2VideoRef(ref);
+        setViduImg2VideoRef(prev => {
+            if (prev && prev.url !== ref?.url) {
+                revokeRefUrl(prev);
+            }
+            return ref;
+        });
     }, []);
 
     const clearViduImg2Video = useCallback(() => {
-        setViduImg2VideoRef(null);
+        setViduImg2VideoRef(prev => {
+            revokeRefUrl(prev);
+            return null;
+        });
     }, []);
 
     // ========== Vidu Reference2Video ==========
@@ -40,7 +61,11 @@ export function useVideoReferences() {
     }, []);
 
     const removeViduReference = useCallback((ref: ActiveReference) => {
-        setViduReferenceRefs(prev => prev.filter(r => r.url !== ref.url));
+        setViduReferenceRefs(prev => {
+            const removed = prev.filter(r => r.url === ref.url);
+            removed.forEach(r => revokeRefUrl(r));
+            return prev.filter(r => r.url !== ref.url);
+        });
     }, []);
 
     const moveViduReference = useCallback((fromIndex: number, toIndex: number) => {
@@ -53,20 +78,38 @@ export function useVideoReferences() {
     }, []);
 
     const clearViduReferences = useCallback(() => {
-        setViduReferenceRefs([]);
+        setViduReferenceRefs(prev => {
+            prev.forEach(r => revokeRefUrl(r));
+            return [];
+        });
     }, []);
 
     const replaceViduReferences = useCallback((refs: ActiveReference[]) => {
-        setViduReferenceRefs(refs.slice(0, MAX_VIDU_REFS));
+        const nextRefs = refs.slice(0, MAX_VIDU_REFS);
+        setViduReferenceRefs(prev => {
+            const nextUrlSet = new Set(nextRefs.map(r => r.url));
+            prev.forEach(r => {
+                if (!nextUrlSet.has(r.url)) revokeRefUrl(r);
+            });
+            return nextRefs;
+        });
     }, []);
 
     // ========== Sora ==========
     const setSora = useCallback((ref: ActiveReference | null) => {
-        setSoraRef(ref);
+        setSoraRef(prev => {
+            if (prev && prev.url !== ref?.url) {
+                revokeRefUrl(prev);
+            }
+            return ref;
+        });
     }, []);
 
     const clearSora = useCallback(() => {
-        setSoraRef(null);
+        setSoraRef(prev => {
+            revokeRefUrl(prev);
+            return null;
+        });
     }, []);
 
     // ========== Utility Functions ==========
@@ -77,6 +120,14 @@ export function useVideoReferences() {
     const canAddViduReference = useCallback(() => {
         return viduReferenceRefs.length < MAX_VIDU_REFS;
     }, [viduReferenceRefs.length]);
+
+    useEffect(() => {
+        return () => {
+            revokeRefUrl(viduImg2VideoRef);
+            revokeRefUrl(soraRef);
+            viduReferenceRefs.forEach(r => revokeRefUrl(r));
+        };
+    }, [viduImg2VideoRef, soraRef, viduReferenceRefs]);
 
     return {
         // State
