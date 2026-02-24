@@ -243,11 +243,6 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
       isActive = false;
     };
   }, [mode, initialCharacter?.id]);
-
-  useEffect(() => {
-    setSavedCharacterId(initialCharacter?.id || null);
-  }, [initialCharacter?.id]);
-
   useEffect(() => {
     lastWrittenSoraUsernameRef.current = initialCharacter?.soraIdentity?.username || '';
   }, [initialCharacter?.id, initialCharacter?.soraIdentity?.username]);
@@ -479,10 +474,10 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={onClose}
-              className="absolute inset-0 bg-black/40 backdrop-blur-md"
-            />
+                exit={{ opacity: 0 }}
+                onClick={onClose}
+                className="absolute inset-0 bg-black/40"
+              />
 
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20, filter: 'blur(10px)' }}
@@ -593,7 +588,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                     required
                   />
                   <p className="text-[11px] text-zinc-400 dark:text-zinc-500 leading-relaxed">
-                    💡 提示：角色名称需与分镜描述中的名称<span className="text-amber-500 font-medium">完全一致</span>，系统才能自动匹配参考图。例如分镜描述中写"苏白走过来"，则角色名称也需设为"苏白"。
+                    💡 提示：角色名称需与分镜描述中的名称<span className="text-amber-500 font-medium">完全一致</span>，系统才能自动匹配参考图。例如分镜描述中写“苏白走过来”，则角色名称也需设为“苏白”。
                   </p>
                 </div>
 
@@ -631,27 +626,27 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
                     <span className="text-xs font-normal text-zinc-400">至少 1 张</span>
                   </label>
 
-                  {consistencyMode === 'three-view' && (
-                    <ThreeViewGenerator hook={threeView} name={name} />
-                  )}
+                    {consistencyMode === 'three-view' && (
+                      <ThreeViewGenerator hook={threeView} name={name} />
+                    )}
 
-                  <CharacterImageManager
-                    referenceImages={referenceImages}
-                    selectedRefIndex={selectedRefIndex}
-                    onImageUpload={handleImageUpload}
-                    onRemoveImage={removeImage}
+                    {consistencyMode === 'three-view' && (
+                      <ThreeViewPrompt hook={threeView} />
+                    )}
+
+                    <CharacterImageManager
+                      referenceImages={referenceImages}
+                      selectedRefIndex={selectedRefIndex}
+                      onImageUpload={handleImageUpload}
+                      onRemoveImage={removeImage}
                     onSelectImage={setSelectedRefIndex}
                     onPreviewImage={setPreviewImage}
-                    fileInputRef={fileInputRef}
-                  />
+                      fileInputRef={fileInputRef}
+                    />
 
-                  {consistencyMode === 'three-view' && (
-                    <ThreeViewPrompt hook={threeView} />
-                  )}
-
-                  {/* Sora Reference Video Upload - 仅在 Sora 模式显示 */}
-                  <div className={cn(
-                    "mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800",
+                    {/* Sora Reference Video Upload - 仅在 Sora 模式显示 */}
+                    <div className={cn(
+                      "mt-4 pt-4 border-t border-dashed border-zinc-200 dark:border-zinc-800",
                     consistencyMode !== 'sora-reference' && "hidden"
                   )}>
                     <label className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2 flex items-center gap-2">
@@ -743,7 +738,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
               </form>
 
               {/* Footer */}
-              <div className="flex items-center justify-end gap-3 px-6 py-5 border-t border-black/5 dark:border-white/5 bg-white/50 dark:bg-black/20 backdrop-blur-xl">
+              <div className="flex items-center justify-end gap-3 px-6 py-5 border-t border-black/5 dark:border-white/5 bg-white/95 dark:bg-zinc-900/95">
                 <button
                   type="button"
                   onClick={onClose}
@@ -776,7 +771,7 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
         previewImage && createPortal(
           <div
             key="character-preview-overlay"
-            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-in fade-in duration-300"
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 animate-in fade-in duration-300"
             onClick={() => setPreviewImage(null)}
           >
             <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>

@@ -88,7 +88,7 @@ export function useThreeViewGeneration({
                     finalUrl = await storageService.uploadBase64ToR2(finalUrl, uploadContext, `three_view_${Date.now()}.png`, userId || 'anonymous');
                 }
                 setReferenceImages(prev => [finalUrl, ...prev]);
-                setPreviewImage(finalUrl);
+                // setPreviewImage(finalUrl); // Disable auto-popup
                 setSoraStatus('none');
                 setSelectedRefIndex(0);
                 toast.success('三视图生成成功！');
@@ -113,7 +113,7 @@ export function useThreeViewGeneration({
                 if (!imageUrl) throw new Error('即梦未返回图片');
 
                 setReferenceImages(prev => [imageUrl, ...prev]);
-                setPreviewImage(imageUrl);
+                // setPreviewImage(imageUrl);
                 setSoraStatus('none');
                 setSelectedRefIndex(0);
 
@@ -131,7 +131,7 @@ export function useThreeViewGeneration({
                 }
 
                 setReferenceImages(prev => [finalUrl, ...prev]);
-                setPreviewImage(finalUrl);
+                // setPreviewImage(finalUrl); // Disable auto-popup
                 setSoraStatus('none');
                 setSelectedRefIndex(0);
 

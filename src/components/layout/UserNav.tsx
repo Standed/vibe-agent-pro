@@ -111,7 +111,7 @@ export function UserNav() {
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider font-semibold">积分余额</span>
-                                        <span className="text-sm font-bold text-light-text dark:text-white leading-none">{profile?.credits || 0}</span>
+                                        <span className="text-sm font-bold text-light-text dark:text-white leading-none">{profile?.credits ?? '...'}</span>
                                     </div>
                                 </div>
                                 <button className="text-xs font-medium bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black px-3 py-1.5 rounded-lg transition-colors shadow-sm">

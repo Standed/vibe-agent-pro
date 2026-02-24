@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import { getUserProfile, readSessionCookie, setSessionCookie, parseJWT, isTokenExpired, getCurrentSession } from '@/lib/supabase/auth';
@@ -35,6 +35,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const activeUserIdRef = useRef<string | null>(null);
+  const profileRetryTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+
+  const clearProfileRetryTimeouts = useCallback(() => {
+    profileRetryTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    profileRetryTimeoutsRef.current = [];
+  }, []);
 
   const setUserState = (nextUser: User | null) => {
     activeUserIdRef.current = nextUser?.id ?? null;
@@ -157,6 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initSession = async () => {
       try {
+        clearProfileRetryTimeouts();
         // 检查是否有认证 cookie
         if (typeof window !== 'undefined') {
           const cookieTokens = readSessionCookie();
@@ -217,7 +224,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     if (!success && retryCount < 3 && isMounted) {
                       const delay = 1000 * Math.pow(2, retryCount); // 1s, 2s, 4s
                       console.log(`[AuthProvider] ⚠️ Profile 加载失败，${delay}ms 后重试 (${retryCount + 1}/3)...`);
-                      setTimeout(() => initProfile(retryCount + 1), delay);
+                      const timeoutId = setTimeout(() => {
+                        profileRetryTimeoutsRef.current = profileRetryTimeoutsRef.current.filter((id) => id !== timeoutId);
+                        if (!isMounted) return;
+                        void initProfile(retryCount + 1);
+                      }, delay);
+                      profileRetryTimeoutsRef.current.push(timeoutId);
                     }
                   };
                   initProfile();
@@ -347,13 +359,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       isMounted = false;
       clearInterval(heartbeatInterval);
+      clearProfileRetryTimeouts();
       subscriptionWrapper.data.subscription.unsubscribe();
     };
-  }, []);
+  }, [clearProfileRetryTimeouts]);
 
   // 登出
   const handleSignOut = async () => {
     try {
+      clearProfileRetryTimeouts();
       const signOutPromise = supabase.auth.signOut();
       const timeoutPromise = new Promise(resolve => setTimeout(resolve, 1000));
       await Promise.race([signOutPromise, timeoutPromise]).catch(err => {
@@ -381,6 +395,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.error('[AuthProvider] 登出过程中发生异常:', error);
+      clearProfileRetryTimeouts();
       setUserState(null);
       setSession(null);
       setProfile(null);

@@ -796,25 +796,27 @@ class SupabaseBackend implements DataBackend {
 
   async getChatMessages(filters: {
     projectId: string;
-    scope: 'project' | 'scene' | 'shot';
+    scope?: ChatScope;
     sceneId?: string;
     shotId?: string;
     limit?: number;
     offset?: number;
+    orderBy?: { column: string; ascending?: boolean };
   }, signal?: AbortSignal): Promise<ChatMessage[]> {
+    const order = filters.orderBy || { column: 'created_at', ascending: true };
     const messages = await this.callSupabaseAPI({
       table: 'chat_messages',
       operation: 'select',
       filters: {
         eq: {
           project_id: filters.projectId,
-          scope: filters.scope,
+          ...(filters.scope ? { scope: filters.scope } : {}),
           ...(filters.shotId ? { shot_id: filters.shotId } : {}),
           ...(filters.sceneId ? { scene_id: filters.sceneId } : {}),
         }
       },
       select: '*',
-      order: { column: 'created_at', ascending: true }, // 对话通常按时间正序
+      order,
       limit: filters.limit,
       offset: filters.offset,
     }, signal);
@@ -1290,6 +1292,7 @@ export class UnifiedDataService {
     scope?: ChatScope;
     limit?: number;
     offset?: number;
+    orderBy?: { column: string; ascending?: boolean };
   }, userId?: string, signal?: AbortSignal): Promise<ChatMessage[]> {
     await this.ensureInitialized(userId);
     return this.backend!.getChatMessages(filters, signal);

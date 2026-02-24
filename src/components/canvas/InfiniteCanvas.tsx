@@ -156,6 +156,8 @@ const CanvasScene = memo(({
   );
 });
 
+CanvasScene.displayName = 'CanvasScene';
+
 export default function InfiniteCanvas() {
   const project = useProjectStore((state) => state.project);
   const currentSceneId = useProjectStore((state) => state.currentSceneId);
@@ -609,15 +611,26 @@ export default function InfiniteCanvas() {
 
   const sceneGroups = useMemo(() => {
     if (!project) return [];
-    return project.scenes.map((scene) => {
-      const sceneShots = project.shots
-        .filter((shot) => shot.sceneId === scene.id)
-        .sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
-      return {
-        scene,
-        shots: sceneShots,
-      };
-    });
+
+    // Perf: avoid N * filter/sort by grouping once.
+    const shotsByScene = new Map<string, Shot[]>();
+    for (const shot of project.shots) {
+      let list = shotsByScene.get(shot.sceneId);
+      if (!list) {
+        list = [];
+        shotsByScene.set(shot.sceneId, list);
+      }
+      list.push(shot);
+    }
+
+    for (const list of shotsByScene.values()) {
+      list.sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
+    }
+
+    return project.scenes.map((scene) => ({
+      scene,
+      shots: shotsByScene.get(scene.id) || [],
+    }));
   }, [project?.scenes, project?.shots]);
 
   // Helper to determine grid columns based on aspect ratio

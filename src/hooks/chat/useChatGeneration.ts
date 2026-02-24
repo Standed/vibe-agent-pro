@@ -38,7 +38,7 @@ interface UseChatGenerationProps {
 /**
  * Upload Base64 image to R2 with retry mechanism
  * Retries up to 5 times with exponential backoff (3s, 6s, 12s, 24s, 48s)
- * On failure, returns original Base64 data URL so user can still view the image
+ * On failure, throws error (do not persist Base64 fallback into chat history)
  */
 const uploadWithRetry = async (
     base64DataUrl: string,
@@ -72,9 +72,9 @@ const uploadWithRetry = async (
         }
     }
 
-    // All retries failed - return original Base64 so user can still view the image
-    console.error('[uploadWithRetry] ❌ R2 上传最终失败，使用 Base64 作为临时图片', lastError);
-    return base64DataUrl;
+    // All retries failed - fail fast to avoid "current visible but refresh lost" inconsistency.
+    console.error('[uploadWithRetry] ❌ R2 上传最终失败，停止持久化', lastError);
+    throw new Error(lastError?.message || 'R2 upload failed after retries');
 };
 
 const isBase64DataUrl = (value?: string | null) => {
@@ -83,6 +83,15 @@ const isBase64DataUrl = (value?: string | null) => {
 
 const filterPersistableUrls = (urls: string[]) => {
     return urls.filter(url => !isBase64DataUrl(url));
+};
+
+const safeRevokeObjectUrl = (url?: string | null) => {
+    if (!url || !url.startsWith('blob:')) return;
+    try {
+        URL.revokeObjectURL(url);
+    } catch {
+        // ignore revoke failures
+    }
 };
 
 export function useChatGeneration({
@@ -145,12 +154,42 @@ export function useChatGeneration({
 
         // 2. Optimistic User Message
         const userMsgId = generateMessageId();
+        const isVideoModel = selectedModel.includes('video');
+        const inputBlobUrlsToRevoke =
+            isVideoModel
+                ? []
+                : orderedReferences
+                    .filter((ref) => ref.source === 'manual_upload' && ref.url?.startsWith('blob:'))
+                    .map((ref) => ref.url);
+
+        const userPreviewEntries = orderedReferences.map((ref) => {
+            if (ref.file) {
+                if (!isVideoModel) {
+                    return {
+                        url: URL.createObjectURL(ref.file),
+                        owned: true,
+                    };
+                }
+                if (!ref.url) {
+                    return {
+                        url: URL.createObjectURL(ref.file),
+                        owned: true,
+                    };
+                }
+            }
+            return {
+                url: ref.url,
+                owned: false,
+            };
+        });
+        const userPreviewUrls = userPreviewEntries.map(entry => entry.url);
+
         const userMessage: ChatPanelMessage = {
             id: userMsgId,
             role: 'user',
             content: inputText,
             timestamp: new Date(),
-            images: orderedReferences.map(r => r.file ? URL.createObjectURL(r.file) : r.url),
+            images: userPreviewUrls,
             shotId: selectedShotId || undefined,
             sceneId: currentSceneIdCaptured || undefined,
         };
@@ -164,6 +203,7 @@ export function useChatGeneration({
         setUploadedImages([]);
         setManualReferenceUrls([]);
         setDroppedReferences([]);
+        inputBlobUrlsToRevoke.forEach(safeRevokeObjectUrl);
 
         const fileUrlMap = new Map<File, string>();
 
@@ -207,6 +247,9 @@ export function useChatGeneration({
                 setIsUploading(false);
                 removeActiveTask(generationTaskId); // 失败移除任务
                 removeOptimisticMessage(userMsgId); // 失败移除消息
+                userPreviewEntries.forEach((entry) => {
+                    if (entry.owned) safeRevokeObjectUrl(entry.url);
+                });
                 return;
             } finally {
                 setIsUploading(false);
@@ -220,6 +263,20 @@ export function useChatGeneration({
             }
             return r.url;
         });
+
+        // Update optimistic UI: replace local blob: preview URLs with persistable URLs once uploads finish.
+        // This prevents "use as reference" / "apply to shot" from capturing blob:/data: URLs.
+        if (filesToUpload.length > 0) {
+            setMessages(prev => prev.map(m => {
+                if (m.id !== userMsgId) return m;
+                return { ...m, images: allRefUrls };
+            }));
+            userPreviewEntries.forEach((entry) => {
+                if (entry.owned && !allRefUrls.includes(entry.url)) {
+                    safeRevokeObjectUrl(entry.url);
+                }
+            });
+        }
 
         // Use 'filesToUpload' for checks instead of deprecated arg
         const uploadedImages = filesToUpload;
@@ -548,6 +605,13 @@ export function useChatGeneration({
 
                 } catch (err) {
                     console.error("Background upload failed", err);
+                    setMessages(prev => prev.map(m => {
+                        if (m.id !== assistantMsgId) return m;
+                        return {
+                            ...m,
+                            content: `${assistantMessage.content}\n（结果上传失败，刷新后可能不可见，请重试）`
+                        };
+                    }));
                     toast.error("图片上传到服务器失败，但您可以继续浏览");
                 } finally {
                     setIsUploading(false);
