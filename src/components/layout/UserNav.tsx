@@ -7,9 +7,11 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { SettingsPanel, SettingsModal } from '@/components/layout/SettingsPanel';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Avatar } from '@/components/ui/Avatar';
+import { useI18n } from '@/components/providers/I18nProvider';
 
 export function UserNav() {
     const router = useRouter();
+    const { t } = useI18n();
     const { user, profile, signOut } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -45,7 +47,7 @@ export function UserNav() {
                     className="inline-flex items-center gap-2 text-sm px-4 py-2 rounded-lg bg-light-accent dark:bg-cine-accent text-white dark:text-black hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover transition-colors font-medium"
                 >
                     <User size={16} />
-                    登录 / 注册
+                    {t('userNav.loginRegister')}
                 </button>
                 <SettingsPanel />
             </div>
@@ -95,7 +97,7 @@ export function UserNav() {
                         {/* Header Info */}
                         <div className="p-5 border-b border-black/5 dark:border-white/5 bg-gradient-to-b from-white/50 to-transparent dark:from-white/5">
                             <p className="text-sm font-bold text-light-text dark:text-white truncate">
-                                {profile?.full_name || '用户'}
+                                {profile?.full_name || t('userNav.defaultUser')}
                             </p>
                             <p className="text-xs text-light-text-muted dark:text-cine-text-muted truncate mt-0.5">
                                 {user.email}
@@ -110,12 +112,12 @@ export function UserNav() {
                                         <Coins size={14} className="text-yellow-600 dark:text-yellow-400" />
                                     </div>
                                     <div className="flex flex-col">
-                                        <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider font-semibold">积分余额</span>
+                                        <span className="text-[10px] text-light-text-muted dark:text-cine-text-muted uppercase tracking-wider font-semibold">{t('userNav.creditsBalance')}</span>
                                         <span className="text-sm font-bold text-light-text dark:text-white leading-none">{profile?.credits ?? '...'}</span>
                                     </div>
                                 </div>
                                 <button className="text-xs font-medium bg-light-accent dark:bg-cine-accent hover:bg-light-accent-hover dark:hover:bg-cine-accent-hover text-white dark:text-black px-3 py-1.5 rounded-lg transition-colors shadow-sm">
-                                    充值
+                                    {t('userNav.topUp')}
                                 </button>
                             </div>
                         </div>
@@ -130,12 +132,12 @@ export function UserNav() {
                                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 rounded-xl transition-colors text-left font-medium"
                             >
                                 <User size={16} className="text-light-text-muted dark:text-cine-text-muted" />
-                                <span>个人资料</span>
+                                <span>{t('userNav.profile')}</span>
                             </button>
 
                             <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 rounded-xl transition-colors text-left font-medium">
                                 <CreditCard size={16} className="text-light-text-muted dark:text-cine-text-muted" />
-                                <span>订阅管理</span>
+                                <span>{t('userNav.subscription')}</span>
                             </button>
 
                             <button
@@ -146,7 +148,7 @@ export function UserNav() {
                                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 rounded-xl transition-colors text-left font-medium"
                             >
                                 <Settings size={16} className="text-light-text-muted dark:text-cine-text-muted" />
-                                <span>通用设置</span>
+                                <span>{t('userNav.generalSettings')}</span>
                             </button>
 
                             <div className="h-px bg-light-border dark:bg-cine-border my-1 mx-2" />
@@ -156,7 +158,7 @@ export function UserNav() {
                                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors text-left font-medium"
                             >
                                 <LogOut size={16} />
-                                <span>退出登录</span>
+                                <span>{t('userNav.signOut')}</span>
                             </button>
                         </div>
                     </motion.div>

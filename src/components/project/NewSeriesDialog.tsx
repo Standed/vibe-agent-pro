@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Loader2 } from 'lucide-react';
+import { useI18n } from '@/components/providers/I18nProvider';
 
 interface NewSeriesDialogProps {
     onConfirm: (title: string, description: string) => Promise<void>;
@@ -13,6 +14,7 @@ export default function NewSeriesDialog({
     onConfirm,
     onClose,
 }: NewSeriesDialogProps) {
+    const { t } = useI18n();
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [isCreating, setIsCreating] = useState(false);
@@ -26,7 +28,7 @@ export default function NewSeriesDialog({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!title.trim()) {
-            alert('请输入剧集名称');
+            alert(t('newSeries.titleRequired'));
             return;
         }
 
@@ -34,7 +36,7 @@ export default function NewSeriesDialog({
         try {
             await onConfirm(title, description);
         } catch (error) {
-            console.error('创建剧集失败:', error);
+            console.error('Create series failed:', error);
             setIsCreating(false);
         }
     };
@@ -48,10 +50,10 @@ export default function NewSeriesDialog({
                 <div className="sticky top-0 glass-panel border-b border-black/5 dark:border-white/5 p-6 flex items-center justify-between z-10">
                     <div>
                         <h2 className="text-xl font-bold text-light-text dark:text-white">
-                            {isCreating ? '正在创建剧集...' : '📂 创建新剧集'}
+                            {isCreating ? t('newSeries.creatingTitle') : t('newSeries.title')}
                         </h2>
                         <p className="text-sm text-light-text-muted dark:text-cine-text-muted mt-1">
-                            剧集用于管理一系列相关的分集项目
+                            {t('newSeries.subtitle')}
                         </p>
                     </div>
                     <button
@@ -68,13 +70,13 @@ export default function NewSeriesDialog({
                     {/* Series Name */}
                     <div>
                         <label className="block text-sm font-bold text-light-text dark:text-white mb-2">
-                            剧集名称 <span className="text-red-500">*</span>
+                            {t('newSeries.name')} <span className="text-red-500">*</span>
                         </label>
                         <input
                             type="text"
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            placeholder="例如：《赛博朋克侦探故事》"
+                            placeholder={t('newSeries.namePlaceholder')}
                             disabled={isCreating}
                             className="glass-input w-full px-4 py-3 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
                             required
@@ -84,12 +86,12 @@ export default function NewSeriesDialog({
                     {/* Description */}
                     <div>
                         <label className="block text-sm font-bold text-light-text dark:text-white mb-2">
-                            简介
+                            {t('newSeries.description')}
                         </label>
                         <textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            placeholder="简要描述剧集的世界观和背景..."
+                            placeholder={t('newSeries.descriptionPlaceholder')}
                             rows={3}
                             disabled={isCreating}
                             className="glass-input w-full px-4 py-3 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
@@ -105,7 +107,7 @@ export default function NewSeriesDialog({
                         disabled={isCreating}
                         className="px-6 py-2.5 rounded-lg glass-button text-gray-600 dark:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        取消
+                        {t('common.cancel')}
                     </button>
                     <button
                         type="submit"
@@ -116,10 +118,10 @@ export default function NewSeriesDialog({
                         {isCreating ? (
                             <>
                                 <Loader2 className="animate-spin" size={20} />
-                                <span>创建中...</span>
+                                <span>{t('newSeries.creatingButton')}</span>
                             </>
                         ) : (
-                            <>创建剧集</>
+                            <>{t('newSeries.createButton')}</>
                         )}
                     </button>
                 </div>

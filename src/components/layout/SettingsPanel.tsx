@@ -26,6 +26,11 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
   ];
 
   const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
+  const roleLabel = profile?.role === 'admin'
+    ? t('settings.roleAdmin')
+    : profile?.role === 'vip'
+      ? t('settings.roleVip')
+      : t('settings.roleUser');
 
   useEffect(() => {
     return () => {
@@ -54,12 +59,12 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       const allowedExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
       if (!fileExt || !allowedExts.includes(fileExt.toLowerCase())) {
-        toast.error('不支持的文件格式');
+        toast.error(t('settings.avatarUnsupportedFormat'));
         return;
       }
 
       if (file.size > 2 * 1024 * 1024) { // 2MB
-        toast.error('图片大小不能超过 2MB');
+        toast.error(t('settings.avatarSizeLimit'));
         return;
       }
 
@@ -104,7 +109,7 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       if (profileError) {
         console.error('[Avatar Upload] ❌ 5. Profiles 表更新失败:', profileError);
         console.error('[Avatar Upload] 详细错误:', JSON.stringify(profileError, null, 2));
-        throw new Error(`头像保存失败: ${profileError.message || '权限不足'}`);
+        throw new Error(t('settings.avatarSaveFailed', { message: profileError.message || t('settings.avatarPermissionDenied') }));
       }
 
       console.log('[Avatar Upload] ✅ 6. Profiles 表更新成功');
@@ -112,7 +117,7 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
 
       // KEY FIX: Stop spinning here. The user already sees the optimistic image.
       setUploading(false);
-      toast.success('头像更新成功');
+      toast.success(t('settings.avatarUpdateSuccess'));
       console.log('[Avatar Upload] 🎉 7. UI 更新完成');
 
       // 4. 刷新本地状态 (Background sync) - 强制刷新
@@ -133,7 +138,7 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
 
     } catch (error: any) {
       console.error('Error uploading avatar:', error);
-      toast.error(error.message || '头像上传失败');
+      toast.error(error.message || t('settings.avatarUploadFailed'));
       if (previewAvatar?.startsWith('blob:')) {
         try {
           URL.revokeObjectURL(previewAvatar);
@@ -170,8 +175,8 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md">
       <div className="glass-panel rounded-3xl w-full max-w-md mx-4 shadow-2xl ring-1 ring-black/5 max-h-[90vh] overflow-y-auto no-scrollbar">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-black/5 dark:border-white/5 sticky top-0 bg-white/80 dark:bg-black/80 backdrop-blur-xl z-10">
-          <h2 className="text-xl font-semibold text-light-text dark:text-white">
+        <div className="flex items-center justify-between p-6 border-b border-border/50 sticky top-0 bg-background/80 backdrop-blur-xl z-10">
+          <h2 className="text-xl font-semibold text-primary-text">
             {t('settings.title')}
           </h2>
           <button
@@ -187,11 +192,11 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
           {/* Profile Section */}
           {user && (
             <div>
-              <h3 className="text-sm font-medium text-light-text dark:text-white mb-4 flex items-center gap-2">
+              <h3 className="text-sm font-medium text-primary-text mb-4 flex items-center gap-2">
                 <User className="w-4 h-4" />
-                个人资料
+                {t('settings.profile')}
               </h3>
-              <div className="flex items-center gap-4 bg-light-bg-secondary dark:bg-cine-bg-secondary p-4 rounded-2xl border border-light-border dark:border-cine-border">
+              <div className="flex items-center gap-4 bg-background-secondary p-4 rounded-2xl border border-border">
                 {/* Avatar Upload */}
                 <button
                   type="button"
@@ -233,15 +238,15 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                 </button>
 
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-light-text dark:text-white truncate">
-                    {profile?.full_name || '未设置昵称'}
+                  <h4 className="font-bold text-primary-text truncate">
+                    {profile?.full_name || t('settings.noNickname')}
                   </h4>
-                  <p className="text-xs text-light-text-muted dark:text-cine-text-muted truncate">
+                  <p className="text-xs text-muted-text truncate">
                     {user.email}
                   </p>
                   <div className="mt-2 flex gap-2">
-                    <div className="text-[10px] px-2 py-0.5 rounded-full bg-light-accent/10 dark:bg-cine-accent/10 text-light-accent dark:text-cine-accent border border-light-accent/20 dark:border-cine-accent/20 inline-block">
-                      {profile?.role === 'admin' ? '管理员' : profile?.role === 'vip' ? 'VIP 会员' : '普通用户'}
+                    <div className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20 inline-block">
+                      {roleLabel}
                     </div>
                   </div>
                 </div>
@@ -252,8 +257,8 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
           {/* Theme Selection */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <Sun className="w-5 h-5 text-light-text-muted dark:text-zinc-400" />
-              <h3 className="text-sm font-medium text-light-text dark:text-white">
+              <Sun className="w-5 h-5 text-muted-text" />
+              <h3 className="text-sm font-medium text-primary-text">
                 {t('settings.theme')}
               </h3>
             </div>
@@ -268,21 +273,21 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                     className={`
                       flex flex-col items-center gap-2 p-3 rounded-2xl border transition-all duration-300
                       ${isActive
-                        ? 'bg-light-accent/10 dark:bg-cine-accent/10 border-light-accent dark:border-cine-accent shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_rgba(255,255,255,0.1)]'
-                        : 'glass-button border-transparent hover:border-light-accent/30 dark:hover:border-cine-accent/30'
+                        ? 'bg-accent/10 border-accent shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_rgba(255,255,255,0.1)]'
+                        : 'glass-button border-transparent hover:border-accent/30'
                       }
                     `}
                   >
                     <Icon
                       className={`w-5 h-5 ${isActive
-                        ? 'text-light-accent dark:text-cine-accent'
-                        : 'text-light-text-muted dark:text-zinc-400'
+                        ? 'text-accent'
+                        : 'text-muted-text'
                         }`}
                     />
                     <span
                       className={`text-xs font-medium ${isActive
-                        ? 'text-light-accent dark:text-cine-accent'
-                        : 'text-light-text dark:text-zinc-300'
+                        ? 'text-accent'
+                        : 'text-primary-text'
                         }`}
                     >
                       {themeOption.label}
@@ -296,8 +301,8 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
           {/* Language Selection */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <Languages className="w-5 h-5 text-light-text-muted dark:text-zinc-400" />
-              <h3 className="text-sm font-medium text-light-text dark:text-white">
+              <Languages className="w-5 h-5 text-muted-text" />
+              <h3 className="text-sm font-medium text-primary-text">
                 {t('settings.language')}
               </h3>
             </div>
@@ -311,15 +316,15 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                     className={`
                       flex items-center justify-center gap-2 p-3 rounded-2xl border transition-all duration-300
                       ${isActive
-                        ? 'bg-light-accent/10 dark:bg-cine-accent/10 border-light-accent dark:border-cine-accent shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_rgba(255,255,255,0.1)]'
-                        : 'glass-button border-transparent hover:border-light-accent/30 dark:hover:border-cine-accent/30'
+                        ? 'bg-accent/10 border-accent shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_rgba(255,255,255,0.1)]'
+                        : 'glass-button border-transparent hover:border-accent/30'
                       }
                     `}
                   >
                     <span
                       className={`text-sm font-medium ${isActive
-                        ? 'text-light-accent dark:text-cine-accent'
-                        : 'text-light-text dark:text-zinc-300'
+                        ? 'text-accent'
+                        : 'text-primary-text'
                         }`}
                     >
                       {localeOption.label}
@@ -331,17 +336,17 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
           </div>
 
           {/* Jimeng Configuration */}
-          <div className="pt-4 border-t border-black/5 dark:border-white/5">
+          <div className="pt-4 border-t border-border/50">
             <div className="flex items-center gap-2 mb-3">
-              <Sparkles className="w-5 h-5 text-purple-500" />
-              <h3 className="text-sm font-medium text-light-text dark:text-white">
-                即梦 (Jimeng) 配置
+              <Sparkles className="w-5 h-5 text-muted-text" />
+              <h3 className="text-sm font-medium text-primary-text">
+                {t('settings.jimengTitle')}
               </h3>
             </div>
             <div className="space-y-3">
               <div className="space-y-1">
-                <label className="text-[10px] text-light-text-muted dark:text-cine-text-muted ml-1">
-                  Session ID (从即梦官网 Cookie 中获取)
+                <label className="text-[10px] text-muted-text ml-1">
+                  {t('settings.jimengSessionLabel')}
                 </label>
                 <input
                   type="password"
@@ -353,19 +358,19 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                       localStorage.setItem('jimeng_session_id', nextValue);
                     }
                   }}
-                  placeholder="粘贴你的 sessionid"
-                  className="w-full px-4 py-2.5 rounded-xl bg-light-bg-secondary dark:bg-cine-bg-secondary border border-light-border dark:border-cine-border text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all"
+                  placeholder={t('settings.jimengSessionPlaceholder')}
+                  className="w-full px-4 py-2.5 rounded-xl bg-background-secondary border border-border text-sm text-primary-text placeholder:text-light-text-muted dark:placeholder:text-cine-text-muted focus:outline-none focus:ring-2 focus:ring-light-accent/20 dark:focus:ring-cine-accent/30 focus:border-light-accent dark:focus:border-cine-accent transition-all"
                 />
               </div>
-              <p className="text-[10px] text-light-text-muted dark:text-cine-text-muted leading-relaxed">
-                配置后可在生成面板选择“即梦”模型。请确保 sessionid 有效。
+              <p className="text-[10px] text-muted-text leading-relaxed">
+                {t('settings.jimengDescription')}
               </p>
             </div>
           </div>
 
           {/* Sign Out */}
           {user && (
-            <div className="pt-4 border-t border-black/5 dark:border-white/5">
+            <div className="pt-4 border-t border-border/50">
               <button
                 onClick={() => {
                   signOut();
@@ -374,7 +379,7 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                 className="w-full py-3 px-4 flex items-center justify-center gap-2 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors font-medium"
               >
                 <LogOut size={16} />
-                退出登录
+                {t('settings.signOut')}
               </button>
             </div>
           )}

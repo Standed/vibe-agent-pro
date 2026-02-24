@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, Loader2 } from 'lucide-react';
 import { AspectRatio } from '@/types/project';
+import { useI18n } from '@/components/providers/I18nProvider';
 
 interface NewProjectDialogProps {
   onConfirm: (
@@ -19,85 +20,6 @@ interface NewProjectDialogProps {
   initialAspectRatio?: string;
 }
 
-const aspectRatioOptions = [
-  {
-    value: AspectRatio.WIDE,
-    label: '16:9 横屏视频',
-    description: '1920x1080 - 适合横屏视频、YouTube',
-    resolution: '1920×1080',
-  },
-  {
-    value: AspectRatio.MOBILE,
-    label: '9:16 竖屏短视频',
-    description: '1080x1920 - 适合抖音、快手、Instagram Stories',
-    resolution: '1080×1920',
-    recommended: true,
-  },
-  {
-    value: AspectRatio.SQUARE,
-    label: '1:1 方形',
-    description: '1080x1080 - 适合社交媒体方形视频',
-    resolution: '1080×1080',
-  },
-  {
-    value: AspectRatio.STANDARD,
-    label: '4:3 传统',
-    description: '1440x1080 - 传统电视比例',
-    resolution: '1440×1080',
-  },
-  {
-    value: AspectRatio.CINEMA,
-    label: '21:9 电影',
-    description: '2560x1080 - 电影宽屏',
-    resolution: '2560×1080',
-  },
-];
-
-// 预设画风选项
-const artStyleOptions = [
-  {
-    value: 'realistic',
-    label: '真实写实',
-    prompt: '真实写实风格',
-    description: '照片级真实感',
-    color: 'from-gray-400 to-gray-600',
-  },
-  {
-    value: 'cyberpunk',
-    label: '赛博朋克',
-    prompt: '赛博朋克风格',
-    description: '霓虹、科技感',
-    color: 'from-purple-500 to-blue-500',
-  },
-  {
-    value: 'anime',
-    label: '日系动漫',
-    prompt: '日本2D动漫风格',
-    description: '动漫风格',
-    color: 'from-pink-400 to-rose-400',
-  },
-  {
-    value: 'chinese_ink',
-    label: '国风水墨',
-    prompt: '中国水墨画风格',
-    description: '中国传统风格',
-    color: 'from-slate-400 to-slate-600',
-  },
-  {
-    value: '3d_cartoon',
-    label: '3D 卡通',
-    prompt: '3D皮克斯卡通风格',
-    description: '皮克斯风格',
-    color: 'from-orange-400 to-red-400',
-  },
-  {
-    value: 'custom',
-    label: '自定义',
-    prompt: '',
-    description: '自行输入画风描述',
-    color: 'from-gray-300 to-gray-400',
-  },
-];
 export default function NewProjectDialog({
   onConfirm,
   onClose,
@@ -106,6 +28,84 @@ export default function NewProjectDialog({
   initialArtStyle = '',
   initialAspectRatio = AspectRatio.MOBILE,
 }: NewProjectDialogProps) {
+  const { t } = useI18n();
+  const aspectRatioOptions = [
+    {
+      value: AspectRatio.WIDE,
+      label: t('newProject.aspectRatios.wideLabel'),
+      description: t('newProject.aspectRatios.wideDesc'),
+      resolution: '1920×1080',
+    },
+    {
+      value: AspectRatio.MOBILE,
+      label: t('newProject.aspectRatios.mobileLabel'),
+      description: t('newProject.aspectRatios.mobileDesc'),
+      resolution: '1080×1920',
+      recommended: true,
+    },
+    {
+      value: AspectRatio.SQUARE,
+      label: t('newProject.aspectRatios.squareLabel'),
+      description: t('newProject.aspectRatios.squareDesc'),
+      resolution: '1080×1080',
+    },
+    {
+      value: AspectRatio.STANDARD,
+      label: t('newProject.aspectRatios.standardLabel'),
+      description: t('newProject.aspectRatios.standardDesc'),
+      resolution: '1440×1080',
+    },
+    {
+      value: AspectRatio.CINEMA,
+      label: t('newProject.aspectRatios.cinemaLabel'),
+      description: t('newProject.aspectRatios.cinemaDesc'),
+      resolution: '2560×1080',
+    },
+  ];
+  const artStyleOptions = [
+    {
+      value: 'realistic',
+      label: t('newProject.artStyles.realisticLabel'),
+      prompt: '真实写实风格',
+      description: t('newProject.artStyles.realisticDesc'),
+      color: 'from-gray-400 to-gray-600',
+    },
+    {
+      value: 'cyberpunk',
+      label: t('newProject.artStyles.cyberpunkLabel'),
+      prompt: '赛博朋克风格',
+      description: t('newProject.artStyles.cyberpunkDesc'),
+      color: 'from-purple-500 to-blue-500',
+    },
+    {
+      value: 'anime',
+      label: t('newProject.artStyles.animeLabel'),
+      prompt: '日本2D动漫风格',
+      description: t('newProject.artStyles.animeDesc'),
+      color: 'from-pink-400 to-rose-400',
+    },
+    {
+      value: 'chinese_ink',
+      label: t('newProject.artStyles.inkLabel'),
+      prompt: '中国水墨画风格',
+      description: t('newProject.artStyles.inkDesc'),
+      color: 'from-slate-400 to-slate-600',
+    },
+    {
+      value: '3d_cartoon',
+      label: t('newProject.artStyles.cartoonLabel'),
+      prompt: '3D皮克斯卡通风格',
+      description: t('newProject.artStyles.cartoonDesc'),
+      color: 'from-orange-400 to-red-400',
+    },
+    {
+      value: 'custom',
+      label: t('newProject.artStyles.customLabel'),
+      prompt: '',
+      description: t('newProject.artStyles.customDesc'),
+      color: 'from-gray-300 to-gray-400',
+    },
+  ];
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
   const [artStyle, setArtStyle] = useState(initialArtStyle);
@@ -146,7 +146,7 @@ export default function NewProjectDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      alert('请输入项目名称');
+      alert(t('newProject.titleRequired'));
       return;
     }
 
@@ -155,7 +155,7 @@ export default function NewProjectDialog({
       await onConfirm(title, description, artStyle, selectedAspectRatio);
       // 成功后由父组件关闭弹窗
     } catch (error) {
-      console.error('创建项目失败:', error);
+      console.error('Create project failed:', error);
       setIsCreating(false);
       // 失败后让用户重试
     }
@@ -170,10 +170,10 @@ export default function NewProjectDialog({
         <div className="sticky top-0 glass-panel border-b border-black/5 dark:border-white/5 p-6 flex items-center justify-between z-10">
           <div>
             <h2 className="text-xl font-bold text-light-text dark:text-white">
-              {isCreating ? '正在创建项目...' : '✨ 创建新项目'}
+              {isCreating ? t('newProject.creatingTitle') : t('newProject.title')}
             </h2>
             <p className="text-sm text-light-text-muted dark:text-cine-text-muted mt-1">
-              {isCreating ? '请稍候，正在保存项目数据...' : '设置项目基本信息和画面比例'}
+              {isCreating ? t('newProject.creatingDesc') : t('newProject.subtitle')}
             </p>
           </div>
           <button
@@ -190,13 +190,13 @@ export default function NewProjectDialog({
           {/* Project Name */}
           <div>
             <label className="block text-sm font-bold text-light-text dark:text-white mb-2">
-              📝 项目名称 <span className="text-red-500">*</span>
+              {t('newProject.projectName')} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="例如：《森林奇遇记》"
+              placeholder={t('newProject.projectNamePlaceholder')}
               disabled={isCreating}
               className="glass-input w-full px-4 py-3 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
               required
@@ -206,12 +206,12 @@ export default function NewProjectDialog({
           {/* Project Description */}
           <div>
             <label className="block text-sm font-bold text-light-text dark:text-white mb-2">
-              📖 项目概要
+              {t('newProject.summary')}
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="简要描述你的项目内容和主题..."
+              placeholder={t('newProject.summaryPlaceholder')}
               rows={3}
               disabled={isCreating}
               className="glass-input w-full px-4 py-3 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
@@ -222,7 +222,7 @@ export default function NewProjectDialog({
           {/* Art Style Selection */}
           <div>
             <label className="block text-sm font-bold text-light-text dark:text-white mb-3">
-              🎨 画风选择
+              {t('newProject.artStyle')}
             </label>
             <div className="grid grid-cols-3 gap-2 mb-3">
               {artStyleOptions.map((option) => (
@@ -255,7 +255,7 @@ export default function NewProjectDialog({
             {/* 自定义画风输入（仅在选择"自定义"时显示，或允许用户编辑预设） */}
             <div className="mt-3">
               <label className="block text-xs text-light-text-muted dark:text-cine-text-muted mb-1">
-                画风提示词 {selectedArtStyleType !== 'custom' && '(可编辑)'}
+                {t('newProject.artStylePrompt')} {selectedArtStyleType !== 'custom' && `(${t('newProject.editable')})`}
               </label>
               <textarea
                 value={artStyle}
@@ -265,13 +265,13 @@ export default function NewProjectDialog({
                     setSelectedArtStyleType('custom');
                   }
                 }}
-                placeholder="例如：国风3D动漫、赛博朋克、写实风格..."
+                placeholder={t('newProject.artStylePromptPlaceholder')}
                 rows={2}
                 disabled={isCreating}
                 className="glass-input w-full px-4 py-3 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed resize-none text-sm"
               />
               <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-1">
-                💡 画风信息将用于生成分镜图片时的提示词，创建后不可更改
+                {t('newProject.artStyleHint')}
               </p>
             </div>
           </div>
@@ -279,7 +279,7 @@ export default function NewProjectDialog({
           {/* Aspect Ratio Selection */}
           <div>
             <label className="block text-sm font-bold text-light-text dark:text-white mb-3">
-              🎬 画面比例 <span className="text-red-500">*</span>
+              {t('newProject.aspectRatio')} <span className="text-red-500">*</span>
             </label>
             <div className="space-y-3">
               {aspectRatioOptions.map((option) => (
@@ -301,7 +301,7 @@ export default function NewProjectDialog({
                         </span>
                         {option.recommended && (
                           <span className="px-2 py-0.5 text-xs rounded-full bg-light-accent dark:bg-cine-accent text-white dark:text-black shadow-sm">
-                            推荐
+                            {t('newProject.recommended')}
                           </span>
                         )}
                       </div>
@@ -309,7 +309,7 @@ export default function NewProjectDialog({
                         {option.description}
                       </p>
                       <p className="text-xs text-light-text-muted dark:text-cine-text-muted opacity-70">
-                        分辨率: {option.resolution}
+                        {t('newProject.resolution', { value: option.resolution })}
                       </p>
                     </div>
                     <div className={`ml-4 rounded-full p-1 transition-all duration-300 ${selectedAspectRatio === option.value
@@ -323,7 +323,7 @@ export default function NewProjectDialog({
               ))}
             </div>
             <p className="text-xs text-light-text-muted dark:text-cine-text-muted mt-3 pl-1">
-              💡 画面比例一旦设置，整个项目的所有分镜都将使用此比例。后续可在项目设置中调整。
+              {t('newProject.aspectRatioHint')}
             </p>
           </div>
         </form>
@@ -336,7 +336,7 @@ export default function NewProjectDialog({
             disabled={isCreating}
             className="px-6 py-2.5 rounded-lg glass-button text-gray-600 dark:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            取消
+            {t('common.cancel')}
           </button>
           <button
             type="submit"
@@ -347,10 +347,10 @@ export default function NewProjectDialog({
             {isCreating ? (
               <>
                 <Loader2 className="animate-spin" size={20} />
-                <span>创建中...</span>
+                <span>{t('newProject.creatingButton')}</span>
               </>
             ) : (
-              <>创建项目 →</>
+              <>{t('newProject.createButton')} →</>
             )}
           </button>
         </div>

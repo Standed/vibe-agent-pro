@@ -15,7 +15,7 @@ const locales: Record<Locale, Messages> = {
 interface I18nContextType {
   locale: Locale;
   setLocale: (locale: Locale) => void;
-  t: (key: string) => string;
+  t: (key: string, params?: Record<string, string | number>) => string;
   messages: Messages;
 }
 
@@ -55,19 +55,29 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.lang = newLocale;
   };
 
-  const t = (key: string): string => {
+  const resolveMessageByKey = (target: Messages, key: string): string | null => {
     const keys = key.split('.');
-    let value: any = messages;
+    let value: any = target;
 
     for (const k of keys) {
       if (value && typeof value === 'object' && k in value) {
         value = value[k];
       } else {
-        return key; // Return key if translation not found
+        return null;
       }
     }
 
-    return typeof value === 'string' ? value : key;
+    return typeof value === 'string' ? value : null;
+  };
+
+  const t = (key: string, params?: Record<string, string | number>): string => {
+    const raw = resolveMessageByKey(messages, key) ?? resolveMessageByKey(zhCN, key) ?? key;
+
+    if (!params) return raw;
+
+    return Object.entries(params).reduce((acc, [paramKey, paramValue]) => {
+      return acc.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), String(paramValue));
+    }, raw);
   };
 
   // Prevent hydration mismatch
