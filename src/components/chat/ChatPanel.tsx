@@ -253,7 +253,10 @@ export default function ChatPanel() {
     const [isViduRefShotDeleted, setIsViduRefShotDeleted] = useState(false);
 
     // 参考图操作回调（解耦自 ChatPanel 的复杂逻辑）
-    const referenceCallbacks = useReferenceCallbacks({
+    const {
+        handleAddToReference,
+        handleMoveReference: moveReferenceByMode
+    } = useReferenceCallbacks({
         selectedModel,
         viduMode,
         videoRefs,
@@ -324,12 +327,12 @@ export default function ChatPanel() {
     const handleAddToReferenceResolved = useCallback((url: string) => {
         (async () => {
             const resolvedUrl = await resolveMediaUrl(url);
-            referenceCallbacks.handleAddToReference(resolvedUrl);
+            handleAddToReference(resolvedUrl);
         })().catch((e) => {
             console.warn('[ChatPanel] Failed to resolve reference url:', e);
             toast.error('参考图处理失败，请重试');
         });
-    }, [resolveMediaUrl, referenceCallbacks.handleAddToReference]);
+    }, [resolveMediaUrl, handleAddToReference]);
 
     const handleApplyToShotResolved = useCallback((url: string) => {
         if (!selectedShotId) {
@@ -685,7 +688,7 @@ export default function ChatPanel() {
                 const fromManualIndex = manualRefs.findIndex(ref => ref.url === fromRef.url);
                 const toManualIndex = manualRefs.findIndex(ref => ref.url === toRef.url);
                 if (fromManualIndex !== -1 && toManualIndex !== -1) {
-                    referenceCallbacks.handleMoveReference(fromManualIndex, toManualIndex);
+                    moveReferenceByMode(fromManualIndex, toManualIndex);
                 }
             }
             return;
@@ -721,7 +724,7 @@ export default function ChatPanel() {
         videoRefs.viduReferenceRefs,
         viduReferenceOrder,
         setViduReferenceOrder,
-        referenceCallbacks.handleMoveReference,
+        moveReferenceByMode,
         setDroppedReferences,
         setManualReferenceUrls
     ]);

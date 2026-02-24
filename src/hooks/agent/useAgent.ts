@@ -78,6 +78,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
+  const thinkingStepsRef = useRef<ThinkingStep[]>([]);
   const [summary, setSummary] = useState('');
   const [sessionManager] = useState(() =>
     new SessionManager(project?.id || 'default')
@@ -103,15 +104,21 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
       id: `step_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       timestamp: new Date(),
     };
-    setThinkingSteps(prev => [...prev, newStep]);
+    setThinkingSteps(prev => {
+      const next = [...prev, newStep];
+      thinkingStepsRef.current = next;
+      return next;
+    });
     return newStep.id;
   }, []);
 
   // Update thinking step
   const updateStep = useCallback((stepId: string, updates: Partial<ThinkingStep>) => {
-    setThinkingSteps(prev =>
-      prev.map(step => step.id === stepId ? { ...step, ...updates } : step)
-    );
+    setThinkingSteps(prev => {
+      const next = prev.map(step => step.id === stepId ? { ...step, ...updates } : step);
+      thinkingStepsRef.current = next;
+      return next;
+    });
   }, []);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -170,6 +177,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
     setLastMessageHash(messageHash);
     setIsProcessing(true);
     setThinkingSteps([]);
+    thinkingStepsRef.current = [];
     setSummary('');
 
     const startTime = Date.now();
@@ -727,7 +735,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
       if (user && project) {
         const metadata = {
           ...(chatChannel ? { channel: chatChannel } : {}),
-          thinkingSteps: thinkingSteps, // Persist thinking steps for UI expansion
+          thinkingSteps: thinkingStepsRef.current, // Persist thinking steps for UI expansion
         };
         void dataService.saveChatMessage({
           id: generateMessageId(),
@@ -779,9 +787,11 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
     addGenerationHistory,
     addGridHistory,
     renumberScenesAndShots,
+    setGenerationProgress,
     isProcessing,
     lastMessageHash,
     user,
+    loading,
     isAuthenticated,
     chatChannel,
   ]);
@@ -798,6 +808,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
     }
 
     setThinkingSteps([]);
+    thinkingStepsRef.current = [];
     setSummary('');
     toast.info('会话已清除');
   }, [sessionManager, project]);
@@ -810,6 +821,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
     }
     setIsProcessing(false);
     setThinkingSteps([]);
+    thinkingStepsRef.current = [];
     setSummary('');
     setPendingConfirmation(null);
     if (confirmationResolverRef.current) {
