@@ -8,7 +8,7 @@ export const maxDuration = 60;
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const DEFAULT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview'; // 默认使用 Pro 模型
+const DEFAULT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3.1-pro-preview'; // 默认使用 Pro 模型
 const GEMINI_API_KEY =
   process.env.GEMINI_AGENT_API_KEY ||
   process.env.GEMINI_TEXT_API_KEY ||

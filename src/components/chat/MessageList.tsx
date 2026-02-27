@@ -45,6 +45,7 @@ interface MessageListProps {
 const MessageItem = memo(function MessageItem({
     message,
     selectedModel,
+    selectedShotId,
     userAvatarSrc,
     userAvatarName,
     userAvatarEmail,
@@ -60,6 +61,7 @@ const MessageItem = memo(function MessageItem({
 }: {
     message: ChatPanelMessage;
     selectedModel: string;
+    selectedShotId: string | null;
     userAvatarSrc?: string | null;
     userAvatarName?: string | null;
     userAvatarEmail?: string | null;
@@ -102,7 +104,7 @@ const MessageItem = memo(function MessageItem({
                 if (msg.gridData) {
                     onSetSlicerData({
                         gridData: msg.gridData as ChatPanelMessage['gridData'],
-                        shotId: msg.shotId,
+                        shotId: msg.shotId || selectedShotId || undefined,
                         currentSliceIndex: 0
                     });
                 }
@@ -125,6 +127,7 @@ const MessageItem = memo(function MessageItem({
         prevProps.message.images === nextProps.message.images &&
         prevProps.message.content === nextProps.message.content &&
         prevProps.selectedModel === nextProps.selectedModel &&
+        prevProps.selectedShotId === nextProps.selectedShotId &&
         prevProps.userAvatarSrc === nextProps.userAvatarSrc &&
         prevProps.userAvatarName === nextProps.userAvatarName &&
         prevProps.userAvatarEmail === nextProps.userAvatarEmail &&
@@ -227,6 +230,7 @@ export const MessageList = memo(function MessageList({
                     key={message.id}
                     message={message}
                     selectedModel={selectedModel}
+                    selectedShotId={selectedShotId}
                     userAvatarSrc={userAvatarSrc}
                     userAvatarName={userAvatarName}
                     userAvatarEmail={userAvatarEmail}
@@ -254,6 +258,8 @@ export const MessageList = memo(function MessageList({
     return (
         prevProps.messages === nextProps.messages &&
         prevProps.selectedModel === nextProps.selectedModel &&
+        prevProps.selectedShotId === nextProps.selectedShotId &&
+        prevProps.currentSceneId === nextProps.currentSceneId &&
         prevProps.userAvatarSrc === nextProps.userAvatarSrc &&
         prevProps.userAvatarName === nextProps.userAvatarName &&
         prevProps.userAvatarEmail === nextProps.userAvatarEmail &&

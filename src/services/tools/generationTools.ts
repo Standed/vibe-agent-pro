@@ -124,13 +124,15 @@ export class GenerationTools {
                 metadata: {
                     images: imageUrls,
                     model: modelKey,
+                    source: 'agent_sync',
                 }
             };
 
             if (modelKey === 'gemini-grid') {
+                const gridSlices = result.allSlices || [result.imageUrl];
                 assistantMsg.metadata.gridData = {
                     fullImage: result.fullGridUrl || result.imageUrl,
-                    slices: result.allSlices || [result.imageUrl],
+                    slices: gridSlices,
                     sceneId: sceneId,
                     shotId: shotId,
                     prompt: finalPrompt,
@@ -139,7 +141,9 @@ export class GenerationTools {
                     gridSize: result.gridSize || '2x2',
                     aspectRatio: result.aspectRatio || this.project.settings.aspectRatio,
                 };
-                assistantMsg.metadata.images = [assistantMsg.metadata.gridData.fullImage];
+                assistantMsg.metadata.images = shotId
+                    ? gridSlices
+                    : [assistantMsg.metadata.gridData.fullImage];
             }
 
             await dataService.saveChatMessage(assistantMsg, this.userId);
@@ -631,7 +635,7 @@ export class GenerationTools {
         };
     }
 
-    async generateSceneVideo(sceneId: string): Promise<ToolResult> {
+    async generateSceneVideo(sceneId: string, model?: 'sora-2' | 'sora-2-pro'): Promise<ToolResult> {
         if (!this.project) return { tool: 'generateSceneVideo', result: null, success: false, error: 'Project not found' };
 
         try {
@@ -640,7 +644,7 @@ export class GenerationTools {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tool: 'generateSceneVideo',
-                    args: { sceneId },
+                    args: { sceneId, model },
                     project: this.project,
                     userId: this.userId
                 })
@@ -659,7 +663,13 @@ export class GenerationTools {
         }
     }
 
-    async generateShotsVideo(sceneId: string, shotIds: string[], shotIndexes: number[], globalShotIndexes: number[]): Promise<ToolResult> {
+    async generateShotsVideo(
+        sceneId: string,
+        shotIds: string[],
+        shotIndexes: number[],
+        globalShotIndexes: number[],
+        model?: 'sora-2' | 'sora-2-pro'
+    ): Promise<ToolResult> {
         if (!this.project) return { tool: 'generateShotsVideo', result: null, success: false, error: 'Project not found' };
 
         let finalShotIds = shotIds || [];
@@ -714,7 +724,7 @@ export class GenerationTools {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tool: 'generateShotsVideo',
-                    args: { sceneId: finalSceneId, shotIds: finalShotIds },
+                    args: { sceneId: finalSceneId, shotIds: finalShotIds, model },
                     project: this.project,
                     userId: this.userId
                 })
@@ -731,7 +741,7 @@ export class GenerationTools {
         }
     }
 
-    async batchGenerateProjectVideosSora(force: boolean): Promise<ToolResult> {
+    async batchGenerateProjectVideosSora(force: boolean = false, model?: 'sora-2' | 'sora-2-pro'): Promise<ToolResult> {
         if (!this.project) return { tool: 'batchGenerateProjectVideosSora', result: null, success: false, error: 'Project not found' };
         try {
             const response = await fetch('/api/agent/tools/execute', {
@@ -739,7 +749,7 @@ export class GenerationTools {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tool: 'batchGenerateProjectVideosSora',
-                    args: { force },
+                    args: { force: force === true, model },
                     project: this.project,
                     userId: this.userId
                 })

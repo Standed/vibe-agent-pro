@@ -5,7 +5,9 @@ import { Shot, AspectRatio } from '@/types/project';
 import { SHOT_TO_CHAT, IMAGE_TO_SHOT } from '@/components/chat/dragTypes';
 import { useProjectStore } from '@/store/useProjectStore';
 import { dataService } from '@/lib/dataService';
+import { ensurePersistedImageUrl } from '@/lib/media-url';
 import { toast } from 'sonner';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 interface DraggableCanvasShotCardProps {
     shot: Shot;
@@ -38,7 +40,8 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
     cameraMovementLabel,
     aspectRatio = AspectRatio.WIDE,
 }: DraggableCanvasShotCardProps) {
-    const { updateShot } = useProjectStore();
+    const { project, updateShot } = useProjectStore();
+    const { user } = useAuth();
     const cardRef = useRef<HTMLDivElement>(null);
 
     // 计算布局模式
@@ -66,32 +69,51 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
         drop: async (item: { imageUrl: string }) => {
             if (!item.imageUrl) return;
 
-            // 1. Optimistic update - set referenceImage
-            const historyItem = {
-                id: `drop_${Date.now()}`,
-                type: 'image' as const,
-                timestamp: new Date(),
-                result: item.imageUrl,
-                prompt: '从 Pro 模式拖入',
-                parameters: {
-                    model: 'drag_drop',
-                    source: 'pro_mode',
-                },
-                status: 'success' as const,
-            };
+            if (!project?.id || !user?.id) {
+                toast.error('请先登录后再试');
+                return;
+            }
 
-            const newHistory = [...(shot.generationHistory || []), historyItem];
-            updateShot(shot.id, {
-                referenceImage: item.imageUrl,
-                status: 'done',
-                generationHistory: newHistory,
-            });
-
-            // 2. Persist to backend
             try {
+                const resolvedImageUrl = await ensurePersistedImageUrl({
+                    url: item.imageUrl,
+                    userId: user.id,
+                    folder: {
+                        projectId: project.id,
+                        scope: 'shots',
+                        entityId: shot.id,
+                        assetType: 'reference',
+                        model: 'drag_drop'
+                    },
+                    filenamePrefix: 'drag_ref'
+                });
+
+                const historyItem = {
+                    id: `drop_${Date.now()}`,
+                    type: 'image' as const,
+                    timestamp: new Date(),
+                    result: resolvedImageUrl,
+                    prompt: '从 Pro 模式拖入',
+                    parameters: {
+                        model: 'drag_drop',
+                        source: 'pro_mode',
+                    },
+                    status: 'success' as const,
+                };
+
+                const latestShot = await dataService.getShot(shot.id);
+                const currentHistory = latestShot?.generationHistory || shot.generationHistory || [];
+                const newHistory = [...currentHistory, historyItem];
+                updateShot(shot.id, {
+                    referenceImage: resolvedImageUrl,
+                    status: 'done',
+                    generationHistory: newHistory,
+                });
+
+                const baseShot = latestShot || shot;
                 await dataService.saveShot(sceneId, {
-                    ...shot,
-                    referenceImage: item.imageUrl,
+                    ...baseShot,
+                    referenceImage: resolvedImageUrl,
                     status: 'done',
                     generationHistory: newHistory,
                 });
@@ -105,7 +127,7 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
             isOver: monitor.isOver(),
             canDrop: monitor.canDrop(),
         }),
-    }), [shot, shotLabel, updateShot]);
+    }), [project?.id, sceneId, shot, shotLabel, updateShot, user?.id]);
 
     // Combine refs
     const combinedRef = (node: HTMLDivElement | null) => {

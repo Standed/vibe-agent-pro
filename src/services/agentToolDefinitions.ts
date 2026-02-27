@@ -44,11 +44,6 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                 sceneId: {
                     type: 'string',
                     description: '场景的ID'
-                },
-                model: {
-                    type: 'string',
-                    enum: ['sora-2', 'sora-2-pro'],
-                    description: 'Sora 模型（可选，默认 sora-2）'
                 }
             },
             required: ['sceneId']
@@ -108,7 +103,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                 },
                 force: {
                     type: 'boolean',
-                    description: '是否强制覆盖已有图片/历史（默认 false，不覆盖）'
+                    description: '是否强制覆盖已有图片/历史（默认 true，会重新生成）'
                 }
             },
             required: ['shotId', 'mode']
@@ -261,6 +256,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                 sceneId: {
                     type: 'string',
                     description: '场景的ID'
+                },
+                model: {
+                    type: 'string',
+                    enum: ['sora-2', 'sora-2-pro'],
+                    description: 'Sora 模型（可选，默认 sora-2）'
                 }
             },
             required: ['sceneId']

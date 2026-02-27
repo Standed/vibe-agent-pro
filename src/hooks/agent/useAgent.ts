@@ -10,7 +10,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { sendMessage as sendAgentMessage, continueWithToolResults, AgentMessage } from '@/services/agentService';
+import { sendMessage as sendAgentMessage, continueWithToolResults, AgentMessage, AgentAction, estimateCreditsOnServer, estimateCredits as estimateAgentCredits } from '@/services/agentService';
 import { AGENT_TOOLS, ToolDefinition } from '@/services/agentToolDefinitions';
 import { buildEnhancedContext } from '@/services/contextBuilder';
 import { ParallelExecutor, ExecutionProgress } from '@/services/parallelExecutor';
@@ -39,6 +39,55 @@ const generateMessageId = () => {
 const PLANNING_MODE_TOOLS = AGENT_TOOLS.filter(tool =>
   !['generateShotImage', 'batchGenerateSceneImages', 'batchGenerateProjectImages', 'generateSceneVideo', 'batchGenerateProjectVideosSora', 'generateShotsVideo'].includes(tool.name)
 );
+
+const extractEstimatedCreditsFromMessage = (message?: string): number | null => {
+  if (!message) return null;
+
+  const patterns = [
+    /(?:预计|預計|估计|估計|大约|約|将|將|会|會)?\s*(?:消耗|扣除|花费|花費|耗费|耗費|需要|需)\s*(\d+)\s*(?:积分|積分|credits?|點)/i,
+    /(\d+)\s*(?:积分|積分|credits?|點)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (!match?.[1]) continue;
+    const credits = Number.parseInt(match[1], 10);
+    if (Number.isFinite(credits) && credits > 0) {
+      return credits;
+    }
+  }
+
+  return null;
+};
+
+const isCreditConfirmationPrompt = (message?: string): boolean => {
+  if (!message) return false;
+
+  const hasCreditInfo = /(积分|積分|credits?|消耗|花费|花費|扣除)/i.test(message);
+  const asksForConfirmation = /(是否|确认|確認|继续|繼續|同意|取消|yes|no|confirm|proceed)/i.test(message);
+
+  return hasCreditInfo && asksForConfirmation;
+};
+
+const hasToolExecutionIntent = (message: string): boolean => {
+  if (!message) return false;
+  return /(生成|创建|新增|添加|修改|更新|删除|移除|重写|重做|批量|出图|生图|出视频|做视频|应用|套用|generate|create|add|update|delete|remove|batch)/i.test(message);
+};
+
+const BILLABLE_TOOL_NAMES = new Set([
+  'generateShotImage',
+  'batchGenerateSceneImages',
+  'batchGenerateProjectImages',
+  'generateSceneVideo',
+  'generateShotsVideo',
+  'batchGenerateProjectVideosSora',
+  'generateCharacterThreeView',
+  'generateLocationImages',
+  'generateViduVideo',
+]);
+
+const hasBillableToolCalls = (action: AgentAction): boolean =>
+  !!(action.requiresToolExecution && Array.isArray(action.toolCalls) && action.toolCalls.some(toolCall => BILLABLE_TOOL_NAMES.has(toolCall.name)));
 
 export interface UseAgentResult {
   isProcessing: boolean;
@@ -73,7 +122,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
     setGenerationProgress,
   } = useProjectStore();
 
-  const { isAuthenticated, user, loading } = useAuth();
+  const { isAuthenticated, user, loading, profile } = useAuth();
   const chatChannel = options.chatChannel;
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -89,6 +138,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
   const confirmationResolverRef = useRef<((value: boolean) => void) | null>(null);
   // 同一次 sendMessage 调用期间，用户确认一次后不再重复询问
   const hasConfirmedCreditsRef = useRef(false);
+  const confirmedBillableSignatureRef = useRef<string | null>(null);
 
   // Auto-update session manager when project changes
   useEffect(() => {
@@ -133,6 +183,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
     cancelRef.current = false;
     // 每次新的用户操作重置积分确认状态
     hasConfirmedCreditsRef.current = false;
+    confirmedBillableSignatureRef.current = null;
     // 创建新的 AbortController
     abortControllerRef.current = new AbortController();
 
@@ -286,6 +337,8 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
       // 临时方案：我们修改 agentService.ts 中的 processUserCommand 签名
       // 但在此之前，我们需要确保 useAgent 里的调用是正确的。
 
+      const activeTools = chatChannel === 'planning' ? PLANNING_MODE_TOOLS : AGENT_TOOLS;
+
       // 让我们假设 processUserCommand 接受一个可选的 signal 参数
       // 为了增强鲁棒性，增加简单的网络重试（最多 2 次）
       const callProcessUserCommandWithRetry = async () => {
@@ -293,9 +346,6 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
         const maxRetries = 2;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
           try {
-            // Determine active tools based on channel
-            const activeTools = chatChannel === 'planning' ? PLANNING_MODE_TOOLS : AGENT_TOOLS;
-
             return await sendAgentMessage(
               chatHistory,
               enhancedContext,
@@ -329,17 +379,155 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
         throw new Error('USER_CANCELLED');
       }
 
-      // ⭐ 积分确认逻辑：如果预计消耗积分 > 0 且本次调用尚未确认，暂停执行并等待用户确认
-      if (action.requiresToolExecution && action.estimatedCredits && action.estimatedCredits > 0 && !hasConfirmedCreditsRef.current) {
+      const actionHasToolCalls = !!(action.requiresToolExecution && action.toolCalls && action.toolCalls.length > 0);
+      const shouldTriggerTools = hasToolExecutionIntent(message);
+      if (shouldTriggerTools && !actionHasToolCalls && !isCreditConfirmationPrompt(action.message)) {
+        const stepIdRetryToolAction = addStep({
+          type: 'thinking',
+          content: '检测到执行型指令但未返回工具调用，正在自动重试...',
+          status: 'running',
+        });
+        const retryStart = Date.now();
+
+        try {
+          action = await sendAgentMessage(
+            [
+              ...sessionManager.getMessages(),
+              {
+                role: 'user',
+                content: `系统校验：上一步未返回任何工具调用。请针对原始请求返回 tool_use 并附上 toolCalls，不要仅返回文本总结。原始请求：${message}`,
+              },
+            ],
+            enhancedContext,
+            undefined,
+            abortControllerRef.current?.signal,
+            activeTools
+          );
+
+          updateStep(stepIdRetryToolAction, {
+            status: 'completed',
+            duration: Date.now() - retryStart,
+            details: `重试动作类型: ${action.type}`,
+          });
+        } catch (retryError) {
+          updateStep(stepIdRetryToolAction, {
+            status: 'failed',
+            duration: Date.now() - retryStart,
+            content: '自动重试获取工具调用失败',
+          });
+          throw retryError;
+        }
+      }
+
+      const resolveEstimateInputs = () => {
+        const latestStore = useProjectStore.getState();
+        const latestProject = latestStore.project;
+        const estimateContext = buildEnhancedContext(
+          latestProject,
+          latestStore.currentSceneId ?? undefined,
+          latestStore.selectedShotId ?? undefined
+        );
+        const projectSnapshot = latestProject ? {
+          scenes: latestProject.scenes.map(scene => ({
+            id: scene.id,
+            soraStatus: scene.soraGeneration?.status || null,
+          })),
+          shots: latestProject.shots.map(shot => ({
+            id: shot.id,
+            sceneId: shot.sceneId,
+            duration: shot.duration,
+            order: shot.order,
+            globalOrder: shot.globalOrder,
+            referenceImage: shot.referenceImage || null,
+          })),
+          locations: latestProject.locations.map(location => ({
+            id: location.id,
+            referenceImages: location.referenceImages || [],
+          })),
+        } : null;
+
+        return { estimateContext, projectSnapshot };
+      };
+
+      const currentUserRole: 'user' | 'admin' | 'vip' = profile?.role === 'admin' || profile?.role === 'vip'
+        ? profile.role
+        : 'user';
+
+      const reconcileCreditEstimate = async (incomingAction: AgentAction): Promise<AgentAction> => {
+        if (!incomingAction.requiresToolExecution || !incomingAction.toolCalls || incomingAction.toolCalls.length === 0) {
+          return incomingAction;
+        }
+        if (!hasBillableToolCalls(incomingAction)) {
+          return incomingAction;
+        }
+
+        const { estimateContext, projectSnapshot } = resolveEstimateInputs();
+        const localEstimate = estimateAgentCredits(
+          incomingAction.toolCalls,
+          currentUserRole,
+          estimateContext
+        );
+
+        const serverEstimate = await estimateCreditsOnServer(
+          incomingAction.toolCalls,
+          estimateContext,
+          projectSnapshot,
+          abortControllerRef.current?.signal
+        );
+
+        if (typeof serverEstimate === 'number' && Number.isFinite(serverEstimate) && serverEstimate > 0) {
+          return { ...incomingAction, estimatedCredits: serverEstimate };
+        }
+
+        if (typeof serverEstimate === 'number' && serverEstimate === 0 && localEstimate > 0) {
+          console.warn('[useAgent] server estimate is 0 for billable action, fallback to local estimate', {
+            toolNames: incomingAction.toolCalls.map(toolCall => toolCall.name),
+            localEstimate,
+          });
+          return { ...incomingAction, estimatedCredits: localEstimate };
+        }
+
+        if (typeof serverEstimate === 'number' && Number.isFinite(serverEstimate) && serverEstimate >= 0) {
+          return { ...incomingAction, estimatedCredits: serverEstimate };
+        }
+
+        if (localEstimate > 0) {
+          return { ...incomingAction, estimatedCredits: localEstimate };
+        }
+
+        return incomingAction;
+      };
+
+      const buildBillableToolSignature = (incomingAction: AgentAction): string | null => {
+        if (!incomingAction.requiresToolExecution || !incomingAction.toolCalls || incomingAction.toolCalls.length === 0) {
+          return null;
+        }
+        const billableCalls = incomingAction.toolCalls.filter(toolCall => BILLABLE_TOOL_NAMES.has(toolCall.name));
+        if (billableCalls.length === 0) return null;
+        return billableCalls
+          .map(toolCall => `${toolCall.name}:${JSON.stringify(toolCall.arguments || {})}`)
+          .join('|');
+      };
+
+      const shouldAskForBillableConfirmation = (incomingAction: AgentAction, credits: number | null | undefined): boolean => {
+        if (!incomingAction.requiresToolExecution || !hasBillableToolCalls(incomingAction) || !credits || credits <= 0) {
+          return false;
+        }
+        const signature = buildBillableToolSignature(incomingAction);
+        if (!signature) return !hasConfirmedCreditsRef.current;
+        return confirmedBillableSignatureRef.current !== signature;
+      };
+
+      const requestCreditConfirmation = async (credits: number, confirmationMessage: string, confirmationKey?: string | null) => {
         const stepIdConfirm = addStep({
           type: 'thinking',
-          content: `等待积分确认 (预计消耗 ${action.estimatedCredits} 积分)...`,
+          content: `等待积分确认 (预计消耗 ${credits} 积分)...`,
           status: 'running',
         });
 
         setPendingConfirmation({
-          credits: action.estimatedCredits,
-          message: action.message || '该操作将消耗积分'
+          credits,
+          message: confirmationMessage || `该操作预计消耗 ${credits} 积分`
         });
 
         const confirmed = await new Promise<boolean>((resolve) => {
@@ -356,11 +544,196 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
 
         // 记住本次调用已确认，后续不再重复询问
         hasConfirmedCreditsRef.current = true;
+        if (confirmationKey) {
+          confirmedBillableSignatureRef.current = confirmationKey;
+        }
 
         updateStep(stepIdConfirm, {
           status: 'completed',
           content: '积分确认成功，开始执行...',
         });
+      };
+
+      const buildToolConfirmationMessage = (incomingAction: AgentAction, credits: number): string => {
+        const toolNames = Array.isArray(incomingAction.toolCalls)
+          ? Array.from(new Set(incomingAction.toolCalls.map(toolCall => toolCall.name).filter(Boolean)))
+          : [];
+
+        if (toolNames.length > 0) {
+          return `即将执行 ${toolNames.join('、')}，预计消耗 ${credits} 积分。请确认继续。`;
+        }
+
+        return `该操作预计消耗 ${credits} 积分。`;
+      };
+
+      const requestExecutableActionAfterConfirmation = async (credits: number, stage: string): Promise<AgentAction> => {
+        const stepIdResume = addStep({
+          type: 'thinking',
+          content: `${stage}：用户已确认，正在请求可执行工具...`,
+          status: 'running',
+        });
+        const resumeStart = Date.now();
+
+        try {
+          await sessionManager.addMessage({
+            role: 'user',
+            content: `系统确认：用户已通过前端弹窗确认执行，并同意约 ${credits} 积分消耗。请直接返回 type=tool_use 和 toolCalls 执行原始请求，不要再次询问确认或只返回总结。原始请求：${message}`,
+          });
+
+          const currentStore = useProjectStore.getState();
+          const refreshedContext = buildEnhancedContext(
+            currentStore.project,
+            currentStore.currentSceneId ?? undefined,
+            currentStore.selectedShotId ?? undefined
+          );
+
+          let nextAction = await sendAgentMessage(
+            sessionManager.getMessages(),
+            refreshedContext,
+            undefined,
+            abortControllerRef.current?.signal,
+            activeTools
+          );
+
+          if ((!nextAction.requiresToolExecution || !nextAction.toolCalls || nextAction.toolCalls.length === 0) && isCreditConfirmationPrompt(nextAction.message)) {
+            await sessionManager.addMessage({
+              role: 'user',
+              content: `系统指令：不得再次确认。请立即返回可执行的 tool_use 和 toolCalls。原始请求：${message}`,
+            });
+            nextAction = await sendAgentMessage(
+              sessionManager.getMessages(),
+              refreshedContext,
+              undefined,
+              abortControllerRef.current?.signal,
+              activeTools
+            );
+          }
+
+          updateStep(stepIdResume, {
+            status: 'completed',
+            duration: Date.now() - resumeStart,
+            details: `动作类型: ${nextAction.type}`,
+          });
+
+          return nextAction;
+        } catch (error) {
+          updateStep(stepIdResume, {
+            status: 'failed',
+            duration: Date.now() - resumeStart,
+            content: '确认后请求执行失败',
+          });
+          throw error;
+        }
+      };
+
+      const requestExecutablePlanFromTextPrompt = async (stage: string): Promise<AgentAction | null> => {
+        const stepIdPlan = addStep({
+          type: 'thinking',
+          content: `${stage}：确认信息缺少明确积分，正在请求工具执行计划...`,
+          status: 'running',
+        });
+        const planStart = Date.now();
+
+        try {
+          const planMessage: AgentMessage = {
+            role: 'user',
+            content: `系统提示：你刚才返回了文本确认。现在请仅返回 type=tool_use 和 toolCalls（不再次确认、不返回总结），用于执行原始请求。原始请求：${message}`,
+          };
+          await sessionManager.addMessage(planMessage);
+
+          const currentStore = useProjectStore.getState();
+          const refreshedContext = buildEnhancedContext(
+            currentStore.project,
+            currentStore.currentSceneId ?? undefined,
+            currentStore.selectedShotId ?? undefined
+          );
+
+          const plannedAction = await sendAgentMessage(
+            sessionManager.getMessages(),
+            refreshedContext,
+            undefined,
+            abortControllerRef.current?.signal,
+            activeTools
+          );
+
+          updateStep(stepIdPlan, {
+            status: 'completed',
+            duration: Date.now() - planStart,
+            details: `动作类型: ${plannedAction.type}`,
+          });
+
+          if (plannedAction.requiresToolExecution && plannedAction.toolCalls && plannedAction.toolCalls.length > 0) {
+            return plannedAction;
+          }
+          return null;
+        } catch (error) {
+          updateStep(stepIdPlan, {
+            status: 'failed',
+            duration: Date.now() - planStart,
+            content: '请求工具执行计划失败',
+          });
+          return null;
+        }
+      };
+
+      const resolveTextOnlyCreditConfirmation = async (incomingAction: AgentAction, stage: string): Promise<AgentAction> => {
+        const isTextOnlyCreditConfirmation =
+          !incomingAction.requiresToolExecution &&
+          (!incomingAction.toolCalls || incomingAction.toolCalls.length === 0) &&
+          isCreditConfirmationPrompt(incomingAction.message);
+
+        if (!isTextOnlyCreditConfirmation) {
+          return incomingAction;
+        }
+
+        let credits = incomingAction.estimatedCredits ?? extractEstimatedCreditsFromMessage(incomingAction.message) ?? 0;
+        let plannedAction: AgentAction | null = null;
+
+        if (credits <= 0) {
+          plannedAction = await requestExecutablePlanFromTextPrompt(stage);
+          if (plannedAction) {
+            plannedAction = await reconcileCreditEstimate(plannedAction);
+            credits = plannedAction.estimatedCredits ?? extractEstimatedCreditsFromMessage(incomingAction.message) ?? 0;
+          }
+        }
+
+        if (credits <= 0) {
+          throw new Error('无法计算本次操作积分，已停止执行。请重试并明确模型或目标范围。');
+        }
+
+        const plannedSignature = plannedAction ? buildBillableToolSignature(plannedAction) : null;
+        const shouldAskForTextFallback = plannedAction
+          ? shouldAskForBillableConfirmation(plannedAction, credits)
+          : !hasConfirmedCreditsRef.current;
+
+        if (shouldAskForTextFallback) {
+          await requestCreditConfirmation(
+            credits,
+            plannedAction
+              ? buildToolConfirmationMessage(plannedAction, credits)
+              : incomingAction.message,
+            plannedSignature
+          );
+        }
+
+        if (plannedAction) {
+          return plannedAction;
+        }
+
+        const resumedAction = await requestExecutableActionAfterConfirmation(credits, stage);
+        return await reconcileCreditEstimate(resumedAction);
+      };
+
+      action = await resolveTextOnlyCreditConfirmation(action, '初始阶段');
+      action = await reconcileCreditEstimate(action);
+      const actionCredits = action.estimatedCredits ?? extractEstimatedCreditsFromMessage(action.message);
+      // ⭐ 积分确认逻辑：如果预计消耗积分 > 0 且本次调用尚未确认，暂停执行并等待用户确认
+      if (shouldAskForBillableConfirmation(action, actionCredits)) {
+        await requestCreditConfirmation(
+          actionCredits as number,
+          buildToolConfirmationMessage(action, actionCredits as number),
+          buildBillableToolSignature(action)
+        );
       }
 
       // Step 5: Execute tools if needed (并行执行)
@@ -429,7 +802,30 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
         });
 
         if (dedupedToolCalls.length === 0) {
-          // 没有新的工具可执行，跳出循环
+          const duplicateTools = Array.from(new Set(action.toolCalls.map(tc => tc.name)));
+          const hasExecutedAnyTool = allToolResults.length > 0;
+
+          addStep({
+            type: hasExecutedAnyTool ? 'thinking' : 'error',
+            content: hasExecutedAnyTool
+              ? `检测到重复工具调用（${duplicateTools.join('、')}），已自动结束避免重复扣费`
+              : '检测到重复工具调用，未执行新的操作，已中止本轮工具链',
+            status: hasExecutedAnyTool ? 'completed' : 'failed',
+          });
+
+          action = hasExecutedAnyTool
+            ? {
+              ...action,
+              type: 'none',
+              requiresToolExecution: false,
+              message: '已完成本轮操作，自动跳过重复工具调用。',
+            }
+            : {
+              ...action,
+              type: 'none',
+              requiresToolExecution: false,
+              message: '⚠️ AI 返回了重复工具调用，本轮未执行新的操作，请重试。',
+            };
           break;
         }
 
@@ -562,6 +958,17 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
           action = { type: 'none', message: '生成完成', requiresToolExecution: false };
         }
 
+        action = await resolveTextOnlyCreditConfirmation(action, `第${iteration}轮后续阶段`);
+        action = await reconcileCreditEstimate(action);
+        const nextActionCredits = action.estimatedCredits ?? extractEstimatedCreditsFromMessage(action.message);
+        if (shouldAskForBillableConfirmation(action, nextActionCredits)) {
+          await requestCreditConfirmation(
+            nextActionCredits as number,
+            buildToolConfirmationMessage(action, nextActionCredits as number),
+            buildBillableToolSignature(action)
+          );
+        }
+
         // 如果下一轮没有工具需要执行，提前终止循环，防止卡住
         if (!action.toolCalls || action.toolCalls.length === 0) {
           action.requiresToolExecution = false;
@@ -689,8 +1096,13 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
       const generatedLabels = formatGroupedShots(generated);
       const overwrittenLabels = formatGroupedShots(overwritten);
       const skippedLabels = formatGroupedShots(skipped);
+      const noToolExecuted = allToolResults.length === 0;
+      const expectedExecutionButNoTools = hasToolExecutionIntent(message) && noToolExecuted;
 
       let finalSummary = action.message || '处理完成';
+      if (expectedExecutionButNoTools) {
+        finalSummary = `⚠️ 本次请求未执行任何工具操作。\n请重试一次，或明确指定目标（例如“为场景1批量生成 2x2 Grid”）。\n\n模型回复：${action.message || '（空）'}`;
+      }
       const lines: string[] = [];
       if (generatedLabels.length > 0) {
         lines.push(`生成：${generatedLabels.join('、')}`);
@@ -753,7 +1165,14 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
         });
       }
 
-      toast.success('处理完成');
+      const endedOnConfirmationText = noToolExecuted && isCreditConfirmationPrompt(finalSummary);
+      if (endedOnConfirmationText) {
+        toast.warning('检测到积分确认请求，尚未执行任务');
+      } else if (expectedExecutionButNoTools) {
+        toast.warning('未检测到工具执行，任务未真正落地');
+      } else {
+        toast.success('处理完成');
+      }
 
     } catch (error: any) {
       if (error?.message === 'USER_CANCELLED' || error?.name === 'AbortError') {
@@ -791,6 +1210,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
     isProcessing,
     lastMessageHash,
     user,
+    profile,
     loading,
     isAuthenticated,
     chatChannel,
@@ -810,6 +1230,8 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
     setThinkingSteps([]);
     thinkingStepsRef.current = [];
     setSummary('');
+    hasConfirmedCreditsRef.current = false;
+    confirmedBillableSignatureRef.current = null;
     toast.info('会话已清除');
   }, [sessionManager, project]);
 
@@ -823,6 +1245,8 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
     setThinkingSteps([]);
     thinkingStepsRef.current = [];
     setSummary('');
+    hasConfirmedCreditsRef.current = false;
+    confirmedBillableSignatureRef.current = null;
     setPendingConfirmation(null);
     if (confirmationResolverRef.current) {
       confirmationResolverRef.current(false);

@@ -129,6 +129,9 @@ When multiple valid approaches exist, choose based on:
 - **Strict Mode**: React 开发模式下 Effect 会执行两次，需使用 `AbortController` 自动取消重复请求.
 - **Gemini 参考图**: 采用 URL 优先 + 自动降级策略。首次使用预签名 URL，失败则切换到服务端下载模式。参见 `api/gemini-*/route.ts` 中的 `processReferenceImages`。
 - **UI Design System**: 遵循 Premium Glass 规范 (`backdrop-blur-2xl` + 极细内描边 `border-white/10`)，严禁使用导致大面积光斑污染的深色模式全局阴影 (`shadow-lg` / `shadow-2xl`)。
+- **Grid 展示策略统一**: Gemini Grid 返回卡片样式由 `src/components/chat/generationResultPresets.ts` 统一管理，禁止在 `ChatBubble` / `GenerationResult` 中分散硬编码展示判断。
+- **分镜级 Grid 视觉规则**: `shotId` 维度的 Gemini Grid（包含 Pro 直出与 Agent 同步）默认隐藏“选择切片”和右上角 `Grid 2x2/3x3` 徽标；仅场景级 Grid 保留切片分配入口。
+- **Agent 同步标记**: Agent 写入 Pro 聊天历史时应保留 `metadata.source = 'agent_sync'`，供前端稳定识别展示模式。
 
 ### Tooling
 

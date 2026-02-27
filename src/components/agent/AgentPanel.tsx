@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -162,64 +162,7 @@ export default function AgentPanel() {
     });
   };
 
-  // Local state for text-detected confirmation
-  const [localConfirmation, setLocalConfirmation] = useState<{ message: string, credits: number, onConfirm: () => void, onCancel: () => void } | null>(null);
-
-  const handleSendMessageWithText = async (text: string) => {
-    const userMessageId = crypto?.randomUUID() || `msg-${Date.now()}`;
-    const userMessage: ChatMessage = {
-      id: userMessageId,
-      userId: user?.id || '',
-      projectId: project?.id || '',
-      scope: 'project',
-      role: 'user',
-      content: text,
-      timestamp: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    setChatHistory((prev) => [...prev, userMessage]);
-    await sendMessage(text);
-    // Reload history
-    if (project && user) {
-      const messages = await dataService.getChatMessages({ projectId: project.id, scope: 'project' });
-      const filteredMessages = messages.filter(msg => msg.metadata?.channel !== 'planning');
-      setChatHistory(filteredMessages);
-    }
-  };
-
-  // Auto-detect confirmation requests from Agent text
-  useEffect(() => {
-    if (!chatHistory.length) return;
-    const lastMsg = chatHistory[chatHistory.length - 1];
-
-    // Only detect if it's an assistant message and we are NOT processing (waiting for user input)
-    if (lastMsg.role === 'assistant' && !isProcessing) {
-      const content = lastMsg.content;
-      // Heuristic: contains "predicted cost" and ("confirm" or "whether")
-      if (content.includes('预计消耗') && (content.includes('是否') || content.includes('确认'))) {
-        // Try to extract credits
-        const creditMatch = content.match(/消耗\s*(\d+)\s*积分/);
-        const credits = creditMatch ? parseInt(creditMatch[1]) : 0;
-
-        // Prevent duplicate trigger if already handled
-        if (!pendingConfirmation && !localConfirmation) {
-          setLocalConfirmation({
-            message: "Agent 请求确认操作",
-            credits: credits,
-            onConfirm: () => { handleSendMessageWithText("是"); setLocalConfirmation(null); },
-            onCancel: () => { handleSendMessageWithText("否"); setLocalConfirmation(null); }
-          });
-        }
-      } else {
-        // If the latest message doesn't match, clear local confirmation
-        if (localConfirmation) setLocalConfirmation(null);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatHistory, isProcessing, pendingConfirmation]);
-
-  const activeConfirmation = pendingConfirmation || localConfirmation;
+  const activeConfirmation = pendingConfirmation;
 
   return (
     <div className="flex flex-col h-full glass-panel relative">
@@ -367,8 +310,8 @@ export default function AgentPanel() {
               );
             })}
 
-            {/* Thinking Process (only show during processing or if there are steps) */}
-            {(isProcessing || thinkingSteps.length > 0) && (
+            {/* Thinking Process (only show during processing to avoid duplicate completed summary block) */}
+            {isProcessing && (
               <div className="flex gap-3 justify-start">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-black dark:bg-white/10 flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10">
                   <Bot size={16} className="text-white" />
@@ -531,7 +474,7 @@ export default function AgentPanel() {
               </div>
 
               <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
-                {activeConfirmation.message || (activeConfirmation === pendingConfirmation ? pendingConfirmation.message : "Agent 请求执行耗费积分的操作")}
+                {activeConfirmation.message || 'Agent 请求执行耗费积分的操作'}
                 <br />
                 预计将消耗 <span className="font-bold text-blue-500 dark:text-blue-400">{activeConfirmation.credits}</span> 积分。
               </p>

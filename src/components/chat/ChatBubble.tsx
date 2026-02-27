@@ -7,6 +7,7 @@ import { ChatPanelMessage } from '@/types/project';
 import { User, Sparkles, Maximize2, RefreshCw, Grid3x3, Trash2, Image as ImageIcon, Download } from 'lucide-react';
 import { downloadFile } from '@/utils/download';
 import { Avatar } from '@/components/ui/Avatar';
+import { resolveGenerationResultPreset } from './generationResultPresets';
 
 // 使用统一的类型定义，保持向后兼容的别名
 export type ChatMessage = ChatPanelMessage;
@@ -46,6 +47,7 @@ export function ChatBubble({
     const hasImages = message.images && message.images.length > 0;
     const hasVideo = !!message.videoUrl;
     const videoMeta = message.metadata || {};
+    const generationResultPreset = resolveGenerationResultPreset(message);
 
     // ... (getVideoLabel logic remains same)
     const getVideoLabel = () => {
@@ -232,6 +234,7 @@ export function ChatBubble({
                                     onApplyToShot={onApplyToShot}
                                     defaultAspectRatio={project?.settings?.aspectRatio}
                                     onMediaLoaded={onMediaLoaded}
+                                    displayPreset={generationResultPreset}
                                 />
                             )}
                         </div>

@@ -4,7 +4,7 @@ import { calculateCredits, getOperationDescription } from '@/config/credits';
 
 export const maxDuration = 60;
 
-const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
+const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3.1-pro-preview';
 const GEMINI_API_KEY =
     process.env.GEMINI_TEXT_API_KEY ||
     process.env.GEMINI_API_KEY ||

@@ -238,14 +238,14 @@ export const useProjectStore = create<ProjectStore>()(
 
     // Project Actions
     loadProject: (project) =>
-      set(() => {
+      set((state) => {
         normalizeSceneOrder(project);
         recalcShotOrders(project);
         return {
           project,
           chatCache: {},
-          leftSidebarCollapsed: true, // Reset sidebar state on load
-          rightSidebarCollapsed: true
+          leftSidebarCollapsed: state.leftSidebarCollapsed,
+          rightSidebarCollapsed: state.rightSidebarCollapsed
         };
       }),
 

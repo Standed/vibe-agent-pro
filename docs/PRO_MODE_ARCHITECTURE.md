@@ -1,6 +1,6 @@
 # Pro 模式 (ChatPanel) 架构文档
 
-> 最后更新：2026-02-05
+> 最后更新：2026-02-27
 > 关联文档：[AGENTS.md](/AGENTS.md), [sora 在本项目中的架构.md](/docs/sora%20在本项目中的架构.md), [IMAGE_PROCESSING_ARCHITECTURE.md](/docs/IMAGE_PROCESSING_ARCHITECTURE.md)
 
 ## 概述
@@ -21,6 +21,7 @@ src/components/chat/
 ├── ChatInput.tsx              # 输入框组件
 ├── ChatBubble.tsx             # 消息气泡组件
 ├── GenerationResult.tsx       # 生成结果展示组件
+├── generationResultPresets.ts # GenerationResult 展示策略（Agent/Pro 统一）
 ├── DraggableReference.tsx     # 可拖拽参考图组件
 ├── StartEndFrameSelector.tsx  # 首尾帧选择器（含 ↔️ 切换按钮）
 ├── ImagePreviewOverlay.tsx    # 图片预览遮罩
@@ -65,7 +66,7 @@ src/hooks/generation/ (5 个 Hook)
 
 | 模式 | selectedModel | 子模式 | 参考图逻辑 |
 |------|---------------|--------|-----------|
-| 图片生成 | `gemini-grid`, `gemini-single`, `jimeng`, `seedream` | - | 显示用户添加 + 自动检测 (Auto-Detect) |
+| 图片生成 | `gemini-grid`, `gemini-direct`, `jimeng`, `seedream` | - | 显示用户添加 + 自动检测 (Auto-Detect) |
 | Vidu 图生视频 | `vidu-video` | `img2video` | **投影分镜图** (Derived State) 或 显示手动图 |
 | Vidu 首尾帧 | `vidu-video` | `start-end2video` | 分镜图作为**初始化首帧**，删除即空 |
 | Vidu 参考生视频 | `vidu-video` | `reference2video` | 显示用户添加 + 自动检测 (Auto-Detect) |
@@ -386,9 +387,32 @@ ChatPanel.tsx (主容器，编排逻辑)
 │   ├── DefaultReferenceDisplay (Vidu 投影)
 │   ├── StartEndFrameSelector (首尾帧)
 │   └── DraggableReferenceList (拖拽列表)
+├── generationResultPresets.ts (Grid 返回展示策略路由)
 ├── ChatInput.tsx (输入框)
 └── ImagePreviewOverlay.tsx (预览)
 ```
+
+---
+
+## 🧩 Gemini Grid 展示策略（2026-02-27）
+
+为避免 Agent / Pro 在 Grid 返回卡片上风格漂移，当前改为策略化渲染：
+
+1. `ChatBubble.tsx` 仅负责传递消息上下文；
+2. `GenerationResult.tsx` 负责执行渲染；
+3. `generationResultPresets.ts` 统一决定「是否显示 Grid 徽标 / 是否显示选择切片按钮」。
+
+### 规则
+
+| 场景 | 规则 |
+|------|------|
+| **分镜级 (`shotId`) Gemini Grid** | 使用 `PRO_STYLE_GRID_PRESET`：隐藏右上角 `Grid 2x2/3x3` 与「选择切片」 |
+| **场景级 / 项目级 Grid** | 使用默认策略：保留徽标与切片分配入口 |
+
+### Agent 同步标记
+
+- `src/services/tools/generationTools.ts` 在写入 Pro 聊天记录时设置 `metadata.source = 'agent_sync'`；
+- 前端可用该标记做兼容识别，避免历史消息样式不一致。
 
 ---
 
