@@ -91,6 +91,7 @@ const { controlMode, setControlMode } = useProjectStore();
 - **跨分镜隔离**：切换分镜会重置 Vidu/Sora 参考图状态，避免污染下一镜头。
 - **聊天历史加载**：默认加载最近 30 条，向上滚动加载更多；首次进入自动滚到底部。
 - **聊天滚动优化**：通过 `useChatScroll` hook 统一管理滚动行为（首次加载/媒体加载/分页）。
+- **Grid 返回卡片统一**：`GenerationResult` 通过 `generationResultPresets.ts` 统一控制展示策略；分镜级 Gemini Grid（含 Agent 同步）默认隐藏「选择切片」与右上角 `Grid 2x2/3x3` 徽标，保持与 Pro 模式一致的简洁样式；场景级 Grid 仍保留切片分配入口。
  - **状态稳定性 (Fix)**：参考图状态通过 `useRef` + 版本锁管理，彻底解决闭包陷阱导致的删除失效。
 
 ---
@@ -605,12 +606,13 @@ src/
 ├── components/
 │   ├── agent/                  # AgentPanel
 │   ├── canvas/                 # InfiniteCanvas
-│   ├── chat/                   # ChatPanel + Pro 模式组件 (16 个文件)
+│   ├── chat/                   # ChatPanel + Pro 模式组件 (17 个文件)
 │   │   ├── ChatPanel.tsx       # Pro 模式主组件
 │   │   ├── ChatInput.tsx       # 输入区域
 │   │   ├── MessageList.tsx     # 消息列表
 │   │   ├── ChatBubble.tsx      # 消息气泡
 │   │   ├── GenerationResult.tsx # 生成结果展示
+│   │   ├── generationResultPresets.ts # Grid 返回展示策略（Agent/Pro 统一）
 │   │   └── StartEndFrameSelector.tsx  # 首尾帧选择器
 │   ├── director/               # PlanningView, PlanningChat
 │   ├── layout/                 # TimelineView, ViewSwitcher, RightPanel

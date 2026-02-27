@@ -82,6 +82,7 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 - **Avatar Upload**: Stream lined avatar upload flow with step-by-step logging
 - **Status Indicators**: Simplified green dot indicator for completed shots (minimalist design)
 - **Login Flow**: Optimized authentication flow to prevent database update blocking
+- **Grid Result Visual Unification**: Shot-level Gemini Grid cards now reuse Pro-style output (hide `Grid 2x2/3x3` corner badge and `选择切片` button) for cleaner Agent/Pro consistency.
 
 ### 🆕 Sora Video Generation
 - **Sora Orchestrator** - Automated video generation pipeline
@@ -305,7 +306,7 @@ src/
 │   ├── asset/                        # Asset management (characters, locations)
 │   ├── auth/                         # Authentication (AuthProvider)
 │   ├── canvas/                       # Infinite canvas
-│   ├── chat/                         # Chat interface + Pro mode (16 files)
+│   ├── chat/                         # Chat interface + Pro mode (17 files)
 │   ├── director/                     # Director/Planning mode
 │   ├── grid/                         # Grid generation UI
 │   ├── jimeng/                       # Jimeng integration
@@ -459,6 +460,12 @@ For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 ---
 
 ## 📝 Changelog
+
+ ### v4.0.6 (2026-02-27) - 🎯 Agent/Pro Grid UI Consistency & Docs Sync
+- ✅ **Grid Card Consistency** - Unified Gemini Grid rendering in shot-level chat results: removed `选择切片` entry and top-right `Grid 2x2/3x3` badge to match Pro visual style.
+- ✅ **Reusable Presentation Strategy** - Added `src/components/chat/generationResultPresets.ts` to centralize display behavior instead of hardcoding UI conditions in multiple components.
+- ✅ **Agent-Pro Sync Metadata** - Agent-generated Pro chat sync messages now mark `metadata.source = 'agent_sync'` to support stable rendering rules.
+- ✅ **Documentation Alignment** - Updated `AGENTS.md`, `README.md`, `CLAUDE.md`, and `docs/PRO_MODE_ARCHITECTURE.md` to reflect the latest implementation.
 
  ### v4.0.5 (2026-02-06) - ⚡ Performance & Documentation
 - ✅ **Core Optimization** - Decoupled `ChatBubble` from `useAuth` context, eliminating unnecessary re-renders of hundreds of chat bubbles during score updates (P0 Performance Fix).
