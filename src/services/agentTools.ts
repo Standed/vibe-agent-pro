@@ -110,11 +110,11 @@ export class AgentToolExecutor {
         case 'batchGenerateProjectImages':
           return this.generationTools.batchGenerateProjectImages(args.mode, args.gridSize, args.prompt, args.force);
         case 'generateSceneVideo':
-          return this.generationTools.generateSceneVideo(args.sceneId);
+          return this.generationTools.generateSceneVideo(args.sceneId, args.model);
         case 'generateShotsVideo':
-          return this.generationTools.generateShotsVideo(args.sceneId, args.shotIds, args.shotIndexes, args.globalShotIndexes);
+          return this.generationTools.generateShotsVideo(args.sceneId, args.shotIds, args.shotIndexes, args.globalShotIndexes, args.model);
         case 'batchGenerateProjectVideosSora':
-          return this.generationTools.batchGenerateProjectVideosSora(args.force);
+          return this.generationTools.batchGenerateProjectVideosSora(args.force, args.model);
         case 'generateViduVideo':
           return this.generationTools.generateViduVideo(args.shotId, args.mode, args.resolution, args.off_peak);
 

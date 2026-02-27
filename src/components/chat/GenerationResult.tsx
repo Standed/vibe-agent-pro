@@ -5,6 +5,10 @@ import { Grid3x3, Download, RefreshCw, Image as ImageIcon, ChevronUp } from 'luc
 import { AspectRatio, GridData } from '@/types/project';
 import { IMAGE_TO_SHOT } from './dragTypes';
 import { downloadFile } from '@/utils/download';
+import {
+    DEFAULT_GENERATION_RESULT_PRESET,
+    GenerationResultDisplayPreset
+} from './generationResultPresets';
 
 interface GenerationResultProps {
     images: string[];
@@ -17,6 +21,7 @@ interface GenerationResultProps {
     onApplyToShot?: (url: string) => void;
     defaultAspectRatio?: AspectRatio;
     onMediaLoaded?: () => void;
+    displayPreset?: GenerationResultDisplayPreset;
 }
 
 // Sub-component for individual draggable images
@@ -30,7 +35,8 @@ function DraggableResultImage({
     onApplyToShot,
     defaultAspectRatio,
     model,
-    onMediaLoaded
+    onMediaLoaded,
+    showGridBadge
 }: {
     img: string;
     idx: number;
@@ -42,6 +48,7 @@ function DraggableResultImage({
     defaultAspectRatio?: AspectRatio;
     model?: string;
     onMediaLoaded?: () => void;
+    showGridBadge: boolean;
 }) {
     const [{ isDragging }, drag] = useDrag(() => ({
         type: IMAGE_TO_SHOT,
@@ -132,7 +139,7 @@ function DraggableResultImage({
             <div className="absolute inset-0 border border-transparent group-hover:border-black dark:group-hover:border-white rounded-xl z-20 pointer-events-none transition-colors duration-300" />
 
             {/* Grid Badge */}
-            {isGrid && model === 'gemini-grid' && (gridData.gridRows || gridData.gridSize) && (
+            {showGridBadge && isGrid && model === 'gemini-grid' && (gridData.gridRows || gridData.gridSize) && (
                 <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md text-white text-[10px] px-2 py-1 rounded-md flex items-center gap-1 font-medium">
                     <Grid3x3 size={12} />
                     Grid {gridData.gridRows && gridData.gridCols ? `${gridData.gridRows}x${gridData.gridCols}` : gridData.gridSize}
@@ -198,7 +205,8 @@ export function GenerationResult({
     onReuseImage,
     onApplyToShot,
     defaultAspectRatio = AspectRatio.WIDE,
-    onMediaLoaded
+    onMediaLoaded,
+    displayPreset = DEFAULT_GENERATION_RESULT_PRESET
 }: GenerationResultProps) {
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -263,6 +271,7 @@ export function GenerationResult({
                                 defaultAspectRatio={defaultAspectRatio}
                                 model={model}
                                 onMediaLoaded={onMediaLoaded}
+                                showGridBadge={!displayPreset.hideGridBadge}
                             />
 
                             {/* "Show More" Overlay */}
@@ -277,7 +286,14 @@ export function GenerationResult({
                             )}
 
                             {/* Grid Slice Button - Only for Gemini Grid, NOT in Pro Mode (Shot Bound) */}
-                            {isGrid && gridData?.slices && gridData.slices.length > 0 && onSliceSelect && !isLastVisible && model === 'gemini-grid' && !onApplyToShot && (
+                            {isGrid &&
+                                gridData?.slices &&
+                                gridData.slices.length > 0 &&
+                                onSliceSelect &&
+                                !displayPreset.hideSliceSelector &&
+                                !isLastVisible &&
+                                model === 'gemini-grid' &&
+                                !onApplyToShot && (
                                 <button
                                     onClick={onSliceSelect}
                                     className="w-full px-3 py-2 text-xs font-medium bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-lg hover:bg-zinc-50 dark:hover:bg-white/10 hover:border-zinc-300 dark:hover:border-white/20 transition-all flex items-center justify-center gap-2 text-zinc-700 dark:text-zinc-300"

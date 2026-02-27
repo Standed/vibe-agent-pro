@@ -1,0 +1,2193 @@
+diff --git a/.env.example b/.env.example
+index 29a58e3..8a1c4c0 100644
+--- a/.env.example
++++ b/.env.example
+@@ -45,13 +45,13 @@ GEMINI_API_KEY=your_gemini_api_key_here
+ 
+ # Gemini 模型配置（可选，按功能区分，提供兜底值）
+ # AI自动分镜（5步流程） - storyboardService.ts
+-GEMINI_STORYBOARD_MODEL=gemini-3-pro-preview
++GEMINI_STORYBOARD_MODEL=gemini-3.1-pro-preview
+ # Agent推理模式（工具调用） - agentService.ts
+-GEMINI_AGENT_MODEL=gemini-3-pro-preview
++GEMINI_AGENT_MODEL=gemini-3.1-pro-preview
+ # 通用文本生成 - gemini-text/route.ts
+-GEMINI_TEXT_MODEL=gemini-3-pro-preview
++GEMINI_TEXT_MODEL=gemini-3.1-pro-preview
+ # 图片分析 - gemini-analyze/route.ts
+-GEMINI_ANALYZE_MODEL=gemini-3-pro-preview
++GEMINI_ANALYZE_MODEL=gemini-3.1-pro-preview
+ # 图片生成（Gemini直出、Grid多视图、图片编辑）
+ GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
+ 
+diff --git a/docs/GEMINI_MODEL_CONFIG.md b/docs/GEMINI_MODEL_CONFIG.md
+index 1d8f4aa..0f62868 100644
+--- a/docs/GEMINI_MODEL_CONFIG.md
++++ b/docs/GEMINI_MODEL_CONFIG.md
+@@ -6,12 +6,12 @@
+ 
+ | 功能模块 | 使用模型 | Temperature | 说明 |
+ |---------|---------|-------------|------|
+-| **AI自动分镜（5步流程）** | `gemini-3-pro-preview` | 1.0 | 精确、创造力强 ✨ |
+-| **Agent推理模式** | `gemini-3-pro-preview` | 0.3 | 精确推理 🎯 |
++| **AI自动分镜（5步流程）** | `gemini-3.1-pro-preview` | 1.0 | 精确、创造力强 ✨ |
++| **Agent推理模式** | `gemini-3.1-pro-preview` | 0.3 | 精确推理 🎯 |
+ | **Gemini直出图片** | `gemini-3-pro-image-preview` | 1.0 | 高质量图片生成 🎨 |
+ | **Gemini Grid多视图** | `gemini-3-pro-image-preview` | 1.0 | 高质量多视图生成 🎨 |
+ | **Gemini图片编辑** | `gemini-3-pro-image-preview` | 1.0 | 高质量图片编辑 ✏️ |
+-| **Gemini图片分析** | `gemini-3-pro-preview` | - | 精确分析 👁️ |
++| **Gemini图片分析** | `gemini-3.1-pro-preview` | - | 精确分析 👁️ |
+ 
+ ---
+ 
+@@ -26,12 +26,12 @@
+ 
+ **模型配置**：
+ ```typescript
+-const MODEL_FULL = process.env.GEMINI_STORYBOARD_MODEL || 'gemini-3-pro-preview';
++const MODEL_FULL = process.env.GEMINI_STORYBOARD_MODEL || 'gemini-3.1-pro-preview';
+ ```
+ 
+ **环境变量**：
+ ```env
+-GEMINI_STORYBOARD_MODEL=gemini-3-pro-preview
++GEMINI_STORYBOARD_MODEL=gemini-3.1-pro-preview
+ ```
+ 
+ **为什么使用 Pro**：
+@@ -49,7 +49,7 @@ GEMINI_STORYBOARD_MODEL=gemini-3-pro-preview
+ 
+ **模型配置**：
+ ```typescript
+-const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3-pro-preview';
++const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3.1-pro-preview';
+ generationConfig: {
+   temperature: 0.3, // Agent推理需要精确性，使用较低的temperature
+   maxOutputTokens: MAX_OUTPUT_TOKENS,
+@@ -58,7 +58,7 @@ generationConfig: {
+ 
+ **环境变量**：
+ ```env
+-GEMINI_AGENT_MODEL=gemini-3-pro-preview
++GEMINI_AGENT_MODEL=gemini-3.1-pro-preview
+ ```
+ 
+ **为什么使用 Pro + 低temperature**：
+@@ -103,13 +103,13 @@ generationConfig: {
+ 
+ **模型配置**：
+ ```typescript
+-const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
++const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3.1-pro-preview';
+ temperature: 1.0
+ ```
+ 
+ **环境变量**：
+ ```env
+-GEMINI_TEXT_MODEL=gemini-3-pro-preview
++GEMINI_TEXT_MODEL=gemini-3.1-pro-preview
+ ```
+ 
+ ---
+@@ -146,7 +146,7 @@ GEMINI_TEXT_MODEL=gemini-3-pro-preview
+ 
+ | 模型 | 相对成本 | 速度 | 适用场景 |
+ |------|---------|------|---------|
+-| `gemini-3-pro-preview` | 💰💰 中 | ⚡ 中 | 文本、推理、分析 |
++| `gemini-3.1-pro-preview` | 💰💰 中 | ⚡ 中 | 文本、推理、分析 |
+ | `gemini-3-pro-image-preview` | 💰💰💰 高 | ⚡ 慢 | 图片生成、编辑 |
+ 
+ **成本说明**：
+@@ -184,16 +184,16 @@ src/app/api/
+ 
+ ```env
+ # AI自动分镜（5步流程）
+-GEMINI_STORYBOARD_MODEL=gemini-3-pro-preview
++GEMINI_STORYBOARD_MODEL=gemini-3.1-pro-preview
+ 
+ # Agent推理模式（工具调用）
+-GEMINI_AGENT_MODEL=gemini-3-pro-preview
++GEMINI_AGENT_MODEL=gemini-3.1-pro-preview
+ 
+ # 通用文本生成
+-GEMINI_TEXT_MODEL=gemini-3-pro-preview
++GEMINI_TEXT_MODEL=gemini-3.1-pro-preview
+ 
+ # 图片分析
+-GEMINI_ANALYZE_MODEL=gemini-3-pro-preview
++GEMINI_ANALYZE_MODEL=gemini-3.1-pro-preview
+ 
+ # 图片生成（Gemini直出、Grid多视图、图片编辑）
+ GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
+@@ -203,7 +203,7 @@ GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
+ ```env
+ # 假设未来Flash模型可用，可以这样分配：
+ GEMINI_STORYBOARD_MODEL=gemini-3-flash-preview  # 分镜用Flash（快速）
+-GEMINI_AGENT_MODEL=gemini-3-pro-preview         # Agent用Pro（精确）
++GEMINI_AGENT_MODEL=gemini-3.1-pro-preview         # Agent用Pro（精确）
+ GEMINI_TEXT_MODEL=gemini-3-flash-preview        # 文本用Flash（经济）
+ GEMINI_ANALYZE_MODEL=gemini-3-flash-preview     # 分析用Flash（快速）
+ GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview   # 图片用Pro Image（质量）
+@@ -228,7 +228,7 @@ GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview   # 图片用Pro Image（质量）
+ ### Q: 为什么选择Pro模型而不是Flash？
+ **A**:
+ - Flash模型（gemini-3-flash-preview）目前在谷歌云上还未正式发布
+-- Pro模型（gemini-3-pro-preview）稳定可用，推理能力强
++- Pro模型（gemini-3.1-pro-preview）稳定可用，推理能力强
+ - 图片生成需要Pro Image模型才能保证质量
+ 
+ ### Q: Temperature=1.0会导致输出不稳定吗？
+@@ -242,13 +242,13 @@ GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview   # 图片用Pro Image（质量）
+ 1. **推荐方式**：在 `.env.local` 中按功能设置独立的环境变量（优先级最高）
+    ```env
+    # 分别配置不同功能的模型
+-   GEMINI_STORYBOARD_MODEL=gemini-3-pro-preview
+-   GEMINI_AGENT_MODEL=gemini-3-pro-preview
+-   GEMINI_TEXT_MODEL=gemini-3-pro-preview
+-   GEMINI_ANALYZE_MODEL=gemini-3-pro-preview
++   GEMINI_STORYBOARD_MODEL=gemini-3.1-pro-preview
++   GEMINI_AGENT_MODEL=gemini-3.1-pro-preview
++   GEMINI_TEXT_MODEL=gemini-3.1-pro-preview
++   GEMINI_ANALYZE_MODEL=gemini-3.1-pro-preview
+    GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
+    ```
+-2. **代码层兜底**：项目中的默认值（`|| 'gemini-3-pro-preview'`）仅作为后备，不建议直接修改硬编码
++2. **代码层兜底**：项目中的默认值（`|| 'gemini-3.1-pro-preview'`）仅作为后备，不建议直接修改硬编码
+ 3. **灵活配置**：不同功能可以使用不同模型，例如Agent用Pro保证精确性，分镜用Flash提升速度（当Flash可用时）
+ 
+ ---
+diff --git a/src/app/api/ai/planning/route.ts b/src/app/api/ai/planning/route.ts
+index a1d0a46..29be959 100644
+--- a/src/app/api/ai/planning/route.ts
++++ b/src/app/api/ai/planning/route.ts
+@@ -4,7 +4,7 @@ import { calculateCredits, getOperationDescription } from '@/config/credits';
+ 
+ export const maxDuration = 60;
+ 
+-const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
++const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3.1-pro-preview';
+ const GEMINI_API_KEY =
+     process.env.GEMINI_TEXT_API_KEY ||
+     process.env.GEMINI_API_KEY ||
+diff --git a/src/app/api/gemini-analyze/route.ts b/src/app/api/gemini-analyze/route.ts
+index a44b838..293b692 100644
+--- a/src/app/api/gemini-analyze/route.ts
++++ b/src/app/api/gemini-analyze/route.ts
+@@ -4,7 +4,7 @@ import { calculateCredits, getOperationDescription } from '@/config/credits';
+ 
+ export const maxDuration = 60;
+ 
+-const GEMINI_ANALYZE_MODEL = process.env.GEMINI_ANALYZE_MODEL || 'gemini-3-pro-preview'; // 图片分析模型
++const GEMINI_ANALYZE_MODEL = process.env.GEMINI_ANALYZE_MODEL || 'gemini-3.1-pro-preview'; // 图片分析模型
+ const GEMINI_API_KEY =
+   process.env.GEMINI_TEXT_API_KEY ||
+   process.env.GEMINI_API_KEY ||
+diff --git a/src/app/api/gemini-generate/route.ts b/src/app/api/gemini-generate/route.ts
+index 85ef964..55e37d1 100644
+--- a/src/app/api/gemini-generate/route.ts
++++ b/src/app/api/gemini-generate/route.ts
+@@ -8,7 +8,7 @@ export const maxDuration = 60;
+ export const runtime = 'nodejs';
+ export const dynamic = 'force-dynamic';
+ 
+-const DEFAULT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview'; // 默认使用 Pro 模型
++const DEFAULT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3.1-pro-preview'; // 默认使用 Pro 模型
+ const GEMINI_API_KEY =
+   process.env.GEMINI_AGENT_API_KEY ||
+   process.env.GEMINI_TEXT_API_KEY ||
+diff --git a/src/app/api/gemini-text/route.ts b/src/app/api/gemini-text/route.ts
+index c579474..29df868 100644
+--- a/src/app/api/gemini-text/route.ts
++++ b/src/app/api/gemini-text/route.ts
+@@ -4,7 +4,7 @@ import { calculateCredits, getOperationDescription } from '@/config/credits';
+ 
+ export const maxDuration = 60;
+ 
+-const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview'; // 文本生成使用 Pro 模型
++const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3.1-pro-preview'; // 文本生成使用 Pro 模型
+ const GEMINI_API_KEY =
+   process.env.GEMINI_TEXT_API_KEY ||
+   process.env.GEMINI_API_KEY ||
+diff --git a/src/components/agent/AgentPanel.tsx b/src/components/agent/AgentPanel.tsx
+index 674d93d..c97e29f 100644
+--- a/src/components/agent/AgentPanel.tsx
++++ b/src/components/agent/AgentPanel.tsx
+@@ -1,6 +1,6 @@
+ 'use client';
+ 
+-import { useState, useRef, useEffect, useMemo } from 'react';
++import { useState, useRef, useEffect } from 'react';
+ import { createPortal } from 'react-dom';
+ import ReactMarkdown from 'react-markdown';
+ import remarkGfm from 'remark-gfm';
+@@ -162,64 +162,7 @@ export default function AgentPanel() {
+     });
+   };
+ 
+-  // Local state for text-detected confirmation
+-  const [localConfirmation, setLocalConfirmation] = useState<{ message: string, credits: number, onConfirm: () => void, onCancel: () => void } | null>(null);
+-
+-  const handleSendMessageWithText = async (text: string) => {
+-    const userMessageId = crypto?.randomUUID() || `msg-${Date.now()}`;
+-    const userMessage: ChatMessage = {
+-      id: userMessageId,
+-      userId: user?.id || '',
+-      projectId: project?.id || '',
+-      scope: 'project',
+-      role: 'user',
+-      content: text,
+-      timestamp: new Date(),
+-      createdAt: new Date(),
+-      updatedAt: new Date(),
+-    };
+-    setChatHistory((prev) => [...prev, userMessage]);
+-    await sendMessage(text);
+-    // Reload history
+-    if (project && user) {
+-      const messages = await dataService.getChatMessages({ projectId: project.id, scope: 'project' });
+-      const filteredMessages = messages.filter(msg => msg.metadata?.channel !== 'planning');
+-      setChatHistory(filteredMessages);
+-    }
+-  };
+-
+-  // Auto-detect confirmation requests from Agent text
+-  useEffect(() => {
+-    if (!chatHistory.length) return;
+-    const lastMsg = chatHistory[chatHistory.length - 1];
+-
+-    // Only detect if it's an assistant message and we are NOT processing (waiting for user input)
+-    if (lastMsg.role === 'assistant' && !isProcessing) {
+-      const content = lastMsg.content;
+-      // Heuristic: contains "predicted cost" and ("confirm" or "whether")
+-      if (content.includes('预计消耗') && (content.includes('是否') || content.includes('确认'))) {
+-        // Try to extract credits
+-        const creditMatch = content.match(/消耗\s*(\d+)\s*积分/);
+-        const credits = creditMatch ? parseInt(creditMatch[1]) : 0;
+-
+-        // Prevent duplicate trigger if already handled
+-        if (!pendingConfirmation && !localConfirmation) {
+-          setLocalConfirmation({
+-            message: "Agent 请求确认操作",
+-            credits: credits,
+-            onConfirm: () => { handleSendMessageWithText("是"); setLocalConfirmation(null); },
+-            onCancel: () => { handleSendMessageWithText("否"); setLocalConfirmation(null); }
+-          });
+-        }
+-      } else {
+-        // If the latest message doesn't match, clear local confirmation
+-        if (localConfirmation) setLocalConfirmation(null);
+-      }
+-    }
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [chatHistory, isProcessing, pendingConfirmation]);
+-
+-  const activeConfirmation = pendingConfirmation || localConfirmation;
++  const activeConfirmation = pendingConfirmation;
+ 
+   return (
+     <div className="flex flex-col h-full glass-panel relative">
+@@ -367,8 +310,8 @@ export default function AgentPanel() {
+               );
+             })}
+ 
+-            {/* Thinking Process (only show during processing or if there are steps) */}
+-            {(isProcessing || thinkingSteps.length > 0) && (
++            {/* Thinking Process (only show during processing to avoid duplicate completed summary block) */}
++            {isProcessing && (
+               <div className="flex gap-3 justify-start">
+                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-black dark:bg-white/10 flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10">
+                   <Bot size={16} className="text-white" />
+@@ -531,7 +474,7 @@ export default function AgentPanel() {
+               </div>
+ 
+               <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
+-                {activeConfirmation.message || (activeConfirmation === pendingConfirmation ? pendingConfirmation.message : "Agent 请求执行耗费积分的操作")}
++                {activeConfirmation.message || 'Agent 请求执行耗费积分的操作'}
+                 <br />
+                 预计将消耗 <span className="font-bold text-blue-500 dark:text-blue-400">{activeConfirmation.credits}</span> 积分。
+               </p>
+diff --git a/src/components/canvas/DraggableCanvasShotCard.tsx b/src/components/canvas/DraggableCanvasShotCard.tsx
+index 37f8b3c..13de63f 100644
+--- a/src/components/canvas/DraggableCanvasShotCard.tsx
++++ b/src/components/canvas/DraggableCanvasShotCard.tsx
+@@ -5,7 +5,9 @@ import { Shot, AspectRatio } from '@/types/project';
+ import { SHOT_TO_CHAT, IMAGE_TO_SHOT } from '@/components/chat/dragTypes';
+ import { useProjectStore } from '@/store/useProjectStore';
+ import { dataService } from '@/lib/dataService';
++import { ensurePersistedImageUrl } from '@/lib/media-url';
+ import { toast } from 'sonner';
++import { useAuth } from '@/components/auth/AuthProvider';
+ 
+ interface DraggableCanvasShotCardProps {
+     shot: Shot;
+@@ -38,7 +40,8 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
+     cameraMovementLabel,
+     aspectRatio = AspectRatio.WIDE,
+ }: DraggableCanvasShotCardProps) {
+-    const { updateShot } = useProjectStore();
++    const { project, updateShot } = useProjectStore();
++    const { user } = useAuth();
+     const cardRef = useRef<HTMLDivElement>(null);
+ 
+     // 计算布局模式
+@@ -66,32 +69,51 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
+         drop: async (item: { imageUrl: string }) => {
+             if (!item.imageUrl) return;
+ 
+-            // 1. Optimistic update - set referenceImage
+-            const historyItem = {
+-                id: `drop_${Date.now()}`,
+-                type: 'image' as const,
+-                timestamp: new Date(),
+-                result: item.imageUrl,
+-                prompt: '从 Pro 模式拖入',
+-                parameters: {
+-                    model: 'drag_drop',
+-                    source: 'pro_mode',
+-                },
+-                status: 'success' as const,
+-            };
+-
+-            const newHistory = [...(shot.generationHistory || []), historyItem];
+-            updateShot(shot.id, {
+-                referenceImage: item.imageUrl,
+-                status: 'done',
+-                generationHistory: newHistory,
+-            });
++            if (!project?.id || !user?.id) {
++                toast.error('请先登录后再试');
++                return;
++            }
+ 
+-            // 2. Persist to backend
+             try {
++                const resolvedImageUrl = await ensurePersistedImageUrl({
++                    url: item.imageUrl,
++                    userId: user.id,
++                    folder: {
++                        projectId: project.id,
++                        scope: 'shots',
++                        entityId: shot.id,
++                        assetType: 'reference',
++                        model: 'drag_drop'
++                    },
++                    filenamePrefix: 'drag_ref'
++                });
++
++                const historyItem = {
++                    id: `drop_${Date.now()}`,
++                    type: 'image' as const,
++                    timestamp: new Date(),
++                    result: resolvedImageUrl,
++                    prompt: '从 Pro 模式拖入',
++                    parameters: {
++                        model: 'drag_drop',
++                        source: 'pro_mode',
++                    },
++                    status: 'success' as const,
++                };
++
++                const latestShot = await dataService.getShot(shot.id);
++                const currentHistory = latestShot?.generationHistory || shot.generationHistory || [];
++                const newHistory = [...currentHistory, historyItem];
++                updateShot(shot.id, {
++                    referenceImage: resolvedImageUrl,
++                    status: 'done',
++                    generationHistory: newHistory,
++                });
++
++                const baseShot = latestShot || shot;
+                 await dataService.saveShot(sceneId, {
+-                    ...shot,
+-                    referenceImage: item.imageUrl,
++                    ...baseShot,
++                    referenceImage: resolvedImageUrl,
+                     status: 'done',
+                     generationHistory: newHistory,
+                 });
+@@ -105,7 +127,7 @@ const DraggableCanvasShotCard = memo(function DraggableCanvasShotCard({
+             isOver: monitor.isOver(),
+             canDrop: monitor.canDrop(),
+         }),
+-    }), [shot, shotLabel, updateShot]);
++    }), [project?.id, sceneId, shot, shotLabel, updateShot, user?.id]);
+ 
+     // Combine refs
+     const combinedRef = (node: HTMLDivElement | null) => {
+diff --git a/src/components/chat/ChatBubble.tsx b/src/components/chat/ChatBubble.tsx
+index 1b23417..4159e3c 100644
+--- a/src/components/chat/ChatBubble.tsx
++++ b/src/components/chat/ChatBubble.tsx
+@@ -7,6 +7,7 @@ import { ChatPanelMessage } from '@/types/project';
+ import { User, Sparkles, Maximize2, RefreshCw, Grid3x3, Trash2, Image as ImageIcon, Download } from 'lucide-react';
+ import { downloadFile } from '@/utils/download';
+ import { Avatar } from '@/components/ui/Avatar';
++import { resolveGenerationResultPreset } from './generationResultPresets';
+ 
+ // 使用统一的类型定义，保持向后兼容的别名
+ export type ChatMessage = ChatPanelMessage;
+@@ -46,6 +47,7 @@ export function ChatBubble({
+     const hasImages = message.images && message.images.length > 0;
+     const hasVideo = !!message.videoUrl;
+     const videoMeta = message.metadata || {};
++    const generationResultPreset = resolveGenerationResultPreset(message);
+ 
+     // ... (getVideoLabel logic remains same)
+     const getVideoLabel = () => {
+@@ -232,6 +234,7 @@ export function ChatBubble({
+                                     onApplyToShot={onApplyToShot}
+                                     defaultAspectRatio={project?.settings?.aspectRatio}
+                                     onMediaLoaded={onMediaLoaded}
++                                    displayPreset={generationResultPreset}
+                                 />
+                             )}
+                         </div>
+diff --git a/src/components/chat/ChatPanel.tsx b/src/components/chat/ChatPanel.tsx
+index ac0b43c..ace7a32 100644
+--- a/src/components/chat/ChatPanel.tsx
++++ b/src/components/chat/ChatPanel.tsx
+@@ -13,7 +13,8 @@ import { formatShotLabel } from '@/utils/shotOrder';
+ import { ImagePreviewOverlay } from './ImagePreviewOverlay';
+ import { dataService } from '@/lib/dataService';
+ import { storageService } from '@/lib/storageService';
+-import { inferExtFromMime, type R2PathContext } from '@/lib/r2-path';
++import type { R2PathContext } from '@/lib/r2-path';
++import { ensurePersistedImageUrl } from '@/lib/media-url';
+ import { constructBaseShotPrompt } from '@/utils/promptConstruction';
+ import { translateCameraMovement, translateShotSize, SHOT_SIZE_TRANSLATIONS, CAMERA_MOVEMENT_TRANSLATIONS } from '@/utils/translations';
+ import { useJimengGeneration } from '@/hooks/generation/useJimengGeneration';
+@@ -60,8 +61,8 @@ export default function ChatPanel() {
+     const { user, profile } = useAuth();
+ 
+     // Derived State (Moved up for hooks dependency)
+-    const shots = project?.shots || [];
+-    const scenes = project?.scenes || [];
++    const shots = useMemo(() => project?.shots || [], [project?.shots]);
++    const scenes = useMemo(() => project?.scenes || [], [project?.scenes]);
+     const selectedShot = shots.find((s) => s.id === selectedShotId);
+     const selectedScene = scenes.find((s) => s.id === (selectedShot?.sceneId || currentSceneId));
+ 
+@@ -267,63 +268,90 @@ export default function ChatPanel() {
+         setIgnoredUrls
+     });
+ 
+-    // Resolve blob:/data: history media into persistable https URL (R2/Supabase) before reuse/apply.
++    // Resolve history media into persistable R2 URL before reuse/apply.
+     const resolvedUrlCacheRef = useRef<Map<string, Promise<string>>>(new Map());
+-    const resolveMediaUrl = useCallback(async (url: string): Promise<string> => {
+-        if (!url) throw new Error('empty url');
+-
+-        // Already a network URL (or Gemini File API URL).
+-        if (url.startsWith('http') || url.startsWith('https://generativelanguage.googleapis.com')) {
+-            return url;
++    const resolveMediaUrl = useCallback(async (
++        url: string,
++        options?: {
++            shotId?: string;
++            sceneId?: string;
++            assetType?: R2PathContext['assetType'];
++            model?: string;
+         }
++    ): Promise<string> => {
++        if (!url) throw new Error('empty url');
+ 
+         if (!project?.id || !user?.id) {
+             throw new Error('not ready');
+         }
+ 
+-        const cached = resolvedUrlCacheRef.current.get(url);
++        const folder: R2PathContext = {
++            projectId: project.id,
++            scope: options?.shotId ? 'shots' : options?.sceneId ? 'scenes' : selectedShotId ? 'shots' : currentSceneId ? 'scenes' : 'project',
++            entityId: options?.shotId || options?.sceneId || selectedShotId || currentSceneId || project.id,
++            assetType: options?.assetType || 'reference',
++            model: options?.model || 'history_ref'
++        };
++
++        const cacheKey = `${folder.scope}:${folder.entityId}:${url}`;
++        const cached = resolvedUrlCacheRef.current.get(cacheKey);
+         if (cached) return cached;
+ 
+         const task = (async () => {
+             const toastId = toast.loading('正在上传参考图...');
+             try {
+-                const resp = await fetch(url);
+-                if (!resp.ok) {
+-                    throw new Error(`fetch failed (${resp.status})`);
+-                }
+-                const blob = await resp.blob();
+-                const mimeType = blob.type || 'image/png';
+-                const ext = inferExtFromMime(mimeType);
+-                const file = new File([blob], `reference_${Date.now()}.${ext}`, { type: mimeType });
+-
+-                const folder: R2PathContext = {
+-                    projectId: project.id,
+-                    scope: selectedShotId ? 'shots' : currentSceneId ? 'scenes' : 'project',
+-                    entityId: selectedShotId || currentSceneId || project.id,
+-                    assetType: 'reference',
+-                    model: 'history_ref'
+-                };
+-
+-                const result = await storageService.uploadFile(file, folder, user.id);
++                const result = await ensurePersistedImageUrl({
++                    url,
++                    userId: user.id,
++                    folder,
++                    filenamePrefix: 'reference'
++                });
+                 toast.dismiss(toastId);
+-                return result.url;
++                return result;
+             } catch (e) {
+                 toast.dismiss(toastId);
+                 throw e;
+             }
+         })();
+ 
+-        resolvedUrlCacheRef.current.set(url, task);
++        resolvedUrlCacheRef.current.set(cacheKey, task);
+         try {
+             const resolved = await task;
+-            resolvedUrlCacheRef.current.set(url, Promise.resolve(resolved));
++            resolvedUrlCacheRef.current.set(cacheKey, Promise.resolve(resolved));
+             return resolved;
+         } catch (e) {
+-            resolvedUrlCacheRef.current.delete(url);
++            resolvedUrlCacheRef.current.delete(cacheKey);
+             throw e;
+         }
+     }, [project?.id, currentSceneId, selectedShotId, user?.id]);
+ 
++    const persistShotImage = useCallback(async (
++        shotId: string,
++        updates: {
++            referenceImage: string;
++            status?: string;
++            fullGridUrl?: string;
++            gridImages?: string[];
++        }
++    ) => {
++        const localShot = shots.find((s) => s.id === shotId);
++        const latestShot = await dataService.getShot(shotId);
++        const baseShot = latestShot || localShot;
++
++        if (!baseShot) {
++            throw new Error('shot not found');
++        }
++
++        const sceneId = baseShot.sceneId || localShot?.sceneId || currentSceneId || selectedScene?.id;
++        if (!sceneId) {
++            throw new Error('scene not found');
++        }
++
++        updateShot(shotId, updates as any);
++        const mergedShot = { ...baseShot, ...updates };
++        await dataService.saveShot(sceneId, mergedShot as any);
++    }, [shots, currentSceneId, selectedScene?.id, updateShot]);
++
+     const handleAddToReferenceResolved = useCallback((url: string) => {
+         (async () => {
+             const resolvedUrl = await resolveMediaUrl(url);
+@@ -341,14 +369,21 @@ export default function ChatPanel() {
+         }
+ 
+         (async () => {
+-            const resolvedUrl = await resolveMediaUrl(url);
+-            updateShot(selectedShotId, { referenceImage: resolvedUrl });
++            const resolvedUrl = await resolveMediaUrl(url, {
++                shotId: selectedShotId,
++                assetType: 'image',
++                model: 'apply_to_shot'
++            });
++            await persistShotImage(selectedShotId, {
++                referenceImage: resolvedUrl,
++                status: 'done'
++            });
+             toast.success('已应用到分镜');
+         })().catch((e) => {
+             console.warn('[ChatPanel] Failed to apply image to shot:', e);
+             toast.error('应用失败，请重试');
+         });
+-    }, [selectedShotId, resolveMediaUrl, updateShot]);
++    }, [selectedShotId, resolveMediaUrl, persistShotImage]);
+ 
+     const { handleFileUpload, drop, isOver } = useChatReferenceInteractions({
+         selectedModel,
+@@ -963,12 +998,7 @@ export default function ChatPanel() {
+     };
+ 
+     const handleApplyToShot = async (url: string) => {
+-        if (!selectedShotId) {
+-            toast.error("请先选择一个分镜");
+-            return;
+-        }
+-        updateShot(selectedShotId, { referenceImage: url, status: 'done' });
+-        toast.success("已应用到当前分镜");
++        handleApplyToShotResolved(url);
+     };
+ 
+     const handleApplyVideoToShot = async (message: ChatPanelMessage) => {
+@@ -1232,16 +1262,57 @@ export default function ChatPanel() {
+                     shots={shots}
+                     gridRows={gridResult.gridRows}
+                     gridCols={gridResult.gridCols}
+-                    onAssign={(assignments) => {
+-                        Object.entries(assignments).forEach(([shotId, imageUrl]) => {
+-                            updateShot(shotId, {
+-                                referenceImage: imageUrl,
+-                                fullGridUrl: gridResult.fullImage,
+-                                gridImages: gridResult.slices,
+-                                status: 'done'
++                    onAssign={async (assignments) => {
++                        const entries = Object.entries(assignments);
++                        if (entries.length === 0) {
++                            clearGridResult();
++                            return;
++                        }
++
++                        try {
++                            const [resolvedFullGrid, resolvedSlices] = await Promise.all([
++                                resolveMediaUrl(gridResult.fullImage, {
++                                    sceneId: gridResult.sceneId,
++                                    assetType: 'grid',
++                                    model: 'gemini-grid'
++                                }),
++                                Promise.all(
++                                    (gridResult.slices || []).map((slice) => resolveMediaUrl(slice, {
++                                        sceneId: gridResult.sceneId,
++                                        assetType: 'slice',
++                                        model: 'gemini-grid'
++                                    }))
++                                )
++                            ]);
++
++                            const sliceIndexMap = new Map<string, number>();
++                            (gridResult.slices || []).forEach((slice, index) => {
++                                sliceIndexMap.set(slice, index);
+                             });
+-                        });
+-                        clearGridResult();
++
++                            await Promise.all(entries.map(async ([shotId, imageUrl]) => {
++                                const sliceIndex = sliceIndexMap.get(imageUrl);
++                                const resolvedUrl = typeof sliceIndex === 'number'
++                                    ? resolvedSlices[sliceIndex]
++                                    : await resolveMediaUrl(imageUrl, {
++                                        shotId,
++                                        assetType: 'slice',
++                                        model: 'gemini-grid'
++                                    });
++                                await persistShotImage(shotId, {
++                                    referenceImage: resolvedUrl,
++                                    fullGridUrl: resolvedFullGrid,
++                                    gridImages: resolvedSlices,
++                                    status: 'done'
++                                });
++                            }));
++                            toast.success(`已应用 ${entries.length} 个分镜`);
++                        } catch (error) {
++                            console.error('Apply grid assignments failed:', error);
++                            toast.error('应用失败，请重试');
++                        } finally {
++                            clearGridResult();
++                        }
+                     }}
+                     onClose={() => clearGridResult()}
+                 />
+@@ -1262,17 +1333,47 @@ export default function ChatPanel() {
+                     shotId={sliceSelectorData.shotId}
+                     currentSliceIndex={sliceSelectorData.currentSliceIndex}
+                     onSelectSlice={(sliceIndex) => {
++                        const selectedTargetShotId = sliceSelectorData.shotId || selectedShotId;
+                         const url = sliceSelectorData.gridData!.slices[sliceIndex];
+-                        if (sliceSelectorData.shotId) {
+-                            updateShot(sliceSelectorData.shotId, {
+-                                referenceImage: url,
+-                                fullGridUrl: sliceSelectorData.gridData!.fullImage,
+-                                gridImages: sliceSelectorData.gridData!.slices,
++                        if (!selectedTargetShotId) {
++                            toast.error('请先选择一个分镜');
++                            setSliceSelectorData(null);
++                            return;
++                        }
++
++                        (async () => {
++                            const [resolvedFullGrid, resolvedSlices] = await Promise.all([
++                                resolveMediaUrl(sliceSelectorData.gridData!.fullImage, {
++                                    shotId: selectedTargetShotId,
++                                    assetType: 'grid',
++                                    model: 'gemini-grid'
++                                }),
++                                Promise.all(
++                                    sliceSelectorData.gridData!.slices.map((slice) => resolveMediaUrl(slice, {
++                                        shotId: selectedTargetShotId,
++                                        assetType: 'slice',
++                                        model: 'gemini-grid'
++                                    }))
++                                )
++                            ]);
++                            const resolvedUrl = resolvedSlices[sliceIndex] || await resolveMediaUrl(url, {
++                                shotId: selectedTargetShotId,
++                                assetType: 'slice',
++                                model: 'gemini-grid'
++                            });
++                            await persistShotImage(selectedTargetShotId, {
++                                referenceImage: resolvedUrl,
++                                fullGridUrl: resolvedFullGrid,
++                                gridImages: resolvedSlices,
+                                 status: 'done'
+                             });
+                             toast.success(`已选择切片 #${sliceIndex + 1}`);
+-                        }
+-                        setSliceSelectorData(null);
++                        })().catch((error) => {
++                            console.error('Select grid slice failed:', error);
++                            toast.error('应用切片失败，请重试');
++                        }).finally(() => {
++                            setSliceSelectorData(null);
++                        });
+                     }}
+                     onClose={() => setSliceSelectorData(null)}
+                 />
+diff --git a/src/components/chat/GenerationResult.tsx b/src/components/chat/GenerationResult.tsx
+index 81cb92f..cd0eed9 100644
+--- a/src/components/chat/GenerationResult.tsx
++++ b/src/components/chat/GenerationResult.tsx
+@@ -5,6 +5,10 @@ import { Grid3x3, Download, RefreshCw, Image as ImageIcon, ChevronUp } from 'luc
+ import { AspectRatio, GridData } from '@/types/project';
+ import { IMAGE_TO_SHOT } from './dragTypes';
+ import { downloadFile } from '@/utils/download';
++import {
++    DEFAULT_GENERATION_RESULT_PRESET,
++    GenerationResultDisplayPreset
++} from './generationResultPresets';
+ 
+ interface GenerationResultProps {
+     images: string[];
+@@ -17,6 +21,7 @@ interface GenerationResultProps {
+     onApplyToShot?: (url: string) => void;
+     defaultAspectRatio?: AspectRatio;
+     onMediaLoaded?: () => void;
++    displayPreset?: GenerationResultDisplayPreset;
+ }
+ 
+ // Sub-component for individual draggable images
+@@ -30,7 +35,8 @@ function DraggableResultImage({
+     onApplyToShot,
+     defaultAspectRatio,
+     model,
+-    onMediaLoaded
++    onMediaLoaded,
++    showGridBadge
+ }: {
+     img: string;
+     idx: number;
+@@ -42,6 +48,7 @@ function DraggableResultImage({
+     defaultAspectRatio?: AspectRatio;
+     model?: string;
+     onMediaLoaded?: () => void;
++    showGridBadge: boolean;
+ }) {
+     const [{ isDragging }, drag] = useDrag(() => ({
+         type: IMAGE_TO_SHOT,
+@@ -132,7 +139,7 @@ function DraggableResultImage({
+             <div className="absolute inset-0 border border-transparent group-hover:border-black dark:group-hover:border-white rounded-xl z-20 pointer-events-none transition-colors duration-300" />
+ 
+             {/* Grid Badge */}
+-            {isGrid && model === 'gemini-grid' && (gridData.gridRows || gridData.gridSize) && (
++            {showGridBadge && isGrid && model === 'gemini-grid' && (gridData.gridRows || gridData.gridSize) && (
+                 <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md text-white text-[10px] px-2 py-1 rounded-md flex items-center gap-1 font-medium">
+                     <Grid3x3 size={12} />
+                     Grid {gridData.gridRows && gridData.gridCols ? `${gridData.gridRows}x${gridData.gridCols}` : gridData.gridSize}
+@@ -198,7 +205,8 @@ export function GenerationResult({
+     onReuseImage,
+     onApplyToShot,
+     defaultAspectRatio = AspectRatio.WIDE,
+-    onMediaLoaded
++    onMediaLoaded,
++    displayPreset = DEFAULT_GENERATION_RESULT_PRESET
+ }: GenerationResultProps) {
+     const [isExpanded, setIsExpanded] = useState(false);
+ 
+@@ -263,6 +271,7 @@ export function GenerationResult({
+                                 defaultAspectRatio={defaultAspectRatio}
+                                 model={model}
+                                 onMediaLoaded={onMediaLoaded}
++                                showGridBadge={!displayPreset.hideGridBadge}
+                             />
+ 
+                             {/* "Show More" Overlay */}
+@@ -277,7 +286,14 @@ export function GenerationResult({
+                             )}
+ 
+                             {/* Grid Slice Button - Only for Gemini Grid, NOT in Pro Mode (Shot Bound) */}
+-                            {isGrid && gridData?.slices && gridData.slices.length > 0 && onSliceSelect && !isLastVisible && model === 'gemini-grid' && !onApplyToShot && (
++                            {isGrid &&
++                                gridData?.slices &&
++                                gridData.slices.length > 0 &&
++                                onSliceSelect &&
++                                !displayPreset.hideSliceSelector &&
++                                !isLastVisible &&
++                                model === 'gemini-grid' &&
++                                !onApplyToShot && (
+                                 <button
+                                     onClick={onSliceSelect}
+                                     className="w-full px-3 py-2 text-xs font-medium bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-lg hover:bg-zinc-50 dark:hover:bg-white/10 hover:border-zinc-300 dark:hover:border-white/20 transition-all flex items-center justify-center gap-2 text-zinc-700 dark:text-zinc-300"
+diff --git a/src/components/chat/MessageList.tsx b/src/components/chat/MessageList.tsx
+index 0530fe0..e85c0d7 100644
+--- a/src/components/chat/MessageList.tsx
++++ b/src/components/chat/MessageList.tsx
+@@ -45,6 +45,7 @@ interface MessageListProps {
+ const MessageItem = memo(function MessageItem({
+     message,
+     selectedModel,
++    selectedShotId,
+     userAvatarSrc,
+     userAvatarName,
+     userAvatarEmail,
+@@ -60,6 +61,7 @@ const MessageItem = memo(function MessageItem({
+ }: {
+     message: ChatPanelMessage;
+     selectedModel: string;
++    selectedShotId: string | null;
+     userAvatarSrc?: string | null;
+     userAvatarName?: string | null;
+     userAvatarEmail?: string | null;
+@@ -102,7 +104,7 @@ const MessageItem = memo(function MessageItem({
+                 if (msg.gridData) {
+                     onSetSlicerData({
+                         gridData: msg.gridData as ChatPanelMessage['gridData'],
+-                        shotId: msg.shotId,
++                        shotId: msg.shotId || selectedShotId || undefined,
+                         currentSliceIndex: 0
+                     });
+                 }
+@@ -125,6 +127,7 @@ const MessageItem = memo(function MessageItem({
+         prevProps.message.images === nextProps.message.images &&
+         prevProps.message.content === nextProps.message.content &&
+         prevProps.selectedModel === nextProps.selectedModel &&
++        prevProps.selectedShotId === nextProps.selectedShotId &&
+         prevProps.userAvatarSrc === nextProps.userAvatarSrc &&
+         prevProps.userAvatarName === nextProps.userAvatarName &&
+         prevProps.userAvatarEmail === nextProps.userAvatarEmail &&
+@@ -227,6 +230,7 @@ export const MessageList = memo(function MessageList({
+                     key={message.id}
+                     message={message}
+                     selectedModel={selectedModel}
++                    selectedShotId={selectedShotId}
+                     userAvatarSrc={userAvatarSrc}
+                     userAvatarName={userAvatarName}
+                     userAvatarEmail={userAvatarEmail}
+@@ -254,6 +258,8 @@ export const MessageList = memo(function MessageList({
+     return (
+         prevProps.messages === nextProps.messages &&
+         prevProps.selectedModel === nextProps.selectedModel &&
++        prevProps.selectedShotId === nextProps.selectedShotId &&
++        prevProps.currentSceneId === nextProps.currentSceneId &&
+         prevProps.userAvatarSrc === nextProps.userAvatarSrc &&
+         prevProps.userAvatarName === nextProps.userAvatarName &&
+         prevProps.userAvatarEmail === nextProps.userAvatarEmail &&
+diff --git a/src/components/layout/RightPanel.tsx b/src/components/layout/RightPanel.tsx
+index 0165056..f6ce67f 100644
+--- a/src/components/layout/RightPanel.tsx
++++ b/src/components/layout/RightPanel.tsx
+@@ -5,6 +5,9 @@ import { useProjectStore } from '@/store/useProjectStore';
+ import { Bot, Sliders, ChevronRight, ChevronLeft, X, Sparkles } from 'lucide-react';
+ import AgentPanel from '../agent/AgentPanel';
+ import ChatPanel from '@/components/chat/ChatPanel';
++import { useAuth } from '@/components/auth/AuthProvider';
++import { dataService } from '@/lib/dataService';
++import { ensurePersistedImageUrl } from '@/lib/media-url';
+ 
+ import { ShotDetailsPanel } from '../chat/ShotDetailsPanel';
+ import { toast } from 'sonner';
+@@ -30,6 +33,7 @@ export default function RightPanel() {
+   const [previewImage, setPreviewImage] = useState<string | null>(null);
+ 
+   const selectedShot = project?.shots.find(s => s.id === selectedShotId);
++  const { user } = useAuth();
+ 
+   useEffect(() => {
+     const onMove = (e: MouseEvent) => {
+@@ -61,15 +65,45 @@ export default function RightPanel() {
+     toast.info('已发送生成请求到对话框');
+   };
+ 
+-  const handleApplyHistory = (item: any) => {
++  const handleApplyHistory = async (item: any) => {
+     if (!selectedShot) return;
+-    updateShot(selectedShot.id, {
+-      referenceImage: item.result,
+-      status: 'done',
+-      fullGridUrl: item.parameters?.fullGridUrl,
+-      gridImages: item.parameters?.slices
+-    });
+-    toast.success('已应用历史记录');
++
++    if (!project?.id || !user?.id) {
++      toast.error('请先登录后再试');
++      return;
++    }
++
++    try {
++      const resolvedUrl = await ensurePersistedImageUrl({
++        url: item.result,
++        userId: user.id,
++        folder: {
++          projectId: project.id,
++          scope: 'shots',
++          entityId: selectedShot.id,
++          assetType: 'reference',
++          model: 'history_apply'
++        },
++        filenamePrefix: 'history_ref'
++      });
++
++      const updates = {
++        referenceImage: resolvedUrl,
++        status: 'done' as const,
++        fullGridUrl: item.parameters?.fullGridUrl,
++        gridImages: item.parameters?.slices
++      };
++
++      updateShot(selectedShot.id, updates);
++      await dataService.saveShot(selectedShot.sceneId, {
++        ...selectedShot,
++        ...updates
++      } as any);
++      toast.success('已应用历史记录');
++    } catch (error) {
++      console.error('Failed to apply history image:', error);
++      toast.error('应用历史记录失败');
++    }
+   };
+ 
+   return (
+@@ -181,4 +215,3 @@ export default function RightPanel() {
+     </div>
+   );
+ }
+-
+diff --git a/src/hooks/agent/useAgent.ts b/src/hooks/agent/useAgent.ts
+index c5794ca..4d3d740 100644
+--- a/src/hooks/agent/useAgent.ts
++++ b/src/hooks/agent/useAgent.ts
+@@ -10,7 +10,7 @@
+ 
+ import { useState, useCallback, useEffect, useRef } from 'react';
+ import { useProjectStore } from '@/store/useProjectStore';
+-import { sendMessage as sendAgentMessage, continueWithToolResults, AgentMessage } from '@/services/agentService';
++import { sendMessage as sendAgentMessage, continueWithToolResults, AgentMessage, AgentAction, estimateCreditsOnServer, estimateCredits as estimateAgentCredits } from '@/services/agentService';
+ import { AGENT_TOOLS, ToolDefinition } from '@/services/agentToolDefinitions';
+ import { buildEnhancedContext } from '@/services/contextBuilder';
+ import { ParallelExecutor, ExecutionProgress } from '@/services/parallelExecutor';
+@@ -40,6 +40,55 @@ const PLANNING_MODE_TOOLS = AGENT_TOOLS.filter(tool =>
+   !['generateShotImage', 'batchGenerateSceneImages', 'batchGenerateProjectImages', 'generateSceneVideo', 'batchGenerateProjectVideosSora', 'generateShotsVideo'].includes(tool.name)
+ );
+ 
++const extractEstimatedCreditsFromMessage = (message?: string): number | null => {
++  if (!message) return null;
++
++  const patterns = [
++    /(?:预计|預計|估计|估計|大约|約|将|將|会|會)?\s*(?:消耗|扣除|花费|花費|耗费|耗費|需要|需)\s*(\d+)\s*(?:积分|積分|credits?|點)/i,
++    /(\d+)\s*(?:积分|積分|credits?|點)/i,
++  ];
++
++  for (const pattern of patterns) {
++    const match = message.match(pattern);
++    if (!match?.[1]) continue;
++    const credits = Number.parseInt(match[1], 10);
++    if (Number.isFinite(credits) && credits > 0) {
++      return credits;
++    }
++  }
++
++  return null;
++};
++
++const isCreditConfirmationPrompt = (message?: string): boolean => {
++  if (!message) return false;
++
++  const hasCreditInfo = /(积分|積分|credits?|消耗|花费|花費|扣除)/i.test(message);
++  const asksForConfirmation = /(是否|确认|確認|继续|繼續|同意|取消|yes|no|confirm|proceed)/i.test(message);
++
++  return hasCreditInfo && asksForConfirmation;
++};
++
++const hasToolExecutionIntent = (message: string): boolean => {
++  if (!message) return false;
++  return /(生成|创建|新增|添加|修改|更新|删除|移除|重写|重做|批量|出图|生图|出视频|做视频|应用|套用|generate|create|add|update|delete|remove|batch)/i.test(message);
++};
++
++const BILLABLE_TOOL_NAMES = new Set([
++  'generateShotImage',
++  'batchGenerateSceneImages',
++  'batchGenerateProjectImages',
++  'generateSceneVideo',
++  'generateShotsVideo',
++  'batchGenerateProjectVideosSora',
++  'generateCharacterThreeView',
++  'generateLocationImages',
++  'generateViduVideo',
++]);
++
++const hasBillableToolCalls = (action: AgentAction): boolean =>
++  !!(action.requiresToolExecution && Array.isArray(action.toolCalls) && action.toolCalls.some(toolCall => BILLABLE_TOOL_NAMES.has(toolCall.name)));
++
+ export interface UseAgentResult {
+   isProcessing: boolean;
+   thinkingSteps: ThinkingStep[];
+@@ -73,7 +122,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+     setGenerationProgress,
+   } = useProjectStore();
+ 
+-  const { isAuthenticated, user, loading } = useAuth();
++  const { isAuthenticated, user, loading, profile } = useAuth();
+   const chatChannel = options.chatChannel;
+ 
+   const [isProcessing, setIsProcessing] = useState(false);
+@@ -89,6 +138,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+   const confirmationResolverRef = useRef<((value: boolean) => void) | null>(null);
+   // 同一次 sendMessage 调用期间，用户确认一次后不再重复询问
+   const hasConfirmedCreditsRef = useRef(false);
++  const confirmedBillableSignatureRef = useRef<string | null>(null);
+ 
+   // Auto-update session manager when project changes
+   useEffect(() => {
+@@ -133,6 +183,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+     cancelRef.current = false;
+     // 每次新的用户操作重置积分确认状态
+     hasConfirmedCreditsRef.current = false;
++    confirmedBillableSignatureRef.current = null;
+     // 创建新的 AbortController
+     abortControllerRef.current = new AbortController();
+ 
+@@ -286,6 +337,8 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+       // 临时方案：我们修改 agentService.ts 中的 processUserCommand 签名
+       // 但在此之前，我们需要确保 useAgent 里的调用是正确的。
+ 
++      const activeTools = chatChannel === 'planning' ? PLANNING_MODE_TOOLS : AGENT_TOOLS;
++
+       // 让我们假设 processUserCommand 接受一个可选的 signal 参数
+       // 为了增强鲁棒性，增加简单的网络重试（最多 2 次）
+       const callProcessUserCommandWithRetry = async () => {
+@@ -293,9 +346,6 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+         const maxRetries = 2;
+         for (let attempt = 0; attempt <= maxRetries; attempt++) {
+           try {
+-            // Determine active tools based on channel
+-            const activeTools = chatChannel === 'planning' ? PLANNING_MODE_TOOLS : AGENT_TOOLS;
+-
+             return await sendAgentMessage(
+               chatHistory,
+               enhancedContext,
+@@ -329,17 +379,155 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+         throw new Error('USER_CANCELLED');
+       }
+ 
+-      // ⭐ 积分确认逻辑：如果预计消耗积分 > 0 且本次调用尚未确认，暂停执行并等待用户确认
+-      if (action.requiresToolExecution && action.estimatedCredits && action.estimatedCredits > 0 && !hasConfirmedCreditsRef.current) {
++      const actionHasToolCalls = !!(action.requiresToolExecution && action.toolCalls && action.toolCalls.length > 0);
++      const shouldTriggerTools = hasToolExecutionIntent(message);
++      if (shouldTriggerTools && !actionHasToolCalls && !isCreditConfirmationPrompt(action.message)) {
++        const stepIdRetryToolAction = addStep({
++          type: 'thinking',
++          content: '检测到执行型指令但未返回工具调用，正在自动重试...',
++          status: 'running',
++        });
++        const retryStart = Date.now();
++
++        try {
++          action = await sendAgentMessage(
++            [
++              ...sessionManager.getMessages(),
++              {
++                role: 'user',
++                content: `系统校验：上一步未返回任何工具调用。请针对原始请求返回 tool_use 并附上 toolCalls，不要仅返回文本总结。原始请求：${message}`,
++              },
++            ],
++            enhancedContext,
++            undefined,
++            abortControllerRef.current?.signal,
++            activeTools
++          );
++
++          updateStep(stepIdRetryToolAction, {
++            status: 'completed',
++            duration: Date.now() - retryStart,
++            details: `重试动作类型: ${action.type}`,
++          });
++        } catch (retryError) {
++          updateStep(stepIdRetryToolAction, {
++            status: 'failed',
++            duration: Date.now() - retryStart,
++            content: '自动重试获取工具调用失败',
++          });
++          throw retryError;
++        }
++      }
++
++      const resolveEstimateInputs = () => {
++        const latestStore = useProjectStore.getState();
++        const latestProject = latestStore.project;
++        const estimateContext = buildEnhancedContext(
++          latestProject,
++          latestStore.currentSceneId ?? undefined,
++          latestStore.selectedShotId ?? undefined
++        );
++        const projectSnapshot = latestProject ? {
++          scenes: latestProject.scenes.map(scene => ({
++            id: scene.id,
++            soraStatus: scene.soraGeneration?.status || null,
++          })),
++          shots: latestProject.shots.map(shot => ({
++            id: shot.id,
++            sceneId: shot.sceneId,
++            duration: shot.duration,
++            order: shot.order,
++            globalOrder: shot.globalOrder,
++            referenceImage: shot.referenceImage || null,
++          })),
++          locations: latestProject.locations.map(location => ({
++            id: location.id,
++            referenceImages: location.referenceImages || [],
++          })),
++        } : null;
++
++        return { estimateContext, projectSnapshot };
++      };
++
++      const currentUserRole: 'user' | 'admin' | 'vip' = profile?.role === 'admin' || profile?.role === 'vip'
++        ? profile.role
++        : 'user';
++
++      const reconcileCreditEstimate = async (incomingAction: AgentAction): Promise<AgentAction> => {
++        if (!incomingAction.requiresToolExecution || !incomingAction.toolCalls || incomingAction.toolCalls.length === 0) {
++          return incomingAction;
++        }
++        if (!hasBillableToolCalls(incomingAction)) {
++          return incomingAction;
++        }
++
++        const { estimateContext, projectSnapshot } = resolveEstimateInputs();
++        const localEstimate = estimateAgentCredits(
++          incomingAction.toolCalls,
++          currentUserRole,
++          estimateContext
++        );
++
++        const serverEstimate = await estimateCreditsOnServer(
++          incomingAction.toolCalls,
++          estimateContext,
++          projectSnapshot,
++          abortControllerRef.current?.signal
++        );
++
++        if (typeof serverEstimate === 'number' && Number.isFinite(serverEstimate) && serverEstimate > 0) {
++          return { ...incomingAction, estimatedCredits: serverEstimate };
++        }
++
++        if (typeof serverEstimate === 'number' && serverEstimate === 0 && localEstimate > 0) {
++          console.warn('[useAgent] server estimate is 0 for billable action, fallback to local estimate', {
++            toolNames: incomingAction.toolCalls.map(toolCall => toolCall.name),
++            localEstimate,
++          });
++          return { ...incomingAction, estimatedCredits: localEstimate };
++        }
++
++        if (typeof serverEstimate === 'number' && Number.isFinite(serverEstimate) && serverEstimate >= 0) {
++          return { ...incomingAction, estimatedCredits: serverEstimate };
++        }
++
++        if (localEstimate > 0) {
++          return { ...incomingAction, estimatedCredits: localEstimate };
++        }
++
++        return incomingAction;
++      };
++
++      const buildBillableToolSignature = (incomingAction: AgentAction): string | null => {
++        if (!incomingAction.requiresToolExecution || !incomingAction.toolCalls || incomingAction.toolCalls.length === 0) {
++          return null;
++        }
++        const billableCalls = incomingAction.toolCalls.filter(toolCall => BILLABLE_TOOL_NAMES.has(toolCall.name));
++        if (billableCalls.length === 0) return null;
++        return billableCalls
++          .map(toolCall => `${toolCall.name}:${JSON.stringify(toolCall.arguments || {})}`)
++          .join('|');
++      };
++
++      const shouldAskForBillableConfirmation = (incomingAction: AgentAction, credits: number | null | undefined): boolean => {
++        if (!incomingAction.requiresToolExecution || !hasBillableToolCalls(incomingAction) || !credits || credits <= 0) {
++          return false;
++        }
++        const signature = buildBillableToolSignature(incomingAction);
++        if (!signature) return !hasConfirmedCreditsRef.current;
++        return confirmedBillableSignatureRef.current !== signature;
++      };
++
++      const requestCreditConfirmation = async (credits: number, confirmationMessage: string, confirmationKey?: string | null) => {
+         const stepIdConfirm = addStep({
+           type: 'thinking',
+-          content: `等待积分确认 (预计消耗 ${action.estimatedCredits} 积分)...`,
++          content: `等待积分确认 (预计消耗 ${credits} 积分)...`,
+           status: 'running',
+         });
+ 
+         setPendingConfirmation({
+-          credits: action.estimatedCredits,
+-          message: action.message || '该操作将消耗积分'
++          credits,
++          message: confirmationMessage || `该操作预计消耗 ${credits} 积分`
+         });
+ 
+         const confirmed = await new Promise<boolean>((resolve) => {
+@@ -356,11 +544,196 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+ 
+         // 记住本次调用已确认，后续不再重复询问
+         hasConfirmedCreditsRef.current = true;
++        if (confirmationKey) {
++          confirmedBillableSignatureRef.current = confirmationKey;
++        }
+ 
+         updateStep(stepIdConfirm, {
+           status: 'completed',
+           content: '积分确认成功，开始执行...',
+         });
++      };
++
++      const buildToolConfirmationMessage = (incomingAction: AgentAction, credits: number): string => {
++        const toolNames = Array.isArray(incomingAction.toolCalls)
++          ? Array.from(new Set(incomingAction.toolCalls.map(toolCall => toolCall.name).filter(Boolean)))
++          : [];
++
++        if (toolNames.length > 0) {
++          return `即将执行 ${toolNames.join('、')}，预计消耗 ${credits} 积分。请确认继续。`;
++        }
++
++        return `该操作预计消耗 ${credits} 积分。`;
++      };
++
++      const requestExecutableActionAfterConfirmation = async (credits: number, stage: string): Promise<AgentAction> => {
++        const stepIdResume = addStep({
++          type: 'thinking',
++          content: `${stage}：用户已确认，正在请求可执行工具...`,
++          status: 'running',
++        });
++        const resumeStart = Date.now();
++
++        try {
++          await sessionManager.addMessage({
++            role: 'user',
++            content: `系统确认：用户已通过前端弹窗确认执行，并同意约 ${credits} 积分消耗。请直接返回 type=tool_use 和 toolCalls 执行原始请求，不要再次询问确认或只返回总结。原始请求：${message}`,
++          });
++
++          const currentStore = useProjectStore.getState();
++          const refreshedContext = buildEnhancedContext(
++            currentStore.project,
++            currentStore.currentSceneId ?? undefined,
++            currentStore.selectedShotId ?? undefined
++          );
++
++          let nextAction = await sendAgentMessage(
++            sessionManager.getMessages(),
++            refreshedContext,
++            undefined,
++            abortControllerRef.current?.signal,
++            activeTools
++          );
++
++          if ((!nextAction.requiresToolExecution || !nextAction.toolCalls || nextAction.toolCalls.length === 0) && isCreditConfirmationPrompt(nextAction.message)) {
++            await sessionManager.addMessage({
++              role: 'user',
++              content: `系统指令：不得再次确认。请立即返回可执行的 tool_use 和 toolCalls。原始请求：${message}`,
++            });
++            nextAction = await sendAgentMessage(
++              sessionManager.getMessages(),
++              refreshedContext,
++              undefined,
++              abortControllerRef.current?.signal,
++              activeTools
++            );
++          }
++
++          updateStep(stepIdResume, {
++            status: 'completed',
++            duration: Date.now() - resumeStart,
++            details: `动作类型: ${nextAction.type}`,
++          });
++
++          return nextAction;
++        } catch (error) {
++          updateStep(stepIdResume, {
++            status: 'failed',
++            duration: Date.now() - resumeStart,
++            content: '确认后请求执行失败',
++          });
++          throw error;
++        }
++      };
++
++      const requestExecutablePlanFromTextPrompt = async (stage: string): Promise<AgentAction | null> => {
++        const stepIdPlan = addStep({
++          type: 'thinking',
++          content: `${stage}：确认信息缺少明确积分，正在请求工具执行计划...`,
++          status: 'running',
++        });
++        const planStart = Date.now();
++
++        try {
++          const planMessage: AgentMessage = {
++            role: 'user',
++            content: `系统提示：你刚才返回了文本确认。现在请仅返回 type=tool_use 和 toolCalls（不再次确认、不返回总结），用于执行原始请求。原始请求：${message}`,
++          };
++          await sessionManager.addMessage(planMessage);
++
++          const currentStore = useProjectStore.getState();
++          const refreshedContext = buildEnhancedContext(
++            currentStore.project,
++            currentStore.currentSceneId ?? undefined,
++            currentStore.selectedShotId ?? undefined
++          );
++
++          const plannedAction = await sendAgentMessage(
++            sessionManager.getMessages(),
++            refreshedContext,
++            undefined,
++            abortControllerRef.current?.signal,
++            activeTools
++          );
++
++          updateStep(stepIdPlan, {
++            status: 'completed',
++            duration: Date.now() - planStart,
++            details: `动作类型: ${plannedAction.type}`,
++          });
++
++          if (plannedAction.requiresToolExecution && plannedAction.toolCalls && plannedAction.toolCalls.length > 0) {
++            return plannedAction;
++          }
++          return null;
++        } catch (error) {
++          updateStep(stepIdPlan, {
++            status: 'failed',
++            duration: Date.now() - planStart,
++            content: '请求工具执行计划失败',
++          });
++          return null;
++        }
++      };
++
++      const resolveTextOnlyCreditConfirmation = async (incomingAction: AgentAction, stage: string): Promise<AgentAction> => {
++        const isTextOnlyCreditConfirmation =
++          !incomingAction.requiresToolExecution &&
++          (!incomingAction.toolCalls || incomingAction.toolCalls.length === 0) &&
++          isCreditConfirmationPrompt(incomingAction.message);
++
++        if (!isTextOnlyCreditConfirmation) {
++          return incomingAction;
++        }
++
++        let credits = incomingAction.estimatedCredits ?? extractEstimatedCreditsFromMessage(incomingAction.message) ?? 0;
++        let plannedAction: AgentAction | null = null;
++
++        if (credits <= 0) {
++          plannedAction = await requestExecutablePlanFromTextPrompt(stage);
++          if (plannedAction) {
++            plannedAction = await reconcileCreditEstimate(plannedAction);
++            credits = plannedAction.estimatedCredits ?? extractEstimatedCreditsFromMessage(incomingAction.message) ?? 0;
++          }
++        }
++
++        if (credits <= 0) {
++          throw new Error('无法计算本次操作积分，已停止执行。请重试并明确模型或目标范围。');
++        }
++
++        const plannedSignature = plannedAction ? buildBillableToolSignature(plannedAction) : null;
++        const shouldAskForTextFallback = plannedAction
++          ? shouldAskForBillableConfirmation(plannedAction, credits)
++          : !hasConfirmedCreditsRef.current;
++
++        if (shouldAskForTextFallback) {
++          await requestCreditConfirmation(
++            credits,
++            plannedAction
++              ? buildToolConfirmationMessage(plannedAction, credits)
++              : incomingAction.message,
++            plannedSignature
++          );
++        }
++
++        if (plannedAction) {
++          return plannedAction;
++        }
++
++        const resumedAction = await requestExecutableActionAfterConfirmation(credits, stage);
++        return await reconcileCreditEstimate(resumedAction);
++      };
++
++      action = await resolveTextOnlyCreditConfirmation(action, '初始阶段');
++      action = await reconcileCreditEstimate(action);
++      const actionCredits = action.estimatedCredits ?? extractEstimatedCreditsFromMessage(action.message);
++      // ⭐ 积分确认逻辑：如果预计消耗积分 > 0 且本次调用尚未确认，暂停执行并等待用户确认
++      if (shouldAskForBillableConfirmation(action, actionCredits)) {
++        await requestCreditConfirmation(
++          actionCredits as number,
++          buildToolConfirmationMessage(action, actionCredits as number),
++          buildBillableToolSignature(action)
++        );
+       }
+ 
+       // Step 5: Execute tools if needed (并行执行)
+@@ -429,7 +802,30 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+         });
+ 
+         if (dedupedToolCalls.length === 0) {
+-          // 没有新的工具可执行，跳出循环
++          const duplicateTools = Array.from(new Set(action.toolCalls.map(tc => tc.name)));
++          const hasExecutedAnyTool = allToolResults.length > 0;
++
++          addStep({
++            type: hasExecutedAnyTool ? 'thinking' : 'error',
++            content: hasExecutedAnyTool
++              ? `检测到重复工具调用（${duplicateTools.join('、')}），已自动结束避免重复扣费`
++              : '检测到重复工具调用，未执行新的操作，已中止本轮工具链',
++            status: hasExecutedAnyTool ? 'completed' : 'failed',
++          });
++
++          action = hasExecutedAnyTool
++            ? {
++              ...action,
++              type: 'none',
++              requiresToolExecution: false,
++              message: '已完成本轮操作，自动跳过重复工具调用。',
++            }
++            : {
++              ...action,
++              type: 'none',
++              requiresToolExecution: false,
++              message: '⚠️ AI 返回了重复工具调用，本轮未执行新的操作，请重试。',
++            };
+           break;
+         }
+ 
+@@ -562,6 +958,17 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+           action = { type: 'none', message: '生成完成', requiresToolExecution: false };
+         }
+ 
++        action = await resolveTextOnlyCreditConfirmation(action, `第${iteration}轮后续阶段`);
++        action = await reconcileCreditEstimate(action);
++        const nextActionCredits = action.estimatedCredits ?? extractEstimatedCreditsFromMessage(action.message);
++        if (shouldAskForBillableConfirmation(action, nextActionCredits)) {
++          await requestCreditConfirmation(
++            nextActionCredits as number,
++            buildToolConfirmationMessage(action, nextActionCredits as number),
++            buildBillableToolSignature(action)
++          );
++        }
++
+         // 如果下一轮没有工具需要执行，提前终止循环，防止卡住
+         if (!action.toolCalls || action.toolCalls.length === 0) {
+           action.requiresToolExecution = false;
+@@ -689,8 +1096,13 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+       const generatedLabels = formatGroupedShots(generated);
+       const overwrittenLabels = formatGroupedShots(overwritten);
+       const skippedLabels = formatGroupedShots(skipped);
++      const noToolExecuted = allToolResults.length === 0;
++      const expectedExecutionButNoTools = hasToolExecutionIntent(message) && noToolExecuted;
+ 
+       let finalSummary = action.message || '处理完成';
++      if (expectedExecutionButNoTools) {
++        finalSummary = `⚠️ 本次请求未执行任何工具操作。\n请重试一次，或明确指定目标（例如“为场景1批量生成 2x2 Grid”）。\n\n模型回复：${action.message || '（空）'}`;
++      }
+       const lines: string[] = [];
+       if (generatedLabels.length > 0) {
+         lines.push(`生成：${generatedLabels.join('、')}`);
+@@ -753,7 +1165,14 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+         });
+       }
+ 
+-      toast.success('处理完成');
++      const endedOnConfirmationText = noToolExecuted && isCreditConfirmationPrompt(finalSummary);
++      if (endedOnConfirmationText) {
++        toast.warning('检测到积分确认请求，尚未执行任务');
++      } else if (expectedExecutionButNoTools) {
++        toast.warning('未检测到工具执行，任务未真正落地');
++      } else {
++        toast.success('处理完成');
++      }
+ 
+     } catch (error: any) {
+       if (error?.message === 'USER_CANCELLED' || error?.name === 'AbortError') {
+@@ -791,6 +1210,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+     isProcessing,
+     lastMessageHash,
+     user,
++    profile,
+     loading,
+     isAuthenticated,
+     chatChannel,
+@@ -810,6 +1230,8 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+     setThinkingSteps([]);
+     thinkingStepsRef.current = [];
+     setSummary('');
++    hasConfirmedCreditsRef.current = false;
++    confirmedBillableSignatureRef.current = null;
+     toast.info('会话已清除');
+   }, [sessionManager, project]);
+ 
+@@ -823,6 +1245,8 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentResult {
+     setThinkingSteps([]);
+     thinkingStepsRef.current = [];
+     setSummary('');
++    hasConfirmedCreditsRef.current = false;
++    confirmedBillableSignatureRef.current = null;
+     setPendingConfirmation(null);
+     if (confirmationResolverRef.current) {
+       confirmationResolverRef.current(false);
+diff --git a/src/services/agentService.ts b/src/services/agentService.ts
+index 95de866..ef9cc66 100644
+--- a/src/services/agentService.ts
++++ b/src/services/agentService.ts
+@@ -4,8 +4,8 @@
+  */
+ 
+ import { AGENT_TOOLS, ToolCall, formatToolsForPrompt, ToolDefinition } from './agentToolDefinitions';
+-import { calculateCredits } from '@/config/credits';
+ import { authenticatedFetch } from '@/lib/api-client';
++import { estimateAgentCreditsDetailed, type CreditEstimateContext, type CreditEstimateProjectSnapshot } from '@/lib/agent/credit-estimator';
+ 
+ const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3-flash-preview'; // Agent推理模型
+ 
+@@ -302,6 +302,30 @@ const sanitizeToolResults = (toolResults: Array<{ tool: string; result: any; err
+   }));
+ };
+ 
++function extractToolCallsFromCandidate(candidate: any): ToolCall[] {
++  const parts = candidate?.content?.parts;
++  if (!Array.isArray(parts)) return [];
++
++  return parts
++    .map((part: any) => part?.functionCall)
++    .filter((functionCall: any) => functionCall?.name)
++    .map((functionCall: any) => ({
++      name: functionCall.name,
++      arguments: functionCall.args || {}
++    }));
++}
++
++function extractTextFromCandidate(candidate: any): string {
++  const parts = candidate?.content?.parts;
++  if (!Array.isArray(parts)) return '';
++
++  return parts
++    .map((part: any) => (typeof part?.text === 'string' ? part.text : ''))
++    .filter(Boolean)
++    .join('\n')
++    .trim();
++}
++
+ export interface AgentMessage {
+   role: 'user' | 'assistant' | 'system' | 'tool';
+   content: string;
+@@ -348,76 +372,42 @@ export interface AgentAction {
+  * 预估工具调用所需的积分
+  */
+ export function estimateCredits(toolCalls: ToolCall[], userRole: 'user' | 'admin' | 'vip' = 'user', context?: AgentContext): number {
+-  let total = 0;
+-  for (const tc of toolCalls) {
+-    switch (tc.name) {
+-      case 'generateShotImage': {
+-        const mode = tc.arguments.mode;
+-        if (mode === 'grid') {
+-          const gridSize = tc.arguments.gridSize || '2x2';
+-          const [rows, cols] = gridSize.split('x').map(Number);
+-          total += calculateCredits(`GEMINI_GRID_${rows}X${cols}` as any, userRole);
+-        } else if (mode === 'gemini') {
+-          total += calculateCredits('GEMINI_IMAGE', userRole);
+-        } else if (mode === 'seedream') {
+-          total += calculateCredits('SEEDREAM_GENERATE', userRole);
+-        } else {
+-          // 默认为 Jimeng/Volcano
+-          total += calculateCredits('VOLCANO_GENERATE', userRole);
+-        }
+-        break;
+-      }
+-      case 'batchGenerateSceneImages': {
+-        // 估算：假设平均每个场景 5 个镜头
+-        const avgShots = 5;
+-        const perShotCost = calculateCredits('VOLCANO_GENERATE', userRole);
+-        total += avgShots * perShotCost;
+-        break;
+-      }
+-      case 'batchGenerateProjectImages': {
+-        const shotCount = context?.shotCount || 10;
+-        const perShotCost = calculateCredits('VOLCANO_GENERATE', userRole);
+-        total += shotCount * perShotCost;
+-        break;
+-      }
+-      case 'generateSceneVideo': {
+-        // 估算：假设平均每个场景 5 个镜头，合并后产生 2-3 个视频段
+-        // VOLCANO_VIDEO 是单次生成费用
+-        const model = tc.arguments.model === 'sora-2-pro' ? 'sora-2-pro' : 'sora-2';
+-        const videoCost = model === 'sora-2-pro'
+-          ? calculateCredits('SORA2_PRO_25S', userRole)
+-          : calculateCredits('VOLCANO_VIDEO', userRole);
+-        total += videoCost * 3;
+-        break;
+-      }
+-      case 'generateShotsVideo': {
+-        // 估算：根据 shotIds 数量
+-        const shotIds = tc.arguments.shotIds;
+-        const count = Array.isArray(shotIds) ? shotIds.length : 1;
+-        // 假设智能合并比率 0.5 (每2个镜头合成一段)
+-        const model = tc.arguments.model === 'sora-2-pro' ? 'sora-2-pro' : 'sora-2';
+-        const videoCost = model === 'sora-2-pro'
+-          ? calculateCredits('SORA2_PRO_25S', userRole)
+-          : calculateCredits('VOLCANO_VIDEO', userRole);
+-        total += Math.ceil(count * 0.5) * videoCost;
+-        break;
+-      }
+-      case 'batchGenerateProjectVideosSora': {
+-        const shotCount = context?.shotCount || 21; // Default to multiple of 3 for cleaner calc
+-        // 估算：Sora 逻辑会将连续镜头合并 (平均每 3 个镜头生成一段 15s 视频)
+-        const model = tc.arguments.model === 'sora-2-pro' ? 'sora-2-pro' : 'sora-2';
+-        const videoCost = model === 'sora-2-pro'
+-          ? calculateCredits('SORA2_PRO_25S', userRole)
+-          : calculateCredits('VOLCANO_VIDEO', userRole);
+-        total += Math.ceil(shotCount / 3.0) * videoCost;
+-        break;
+-      }
+-      case 'generateCharacterThreeView':
+-        total += calculateCredits('GEMINI_IMAGE', userRole);
+-        break;
++  return estimateAgentCreditsDetailed({
++    toolCalls,
++    userRole,
++    context: context as CreditEstimateContext | undefined,
++  }).estimatedCredits;
++}
++
++export async function estimateCreditsOnServer(
++  toolCalls: ToolCall[],
++  context?: AgentContext,
++  projectSnapshot?: CreditEstimateProjectSnapshot | null,
++  signal?: AbortSignal
++): Promise<number | null> {
++  try {
++    const response = await authenticatedFetch('/api/agent/estimate-credits', {
++      method: 'POST',
++      body: JSON.stringify({
++        toolCalls,
++        context,
++        projectSnapshot,
++      }),
++      signal,
++    });
++
++    if (!response.ok) return null;
++
++    const data = await response.json();
++    if (!data?.success || typeof data?.estimatedCredits !== 'number') {
++      return null;
+     }
++
++    return data.estimatedCredits;
++  } catch (error) {
++    console.warn('[agentService] estimateCreditsOnServer failed:', error);
++    return null;
+   }
+-  return total;
+ }
+ 
+ /**
+@@ -818,25 +808,21 @@ export async function sendMessage(
+     }
+ 
+     // Check if Gemini made function calls
+-    const functionCall = candidate.content?.parts?.[0]?.functionCall;
++    const toolCalls = extractToolCallsFromCandidate(candidate);
+ 
+-    if (functionCall) {
++    if (toolCalls.length > 0) {
+       // Gemini wants to call a tool
+-      const toolCalls = [{
+-        name: functionCall.name,
+-        arguments: functionCall.args || {}
+-      }];
+       return {
+         type: 'tool_use',
+         toolCalls,
+-        message: `正在调用工具: ${functionCall.name}`,
++        message: `正在调用工具: ${toolCalls.map(tc => tc.name).join(', ')}`,
+         requiresToolExecution: true,
+         estimatedCredits: estimateCredits(toolCalls, 'user', context)
+       };
+     }
+ 
+     // Gemini returned text response
+-    const text = candidate.content?.parts?.map((p: any) => p.text).join('\n') || '';
++    const text = extractTextFromCandidate(candidate);
+ 
+     // Try to parse as JSON action
+     try {
+@@ -974,25 +960,21 @@ export async function continueWithToolResults(
+     }
+ 
+     // Check if Gemini made another function call
+-    const functionCall = candidate.content?.parts?.[0]?.functionCall;
++    const toolCalls = extractToolCallsFromCandidate(candidate);
+ 
+-    if (functionCall) {
++    if (toolCalls.length > 0) {
+       // Gemini wants to call another tool
+-      const toolCalls = [{
+-        name: functionCall.name,
+-        arguments: functionCall.args || {}
+-      }];
+       return {
+         type: 'tool_use',
+         toolCalls,
+-        message: `正在调用工具: ${functionCall.name}`,
++        message: `正在调用工具: ${toolCalls.map(tc => tc.name).join(', ')}`,
+         requiresToolExecution: true,
+         estimatedCredits: estimateCredits(toolCalls)
+       };
+     }
+ 
+     // Gemini returned text response
+-    const text = candidate?.content?.parts?.[0]?.text || '';
++    const text = extractTextFromCandidate(candidate);
+ 
+     // Try to parse as JSON action
+     try {
+diff --git a/src/services/agentToolDefinitions.ts b/src/services/agentToolDefinitions.ts
+index 599eb11..63869af 100644
+--- a/src/services/agentToolDefinitions.ts
++++ b/src/services/agentToolDefinitions.ts
+@@ -44,11 +44,6 @@ export const AGENT_TOOLS: ToolDefinition[] = [
+                 sceneId: {
+                     type: 'string',
+                     description: '场景的ID'
+-                },
+-                model: {
+-                    type: 'string',
+-                    enum: ['sora-2', 'sora-2-pro'],
+-                    description: 'Sora 模型（可选，默认 sora-2）'
+                 }
+             },
+             required: ['sceneId']
+@@ -108,7 +103,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
+                 },
+                 force: {
+                     type: 'boolean',
+-                    description: '是否强制覆盖已有图片/历史（默认 false，不覆盖）'
++                    description: '是否强制覆盖已有图片/历史（默认 true，会重新生成）'
+                 }
+             },
+             required: ['shotId', 'mode']
+@@ -261,6 +256,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
+                 sceneId: {
+                     type: 'string',
+                     description: '场景的ID'
++                },
++                model: {
++                    type: 'string',
++                    enum: ['sora-2', 'sora-2-pro'],
++                    description: 'Sora 模型（可选，默认 sora-2）'
+                 }
+             },
+             required: ['sceneId']
+diff --git a/src/services/agentTools.ts b/src/services/agentTools.ts
+index a7ec13a..0c4d56c 100644
+--- a/src/services/agentTools.ts
++++ b/src/services/agentTools.ts
+@@ -110,11 +110,11 @@ export class AgentToolExecutor {
+         case 'batchGenerateProjectImages':
+           return this.generationTools.batchGenerateProjectImages(args.mode, args.gridSize, args.prompt, args.force);
+         case 'generateSceneVideo':
+-          return this.generationTools.generateSceneVideo(args.sceneId);
++          return this.generationTools.generateSceneVideo(args.sceneId, args.model);
+         case 'generateShotsVideo':
+-          return this.generationTools.generateShotsVideo(args.sceneId, args.shotIds, args.shotIndexes, args.globalShotIndexes);
++          return this.generationTools.generateShotsVideo(args.sceneId, args.shotIds, args.shotIndexes, args.globalShotIndexes, args.model);
+         case 'batchGenerateProjectVideosSora':
+-          return this.generationTools.batchGenerateProjectVideosSora(args.force);
++          return this.generationTools.batchGenerateProjectVideosSora(args.force, args.model);
+         case 'generateViduVideo':
+           return this.generationTools.generateViduVideo(args.shotId, args.mode, args.resolution, args.off_peak);
+ 
+diff --git a/src/services/geminiService.ts b/src/services/geminiService.ts
+index 10645a5..0ba1a28 100644
+--- a/src/services/geminiService.ts
++++ b/src/services/geminiService.ts
+@@ -569,7 +569,7 @@ Do NOT write full sentences. Do NOT describe the subject again if the user alrea
+ 
+   try {
+     const data = await postJson<{ result: string }>('/api/gemini-text', {
+-      model: 'gemini-3-pro-preview', // 使用 Pro 模型
++      model: 'gemini-3.1-pro-preview', // 使用 Pro 模型
+       prompt: baseIdea.trim()
+         ? `User Idea: "${baseIdea}"`
+         : 'User Idea: Cinematic shot based on references.',
+diff --git a/src/services/tools/generationTools.ts b/src/services/tools/generationTools.ts
+index 7280ace..f6d36c5 100644
+--- a/src/services/tools/generationTools.ts
++++ b/src/services/tools/generationTools.ts
+@@ -124,13 +124,15 @@ export class GenerationTools {
+                 metadata: {
+                     images: imageUrls,
+                     model: modelKey,
++                    source: 'agent_sync',
+                 }
+             };
+ 
+             if (modelKey === 'gemini-grid') {
++                const gridSlices = result.allSlices || [result.imageUrl];
+                 assistantMsg.metadata.gridData = {
+                     fullImage: result.fullGridUrl || result.imageUrl,
+-                    slices: result.allSlices || [result.imageUrl],
++                    slices: gridSlices,
+                     sceneId: sceneId,
+                     shotId: shotId,
+                     prompt: finalPrompt,
+@@ -139,7 +141,9 @@ export class GenerationTools {
+                     gridSize: result.gridSize || '2x2',
+                     aspectRatio: result.aspectRatio || this.project.settings.aspectRatio,
+                 };
+-                assistantMsg.metadata.images = [assistantMsg.metadata.gridData.fullImage];
++                assistantMsg.metadata.images = shotId
++                    ? gridSlices
++                    : [assistantMsg.metadata.gridData.fullImage];
+             }
+ 
+             await dataService.saveChatMessage(assistantMsg, this.userId);
+@@ -631,7 +635,7 @@ export class GenerationTools {
+         };
+     }
+ 
+-    async generateSceneVideo(sceneId: string): Promise<ToolResult> {
++    async generateSceneVideo(sceneId: string, model?: 'sora-2' | 'sora-2-pro'): Promise<ToolResult> {
+         if (!this.project) return { tool: 'generateSceneVideo', result: null, success: false, error: 'Project not found' };
+ 
+         try {
+@@ -640,7 +644,7 @@ export class GenerationTools {
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                     tool: 'generateSceneVideo',
+-                    args: { sceneId },
++                    args: { sceneId, model },
+                     project: this.project,
+                     userId: this.userId
+                 })
+@@ -659,7 +663,13 @@ export class GenerationTools {
+         }
+     }
+ 
+-    async generateShotsVideo(sceneId: string, shotIds: string[], shotIndexes: number[], globalShotIndexes: number[]): Promise<ToolResult> {
++    async generateShotsVideo(
++        sceneId: string,
++        shotIds: string[],
++        shotIndexes: number[],
++        globalShotIndexes: number[],
++        model?: 'sora-2' | 'sora-2-pro'
++    ): Promise<ToolResult> {
+         if (!this.project) return { tool: 'generateShotsVideo', result: null, success: false, error: 'Project not found' };
+ 
+         let finalShotIds = shotIds || [];
+@@ -714,7 +724,7 @@ export class GenerationTools {
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                     tool: 'generateShotsVideo',
+-                    args: { sceneId: finalSceneId, shotIds: finalShotIds },
++                    args: { sceneId: finalSceneId, shotIds: finalShotIds, model },
+                     project: this.project,
+                     userId: this.userId
+                 })
+@@ -731,7 +741,7 @@ export class GenerationTools {
+         }
+     }
+ 
+-    async batchGenerateProjectVideosSora(force: boolean): Promise<ToolResult> {
++    async batchGenerateProjectVideosSora(force: boolean = false, model?: 'sora-2' | 'sora-2-pro'): Promise<ToolResult> {
+         if (!this.project) return { tool: 'batchGenerateProjectVideosSora', result: null, success: false, error: 'Project not found' };
+         try {
+             const response = await fetch('/api/agent/tools/execute', {
+@@ -739,7 +749,7 @@ export class GenerationTools {
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                     tool: 'batchGenerateProjectVideosSora',
+-                    args: { force },
++                    args: { force: force === true, model },
+                     project: this.project,
+                     userId: this.userId
+                 })
+diff --git a/src/store/useProjectStore.ts b/src/store/useProjectStore.ts
+index fa5ed7d..0544c5a 100644
+--- a/src/store/useProjectStore.ts
++++ b/src/store/useProjectStore.ts
+@@ -238,14 +238,14 @@ export const useProjectStore = create<ProjectStore>()(
+ 
+     // Project Actions
+     loadProject: (project) =>
+-      set(() => {
++      set((state) => {
+         normalizeSceneOrder(project);
+         recalcShotOrders(project);
+         return {
+           project,
+           chatCache: {},
+-          leftSidebarCollapsed: true, // Reset sidebar state on load
+-          rightSidebarCollapsed: true
++          leftSidebarCollapsed: state.leftSidebarCollapsed,
++          rightSidebarCollapsed: state.rightSidebarCollapsed
+         };
+       }),
+ 
+diff --git "a/test/copy-of-canvas\350\277\236\347\273\255\345\210\233\344\275\234-of-directordeck/services/geminiService.ts" "b/test/copy-of-canvas\350\277\236\347\273\255\345\210\233\344\275\234-of-directordeck/services/geminiService.ts"
+index 237ce83..6578e31 100644
+--- "a/test/copy-of-canvas\350\277\236\347\273\255\345\210\233\344\275\234-of-directordeck/services/geminiService.ts"
++++ "b/test/copy-of-canvas\350\277\236\347\273\255\345\210\233\344\275\234-of-directordeck/services/geminiService.ts"
+@@ -31,13 +31,13 @@ const sliceImageGrid = (base64Data: string, rows: number, cols: number): Promise
+       const h = img.height;
+       const pieceWidth = Math.floor(w / cols);
+       const pieceHeight = Math.floor(h / rows);
+-      
++
+       const pieces: string[] = [];
+       const canvas = document.createElement('canvas');
+       canvas.width = pieceWidth;
+       canvas.height = pieceHeight;
+       const ctx = canvas.getContext('2d');
+-      
++
+       if (!ctx) {
+         reject(new Error("无法获取画布上下文"));
+         return;
+@@ -45,20 +45,20 @@ const sliceImageGrid = (base64Data: string, rows: number, cols: number): Promise
+ 
+       for (let r = 0; r < rows; r++) {
+         for (let c = 0; c < cols; c++) {
+-            ctx.clearRect(0, 0, pieceWidth, pieceHeight);
+-            // Source x, y, w, h -> Dest x, y, w, h
+-            ctx.drawImage(
+-                img, 
+-                c * pieceWidth, 
+-                r * pieceHeight, 
+-                pieceWidth, 
+-                pieceHeight, 
+-                0, 
+-                0, 
+-                pieceWidth, 
+-                pieceHeight
+-            );
+-            pieces.push(canvas.toDataURL('image/png'));
++          ctx.clearRect(0, 0, pieceWidth, pieceHeight);
++          // Source x, y, w, h -> Dest x, y, w, h
++          ctx.drawImage(
++            img,
++            c * pieceWidth,
++            r * pieceHeight,
++            pieceWidth,
++            pieceHeight,
++            0,
++            0,
++            pieceWidth,
++            pieceHeight
++          );
++          pieces.push(canvas.toDataURL('image/png'));
+         }
+       }
+       resolve(pieces);
+@@ -76,7 +76,7 @@ const getAspectRatioValue = (ar: string): number => {
+ 
+ // Helper to stitch multiple images into a grid with specific layout and aspect ratio
+ export const stitchImages = (
+-  files: File[], 
++  files: File[],
+   layout: '2x2' | '3x3' = '2x2',
+   targetAspectRatio: string = '16:9'
+ ): Promise<string> => {
+@@ -109,7 +109,7 @@ export const stitchImages = (
+ 
+     const drawGrid = () => {
+       // Base width for high resolution
+-      const totalWidth = 2048; 
++      const totalWidth = 2048;
+       // Calculate total height based on target aspect ratio
+       const arValue = getAspectRatioValue(targetAspectRatio);
+       const totalHeight = Math.round(totalWidth / arValue);
+@@ -151,12 +151,12 @@ export const stitchImages = (
+         ctx.rect(x, y, cellWidth, cellHeight);
+         ctx.clip();
+         ctx.drawImage(img, x + ox, y + oy, w, h);
+-        
++
+         // Add subtle separator if needed (optional)
+         // ctx.strokeStyle = "#000";
+         // ctx.lineWidth = 2;
+         // ctx.strokeRect(x, y, cellWidth, cellHeight);
+-        
++
+         ctx.restore();
+       });
+ 
+@@ -175,14 +175,14 @@ export const generateMultiViewGrid = async (
+   gridRows: number, // 2 or 3
+   gridCols: number, // 2 or 3
+   aspectRatio: AspectRatio,
+-  imageSize: ImageSize, 
++  imageSize: ImageSize,
+   referenceImages: ReferenceImageData[] = [],
+   contextImage?: string // New: Previous generation result for continuity
+ ): Promise<{ fullImage: string, slices: string[] }> => {
+   await ensureApiKey();
+   const ai = getClient();
+   const model = 'gemini-3-pro-image-preview';
+-  
++
+   const totalViews = gridRows * gridCols;
+   const gridType = `${gridRows}x${gridCols}`;
+ 
+@@ -202,38 +202,38 @@ export const generateMultiViewGrid = async (
+ 
+   // If we have context, modify instructions to enforce consistency
+   if (contextImage) {
+-      finalPrompt += `\n\nCONTINUITY INSTRUCTION (Context Image Provided):
++    finalPrompt += `\n\nCONTINUITY INSTRUCTION (Context Image Provided):
+       - The first image provided is the "Context Reference" (Previous Shot).
+       - GOAL: VISUAL CONSISTENCY. Keep the same character design, clothing, lighting, and environment style as the Context Reference.`;
+-      
+-      if (referenceImages.length > 0) {
+-          finalPrompt += `\n\nNEW ACTION INSTRUCTION (Reference Images Provided):
++
++    if (referenceImages.length > 0) {
++      finalPrompt += `\n\nNEW ACTION INSTRUCTION (Reference Images Provided):
+           - The other images provided are "Action/Layout References".
+           - ACTION/COMPOSITION: Adopt the composition, camera angle, and character pose from these new reference images.
+           - SYNTHESIS: Re-draw the scene using the STYLE/CHARACTER from the Context Reference, but performing the ACTION/LAYOUT of the Reference Images.`;
+-      } else {
+-          finalPrompt += `\n- This is a direct sequel. Advance the action naturally based on the prompt.`;
+-      }
++    } else {
++      finalPrompt += `\n- This is a direct sequel. Advance the action naturally based on the prompt.`;
++    }
+   } else if (referenceImages.length > 0) {
+-      // Standard reference usage
+-      finalPrompt += `\n\nREFERENCE INSTRUCTION:
++    // Standard reference usage
++    finalPrompt += `\n\nREFERENCE INSTRUCTION:
+       - Use the provided images as visual references for style, composition, and character design.`;
+   }
+ 
+   const parts: any[] = [];
+-  
++
+   // Add Context Image First (High priority for consistency)
+   if (contextImage) {
+-      // Clean base64 header if present
+-      const cleanBase64 = contextImage.includes(',') ? contextImage.split(',')[1] : contextImage;
+-      parts.push({
+-          inlineData: {
+-              mimeType: 'image/png',
+-              data: cleanBase64
+-          }
+-      });
++    // Clean base64 header if present
++    const cleanBase64 = contextImage.includes(',') ? contextImage.split(',')[1] : contextImage;
++    parts.push({
++      inlineData: {
++        mimeType: 'image/png',
++        data: cleanBase64
++      }
++    });
+   }
+-  
++
+   // Add other reference images
+   for (const ref of referenceImages) {
+     parts.push({
+@@ -243,7 +243,7 @@ export const generateMultiViewGrid = async (
+       }
+     });
+   }
+-  
++
+   parts.push({ text: finalPrompt });
+ 
+   try {
+@@ -281,13 +281,13 @@ export const generateMultiViewGrid = async (
+ };
+ 
+ export const generateCameraMovement = async (
+-    prompt: string
++  prompt: string
+ ): Promise<string> => {
+-    await ensureApiKey();
+-    const ai = getClient();
+-    const model = 'gemini-2.5-flash';
++  await ensureApiKey();
++  const ai = getClient();
++  const model = 'gemini-2.5-flash';
+ 
+-    const systemInstruction = `You are a specialized AI Video prompter assistant. 
++  const systemInstruction = `You are a specialized AI Video prompter assistant. 
+     Analyze the scene description and provide a technical Camera Movement Prompt that can be used for video generation models (like Veo or Sora).
+     
+     Examples:
+@@ -298,17 +298,17 @@ export const generateCameraMovement = async (
+     
+     Output ONLY the camera movement description. Max 15 words. English.`;
+ 
+-    try {
+-        const response = await ai.models.generateContent({
+-            model,
+-            contents: { parts: [{ text: `Scene: ${prompt}` }] },
+-            config: { systemInstruction }
+-        });
+-        return response.text || "Static shot, slow zoom.";
+-    } catch (error) {
+-        console.error("Camera gen error:", error);
+-        return "Cinematic movement.";
+-    }
++  try {
++    const response = await ai.models.generateContent({
++      model,
++      contents: { parts: [{ text: `Scene: ${prompt}` }] },
++      config: { systemInstruction }
++    });
++    return response.text || "Static shot, slow zoom.";
++  } catch (error) {
++    console.error("Camera gen error:", error);
++    return "Cinematic movement.";
++  }
+ }
+ 
+ export const analyzeAsset = async (
+@@ -318,7 +318,7 @@ export const analyzeAsset = async (
+ ): Promise<string> => {
+   await ensureApiKey();
+   const ai = getClient();
+-  const model = 'gemini-3-pro-preview';
++  const model = 'gemini-3.1-pro-preview';
+ 
+   try {
+     const response = await ai.models.generateContent({
+@@ -383,7 +383,7 @@ export const generateCinematicPrompt = async (
+   Do NOT write full sentences. Do NOT describe the subject again if the user already did. Just add the technical sauce.`;
+ 
+   const contents: any[] = [];
+-  
++
+   if (baseIdea.trim()) {
+     contents.push({ text: `User Idea: "${baseIdea}"` });
+   } else {
+@@ -405,7 +405,7 @@ export const generateCinematicPrompt = async (
+       model,
+       config: {
+         systemInstruction,
+-        temperature: 0.7 
++        temperature: 0.7
+       },
+       contents: { parts: contents }
+     });

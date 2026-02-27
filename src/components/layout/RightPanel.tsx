@@ -5,6 +5,9 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { Bot, Sliders, ChevronRight, ChevronLeft, X, Sparkles } from 'lucide-react';
 import AgentPanel from '../agent/AgentPanel';
 import ChatPanel from '@/components/chat/ChatPanel';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { dataService } from '@/lib/dataService';
+import { ensurePersistedImageUrl } from '@/lib/media-url';
 
 import { ShotDetailsPanel } from '../chat/ShotDetailsPanel';
 import { toast } from 'sonner';
@@ -30,6 +33,7 @@ export default function RightPanel() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const selectedShot = project?.shots.find(s => s.id === selectedShotId);
+  const { user } = useAuth();
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -61,15 +65,45 @@ export default function RightPanel() {
     toast.info('已发送生成请求到对话框');
   };
 
-  const handleApplyHistory = (item: any) => {
+  const handleApplyHistory = async (item: any) => {
     if (!selectedShot) return;
-    updateShot(selectedShot.id, {
-      referenceImage: item.result,
-      status: 'done',
-      fullGridUrl: item.parameters?.fullGridUrl,
-      gridImages: item.parameters?.slices
-    });
-    toast.success('已应用历史记录');
+
+    if (!project?.id || !user?.id) {
+      toast.error('请先登录后再试');
+      return;
+    }
+
+    try {
+      const resolvedUrl = await ensurePersistedImageUrl({
+        url: item.result,
+        userId: user.id,
+        folder: {
+          projectId: project.id,
+          scope: 'shots',
+          entityId: selectedShot.id,
+          assetType: 'reference',
+          model: 'history_apply'
+        },
+        filenamePrefix: 'history_ref'
+      });
+
+      const updates = {
+        referenceImage: resolvedUrl,
+        status: 'done' as const,
+        fullGridUrl: item.parameters?.fullGridUrl,
+        gridImages: item.parameters?.slices
+      };
+
+      updateShot(selectedShot.id, updates);
+      await dataService.saveShot(selectedShot.sceneId, {
+        ...selectedShot,
+        ...updates
+      } as any);
+      toast.success('已应用历史记录');
+    } catch (error) {
+      console.error('Failed to apply history image:', error);
+      toast.error('应用历史记录失败');
+    }
   };
 
   return (
@@ -181,4 +215,3 @@ export default function RightPanel() {
     </div>
   );
 }
-

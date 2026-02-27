@@ -119,7 +119,7 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 - **Supabase Auth Integration** - Secure user authentication
 - **Three-tier Role System** - admin (free) / vip (80% off) / user (standard price)
 - **Credits Management** - All AI operations consume credits
-- **Agent Credit Estimation & Confirmation** - Advanced conversational interceptor calculating and awaiting explicit user confirmation for batch/generative AI operations (preventing accidental large credit deductions).
+- **Agent Credit Estimation & Confirmation** - Advanced conversational interceptor predicting Server-Side execution costs, coupled with a robust double-confirmation UI and Text-Fallback defense against accidental duplicate charges.
 - **Auto Profile Creation** - Profile auto-created on first login
 - **Session Persistence** - Cookie-based session with auto-refresh (client + middleware)
 - **Server-side Refresh** - Middleware refreshes expired access tokens and injects `Authorization` for API routes
@@ -132,6 +132,7 @@ Video Agent Pro is an AI-powered video storyboard generation and editing tool bu
 ### 🆕 Cloud Storage & Sync
 - **Supabase Database** - PostgreSQL cloud storage for all data
 - **Cloudflare R2** - Media file storage (images, videos, audio)
+- **R2 Auto Persistence** - Any local `blob:` or `data:` URL from chat history, grids or drag-and-drop is seamlessly converted to R2 links before being persisted to the project sequence.
 - **Project-based R2 Paths** - Assets stored under `projects/{projectId}/...` for traceability (legacy paths remain valid)
 - **Chat History Sync** - Three-level scope (project/scene/shot)
 - **Auto-sync** - Automatic data synchronization across devices

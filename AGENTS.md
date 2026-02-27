@@ -211,7 +211,7 @@ const { controlMode, setControlMode } = useProjectStore();
 | | 并行执行器 | `parallelExecutor.ts` | 多工具并行执行（含 Vidu） |
 | | 上下文构建 | `contextBuilder.ts` | Agent 对话上下文组装 |
 | | 会话管理 | `sessionManager.ts` | 多轮对话会话持久化 |
-| **图片生成** | Gemini 服务 | `geminiService.ts` | Grid 多视图、图片分析、编辑 |
+| **图片生成** | Gemini 服务 | `geminiService.ts` | Grid 多视图、图片分析、编辑 (使用 3.1 Pro 及 3 Pro Image) |
 | | 火山引擎 | `volcanoEngineService.ts` | SeeDream 图片、SeeDance 视频 |
 | | 即梦服务 | `jimengService.ts` | 中文优化图片生成 |
 | | R2 上传 | `r2-server-upload.ts` | 服务端上传、Grid 切片、预签名 URL 生成 |
@@ -327,9 +327,10 @@ if ('error' in authResult) return authResult.error;
 
 为避免 Agent 模式下触发批量高耗能 AI 操作（如生成多个 15s 视频、并发批量跑图）导致用户积分瞬间透支，系统引入了**前置消费预估与拦截确认**体系：
 
-1. **预检拦截 (`credit-estimator.ts`)**：Agent 探测到意图为「调用生成类功能」时，不会死等 Function Calling 结果，而是通过预测 API (`/api/agent/estimate-credits`) 对照系统资源容量，自动预先展开开销测算（精准至单图/每秒单价以及批量预估）。
-2. **显式确认 (`AgentPanel.tsx`)**：如果预计消费 \`> 0\` 积分，Agent 将中止自动化执行。前端在对话流中会渲染高度定制的卡片（展示执行详情及明细列表），强制等待用户显式点击「确认执行」后再继续执行真正的生成作业。
-3. **安全垫底**：对于用户终止或拒签的请求，系统将抛出 `USER_CANCELLED`，确保无任何后台隐式扣费漏洞。
+1. **预检拦截 (`credit-estimator.ts`)**：Agent 探测到意图为「调用生成类功能」时，不会死等 Function Calling 结果，而是通过客户端侧及服务端的预测 API (`/api/agent/estimate-credits`) 对照系统资源容量，自动预先展开开销测算（精准至单图/每秒单价以及批量预估）。
+2. **显式确认 (`AgentPanel.tsx`)**：如果预计消费 \`> 0\` 积分，Agent 将中止自动化执行，前端会在对话流中渲染专属卡片（展示预计消耗积分）。
+3. **安全重试与防御规避 (Text-Fallback)**：若底层模型抽风跳过 ToolCall 强行回复文本，`useAgent` 的中间件会自动检测用户的执行意图与文本开销，提示用户并阻止虚假执行；对同样操作的后续请求采用 \`confirmedBillableSignatureRef\` 防止多重重复弹窗扣费。
+4. **安全垫底**：对于用户终止或拒签的请求，系统将抛出 `USER_CANCELLED`，确保无任何后台隐式扣费漏洞。
 
 ### 积分消耗标准
 
@@ -541,6 +542,19 @@ Gemini 接口采用 **URL 优先 + 自动降级** 策略：
 | **Download 模式** | 服务端下载 → Base64 → `inlineData` | 100% 可靠 |
 
 关键函数：`processReferenceImages(refs, mode: 'url' | 'download')`
+
+
+### 本地媒体到 R2 的透明持久化 (2026-02 Final)
+
+所有在前端通过 `data:` 或 `blob:` 等生成的临时媒体资源（如聊天历史图片、网格图片的单张切片、拖拽至画板的预览图等），在赋值给全局数据（如 Scene / Shot 的 `referenceImage`）前，系统会全量通过拦截器将其转换为安全、稳定的远端存储链接：
+
+```typescript
+// 通过确保存储 API 工具来固化所有资源
+const persistentUrl = await ensurePersistedImageUrl({ url: localBlobUrl, ...folderContext });
+updateShot(shotId, { referenceImage: persistentUrl });
+```
+
+上述机制确保页面在刷新和跨端时，分镜附带的参考图都不会再“失效”或呈现占位状态。
 
 
 

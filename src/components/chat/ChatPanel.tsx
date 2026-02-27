@@ -13,7 +13,8 @@ import { formatShotLabel } from '@/utils/shotOrder';
 import { ImagePreviewOverlay } from './ImagePreviewOverlay';
 import { dataService } from '@/lib/dataService';
 import { storageService } from '@/lib/storageService';
-import { inferExtFromMime, type R2PathContext } from '@/lib/r2-path';
+import type { R2PathContext } from '@/lib/r2-path';
+import { ensurePersistedImageUrl } from '@/lib/media-url';
 import { constructBaseShotPrompt } from '@/utils/promptConstruction';
 import { translateCameraMovement, translateShotSize, SHOT_SIZE_TRANSLATIONS, CAMERA_MOVEMENT_TRANSLATIONS } from '@/utils/translations';
 import { useJimengGeneration } from '@/hooks/generation/useJimengGeneration';
@@ -60,8 +61,8 @@ export default function ChatPanel() {
     const { user, profile } = useAuth();
 
     // Derived State (Moved up for hooks dependency)
-    const shots = project?.shots || [];
-    const scenes = project?.scenes || [];
+    const shots = useMemo(() => project?.shots || [], [project?.shots]);
+    const scenes = useMemo(() => project?.scenes || [], [project?.scenes]);
     const selectedShot = shots.find((s) => s.id === selectedShotId);
     const selectedScene = scenes.find((s) => s.id === (selectedShot?.sceneId || currentSceneId));
 
@@ -267,62 +268,89 @@ export default function ChatPanel() {
         setIgnoredUrls
     });
 
-    // Resolve blob:/data: history media into persistable https URL (R2/Supabase) before reuse/apply.
+    // Resolve history media into persistable R2 URL before reuse/apply.
     const resolvedUrlCacheRef = useRef<Map<string, Promise<string>>>(new Map());
-    const resolveMediaUrl = useCallback(async (url: string): Promise<string> => {
-        if (!url) throw new Error('empty url');
-
-        // Already a network URL (or Gemini File API URL).
-        if (url.startsWith('http') || url.startsWith('https://generativelanguage.googleapis.com')) {
-            return url;
+    const resolveMediaUrl = useCallback(async (
+        url: string,
+        options?: {
+            shotId?: string;
+            sceneId?: string;
+            assetType?: R2PathContext['assetType'];
+            model?: string;
         }
+    ): Promise<string> => {
+        if (!url) throw new Error('empty url');
 
         if (!project?.id || !user?.id) {
             throw new Error('not ready');
         }
 
-        const cached = resolvedUrlCacheRef.current.get(url);
+        const folder: R2PathContext = {
+            projectId: project.id,
+            scope: options?.shotId ? 'shots' : options?.sceneId ? 'scenes' : selectedShotId ? 'shots' : currentSceneId ? 'scenes' : 'project',
+            entityId: options?.shotId || options?.sceneId || selectedShotId || currentSceneId || project.id,
+            assetType: options?.assetType || 'reference',
+            model: options?.model || 'history_ref'
+        };
+
+        const cacheKey = `${folder.scope}:${folder.entityId}:${url}`;
+        const cached = resolvedUrlCacheRef.current.get(cacheKey);
         if (cached) return cached;
 
         const task = (async () => {
             const toastId = toast.loading('正在上传参考图...');
             try {
-                const resp = await fetch(url);
-                if (!resp.ok) {
-                    throw new Error(`fetch failed (${resp.status})`);
-                }
-                const blob = await resp.blob();
-                const mimeType = blob.type || 'image/png';
-                const ext = inferExtFromMime(mimeType);
-                const file = new File([blob], `reference_${Date.now()}.${ext}`, { type: mimeType });
-
-                const folder: R2PathContext = {
-                    projectId: project.id,
-                    scope: selectedShotId ? 'shots' : currentSceneId ? 'scenes' : 'project',
-                    entityId: selectedShotId || currentSceneId || project.id,
-                    assetType: 'reference',
-                    model: 'history_ref'
-                };
-
-                const result = await storageService.uploadFile(file, folder, user.id);
+                const result = await ensurePersistedImageUrl({
+                    url,
+                    userId: user.id,
+                    folder,
+                    filenamePrefix: 'reference'
+                });
                 toast.dismiss(toastId);
-                return result.url;
+                return result;
             } catch (e) {
                 toast.dismiss(toastId);
                 throw e;
             }
         })();
 
-        resolvedUrlCacheRef.current.set(url, task);
+        resolvedUrlCacheRef.current.set(cacheKey, task);
         try {
             const resolved = await task;
-            resolvedUrlCacheRef.current.set(url, Promise.resolve(resolved));
+            resolvedUrlCacheRef.current.set(cacheKey, Promise.resolve(resolved));
             return resolved;
         } catch (e) {
-            resolvedUrlCacheRef.current.delete(url);
+            resolvedUrlCacheRef.current.delete(cacheKey);
             throw e;
         }
     }, [project?.id, currentSceneId, selectedShotId, user?.id]);
+
+    const persistShotImage = useCallback(async (
+        shotId: string,
+        updates: {
+            referenceImage: string;
+            status?: string;
+            fullGridUrl?: string;
+            gridImages?: string[];
+        }
+    ) => {
+        const localShot = shots.find((s) => s.id === shotId);
+        const latestShot = await dataService.getShot(shotId);
+        const baseShot = latestShot || localShot;
+
+        if (!baseShot) {
+            throw new Error('shot not found');
+        }
+
+        const sceneId = baseShot.sceneId || localShot?.sceneId || currentSceneId || selectedScene?.id;
+        if (!sceneId) {
+            throw new Error('scene not found');
+        }
+
+        updateShot(shotId, updates as any);
+        const mergedShot = { ...baseShot, ...updates };
+        await dataService.saveShot(sceneId, mergedShot as any);
+    }, [shots, currentSceneId, selectedScene?.id, updateShot]);
 
     const handleAddToReferenceResolved = useCallback((url: string) => {
         (async () => {
@@ -341,14 +369,21 @@ export default function ChatPanel() {
         }
 
         (async () => {
-            const resolvedUrl = await resolveMediaUrl(url);
-            updateShot(selectedShotId, { referenceImage: resolvedUrl });
+            const resolvedUrl = await resolveMediaUrl(url, {
+                shotId: selectedShotId,
+                assetType: 'image',
+                model: 'apply_to_shot'
+            });
+            await persistShotImage(selectedShotId, {
+                referenceImage: resolvedUrl,
+                status: 'done'
+            });
             toast.success('已应用到分镜');
         })().catch((e) => {
             console.warn('[ChatPanel] Failed to apply image to shot:', e);
             toast.error('应用失败，请重试');
         });
-    }, [selectedShotId, resolveMediaUrl, updateShot]);
+    }, [selectedShotId, resolveMediaUrl, persistShotImage]);
 
     const { handleFileUpload, drop, isOver } = useChatReferenceInteractions({
         selectedModel,
@@ -963,12 +998,7 @@ export default function ChatPanel() {
     };
 
     const handleApplyToShot = async (url: string) => {
-        if (!selectedShotId) {
-            toast.error("请先选择一个分镜");
-            return;
-        }
-        updateShot(selectedShotId, { referenceImage: url, status: 'done' });
-        toast.success("已应用到当前分镜");
+        handleApplyToShotResolved(url);
     };
 
     const handleApplyVideoToShot = async (message: ChatPanelMessage) => {
@@ -1232,16 +1262,57 @@ export default function ChatPanel() {
                     shots={shots}
                     gridRows={gridResult.gridRows}
                     gridCols={gridResult.gridCols}
-                    onAssign={(assignments) => {
-                        Object.entries(assignments).forEach(([shotId, imageUrl]) => {
-                            updateShot(shotId, {
-                                referenceImage: imageUrl,
-                                fullGridUrl: gridResult.fullImage,
-                                gridImages: gridResult.slices,
-                                status: 'done'
+                    onAssign={async (assignments) => {
+                        const entries = Object.entries(assignments);
+                        if (entries.length === 0) {
+                            clearGridResult();
+                            return;
+                        }
+
+                        try {
+                            const [resolvedFullGrid, resolvedSlices] = await Promise.all([
+                                resolveMediaUrl(gridResult.fullImage, {
+                                    sceneId: gridResult.sceneId,
+                                    assetType: 'grid',
+                                    model: 'gemini-grid'
+                                }),
+                                Promise.all(
+                                    (gridResult.slices || []).map((slice) => resolveMediaUrl(slice, {
+                                        sceneId: gridResult.sceneId,
+                                        assetType: 'slice',
+                                        model: 'gemini-grid'
+                                    }))
+                                )
+                            ]);
+
+                            const sliceIndexMap = new Map<string, number>();
+                            (gridResult.slices || []).forEach((slice, index) => {
+                                sliceIndexMap.set(slice, index);
                             });
-                        });
-                        clearGridResult();
+
+                            await Promise.all(entries.map(async ([shotId, imageUrl]) => {
+                                const sliceIndex = sliceIndexMap.get(imageUrl);
+                                const resolvedUrl = typeof sliceIndex === 'number'
+                                    ? resolvedSlices[sliceIndex]
+                                    : await resolveMediaUrl(imageUrl, {
+                                        shotId,
+                                        assetType: 'slice',
+                                        model: 'gemini-grid'
+                                    });
+                                await persistShotImage(shotId, {
+                                    referenceImage: resolvedUrl,
+                                    fullGridUrl: resolvedFullGrid,
+                                    gridImages: resolvedSlices,
+                                    status: 'done'
+                                });
+                            }));
+                            toast.success(`已应用 ${entries.length} 个分镜`);
+                        } catch (error) {
+                            console.error('Apply grid assignments failed:', error);
+                            toast.error('应用失败，请重试');
+                        } finally {
+                            clearGridResult();
+                        }
                     }}
                     onClose={() => clearGridResult()}
                 />
@@ -1262,17 +1333,47 @@ export default function ChatPanel() {
                     shotId={sliceSelectorData.shotId}
                     currentSliceIndex={sliceSelectorData.currentSliceIndex}
                     onSelectSlice={(sliceIndex) => {
+                        const selectedTargetShotId = sliceSelectorData.shotId || selectedShotId;
                         const url = sliceSelectorData.gridData!.slices[sliceIndex];
-                        if (sliceSelectorData.shotId) {
-                            updateShot(sliceSelectorData.shotId, {
-                                referenceImage: url,
-                                fullGridUrl: sliceSelectorData.gridData!.fullImage,
-                                gridImages: sliceSelectorData.gridData!.slices,
+                        if (!selectedTargetShotId) {
+                            toast.error('请先选择一个分镜');
+                            setSliceSelectorData(null);
+                            return;
+                        }
+
+                        (async () => {
+                            const [resolvedFullGrid, resolvedSlices] = await Promise.all([
+                                resolveMediaUrl(sliceSelectorData.gridData!.fullImage, {
+                                    shotId: selectedTargetShotId,
+                                    assetType: 'grid',
+                                    model: 'gemini-grid'
+                                }),
+                                Promise.all(
+                                    sliceSelectorData.gridData!.slices.map((slice) => resolveMediaUrl(slice, {
+                                        shotId: selectedTargetShotId,
+                                        assetType: 'slice',
+                                        model: 'gemini-grid'
+                                    }))
+                                )
+                            ]);
+                            const resolvedUrl = resolvedSlices[sliceIndex] || await resolveMediaUrl(url, {
+                                shotId: selectedTargetShotId,
+                                assetType: 'slice',
+                                model: 'gemini-grid'
+                            });
+                            await persistShotImage(selectedTargetShotId, {
+                                referenceImage: resolvedUrl,
+                                fullGridUrl: resolvedFullGrid,
+                                gridImages: resolvedSlices,
                                 status: 'done'
                             });
                             toast.success(`已选择切片 #${sliceIndex + 1}`);
-                        }
-                        setSliceSelectorData(null);
+                        })().catch((error) => {
+                            console.error('Select grid slice failed:', error);
+                            toast.error('应用切片失败，请重试');
+                        }).finally(() => {
+                            setSliceSelectorData(null);
+                        });
                     }}
                     onClose={() => setSliceSelectorData(null)}
                 />

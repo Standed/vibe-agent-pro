@@ -31,13 +31,13 @@ const sliceImageGrid = (base64Data: string, rows: number, cols: number): Promise
       const h = img.height;
       const pieceWidth = Math.floor(w / cols);
       const pieceHeight = Math.floor(h / rows);
-      
+
       const pieces: string[] = [];
       const canvas = document.createElement('canvas');
       canvas.width = pieceWidth;
       canvas.height = pieceHeight;
       const ctx = canvas.getContext('2d');
-      
+
       if (!ctx) {
         reject(new Error("无法获取画布上下文"));
         return;
@@ -45,20 +45,20 @@ const sliceImageGrid = (base64Data: string, rows: number, cols: number): Promise
 
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-            ctx.clearRect(0, 0, pieceWidth, pieceHeight);
-            // Source x, y, w, h -> Dest x, y, w, h
-            ctx.drawImage(
-                img, 
-                c * pieceWidth, 
-                r * pieceHeight, 
-                pieceWidth, 
-                pieceHeight, 
-                0, 
-                0, 
-                pieceWidth, 
-                pieceHeight
-            );
-            pieces.push(canvas.toDataURL('image/png'));
+          ctx.clearRect(0, 0, pieceWidth, pieceHeight);
+          // Source x, y, w, h -> Dest x, y, w, h
+          ctx.drawImage(
+            img,
+            c * pieceWidth,
+            r * pieceHeight,
+            pieceWidth,
+            pieceHeight,
+            0,
+            0,
+            pieceWidth,
+            pieceHeight
+          );
+          pieces.push(canvas.toDataURL('image/png'));
         }
       }
       resolve(pieces);
@@ -76,7 +76,7 @@ const getAspectRatioValue = (ar: string): number => {
 
 // Helper to stitch multiple images into a grid with specific layout and aspect ratio
 export const stitchImages = (
-  files: File[], 
+  files: File[],
   layout: '2x2' | '3x3' = '2x2',
   targetAspectRatio: string = '16:9'
 ): Promise<string> => {
@@ -109,7 +109,7 @@ export const stitchImages = (
 
     const drawGrid = () => {
       // Base width for high resolution
-      const totalWidth = 2048; 
+      const totalWidth = 2048;
       // Calculate total height based on target aspect ratio
       const arValue = getAspectRatioValue(targetAspectRatio);
       const totalHeight = Math.round(totalWidth / arValue);
@@ -151,12 +151,12 @@ export const stitchImages = (
         ctx.rect(x, y, cellWidth, cellHeight);
         ctx.clip();
         ctx.drawImage(img, x + ox, y + oy, w, h);
-        
+
         // Add subtle separator if needed (optional)
         // ctx.strokeStyle = "#000";
         // ctx.lineWidth = 2;
         // ctx.strokeRect(x, y, cellWidth, cellHeight);
-        
+
         ctx.restore();
       });
 
@@ -175,14 +175,14 @@ export const generateMultiViewGrid = async (
   gridRows: number, // 2 or 3
   gridCols: number, // 2 or 3
   aspectRatio: AspectRatio,
-  imageSize: ImageSize, 
+  imageSize: ImageSize,
   referenceImages: ReferenceImageData[] = [],
   contextImage?: string // New: Previous generation result for continuity
 ): Promise<{ fullImage: string, slices: string[] }> => {
   await ensureApiKey();
   const ai = getClient();
   const model = 'gemini-3-pro-image-preview';
-  
+
   const totalViews = gridRows * gridCols;
   const gridType = `${gridRows}x${gridCols}`;
 
@@ -202,38 +202,38 @@ export const generateMultiViewGrid = async (
 
   // If we have context, modify instructions to enforce consistency
   if (contextImage) {
-      finalPrompt += `\n\nCONTINUITY INSTRUCTION (Context Image Provided):
+    finalPrompt += `\n\nCONTINUITY INSTRUCTION (Context Image Provided):
       - The first image provided is the "Context Reference" (Previous Shot).
       - GOAL: VISUAL CONSISTENCY. Keep the same character design, clothing, lighting, and environment style as the Context Reference.`;
-      
-      if (referenceImages.length > 0) {
-          finalPrompt += `\n\nNEW ACTION INSTRUCTION (Reference Images Provided):
+
+    if (referenceImages.length > 0) {
+      finalPrompt += `\n\nNEW ACTION INSTRUCTION (Reference Images Provided):
           - The other images provided are "Action/Layout References".
           - ACTION/COMPOSITION: Adopt the composition, camera angle, and character pose from these new reference images.
           - SYNTHESIS: Re-draw the scene using the STYLE/CHARACTER from the Context Reference, but performing the ACTION/LAYOUT of the Reference Images.`;
-      } else {
-          finalPrompt += `\n- This is a direct sequel. Advance the action naturally based on the prompt.`;
-      }
+    } else {
+      finalPrompt += `\n- This is a direct sequel. Advance the action naturally based on the prompt.`;
+    }
   } else if (referenceImages.length > 0) {
-      // Standard reference usage
-      finalPrompt += `\n\nREFERENCE INSTRUCTION:
+    // Standard reference usage
+    finalPrompt += `\n\nREFERENCE INSTRUCTION:
       - Use the provided images as visual references for style, composition, and character design.`;
   }
 
   const parts: any[] = [];
-  
+
   // Add Context Image First (High priority for consistency)
   if (contextImage) {
-      // Clean base64 header if present
-      const cleanBase64 = contextImage.includes(',') ? contextImage.split(',')[1] : contextImage;
-      parts.push({
-          inlineData: {
-              mimeType: 'image/png',
-              data: cleanBase64
-          }
-      });
+    // Clean base64 header if present
+    const cleanBase64 = contextImage.includes(',') ? contextImage.split(',')[1] : contextImage;
+    parts.push({
+      inlineData: {
+        mimeType: 'image/png',
+        data: cleanBase64
+      }
+    });
   }
-  
+
   // Add other reference images
   for (const ref of referenceImages) {
     parts.push({
@@ -243,7 +243,7 @@ export const generateMultiViewGrid = async (
       }
     });
   }
-  
+
   parts.push({ text: finalPrompt });
 
   try {
@@ -281,13 +281,13 @@ export const generateMultiViewGrid = async (
 };
 
 export const generateCameraMovement = async (
-    prompt: string
+  prompt: string
 ): Promise<string> => {
-    await ensureApiKey();
-    const ai = getClient();
-    const model = 'gemini-2.5-flash';
+  await ensureApiKey();
+  const ai = getClient();
+  const model = 'gemini-2.5-flash';
 
-    const systemInstruction = `You are a specialized AI Video prompter assistant. 
+  const systemInstruction = `You are a specialized AI Video prompter assistant. 
     Analyze the scene description and provide a technical Camera Movement Prompt that can be used for video generation models (like Veo or Sora).
     
     Examples:
@@ -298,17 +298,17 @@ export const generateCameraMovement = async (
     
     Output ONLY the camera movement description. Max 15 words. English.`;
 
-    try {
-        const response = await ai.models.generateContent({
-            model,
-            contents: { parts: [{ text: `Scene: ${prompt}` }] },
-            config: { systemInstruction }
-        });
-        return response.text || "Static shot, slow zoom.";
-    } catch (error) {
-        console.error("Camera gen error:", error);
-        return "Cinematic movement.";
-    }
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: { parts: [{ text: `Scene: ${prompt}` }] },
+      config: { systemInstruction }
+    });
+    return response.text || "Static shot, slow zoom.";
+  } catch (error) {
+    console.error("Camera gen error:", error);
+    return "Cinematic movement.";
+  }
 }
 
 export const analyzeAsset = async (
@@ -318,7 +318,7 @@ export const analyzeAsset = async (
 ): Promise<string> => {
   await ensureApiKey();
   const ai = getClient();
-  const model = 'gemini-3-pro-preview';
+  const model = 'gemini-3.1-pro-preview';
 
   try {
     const response = await ai.models.generateContent({
@@ -383,7 +383,7 @@ export const generateCinematicPrompt = async (
   Do NOT write full sentences. Do NOT describe the subject again if the user already did. Just add the technical sauce.`;
 
   const contents: any[] = [];
-  
+
   if (baseIdea.trim()) {
     contents.push({ text: `User Idea: "${baseIdea}"` });
   } else {
@@ -405,7 +405,7 @@ export const generateCinematicPrompt = async (
       model,
       config: {
         systemInstruction,
-        temperature: 0.7 
+        temperature: 0.7
       },
       contents: { parts: contents }
     });

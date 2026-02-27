@@ -4,8 +4,8 @@
  */
 
 import { AGENT_TOOLS, ToolCall, formatToolsForPrompt, ToolDefinition } from './agentToolDefinitions';
-import { calculateCredits } from '@/config/credits';
 import { authenticatedFetch } from '@/lib/api-client';
+import { estimateAgentCreditsDetailed, type CreditEstimateContext, type CreditEstimateProjectSnapshot } from '@/lib/agent/credit-estimator';
 
 const GEMINI_MODEL = process.env.GEMINI_AGENT_MODEL || 'gemini-3-flash-preview'; // Agent推理模型
 
@@ -302,6 +302,30 @@ const sanitizeToolResults = (toolResults: Array<{ tool: string; result: any; err
   }));
 };
 
+function extractToolCallsFromCandidate(candidate: any): ToolCall[] {
+  const parts = candidate?.content?.parts;
+  if (!Array.isArray(parts)) return [];
+
+  return parts
+    .map((part: any) => part?.functionCall)
+    .filter((functionCall: any) => functionCall?.name)
+    .map((functionCall: any) => ({
+      name: functionCall.name,
+      arguments: functionCall.args || {}
+    }));
+}
+
+function extractTextFromCandidate(candidate: any): string {
+  const parts = candidate?.content?.parts;
+  if (!Array.isArray(parts)) return '';
+
+  return parts
+    .map((part: any) => (typeof part?.text === 'string' ? part.text : ''))
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
 export interface AgentMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
@@ -348,76 +372,42 @@ export interface AgentAction {
  * 预估工具调用所需的积分
  */
 export function estimateCredits(toolCalls: ToolCall[], userRole: 'user' | 'admin' | 'vip' = 'user', context?: AgentContext): number {
-  let total = 0;
-  for (const tc of toolCalls) {
-    switch (tc.name) {
-      case 'generateShotImage': {
-        const mode = tc.arguments.mode;
-        if (mode === 'grid') {
-          const gridSize = tc.arguments.gridSize || '2x2';
-          const [rows, cols] = gridSize.split('x').map(Number);
-          total += calculateCredits(`GEMINI_GRID_${rows}X${cols}` as any, userRole);
-        } else if (mode === 'gemini') {
-          total += calculateCredits('GEMINI_IMAGE', userRole);
-        } else if (mode === 'seedream') {
-          total += calculateCredits('SEEDREAM_GENERATE', userRole);
-        } else {
-          // 默认为 Jimeng/Volcano
-          total += calculateCredits('VOLCANO_GENERATE', userRole);
-        }
-        break;
-      }
-      case 'batchGenerateSceneImages': {
-        // 估算：假设平均每个场景 5 个镜头
-        const avgShots = 5;
-        const perShotCost = calculateCredits('VOLCANO_GENERATE', userRole);
-        total += avgShots * perShotCost;
-        break;
-      }
-      case 'batchGenerateProjectImages': {
-        const shotCount = context?.shotCount || 10;
-        const perShotCost = calculateCredits('VOLCANO_GENERATE', userRole);
-        total += shotCount * perShotCost;
-        break;
-      }
-      case 'generateSceneVideo': {
-        // 估算：假设平均每个场景 5 个镜头，合并后产生 2-3 个视频段
-        // VOLCANO_VIDEO 是单次生成费用
-        const model = tc.arguments.model === 'sora-2-pro' ? 'sora-2-pro' : 'sora-2';
-        const videoCost = model === 'sora-2-pro'
-          ? calculateCredits('SORA2_PRO_25S', userRole)
-          : calculateCredits('VOLCANO_VIDEO', userRole);
-        total += videoCost * 3;
-        break;
-      }
-      case 'generateShotsVideo': {
-        // 估算：根据 shotIds 数量
-        const shotIds = tc.arguments.shotIds;
-        const count = Array.isArray(shotIds) ? shotIds.length : 1;
-        // 假设智能合并比率 0.5 (每2个镜头合成一段)
-        const model = tc.arguments.model === 'sora-2-pro' ? 'sora-2-pro' : 'sora-2';
-        const videoCost = model === 'sora-2-pro'
-          ? calculateCredits('SORA2_PRO_25S', userRole)
-          : calculateCredits('VOLCANO_VIDEO', userRole);
-        total += Math.ceil(count * 0.5) * videoCost;
-        break;
-      }
-      case 'batchGenerateProjectVideosSora': {
-        const shotCount = context?.shotCount || 21; // Default to multiple of 3 for cleaner calc
-        // 估算：Sora 逻辑会将连续镜头合并 (平均每 3 个镜头生成一段 15s 视频)
-        const model = tc.arguments.model === 'sora-2-pro' ? 'sora-2-pro' : 'sora-2';
-        const videoCost = model === 'sora-2-pro'
-          ? calculateCredits('SORA2_PRO_25S', userRole)
-          : calculateCredits('VOLCANO_VIDEO', userRole);
-        total += Math.ceil(shotCount / 3.0) * videoCost;
-        break;
-      }
-      case 'generateCharacterThreeView':
-        total += calculateCredits('GEMINI_IMAGE', userRole);
-        break;
+  return estimateAgentCreditsDetailed({
+    toolCalls,
+    userRole,
+    context: context as CreditEstimateContext | undefined,
+  }).estimatedCredits;
+}
+
+export async function estimateCreditsOnServer(
+  toolCalls: ToolCall[],
+  context?: AgentContext,
+  projectSnapshot?: CreditEstimateProjectSnapshot | null,
+  signal?: AbortSignal
+): Promise<number | null> {
+  try {
+    const response = await authenticatedFetch('/api/agent/estimate-credits', {
+      method: 'POST',
+      body: JSON.stringify({
+        toolCalls,
+        context,
+        projectSnapshot,
+      }),
+      signal,
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    if (!data?.success || typeof data?.estimatedCredits !== 'number') {
+      return null;
     }
+
+    return data.estimatedCredits;
+  } catch (error) {
+    console.warn('[agentService] estimateCreditsOnServer failed:', error);
+    return null;
   }
-  return total;
 }
 
 /**
@@ -818,25 +808,21 @@ export async function sendMessage(
     }
 
     // Check if Gemini made function calls
-    const functionCall = candidate.content?.parts?.[0]?.functionCall;
+    const toolCalls = extractToolCallsFromCandidate(candidate);
 
-    if (functionCall) {
+    if (toolCalls.length > 0) {
       // Gemini wants to call a tool
-      const toolCalls = [{
-        name: functionCall.name,
-        arguments: functionCall.args || {}
-      }];
       return {
         type: 'tool_use',
         toolCalls,
-        message: `正在调用工具: ${functionCall.name}`,
+        message: `正在调用工具: ${toolCalls.map(tc => tc.name).join(', ')}`,
         requiresToolExecution: true,
         estimatedCredits: estimateCredits(toolCalls, 'user', context)
       };
     }
 
     // Gemini returned text response
-    const text = candidate.content?.parts?.map((p: any) => p.text).join('\n') || '';
+    const text = extractTextFromCandidate(candidate);
 
     // Try to parse as JSON action
     try {
@@ -974,25 +960,21 @@ export async function continueWithToolResults(
     }
 
     // Check if Gemini made another function call
-    const functionCall = candidate.content?.parts?.[0]?.functionCall;
+    const toolCalls = extractToolCallsFromCandidate(candidate);
 
-    if (functionCall) {
+    if (toolCalls.length > 0) {
       // Gemini wants to call another tool
-      const toolCalls = [{
-        name: functionCall.name,
-        arguments: functionCall.args || {}
-      }];
       return {
         type: 'tool_use',
         toolCalls,
-        message: `正在调用工具: ${functionCall.name}`,
+        message: `正在调用工具: ${toolCalls.map(tc => tc.name).join(', ')}`,
         requiresToolExecution: true,
         estimatedCredits: estimateCredits(toolCalls)
       };
     }
 
     // Gemini returned text response
-    const text = candidate?.content?.parts?.[0]?.text || '';
+    const text = extractTextFromCandidate(candidate);
 
     // Try to parse as JSON action
     try {
