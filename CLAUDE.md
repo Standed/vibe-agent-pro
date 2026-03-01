@@ -1344,7 +1344,7 @@ curl -X POST http://localhost:3000/api/gemini-grid \
 ```env
 NEXT_PUBLIC_GEMINI_API_KEY=<YOUR_GEMINI_API_KEY>
 ```
-**用途**：Grid 多视图生成（使用 `gemini-3-pro-image-preview` 模型）
+**用途**：Grid 多视图生成（使用 `gemini-3.1-flash-image-preview` 模型）
 
 ### Volcano Engine API
 ```env

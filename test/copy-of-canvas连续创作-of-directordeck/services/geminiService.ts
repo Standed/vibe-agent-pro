@@ -181,7 +181,7 @@ export const generateMultiViewGrid = async (
 ): Promise<{ fullImage: string, slices: string[] }> => {
   await ensureApiKey();
   const ai = getClient();
-  const model = 'gemini-3-pro-image-preview';
+  const model = 'gemini-3.1-flash-image-preview';
 
   const totalViews = gridRows * gridCols;
   const gridType = `${gridRows}x${gridCols}`;

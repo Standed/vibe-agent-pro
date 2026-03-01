@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_GEMINI_IMAGE_API_KEY ||
       process.env.GEMINI_API_KEY ||
       process.env.NEXT_GEMINI_API_KEY;
-    const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-3-pro-image-preview';
+    const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image-preview';
     if (!apiKey) {
       return NextResponse.json({ error: 'gemini api key not configured' }, { status: 500 });
     }

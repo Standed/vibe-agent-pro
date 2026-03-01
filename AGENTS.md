@@ -212,7 +212,7 @@ const { controlMode, setControlMode } = useProjectStore();
 | | 并行执行器 | `parallelExecutor.ts` | 多工具并行执行（含 Vidu） |
 | | 上下文构建 | `contextBuilder.ts` | Agent 对话上下文组装 |
 | | 会话管理 | `sessionManager.ts` | 多轮对话会话持久化 |
-| **图片生成** | Gemini 服务 | `geminiService.ts` | Grid 多视图、图片分析、编辑 (使用 3.1 Pro 及 3 Pro Image) |
+| **图片生成** | Gemini 服务 | `geminiService.ts` | Grid 多视图、图片生成、图片分析、编辑 (使用 3.1 Pro 及 3.1 Flash Image) |
 | | 火山引擎 | `volcanoEngineService.ts` | SeeDream 图片、SeeDance 视频 |
 | | 即梦服务 | `jimengService.ts` | 中文优化图片生成 |
 | | R2 上传 | `r2-server-upload.ts` | 服务端上传、Grid 切片、预签名 URL 生成 |
@@ -720,7 +720,7 @@ const results = await executor.execute(toolCalls);
 
 | 模型 | 用途 | 服务文件 |
 |------|------|----------|
-| **Gemini 3 Flash** | Agent 推理、Grid、图片分析 | `geminiService.ts` |
+| **Gemini 3.1 Pro & 3.1 Flash Image** | Agent 推理、Grid、图片生成、图片分析 | `geminiService.ts` |
 | **火山引擎 SeeDream** | 高质量图片生成 | `volcanoEngineService.ts` |
 | **火山引擎 SeeDance** | 图生视频 | `volcanoEngineService.ts` |
 | **Sora 2 (Kaponai)** | 专业视频、角色一致性 | `SoraOrchestrator.ts` |

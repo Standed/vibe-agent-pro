@@ -10,7 +10,7 @@ export const maxDuration = 120;
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-3-pro-image-preview';
+const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image-preview';
 const GEMINI_API_KEY =
   process.env.GEMINI_IMAGE_API_KEY ||
   process.env.NEXT_GEMINI_IMAGE_API_KEY ||

@@ -18,7 +18,7 @@ index 29a58e3..8a1c4c0 100644
 -GEMINI_ANALYZE_MODEL=gemini-3-pro-preview
 +GEMINI_ANALYZE_MODEL=gemini-3.1-pro-preview
  # 图片生成（Gemini直出、Grid多视图、图片编辑）
- GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
+ GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview
  
 diff --git a/docs/GEMINI_MODEL_CONFIG.md b/docs/GEMINI_MODEL_CONFIG.md
 index 1d8f4aa..0f62868 100644
@@ -32,9 +32,9 @@ index 1d8f4aa..0f62868 100644
 -| **Agent推理模式** | `gemini-3-pro-preview` | 0.3 | 精确推理 🎯 |
 +| **AI自动分镜（5步流程）** | `gemini-3.1-pro-preview` | 1.0 | 精确、创造力强 ✨ |
 +| **Agent推理模式** | `gemini-3.1-pro-preview` | 0.3 | 精确推理 🎯 |
- | **Gemini直出图片** | `gemini-3-pro-image-preview` | 1.0 | 高质量图片生成 🎨 |
- | **Gemini Grid多视图** | `gemini-3-pro-image-preview` | 1.0 | 高质量多视图生成 🎨 |
- | **Gemini图片编辑** | `gemini-3-pro-image-preview` | 1.0 | 高质量图片编辑 ✏️ |
+ | **Gemini直出图片** | `gemini-3.1-flash-image-preview` | 1.0 | 高质量图片生成 🎨 |
+ | **Gemini Grid多视图** | `gemini-3.1-flash-image-preview` | 1.0 | 高质量多视图生成 🎨 |
+ | **Gemini图片编辑** | `gemini-3.1-flash-image-preview` | 1.0 | 高质量图片编辑 ✏️ |
 -| **Gemini图片分析** | `gemini-3-pro-preview` | - | 精确分析 👁️ |
 +| **Gemini图片分析** | `gemini-3.1-pro-preview` | - | 精确分析 👁️ |
  
@@ -95,7 +95,7 @@ index 1d8f4aa..0f62868 100644
  |------|---------|------|---------|
 -| `gemini-3-pro-preview` | 💰💰 中 | ⚡ 中 | 文本、推理、分析 |
 +| `gemini-3.1-pro-preview` | 💰💰 中 | ⚡ 中 | 文本、推理、分析 |
- | `gemini-3-pro-image-preview` | 💰💰💰 高 | ⚡ 慢 | 图片生成、编辑 |
+ | `gemini-3.1-flash-image-preview` | 💰💰💰 高 | ⚡ 慢 | 图片生成、编辑 |
  
  **成本说明**：
 @@ -184,16 +184,16 @@ src/app/api/
@@ -118,8 +118,8 @@ index 1d8f4aa..0f62868 100644
 +GEMINI_ANALYZE_MODEL=gemini-3.1-pro-preview
  
  # 图片生成（Gemini直出、Grid多视图、图片编辑）
- GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
-@@ -203,7 +203,7 @@ GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
+ GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview
+@@ -203,7 +203,7 @@ GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview
  ```env
  # 假设未来Flash模型可用，可以这样分配：
  GEMINI_STORYBOARD_MODEL=gemini-3-flash-preview  # 分镜用Flash（快速）
@@ -127,8 +127,8 @@ index 1d8f4aa..0f62868 100644
 +GEMINI_AGENT_MODEL=gemini-3.1-pro-preview         # Agent用Pro（精确）
  GEMINI_TEXT_MODEL=gemini-3-flash-preview        # 文本用Flash（经济）
  GEMINI_ANALYZE_MODEL=gemini-3-flash-preview     # 分析用Flash（快速）
- GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview   # 图片用Pro Image（质量）
-@@ -228,7 +228,7 @@ GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview   # 图片用Pro Image（质量）
+ GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview   # 图片用Pro Image（质量）
+@@ -228,7 +228,7 @@ GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview   # 图片用Pro Image（质量）
  ### Q: 为什么选择Pro模型而不是Flash？
  **A**:
  - Flash模型（gemini-3-flash-preview）目前在谷歌云上还未正式发布
@@ -137,7 +137,7 @@ index 1d8f4aa..0f62868 100644
  - 图片生成需要Pro Image模型才能保证质量
  
  ### Q: Temperature=1.0会导致输出不稳定吗？
-@@ -242,13 +242,13 @@ GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview   # 图片用Pro Image（质量）
+@@ -242,13 +242,13 @@ GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview   # 图片用Pro Image（质量）
  1. **推荐方式**：在 `.env.local` 中按功能设置独立的环境变量（优先级最高）
     ```env
     # 分别配置不同功能的模型
@@ -149,7 +149,7 @@ index 1d8f4aa..0f62868 100644
 +   GEMINI_AGENT_MODEL=gemini-3.1-pro-preview
 +   GEMINI_TEXT_MODEL=gemini-3.1-pro-preview
 +   GEMINI_ANALYZE_MODEL=gemini-3.1-pro-preview
-    GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview
+    GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview
     ```
 -2. **代码层兜底**：项目中的默认值（`|| 'gemini-3-pro-preview'`）仅作为后备，不建议直接修改硬编码
 +2. **代码层兜底**：项目中的默认值（`|| 'gemini-3.1-pro-preview'`）仅作为后备，不建议直接修改硬编码
@@ -2043,7 +2043,7 @@ index 237ce83..6578e31 100644
  ): Promise<{ fullImage: string, slices: string[] }> => {
    await ensureApiKey();
    const ai = getClient();
-   const model = 'gemini-3-pro-image-preview';
+   const model = 'gemini-3.1-flash-image-preview';
 -  
 +
    const totalViews = gridRows * gridCols;

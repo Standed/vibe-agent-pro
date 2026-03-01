@@ -4,7 +4,7 @@ const { GoogleGenAI } = require('@google/genai');
 async function testGeminiImageModel() {
     const apiKey = '<YOUR_GEMINI_API_KEY>'; // Using the verified key
     const ai = new GoogleGenAI({ apiKey });
-    const model = 'gemini-3-pro-image-preview';
+    const model = 'gemini-3.1-flash-image-preview';
 
     console.log(`Testing model: ${model}`);
 

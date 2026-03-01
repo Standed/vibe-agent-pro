@@ -283,7 +283,7 @@ Visit [http://localhost:3000](http://localhost:3000)
 - **Authentication**: Supabase Auth (Email/Password + OAuth)
 - **File Storage**: Cloudflare R2 (images, videos, audio)
 - **AI Models**:
-  - Google Gemini 3 Flash (Agent reasoning, Grid generation)
+  - Google Gemini 3.1 Pro & 3.1 Flash Image (Agent reasoning, Image generation)
   - Volcano Engine SeeDream 4.0 (Image generation)
   - Volcano Engine SeeDance 1.0 Pro (Video generation)
   - **Sora 2** via Kaponai API (Professional video with character consistency)
