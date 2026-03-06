@@ -1293,7 +1293,24 @@ const resp = await authenticatedFetch('/api/supabase', {...});
 const resp = await fetch('/api/supabase', {...});
 ```
 
-#### 2. Gemini API 超时
+#### 2. 忘记密码链接跳转到 localhost
+**症状**: 点击重置密码邮件后跳转到 `http://localhost:3000/?error=access_denied&error_code=otp_expired...`
+**原因**:
+- Supabase Auth `Site URL` 仍为 `localhost:3000`
+- `Redirect URLs` 缺少线上重置页地址
+- 重置邮件模板错误使用了 `{{ .SiteURL }}`
+**解决**:
+- Vercel 生产环境变量设置:
+  - `NEXT_PUBLIC_APP_URL=https://xysaiai.com`
+  - `NEXT_PUBLIC_AUTH_REDIRECT_ORIGIN=https://xysaiai.com`
+- Supabase Dashboard:
+  - `Authentication -> URL Configuration -> Site URL`: `https://xysaiai.com`
+  - `Authentication -> URL Configuration -> Redirect URLs` 至少包含:
+    - `https://xysaiai.com/auth/reset-password`
+    - `https://www.xysaiai.com/auth/reset-password`
+- `Authentication -> Email Templates -> Reset Password` 使用 `{{ .ConfirmationURL }}`
+
+#### 3. Gemini API 超时
 **症状**: Grid 生成超时（240秒）
 **原因**: 网络代理速度慢或请求过大
 **解决**:
@@ -1301,7 +1318,7 @@ const resp = await fetch('/api/supabase', {...});
 - 减小参考图片大小
 - 增加超时时间: 设置 `NEXT_PUBLIC_GEMINI_IMG_TIMEOUT_MS`
 
-#### 3. State 更新不触发 re-render
+#### 4. State 更新不触发 re-render
 **症状**: 修改 state 但 UI 未更新
 **原因**: 直接修改了 state（违反不可变性）
 **解决**: 使用 Store actions (已集成 Immer，自动处理不可变更新)
@@ -1313,7 +1330,7 @@ updateShot(shotId, { status: 'done' });
 project.shots[0].status = 'done'; // 不会触发 re-render
 ```
 
-#### 4. IndexedDB 数据丢失
+#### 5. IndexedDB 数据丢失
 **症状**: 刷新页面后数据消失
 **原因**: `debouncedSaveProject()` 未完成保存
 **解决**: 等待 800ms 后再刷新页面，或手动调用 `saveProject()`

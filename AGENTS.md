@@ -239,7 +239,10 @@ const { controlMode, setControlMode } = useProjectStore();
 - 若无头像,前端生成 DiceBear 默认头像(仅前端显示,不写数据库)
 - 通过 `supabase/user_management.sql` 中的触发器实现
 
-#### 登录流程优化 (2026-02 Final)
+#### 登录与认证流程优化 (2026-02 Final & v4.0.7)
+- **Password Reset Origin**: `auth.ts` 中的密码重置 `redirectTo` 现支持灵活配置，按优先级读取：`NEXT_PUBLIC_AUTH_REDIRECT_ORIGIN` > `NEXT_PUBLIC_APP_URL` > `window.location.origin` > 默认兜底 `https://xysaiai.com`，自动过滤非本地非法源，极大增强不同发布环境的安全性。
+- **Supabase Auth 必配项**: 生产环境必须在 Supabase Dashboard 设置 `Site URL = https://xysaiai.com`，并在 `Redirect URLs` 中包含 `https://xysaiai.com/auth/reset-password` 与 `https://www.xysaiai.com/auth/reset-password`；否则失效链接会回落到 `http://localhost:3000/?error=access_denied&error_code=otp_expired...`。
+- **重置邮件模板约束**: `Authentication -> Email Templates -> Reset Password` 必须使用 `{{ .ConfirmationURL }}`，不要写死 `{{ .SiteURL }}`。
 - **Hybrid Auth 策略**: 
   - **Proxy-First**: `getUserProfile` 优先使用 API 代理 (`fetchProfileViaProxy`) 绕过 Client Session 水合延迟。
   - **Smart Fallback**: Cookie 失效时，尝试短超时 (800ms) 从 Supabase 持久化 Session 恢复，避免无限等待。

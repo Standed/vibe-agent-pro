@@ -110,7 +110,32 @@ async function handleLogin(email: string, password: string) {
 }
 ```
 
-### 3. 自动 Profile 创建
+### 3. 密码重置回调地址
+
+密码重置邮件中的跳转地址通过 `resolvePasswordResetOrigin()` 动态获取，优先级依次为：
+1. 环境变量: `NEXT_PUBLIC_AUTH_REDIRECT_ORIGIN` 或 `NEXT_PUBLIC_APP_URL` (非 localhost 或 127.0.0.1 从环境变量中优先取值)
+2. 浏览器运行环境: `window.location.origin`
+3. 默认兜底域名: `https://xysaiai.com`
+
+此机制自动处理结尾斜杠补全并补齐 `https://` 协议头，确保了各个部署环境（本地开发、预览版、正式生产环境）中回跳地址的安全与正确。
+
+#### Supabase Dashboard 必配项（生产环境）
+
+为避免点击重置邮件后回落到 `localhost` 或出现 `access_denied / otp_expired` 错误页，需确保 Supabase 配置如下：
+
+1. `Authentication -> URL Configuration -> Site URL`
+   - `https://xysaiai.com`
+2. `Authentication -> URL Configuration -> Redirect URLs` 至少包含：
+   - `https://xysaiai.com/auth/reset-password`
+   - `https://www.xysaiai.com/auth/reset-password`
+   - （可选开发）`http://localhost:3000/auth/reset-password`
+3. `Authentication -> Email Templates -> Reset Password`
+   - 使用 `{{ .ConfirmationURL }}`
+   - 不要写死 `{{ .SiteURL }}`
+
+> 诊断提示：如果浏览器地址栏出现 `http://localhost:3000/?error=access_denied&error_code=otp_expired...`，通常表示 Supabase `Site URL` 仍指向本地或 Redirect URL 未正确配置。
+
+### 4. 自动 Profile 创建
 
 首次登录时，`authenticateRequest()` 会自动创建用户 Profile：
 

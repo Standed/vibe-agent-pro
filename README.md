@@ -446,6 +446,7 @@ Click the button below for one-click deployment:
 
 **Required Environment Variables**:
 - Supabase: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- Auth Redirect: `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_AUTH_REDIRECT_ORIGIN` (生产建议都设为 `https://xysaiai.com`)
 - R2 Storage: `R2_BUCKET_NAME`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`, `NEXT_PUBLIC_R2_PUBLIC_URL`
 - Gemini API: `GEMINI_TEXT_API_KEY`, `GEMINI_IMAGE_API_KEY`, `GEMINI_AGENT_API_KEY`
 - Volcano Engine: `NEXT_PUBLIC_VOLCANO_API_KEY`, model IDs for SeeDream/SeeDance/Doubao
@@ -454,12 +455,21 @@ Click the button below for one-click deployment:
 - Auto-deploy on every push to `main` branch
 - Preview deployments for PRs
 - Custom domain configuration available
+- Supabase Auth URL Configuration:
+  - `Site URL = https://xysaiai.com`
+  - `Redirect URLs` includes `https://xysaiai.com/auth/reset-password` and `https://www.xysaiai.com/auth/reset-password`
+  - Reset Password template uses `{{ .ConfirmationURL }}`
 
 For detailed instructions, see [DEPLOY.md](./DEPLOY.md)
 
 ---
 
 ## 📝 Changelog
+
+ ### v4.0.7 (2026-03-06) - 🛡️ Auth System & Documentation
+- ✅ **Password Reset Origin**: Implemented robust URL resolution for the password reset redirect (`NEXT_PUBLIC_AUTH_REDIRECT_ORIGIN` override, with fallback to `window.location.origin` and `https://xysaiai.com`).
+- ✅ **Supabase Auth Runbook**: Documented mandatory `Site URL / Redirect URLs / Reset Password template` configuration to avoid fallback to `localhost` on expired/invalid OTP links.
+- ✅ **Internal Docs Sync**: Updated team internal usage guide (`docs/团队使用指南.md`) with new portal domains and procedural instructions.
 
  ### v4.0.6 (2026-02-27) - 🎯 Agent/Pro Grid UI Consistency & Docs Sync
 - ✅ **Grid Card Consistency** - Unified Gemini Grid rendering in shot-level chat results: removed `选择切片` entry and top-right `Grid 2x2/3x3` badge to match Pro visual style.

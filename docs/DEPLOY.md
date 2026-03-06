@@ -30,6 +30,8 @@
    NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
    SUPABASE_SERVICE_ROLE_KEY=your_service_key
+   NEXT_PUBLIC_APP_URL=https://your-domain.com
+   NEXT_PUBLIC_AUTH_REDIRECT_ORIGIN=https://your-domain.com
 
    # R2 Storage
    R2_BUCKET_NAME=vibe-agent-media
@@ -50,6 +52,13 @@
    NEXT_PUBLIC_SEEDANCE_MODEL_ID=ep-xxxxx
    NEXT_PUBLIC_DOUBAO_MODEL_ID=ep-xxxxx
    ```
+
+   **Supabase Auth 控制台必配（强制）**：
+   - `Authentication -> URL Configuration -> Site URL`: `https://your-domain.com`
+   - `Authentication -> URL Configuration -> Redirect URLs` 至少包含：
+     - `https://your-domain.com/auth/reset-password`
+     - `https://www.your-domain.com/auth/reset-password`（如启用 www）
+   - `Authentication -> Email Templates -> Reset Password` 必须使用 `{{ .ConfirmationURL }}`
 
 5. **点击 "Deploy"** - Vercel 会自动：
    - 克隆仓库
@@ -115,6 +124,7 @@ https://vibe-agent-pro.vercel.app
 检查：
 - [ ] 页面能正常加载
 - [ ] 能够登录/注册（Supabase 连接正常）
+- [ ] 忘记密码邮件链接指向线上域名（不是 localhost）
 - [ ] AI 生成功能正常（API 配置正常）
 - [ ] 文件上传正常（R2 配置正常）
 
