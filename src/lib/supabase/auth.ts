@@ -34,6 +34,31 @@ export const readSessionCookie = readSessionCookieUtil;
 export const setSessionCookie = (session?: Session | null) =>
   setSessionCookieUtil(session?.access_token, session?.refresh_token);
 
+const DEFAULT_APP_ORIGIN = 'https://xysaiai.com';
+
+const normalizeOrigin = (rawUrl?: string) => {
+  const trimmed = (rawUrl || '').trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+};
+
+const isLocalOrigin = (origin?: string) => {
+  if (!origin) return false;
+  return origin.includes('localhost') || origin.includes('127.0.0.1');
+};
+
+const resolvePasswordResetOrigin = () => {
+  const envOrigin = normalizeOrigin(
+    process.env.NEXT_PUBLIC_AUTH_REDIRECT_ORIGIN || process.env.NEXT_PUBLIC_APP_URL
+  );
+  if (envOrigin && !isLocalOrigin(envOrigin)) return envOrigin;
+
+  const runtimeOrigin = normalizeOrigin(window.location.origin);
+  if (runtimeOrigin && !isLocalOrigin(runtimeOrigin)) return runtimeOrigin;
+
+  return DEFAULT_APP_ORIGIN;
+};
+
 
 /**
  * 用户注册
@@ -163,8 +188,9 @@ export function onAuthStateChange(
 export async function resetPassword(
   email: string
 ): Promise<{ error: AuthError | null }> {
+  const redirectTo = `${resolvePasswordResetOrigin()}/auth/reset-password`;
   const { error } = await (supabase as any).auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/auth/reset-password`,
+    redirectTo,
   });
   return { error };
 }
