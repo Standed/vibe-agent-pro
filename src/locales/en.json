@@ -50,7 +50,19 @@
     "nicknameTooLong": "Nickname cannot exceed {max} characters",
     "nicknameUpdateSuccess": "Nickname updated successfully",
     "nicknameSaveFailed": "Failed to save nickname: {message}",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "accountSecurity": "Account Security",
+    "newPassword": "New Password",
+    "newPasswordPlaceholder": "Enter a new login password",
+    "confirmNewPassword": "Confirm New Password",
+    "confirmNewPasswordPlaceholder": "Re-enter the new password",
+    "updatePassword": "Update Password",
+    "goToForgotPassword": "Reset via Email",
+    "passwordRequired": "Please enter a new password",
+    "passwordTooShort": "Password must be at least 6 characters",
+    "passwordNotMatch": "Passwords do not match",
+    "passwordUpdateSuccess": "Password updated successfully",
+    "passwordUpdateFailed": "Failed to update password"
   },
   "home": {
     "title": "My Projects",

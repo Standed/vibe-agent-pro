@@ -20,6 +20,29 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     const initSessionFromUrl = async () => {
+      const search = typeof window !== 'undefined' ? window.location.search : '';
+      const searchParams = new URLSearchParams(search);
+      const code = searchParams.get('code');
+      const type = searchParams.get('type');
+
+      if (code && (!type || type === 'recovery')) {
+        try {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) {
+            setSessionError('链接已失效，请重新发起重置密码');
+            return;
+          }
+          if (typeof window !== 'undefined') {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+          setSessionReady(true);
+          return;
+        } catch {
+          setSessionError('链接已失效，请重新发起重置密码');
+          return;
+        }
+      }
+
       const hash = typeof window !== 'undefined' ? window.location.hash : '';
       const params = new URLSearchParams(hash.replace('#', ''));
       const accessToken = params.get('access_token');

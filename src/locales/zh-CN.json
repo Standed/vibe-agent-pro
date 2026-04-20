@@ -50,7 +50,19 @@
     "nicknameTooLong": "昵称不能超过 {max} 个字符",
     "nicknameUpdateSuccess": "昵称更新成功",
     "nicknameSaveFailed": "昵称保存失败: {message}",
-    "saving": "保存中..."
+    "saving": "保存中...",
+    "accountSecurity": "账号安全",
+    "newPassword": "新密码",
+    "newPasswordPlaceholder": "输入新的登录密码",
+    "confirmNewPassword": "确认新密码",
+    "confirmNewPasswordPlaceholder": "再次输入新密码",
+    "updatePassword": "修改密码",
+    "goToForgotPassword": "通过邮箱重置密码",
+    "passwordRequired": "请输入新密码",
+    "passwordTooShort": "密码至少 6 位",
+    "passwordNotMatch": "两次输入的密码不一致",
+    "passwordUpdateSuccess": "密码更新成功",
+    "passwordUpdateFailed": "密码更新失败"
   },
   "home": {
     "title": "我的项目",

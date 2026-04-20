@@ -7,6 +7,21 @@ import { isTokenExpired, readSessionCookie } from '@/lib/supabase/cookie-utils';
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const path = req.nextUrl.pathname;
+  const search = req.nextUrl.search || '';
+  const fullPath = `${path}${search}`;
+
+  const authType = req.nextUrl.searchParams.get('type');
+  const hasRecoveryCode = !!req.nextUrl.searchParams.get('code');
+  const isRecoveryRequest = authType === 'recovery' || hasRecoveryCode;
+
+  // 兼容场景：重置密码链接误打到受保护页面时，统一转到 reset-password
+  if (isRecoveryRequest && !path.startsWith('/auth/reset-password')) {
+    const resetUrl = new URL('/auth/reset-password', req.url);
+    req.nextUrl.searchParams.forEach((value, key) => {
+      resetUrl.searchParams.set(key, value);
+    });
+    return NextResponse.redirect(resetUrl);
+  }
 
   // 公开路径 - 不需要认证
   const publicPaths = [
@@ -103,7 +118,7 @@ export async function middleware(req: NextRequest) {
           // 非公开路径且非 API 路径，直接重定向到登录页
           if (!isPublicPath && !path.startsWith('/api/')) {
             const redirectUrl = new URL('/auth/login', req.url);
-            redirectUrl.searchParams.set('redirect', path);
+            redirectUrl.searchParams.set('redirect', fullPath);
             redirectUrl.searchParams.set('reason', 'session_expired');
             return NextResponse.redirect(redirectUrl);
           }
@@ -123,7 +138,7 @@ export async function middleware(req: NextRequest) {
   if (!isPublicPath && !hasAuthCookie && !path.startsWith('/api/')) {
     const redirectUrl = new URL('/auth/login', req.url);
     // 保存原始 URL，登录后可以跳转回来
-    redirectUrl.searchParams.set('redirect', path);
+    redirectUrl.searchParams.set('redirect', fullPath);
     return NextResponse.redirect(redirectUrl);
   }
 

@@ -3,14 +3,22 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 import { resetPassword } from '@/lib/supabase/auth';
 import { toast } from 'sonner';
 import { CheckCircle2 } from 'lucide-react';
+import { useEffect } from 'react';
 
 export default function ForgotPasswordPage() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+
+  useEffect(() => {
+    const presetEmail = searchParams.get('email');
+    if (presetEmail) setEmail(presetEmail);
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

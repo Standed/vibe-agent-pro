@@ -25,6 +25,23 @@ export default function LoginPage() {
   // 获取重定向参数
   const redirectTo = searchParams.get('redirect') || '/';
 
+  // 兼容：如果重置密码邮件误跳到登录页，自动转发到 reset-password 页面
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const hashType = hashParams.get('type');
+    const queryType = searchParams.get('type');
+    const hasRecoveryTokens = !!(hashParams.get('access_token') && hashParams.get('refresh_token'));
+    const hasRecoveryCode = !!searchParams.get('code');
+    const isRecoveryFlow = hashType === 'recovery' || queryType === 'recovery' || hasRecoveryTokens || hasRecoveryCode;
+
+    if (!isRecoveryFlow) return;
+
+    const query = searchParams.toString();
+    const target = `/auth/reset-password${query ? `?${query}` : ''}${window.location.hash || ''}`;
+    router.replace(target);
+  }, [router, searchParams]);
+
   // 监听 user 状态变化，处理"刷新页面时已登录"的情况
   useEffect(() => {
     // 只在页面加载时检查一次（不是登录过程中）
