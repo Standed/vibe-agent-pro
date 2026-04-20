@@ -76,8 +76,14 @@ const postJson = async <T>(
             }
           }
 
-          // 对于 5xx 错误，可以重试；4xx 错误不重试
-          if (resp.status >= 500 && attempt < retries) {
+          // 对于 429/5xx 错误，可以重试；其他 4xx 错误不重试
+          const retryAfterHeader = resp.headers.get('retry-after');
+          const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : 0;
+          if ((resp.status === 429 || resp.status >= 500) && attempt < retries) {
+            const extraDelay = Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? retryAfterMs : 0;
+            if (extraDelay > 0) {
+              await new Promise(resolve => setTimeout(resolve, extraDelay));
+            }
             lastError = new Error(`服务器错误 (${resp.status}): ${text}`);
             continue;
           }

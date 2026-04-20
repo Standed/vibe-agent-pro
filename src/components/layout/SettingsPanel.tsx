@@ -16,8 +16,13 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
   const { locale, setLocale, t } = useI18n();
   const { user, profile, refreshProfile, signOut } = useAuth();
   const [uploading, setUploading] = useState(false);
+  const [savingName, setSavingName] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [displayName, setDisplayName] = useState('');
   const [jimengSessionId, setJimengSessionId] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const NICKNAME_MAX_LENGTH = 30;
 
   const themes = [
     { value: 'light', label: t('settings.themeLight'), icon: Sun },
@@ -43,6 +48,33 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       }
     };
   }, [previewAvatar]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setDisplayName(profile?.full_name || '');
+    setIsEditingName(false);
+  }, [isOpen, profile?.full_name]);
+
+  useEffect(() => {
+    if (!isEditingName) return;
+    nameInputRef.current?.focus();
+    nameInputRef.current?.select();
+  }, [isEditingName]);
+
+  const updateProfileFields = async (updates: Record<string, unknown>) => {
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    const { error } = await (supabase as any)
+      .from('profiles')
+      .update(updates)
+      .eq('id', user.id);
+
+    if (error) {
+      throw error;
+    }
+  };
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
@@ -80,65 +112,19 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       setPreviewAvatar(objectUrl);
       setUploading(true);
 
-      console.log('[Avatar Upload] 🚀 1. 开始上传文件');
-      console.log('[Avatar Upload] 📁 文件信息:', { name: file.name, size: file.size, type: file.type });
-
-      console.log('[Avatar Upload] 📁 文件信息:', { name: file.name, size: file.size, type: file.type });
-
-      // 1. 压缩图片
-      console.log('[Avatar Upload] 🔨 1.5 开始压缩图片...');
       const compressedFile = await compressFileForUpload(file);
-      console.log('[Avatar Upload] 📉 压缩后大小:', compressedFile.size);
 
-      // 2. 使用 storageService 上传头像 (使用压缩后的文件)
       const { url } = await storageService.uploadFile(compressedFile, 'avatars', user.id);
-      console.log('[Avatar Upload] ✅ 2. R2 上传成功, URL:', url);
 
-      // 2. 添加时间戳防止本地缓存
       const avatarUrlWithCacheBust = `${url}?t=${Date.now()}`;
-      console.log('[Avatar Upload] 🔗 3. 添加缓存破坏参数:', avatarUrlWithCacheBust);
-
-      // 3. 直接更新 profiles 表 (必须成功,否则闪回)
-      console.log('[Avatar Upload] 📝 4. 开始更新 Profiles 表');
-      const { data: profileData, error: profileError } = await (supabase as any)
-        .from('profiles')
-        .update({ avatar_url: avatarUrlWithCacheBust })
-        .eq('id', user.id)
-        .select();
-
-      if (profileError) {
-        console.error('[Avatar Upload] ❌ 5. Profiles 表更新失败:', profileError);
-        console.error('[Avatar Upload] 详细错误:', JSON.stringify(profileError, null, 2));
-        throw new Error(t('settings.avatarSaveFailed', { message: profileError.message || t('settings.avatarPermissionDenied') }));
-      }
-
-      console.log('[Avatar Upload] ✅ 6. Profiles 表更新成功');
-      console.log('[Avatar Upload] 返回数据:', profileData);
-
-      // KEY FIX: Stop spinning here. The user already sees the optimistic image.
-      setUploading(false);
-      toast.success(t('settings.avatarUpdateSuccess'));
-      console.log('[Avatar Upload] 🎉 7. UI 更新完成');
-
-      // 4. 刷新本地状态 (Background sync) - 强制刷新
-      console.log('[Avatar Upload] 🔄 8. 开始刷新本地 Profile');
+      await updateProfileFields({ avatar_url: avatarUrlWithCacheBust });
       await refreshProfile();
-      console.log('[Avatar Upload] ✅ 9. Profile 刷新完成');
-
-      // Nuclear Option: Force Reload to clear any browser/client cache
-      console.log('[Avatar Upload] 🔃 10. 准备在 1 秒后重新加载页面...');
-      setTimeout(() => {
-        console.log('[Avatar Upload] 🔃 11. 正在重新加载页面...');
-        window.location.reload();
-      }, 1000);
-      // 这里的 refreshProfile 应该从 profiles 表拉取最新数据。
-      // 如果 profiles 表更新慢，可能拉到旧的。
-      // 但由于 User Metadata 也更新了，useAuth 可能会优先使用 metadata。
-
+      setPreviewAvatar(null);
+      toast.success(t('settings.avatarUpdateSuccess'));
 
     } catch (error: any) {
       console.error('Error uploading avatar:', error);
-      toast.error(error.message || t('settings.avatarUploadFailed'));
+      toast.error(error?.message || t('settings.avatarUploadFailed'));
       if (previewAvatar?.startsWith('blob:')) {
         try {
           URL.revokeObjectURL(previewAvatar);
@@ -147,15 +133,63 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
         }
       }
       setPreviewAvatar(null); // Revert on failure
-      setUploading(false); // Ensure we stop spinning on error
     } finally {
-      // Just in case
-      if (uploading) setUploading(false);
+      setUploading(false);
       // 清空 input 防止重复选择同一文件不触发 onChange
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
+  };
+
+  const handleDisplayNameSave = async () => {
+    if (!user) return;
+
+    const trimmedName = displayName.trim();
+    const currentName = (profile?.full_name || '').trim();
+
+    if (!trimmedName) {
+      toast.error(t('settings.nicknameRequired'));
+      return;
+    }
+
+    if (trimmedName.length > NICKNAME_MAX_LENGTH) {
+      toast.error(t('settings.nicknameTooLong', { max: NICKNAME_MAX_LENGTH }));
+      return;
+    }
+
+    if (trimmedName === currentName) {
+      setIsEditingName(false);
+      return;
+    }
+
+    try {
+      setSavingName(true);
+      await updateProfileFields({ full_name: trimmedName });
+      await refreshProfile();
+      setDisplayName(trimmedName);
+      setIsEditingName(false);
+      toast.success(t('settings.nicknameUpdateSuccess'));
+    } catch (error: any) {
+      console.error('Error updating nickname:', error);
+      toast.error(
+        t('settings.nicknameSaveFailed', {
+          message: error?.message || t('settings.avatarPermissionDenied')
+        })
+      );
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const startDisplayNameEdit = () => {
+    setDisplayName(profile?.full_name || '');
+    setIsEditingName(true);
+  };
+
+  const cancelDisplayNameEdit = () => {
+    setDisplayName(profile?.full_name || '');
+    setIsEditingName(false);
   };
 
   useEffect(() => {
@@ -238,9 +272,60 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                 </button>
 
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-primary-text truncate">
-                    {profile?.full_name || t('settings.noNickname')}
-                  </h4>
+                  <div className="flex items-center gap-2 min-h-[28px]">
+                    {isEditingName ? (
+                      <>
+                        <input
+                          ref={nameInputRef}
+                          type="text"
+                          value={displayName}
+                          maxLength={NICKNAME_MAX_LENGTH}
+                          onChange={(e) => setDisplayName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void handleDisplayNameSave();
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              cancelDisplayNameEdit();
+                            }
+                          }}
+                          placeholder={t('settings.nicknamePlaceholder')}
+                          className="flex-1 min-w-0 px-3 py-1.5 text-sm font-bold premium-input"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handleDisplayNameSave()}
+                          disabled={savingName || displayName.trim().length === 0}
+                          className="px-2.5 py-1.5 text-xs font-semibold rounded-lg premium-button disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {savingName ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            t('common.save')
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelDisplayNameEdit}
+                          disabled={savingName}
+                          className="px-2.5 py-1.5 text-xs font-semibold rounded-lg premium-button disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {t('common.cancel')}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={startDisplayNameEdit}
+                        className="text-left font-bold text-primary-text truncate max-w-full hover:opacity-85 transition-opacity"
+                        title={t('settings.nicknameClickToEdit')}
+                      >
+                        {profile?.full_name || t('settings.noNickname')}
+                      </button>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-text truncate">
                     {user.email}
                   </p>

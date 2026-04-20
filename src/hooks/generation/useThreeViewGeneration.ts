@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { VolcanoEngineService } from '@/services/volcanoEngineService';
 import { storageService } from '@/lib/storageService';
@@ -9,6 +9,7 @@ interface UseThreeViewGenerationProps {
     name: string;
     description: string;
     appearance: string;
+    referenceImages: string[];
     userId?: string;
     projectId?: string;
     characterId?: string;
@@ -16,6 +17,7 @@ interface UseThreeViewGenerationProps {
     setPreviewImage: (url: string | null) => void;
     setSoraStatus: (status: any) => void;
     setSelectedRefIndex: React.Dispatch<React.SetStateAction<number>>;
+    onGeneratedImage?: (generatedUrl: string, allImages: string[]) => Promise<void> | void;
 }
 
 export interface UseThreeViewGenerationReturn {
@@ -35,19 +37,28 @@ export function useThreeViewGeneration({
     name,
     description,
     appearance,
+    referenceImages,
     userId,
     projectId,
     characterId,
     setReferenceImages,
     setPreviewImage,
     setSoraStatus,
-    setSelectedRefIndex
+    setSelectedRefIndex,
+    onGeneratedImage
 }: UseThreeViewGenerationProps): UseThreeViewGenerationReturn {
     const [generationPrompt, setGenerationPrompt] = useState('');
     const [aspectRatio, setAspectRatio] = useState<'21:9' | '16:9' | '9:16'>('21:9');
     const [genMode, setGenMode] = useState<'seedream' | 'gemini' | 'jimeng'>('jimeng');
     const [jimengModel, setJimengModel] = useState<JimengModel>('jimeng-4.5');
     const [isGenerating, setIsGenerating] = useState(false);
+    const isMountedRef = useRef(true);
+
+    useEffect(() => {
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
 
     // 默认拼装提示词
     useEffect(() => {
@@ -80,6 +91,21 @@ export function useThreeViewGeneration({
                 model: genMode
             };
 
+            const handleGeneratedImage = async (url: string) => {
+                let allImages: string[] = [url, ...referenceImages];
+                if (isMountedRef.current) {
+                    setReferenceImages(prev => {
+                        allImages = [url, ...prev];
+                        return allImages;
+                    });
+                    setSoraStatus('none');
+                    setSelectedRefIndex(0);
+                }
+                if (onGeneratedImage) {
+                    await onGeneratedImage(url, allImages);
+                }
+            };
+
             if (genMode === 'seedream') {
                 const volcanoService = VolcanoEngineService.getInstance();
                 const imageUrl = await volcanoService.generateSingleImage(prompt, aspectRatio, [], uploadContext);
@@ -87,10 +113,8 @@ export function useThreeViewGeneration({
                 if (finalUrl.startsWith('data:')) {
                     finalUrl = await storageService.uploadBase64ToR2(finalUrl, uploadContext, `three_view_${Date.now()}.png`, userId || 'anonymous');
                 }
-                setReferenceImages(prev => [finalUrl, ...prev]);
+                await handleGeneratedImage(finalUrl);
                 // setPreviewImage(finalUrl); // Disable auto-popup
-                setSoraStatus('none');
-                setSelectedRefIndex(0);
                 toast.success('三视图生成成功！');
             } else if (genMode === 'jimeng') {
                 const { jimengService } = await import('@/services/jimengService');
@@ -112,10 +136,8 @@ export function useThreeViewGeneration({
                 const imageUrl = pollResult.url || (pollResult.urls && pollResult.urls[0]);
                 if (!imageUrl) throw new Error('即梦未返回图片');
 
-                setReferenceImages(prev => [imageUrl, ...prev]);
+                await handleGeneratedImage(imageUrl);
                 // setPreviewImage(imageUrl);
-                setSoraStatus('none');
-                setSelectedRefIndex(0);
 
                 toast.success(`三视图生成成功并保存！`);
 
@@ -130,10 +152,8 @@ export function useThreeViewGeneration({
                     finalUrl = await storageService.uploadBase64ToR2(finalUrl, uploadContext, `three_view_${Date.now()}.png`, userId || 'anonymous');
                 }
 
-                setReferenceImages(prev => [finalUrl, ...prev]);
+                await handleGeneratedImage(finalUrl);
                 // setPreviewImage(finalUrl); // Disable auto-popup
-                setSoraStatus('none');
-                setSelectedRefIndex(0);
 
                 toast.success('Gemini 生成成功！');
             }
@@ -142,9 +162,11 @@ export function useThreeViewGeneration({
             console.error('Generation failed:', error);
             toast.error(error.message || '生成失败，请重试');
         } finally {
-            setIsGenerating(false);
+            if (isMountedRef.current) {
+                setIsGenerating(false);
+            }
         }
-    }, [name, generationPrompt, genMode, jimengModel, aspectRatio, userId, projectId, characterId, setReferenceImages, setPreviewImage, setSoraStatus, setSelectedRefIndex]);
+    }, [name, generationPrompt, genMode, jimengModel, aspectRatio, referenceImages, userId, projectId, characterId, setReferenceImages, setSoraStatus, setSelectedRefIndex, onGeneratedImage]);
 
     return {
         generationPrompt,

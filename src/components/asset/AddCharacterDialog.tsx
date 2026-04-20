@@ -24,6 +24,12 @@ type SaveOptions = {
   immediateSave?: boolean;
 };
 
+type PersistCharacterOptions = {
+  closeAfter: boolean;
+  showToast: boolean;
+  referenceImagesOverride?: string[];
+};
+
 interface AddCharacterDialogProps {
   onAdd: (character: Character, options?: SaveOptions) => void | Promise<void>;
   onClose: () => void;
@@ -120,13 +126,24 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     name,
     description,
     appearance,
+    referenceImages,
     userId: user?.id,
     projectId: resolvedProjectId,
     characterId: characterIdRef.current,
     setReferenceImages,
     setPreviewImage,
     setSoraStatus,
-    setSelectedRefIndex
+    setSelectedRefIndex,
+    onGeneratedImage: async (_generatedUrl, allImages) => {
+      const canAutoPersist = mode === 'edit' || !!savedCharacterId || !!initialCharacter?.id;
+      if (!canAutoPersist) return;
+      if (!name.trim() || !description.trim()) return;
+      await persistCharacter({
+        closeAfter: false,
+        showToast: false,
+        referenceImagesOverride: allImages,
+      });
+    }
   });
 
 
@@ -385,17 +402,18 @@ export default function AddCharacterDialog({ onAdd, onClose, mode = 'add', initi
     void persistCharacter({ closeAfter: true, showToast: true });
   };
 
-  const persistCharacter = async (options: { closeAfter: boolean; showToast: boolean }): Promise<Character | null> => {
+  const persistCharacter = async (options: PersistCharacterOptions): Promise<Character | null> => {
     if (!name.trim()) { toast.error('请输入角色名称'); return null; }
     if (!description.trim()) { toast.error('请输入角色描述'); return null; }
 
-    const hasReferenceInput = referenceImages.length > 0 || !!soraReferenceVideoUrl || hasSoraCode;
+    const sourceReferenceImages = options.referenceImagesOverride ?? referenceImages;
+    const hasReferenceInput = sourceReferenceImages.length > 0 || !!soraReferenceVideoUrl || hasSoraCode;
     if (!hasReferenceInput) {
       toast.error('请至少上传 1 张参考图，或填写 Sora 角色码 / 上传角色视频');
       return null;
     }
 
-    let finalImages = [...referenceImages];
+    let finalImages = [...sourceReferenceImages];
     if (finalImages.length > 1 && selectedRefIndex >= 0 && selectedRefIndex < finalImages.length) {
       const [primary] = finalImages.splice(selectedRefIndex, 1);
       finalImages = [primary, ...finalImages];

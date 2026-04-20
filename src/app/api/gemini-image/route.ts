@@ -9,6 +9,20 @@ export const maxDuration = 180;  // Gemini 图片生成可能需要更长时间
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+const MAX_GEMINI_RETRIES = Number(process.env.GEMINI_IMAGE_MAX_RETRIES || 2);
+const RETRY_BASE_DELAY_MS = Number(process.env.GEMINI_IMAGE_RETRY_DELAY_MS || 1200);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const shouldRetryGeminiError = (error: any): boolean => {
+  const status = Number(error?.status);
+  const body = String(error?.body || error?.message || '').toLowerCase();
+  if (status === 429 || status >= 500) return true;
+  if (body.includes('resource_exhausted') || body.includes('high demand') || body.includes('"unavailable"')) {
+    return true;
+  }
+  return false;
+};
 
 /**
  * 获取 MIME 类型从 URL
@@ -220,11 +234,33 @@ export async function POST(request: NextRequest) {
       return { uri, elapsedTime };
     };
 
+    const executeWithRetry = async (mode: 'url' | 'download') => {
+      let lastError: any = null;
+      for (let attempt = 0; attempt <= MAX_GEMINI_RETRIES; attempt++) {
+        try {
+          return await makeGeminiRequest(mode);
+        } catch (error: any) {
+          lastError = error;
+          const retryable = shouldRetryGeminiError(error);
+          if (attempt < MAX_GEMINI_RETRIES && retryable) {
+            const delay = RETRY_BASE_DELAY_MS * (attempt + 1);
+            console.warn(
+              `[Gemini Image] attempt ${attempt + 1}/${MAX_GEMINI_RETRIES + 1} failed (status=${error?.status || 'unknown'}), retry in ${delay}ms`
+            );
+            await sleep(delay);
+            continue;
+          }
+          throw error;
+        }
+      }
+      throw lastError;
+    };
+
     // ======== 执行请求 (URL 优先，失败则降级) ========
     let result: { uri: string; elapsedTime: string };
     try {
       // 首次尝试：使用快速的 URL 模式
-      result = await makeGeminiRequest('url');
+      result = await executeWithRetry('url');
       console.log(`[Gemini Image] ✅ URL 模式成功 (${result.elapsedTime}s)`);
     } catch (urlError: any) {
       // 检查是否是 Gemini 无法抓取 URL 的错误
@@ -232,7 +268,7 @@ export async function POST(request: NextRequest) {
       if (isCannotFetch && referenceImages.length > 0) {
         console.warn(`[Gemini Image] ⚠️ URL 模式失败 (Cannot fetch)，切换到下载模式重试...`);
         // 自动降级：使用下载模式重试
-        result = await makeGeminiRequest('download');
+        result = await executeWithRetry('download');
         console.log(`[Gemini Image] ✅ 下载模式成功 (${result.elapsedTime}s)`);
       } else {
         // 其他错误直接抛出
@@ -308,6 +344,8 @@ export async function POST(request: NextRequest) {
     console.error('[Gemini Image fetch failed]', requestId, error);
     const message =
       error?.name === 'AbortError' ? 'Gemini image request timeout' : error?.message || 'unknown error';
-    return NextResponse.json({ error: message, requestId }, { status: 500 });
+    const status = Number(error?.status);
+    const httpStatus = Number.isInteger(status) && status >= 400 && status < 600 ? status : 500;
+    return NextResponse.json({ error: message, requestId }, { status: httpStatus });
   }
 }

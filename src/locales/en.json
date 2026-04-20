@@ -41,7 +41,16 @@
     "avatarUpdateSuccess": "Avatar updated successfully",
     "avatarUploadFailed": "Avatar upload failed",
     "avatarSaveFailed": "Failed to save avatar: {message}",
-    "avatarPermissionDenied": "Permission denied"
+    "avatarPermissionDenied": "Permission denied",
+    "nicknameLabel": "Nickname",
+    "nicknamePlaceholder": "Enter your nickname",
+    "nicknameClickToEdit": "Click to edit nickname",
+    "nicknameHint": "Supports 1-{max} characters",
+    "nicknameRequired": "Nickname cannot be empty",
+    "nicknameTooLong": "Nickname cannot exceed {max} characters",
+    "nicknameUpdateSuccess": "Nickname updated successfully",
+    "nicknameSaveFailed": "Failed to save nickname: {message}",
+    "saving": "Saving..."
   },
   "home": {
     "title": "My Projects",

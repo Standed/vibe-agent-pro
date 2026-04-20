@@ -30,6 +30,7 @@ interface LogEntry {
 
 class LogService {
   private isDevelopment = process.env.NODE_ENV === 'development';
+  private isDbLoggingDisabled = false;
 
   /**
    * 记录日志
@@ -121,8 +122,9 @@ class LogService {
     try {
       // 只在生产环境存储
       if (this.isDevelopment) return;
+      if (this.isDbLoggingDisabled) return;
 
-      await (supabase as any).from('application_logs').insert({
+      const { error } = await (supabase as any).from('application_logs').insert({
         level: entry.level,
         category: entry.category,
         message: entry.message,
@@ -130,6 +132,24 @@ class LogService {
         user_id: entry.userId || null,
         created_at: entry.timestamp.toISOString(),
       });
+      if (error) {
+        const errorCode = (error as any)?.code || '';
+        const errorMessage = String((error as any)?.message || '').toLowerCase();
+        const tableMissing =
+          errorCode === 'PGRST205' ||
+          (errorMessage.includes('application_logs') &&
+            (errorMessage.includes('schema cache') ||
+              errorMessage.includes('not found')));
+
+        if (tableMissing) {
+          // 表缺失时自动熔断，避免每次业务请求都触发 404 噪音
+          this.isDbLoggingDisabled = true;
+          console.warn('[LogService] application_logs 表不存在，已自动禁用数据库日志写入。');
+          return;
+        }
+
+        console.error('Failed to log to database:', error);
+      }
     } catch (error) {
       // 日志存储失败不应该影响主流程
       console.error('Failed to log to database:', error);

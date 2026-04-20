@@ -41,7 +41,16 @@
     "avatarUpdateSuccess": "头像更新成功",
     "avatarUploadFailed": "头像上传失败",
     "avatarSaveFailed": "头像保存失败: {message}",
-    "avatarPermissionDenied": "权限不足"
+    "avatarPermissionDenied": "权限不足",
+    "nicknameLabel": "昵称",
+    "nicknamePlaceholder": "输入你的昵称",
+    "nicknameClickToEdit": "点击修改昵称",
+    "nicknameHint": "支持 1-{max} 个字符",
+    "nicknameRequired": "昵称不能为空",
+    "nicknameTooLong": "昵称不能超过 {max} 个字符",
+    "nicknameUpdateSuccess": "昵称更新成功",
+    "nicknameSaveFailed": "昵称保存失败: {message}",
+    "saving": "保存中..."
   },
   "home": {
     "title": "我的项目",

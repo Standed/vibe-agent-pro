@@ -567,17 +567,51 @@ export class GenerationTools {
 
         } else {
             // Non-grid mode
+            const unresolvedShotIds: string[] = [];
             await runWithConcurrency(shots, IMAGE_CONCURRENCY, async (shot, idx) => {
                 if (this.storeCallbacks?.setGenerationProgress) {
                     this.storeCallbacks.setGenerationProgress({ current: successCount + failedCount + 1, message: `Generating shot ${idx + 1}/${shots.length}` });
                 }
                 try {
                     const res = await this.generateShotImage(shot.id, mode, gridSize, prompt, force);
-                    if (res.success) successCount++; else failedCount++;
+                    if (res.success) {
+                        successCount++;
+                    } else {
+                        unresolvedShotIds.push(shot.id);
+                    }
                 } catch (e) {
-                    failedCount++;
+                    unresolvedShotIds.push(shot.id);
                 }
             });
+
+            // 对失败分镜进行补偿重试（常见于 Gemini 429/5xx）
+            const MAX_ROUNDS = 2;
+            for (let round = 1; round <= MAX_ROUNDS && unresolvedShotIds.length > 0; round++) {
+                const currentRoundIds = [...unresolvedShotIds];
+                unresolvedShotIds.length = 0;
+                const retryConcurrency = Math.max(1, Math.ceil(IMAGE_CONCURRENCY / 2));
+
+                await runWithConcurrency(currentRoundIds, retryConcurrency, async (retryShotId, idx) => {
+                    if (this.storeCallbacks?.setGenerationProgress) {
+                        this.storeCallbacks.setGenerationProgress({
+                            current: successCount + failedCount + 1,
+                            message: `Retry round ${round}/${MAX_ROUNDS} for shot ${idx + 1}/${currentRoundIds.length}`
+                        });
+                    }
+                    try {
+                        const res = await this.generateShotImage(retryShotId, mode, gridSize, prompt, force);
+                        if (res.success) {
+                            successCount++;
+                        } else {
+                            unresolvedShotIds.push(retryShotId);
+                        }
+                    } catch (e) {
+                        unresolvedShotIds.push(retryShotId);
+                    }
+                });
+            }
+
+            failedCount += unresolvedShotIds.length;
         }
 
         if (this.storeCallbacks?.setGenerationProgress) {

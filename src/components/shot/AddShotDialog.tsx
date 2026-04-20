@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus } from 'lucide-react';
 import { ShotSize, CameraMovement } from '@/types/project';
+import { useI18n } from '@/components/providers/I18nProvider';
+import { translateShotSize, translateCameraMovement } from '@/utils/translations';
 
 interface AddShotDialogProps {
   sceneId: string;
@@ -31,6 +33,8 @@ export default function AddShotDialog({
   onClose,
   insertIndex,
 }: AddShotDialogProps) {
+  const { locale } = useI18n();
+  const isChineseLocale = locale === 'zh-CN';
   const [shotSize, setShotSize] = useState<ShotSize>('Medium Shot');
   const [cameraMovement, setCameraMovement] = useState<CameraMovement>('Static');
   const [duration, setDuration] = useState(3);
@@ -122,7 +126,7 @@ export default function AddShotDialog({
             >
               {shotSizeOptions.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {isChineseLocale ? translateShotSize(option) : option}
                 </option>
               ))}
             </select>
@@ -143,7 +147,7 @@ export default function AddShotDialog({
             >
               {cameraMovementOptions.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {isChineseLocale ? translateCameraMovement(option) : option}
                 </option>
               ))}
             </select>
