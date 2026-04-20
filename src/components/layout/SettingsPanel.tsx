@@ -6,7 +6,6 @@ import { useTheme } from 'next-themes';
 import { useI18n, supportedLocales } from '@/components/providers/I18nProvider';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { supabase } from '@/lib/supabase/client';
-import { updatePassword } from '@/lib/supabase/auth';
 import { storageService } from '@/lib/storageService';
 import { toast } from 'sonner';
 import { Avatar } from '@/components/ui/Avatar';
@@ -20,9 +19,6 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
   const [savingName, setSavingName] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [displayName, setDisplayName] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [updatingPassword, setUpdatingPassword] = useState(false);
   const [jimengSessionId, setJimengSessionId] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -194,39 +190,6 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
   const cancelDisplayNameEdit = () => {
     setDisplayName(profile?.full_name || '');
     setIsEditingName(false);
-  };
-
-  const handleUpdatePassword = async () => {
-    if (!user) return;
-
-    if (!password.trim()) {
-      toast.error(t('settings.passwordRequired'));
-      return;
-    }
-    if (password.length < 6) {
-      toast.error(t('settings.passwordTooShort'));
-      return;
-    }
-    if (password !== confirmPassword) {
-      toast.error(t('settings.passwordNotMatch'));
-      return;
-    }
-
-    try {
-      setUpdatingPassword(true);
-      const { error } = await updatePassword(password);
-      if (error) {
-        toast.error(error.message || t('settings.passwordUpdateFailed'));
-        return;
-      }
-      setPassword('');
-      setConfirmPassword('');
-      toast.success(t('settings.passwordUpdateSuccess'));
-    } catch (error: any) {
-      toast.error(error?.message || t('settings.passwordUpdateFailed'));
-    } finally {
-      setUpdatingPassword(false);
-    }
   };
 
   useEffect(() => {
@@ -500,46 +463,6 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                 </h3>
               </div>
               <div className="space-y-3">
-                <div className="space-y-2">
-                  <label className="text-[10px] text-muted-text ml-1">
-                    {t('settings.newPassword')}
-                  </label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder={t('settings.newPasswordPlaceholder')}
-                    className="w-full px-4 py-2.5 premium-input"
-                    autoComplete="new-password"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-muted-text ml-1">
-                    {t('settings.confirmNewPassword')}
-                  </label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder={t('settings.confirmNewPasswordPlaceholder')}
-                    className="w-full px-4 py-2.5 premium-input"
-                    autoComplete="new-password"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void handleUpdatePassword()}
-                  disabled={updatingPassword}
-                  className="w-full py-2.5 px-4 flex items-center justify-center gap-2 premium-button rounded-xl disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {updatingPassword ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <KeyRound className="w-4 h-4" />
-                  )}
-                  {t('settings.updatePassword')}
-                </button>
-
                 <button
                   type="button"
                   onClick={() => {
