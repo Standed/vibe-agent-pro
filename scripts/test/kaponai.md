@@ -14,7 +14,7 @@ Tempo（例如：180 SPM） Accent（例如：东京腔轻微卷舌）"}},"shots
 通过这种方式优化 15s 和 25s中的一些景别切换等等，且要求角色说话的内容要严格按照分镜脚本，不要多增减内容。
 
 baseurl：https://models.kapon.cloud  
-apikey：<YOUR_KAPONAI_API_KEY>   
+apikey：<YOUR_KAPONAI_API_KEY>
 
 1. sora2 创建角色
 

@@ -153,7 +153,7 @@ const data = await postJson<{ fullImage: string }>('/api/gemini-grid', {
 **关键配置**:
 ```typescript
 // .env.local
-GEMINI_API_KEY=<YOUR_GEMINI_API_KEY>
+GEMINI_API_KEY=your_gemini_api_key
 GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview
 HTTP_PROXY=http://127.0.0.1:7897
 HTTPS_PROXY=http://127.0.0.1:7897
@@ -346,7 +346,7 @@ IndexedDB 持久化存储
 
 ```bash
 # Gemini API Key
-GEMINI_API_KEY=<YOUR_GEMINI_API_KEY>
+GEMINI_API_KEY=your_gemini_api_key
 
 # Gemini 图片生成模型
 GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview

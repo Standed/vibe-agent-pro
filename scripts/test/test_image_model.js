@@ -2,7 +2,10 @@
 const { GoogleGenAI } = require('@google/genai');
 
 async function testGeminiImageModel() {
-    const apiKey = '<YOUR_GEMINI_API_KEY>'; // Using the verified key
+    const apiKey = process.env.GEMINI_IMAGE_API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        throw new Error('Set GEMINI_IMAGE_API_KEY or GEMINI_API_KEY before running this test.');
+    }
     const ai = new GoogleGenAI({ apiKey });
     const model = 'gemini-3.1-flash-image-preview';
 

@@ -1359,13 +1359,13 @@ curl -X POST http://localhost:3000/api/gemini-grid \
 
 ### Gemini API
 ```env
-NEXT_PUBLIC_GEMINI_API_KEY=<YOUR_GEMINI_API_KEY>
+NEXT_PUBLIC_GEMINI_API_KEY=your_gemini_api_key
 ```
 **用途**：Grid 多视图生成（使用 `gemini-3.1-flash-image-preview` 模型）
 
 ### Volcano Engine API
 ```env
-NEXT_PUBLIC_VOLCANO_API_KEY=<YOUR_VOLCANO_API_KEY>
+NEXT_PUBLIC_VOLCANO_API_KEY=your_volcano_api_key
 NEXT_PUBLIC_VOLCANO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 
 # 需要在火山方舟控制台创建推理接入点

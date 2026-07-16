@@ -62,7 +62,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "scan:secrets": "node scripts/tools/secret-scan.js"
   },
   "engines": {
     "node": "20.x",
